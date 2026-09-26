@@ -36,23 +36,28 @@ These come from the analysis of the nes-radar link and the VGM format.
    chunk gap it moves about 110 bytes/s. Raw VGM for a typical NES track is
    1.1-2.2 KB/s. A new streaming mode is required. The wiring, electrical
    design, and level shifting are reused unchanged.
-2. **Compressed frames average about 7-13 bytes.** That is a per-frame record
-   of changed registers, described below.
+2. **Compressed frames average 3-5 bytes.** That is a per-frame record of
+   changed registers, described below. The original estimate was 7-13;
+   phase 1 measured five real rips at 2.7-5.0 mean, p99 13-18, and a worst
+   second of 256-492 bytes (about 8 per frame).
 3. **At 9600 baud, requesting data every frame doesn't fit.** Per frame
-   there is about 16.6 ms. It goes to the NMI (about 0.5 ms), a 4-byte
+   there is about 16.6 ms. It goes to the NMI (measured in phase 2: median
+   0.1-0.4 ms, p99 about 1 ms, and up to 3 ms on a song's opening frame), a
+   4-byte
    request (4.2 ms at 9600), host turnaround (an estimated 2-5 ms and not yet
    measured), and a margin. That leaves about 6 ms, or 5 bytes, which is
    barely a burst header. **The target is 38400 baud**, with 57600 as a
    stretch goal:
 
-   | baud | byte time | request | payload per frame (5 ms turnaround) |
+   | baud | byte time | request | payload per frame (1 ms NMI, 5 ms turnaround) |
    |---|---|---|---|
    | 9600 | 1.04 ms | 4.2 ms | about 0 |
-   | 38400 | 0.26 ms | 1.0 ms | about 30 bytes |
-   | 57600 | 0.17 ms | 0.7 ms | about 47 bytes |
+   | 38400 | 0.26 ms | 1.0 ms | about 28 bytes |
+   | 57600 | 0.17 ms | 0.7 ms | about 44 bytes |
 
-   Thirty bytes per frame against an average need of about 10 is 3x headroom.
-   The ring buffer absorbs busy frames.
+   Twenty-eight bytes per frame against a measured average need of 3-5 is
+   5-9x headroom. The ring buffer absorbs busy frames and the slow opening
+   frame.
 4. **The radar receiver cannot go faster.** It strobes `$4016` on every
    sample, and its start-bit hunt takes 50+ cycles per pass. A lean receiver
    reads `$4017` directly, which is safe because port 2 has no controller on
@@ -226,12 +231,17 @@ visible to the decoder.
 - **Mapper:** NROM-256 (mapper 0, 32 KB PRG, 8 KB CHR). No bank switching is
   needed. Assembled with ca65/ld65, like nes-radar.
 - **RAM map:** zero page for player state; `$0100` stack; `$0200` OAM shadow;
-  `$0300-$03FF` player and link state; **`$0400-$07FF` 1 KB ring buffer**.
-  Using a whole number of pages keeps wrap-around cheap.
-- **Ring indices:** head (the decoder's) and tail (the link's) are 10-bit
-  numbers. The NMI must never see a half-updated tail. Commit through a
-  single-byte store the NMI can't tear, such as a committed page and offset
-  update ordered so a torn read can only under-report.
+  `$0300-$03FF` player and link state, including a 64-entry staging list;
+  **`$0400-$07FF` 1 KB ring buffer**. Using a whole number of pages keeps
+  wrap-around cheap.
+- **Ring indices** (built in phase 2): head is the decoder's and tail is the
+  link's, each a two-byte address. The main loop publishes tail through
+  `tail_prev` and a one-byte `tail_busy` flag, so the NMI always sees a
+  consistent tail. It reads head high byte first, so a torn head can only
+  understate free space. `nes/jukebox.s` explains both.
+- **Staging** (built in phase 2): the NMI decodes a whole frame into a
+  staging list before touching the APU. If the ring runs dry partway, it
+  writes nothing, leaves head alone, and counts an underrun.
 - **NMI:** save registers, OAM DMA, decode exactly one frame (or consume one
   frame of a wait), read controller 1, and increment a frame counter. On
   underrun, write nothing: the notes hold, and an underrun counter
@@ -258,7 +268,9 @@ docs/PROTOCOL.md        stream format and link protocol
 tools/vgm2jbs.py        converter
 tools/apu_model.py      register-state model used by the tests
 tools/verify_rx_timing.py, tools/verify_tx_timing.py
-nes/                    jukebox.s, nrom256.cfg, Makefile
+nes/                    jukebox.s, nrom256.cfg (Makefile at the root)
+tools/embed_song.py     song -> build/song.bin + song.inc for the ROM
+tools/demo_song.py      original demo tune, so builds need no rips
 host/                   desktop streamer (pyserial), shared protocol module
 firmware/stick_s3/      MicroPython port of host/
 tests/                  pytest: converter, protocol, decoder running on py65
@@ -277,12 +289,15 @@ serial hardware.
    quantization, PAL rescale, loop points, and chained records. Run it on real
    rips in `music/` and read the bytes-per-frame reports to confirm the 7-13
    estimate. *Exit:* equivalence tests pass, and the reports on at least 5
-   real rips show p99 bytes per frame under 30.
+   real rips show p99 bytes per frame under 30. **Done.**
 2. **Standalone player ROM (no link).** An NROM-256 ROM with one `.jbs` built
    into PRG, decoded from the NMI through the same ring-buffer path, fed by a
    memcpy "fake link". Run the decoder on py65 in pytest and compare its APU
    writes with `apu_model`. *Exit:* correct playback in an emulator (Mesen2
-   recommended; none is installed now) and on a flash cart.
+   recommended) and on a flash cart. **Built and tested on py65:** all five
+   rips play frame-exact, with stress and targeted-NMI tests on the ring
+   handoff. **Confirmed by ear in Mesen 2.** Playback on real hardware from a
+   flash cart is still to do.
 3. **Link spike at 38400.** Build the lean RX and TX routines with cycle
    verifiers, plus a loopback ROM: the host sends patterned bursts, the NES
    checks the CRC and replies, the host logs errors and measures `T_turn`.

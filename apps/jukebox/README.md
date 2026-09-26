@@ -9,8 +9,33 @@ Work in progress. See [`PLAN.md`](PLAN.md) for the design and phases, and
 
 ## Status
 
-Phase 1 is implemented: the converter from `.vgm`/`.vgz` to the `.jbs`
-jukebox stream, and its tests. There is no ROM or host streamer yet.
+- **Phase 1, done:** the converter from `.vgm`/`.vgz` to the `.jbs` jukebox
+  stream.
+- **Phase 2, built:** a player ROM with one song built in, decoded from the
+  NMI through the ring buffer the serial link will fill later. It is tested
+  on a 6502 emulator (py65), where every song plays frame-exact, and
+  confirmed by ear in Mesen 2. Not yet tried on real hardware.
+- No serial link or host streamer yet.
+
+## Building the ROM
+
+Needs [cc65](https://cc65.github.io/) (`ca65`, `ld65`).
+
+```sh
+make                                      # original demo tune
+make SONG="music/01 Running About.vgz"    # any rip, or a .jbs
+```
+
+The ROM is `build/jukebox.nes` (NROM-256, mapper 0). Open it in an emulator
+such as Mesen, or copy it to a flash cart. The screen stays blank dark blue;
+the music is the point. A song can be up to 24 KB of stream, which covers
+every rip tried so far (6-14 KB).
+
+For debugging, [Mesen 2](https://www.mesen.ca/) can import
+`build/jukebox.dbg` (cc65 debug info), so its debugger, memory viewer and
+watch list show the ROM's labels, such as `head`, `tail`, `underruns` and
+`stream_error`. A write breakpoint on `$4000-$4017` stops at each frame's APU
+writes.
 
 ## Converting music
 
@@ -28,9 +53,12 @@ VGM rips are copyrighted. Keep them in `music/`, which git ignores.
 ## Tests
 
 ```sh
-python3 -m venv .venv && .venv/bin/pip install pytest
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/python -m pytest
 ```
+
+`make test` does the same. The player tests build the ROM and run it on
+py65, so they need cc65; they skip without it.
 
 The tests build synthetic VGM files in code. The central test encodes
 random register writes, decodes the stream, and checks with the APU

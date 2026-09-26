@@ -174,3 +174,12 @@ def test_bad_files_are_rejected():
         jbs.JbsFile.from_bytes(b"XXXX" + data[4:])
     with pytest.raises(jbs.StreamError):
         jbs.JbsFile.from_bytes(data[:-1])
+
+
+def test_a_frame_the_player_cannot_stage_is_rejected():
+    fine = [[], [(0x03, 0x08)] * 64]
+    jbs.encode(fine)
+    with pytest.raises(ValueError, match="stages at most 64"):
+        jbs.encode([[], [(0x03, 0x08)] * 65])
+    with pytest.raises(ValueError, match="stages at most 64"):
+        jbs.encode([[(0x03, 0x08)] * 63])   # plus the two init writes

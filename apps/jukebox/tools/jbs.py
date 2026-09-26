@@ -23,6 +23,11 @@ OP_CHAIN = 0x00
 OP_CONTROL = 0x80
 MAX_WAIT = 0x7F
 
+# The player stages a frame's writes before applying them, and has room for
+# this many. The init control stages two.
+MAX_FRAME_WRITES = 64
+INIT_WRITES = 2
+
 CTRL_END = 0x00
 CTRL_INIT = 0x01
 CONTROL_CODES = frozenset({CTRL_END, CTRL_INIT})
@@ -180,6 +185,12 @@ def encode(frames, loop_frame=None):
         if not records:
             waiting += 1
             continue
+        staged = sum(len(record) for record in records) + (INIT_WRITES if index == 0 else 0)
+        if staged > MAX_FRAME_WRITES:
+            raise ValueError(
+                "frame %d has %d writes; the player stages at most %d"
+                % (index, staged, MAX_FRAME_WRITES)
+            )
         flush_wait(index)
         before = len(out)
         for record in records[:-1]:
