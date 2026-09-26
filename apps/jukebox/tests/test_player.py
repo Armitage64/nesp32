@@ -69,7 +69,7 @@ def test_boot_silences_the_apu_and_inhibits_the_frame_irq(rom):
 
 def test_demo_song_plays_on_the_frame_clock(rom):
     machine = console(rom)
-    machine.run(700)
+    machine.run_until_played(700)
     with open(os.path.join(os.path.dirname(rom[0]), "demo.jbs"), "rb") as handle:
         demo = jbs.JbsFile.from_bytes(handle.read())
     assert machine.word("underruns") == 0
@@ -142,7 +142,7 @@ def test_a_song_without_a_loop_ends_in_silence(rom):
     stream = jbs.encode(frames).data
     machine = console(rom)
     machine.load_song(stream)
-    machine.run(10)
+    machine.run_until_played(10)
     assert_plays(machine, stream, None, 10)
     assert machine.byte("ended") == 1
 
@@ -154,7 +154,7 @@ def test_a_malformed_stream_stops_playback(rom):
     machine.run(5)
     assert machine.byte("stream_error") == 1
     assert machine.byte("ended") == 1
-    assert machine.frames[0][0] == [(0x15, 0x00)]
+    assert [(0x15, 0x00)] in [writes for writes, _, _ in machine.frames]
 
 
 @pytest.mark.skipif(not RIPS, reason="no rips in music/")
@@ -165,7 +165,7 @@ def test_rips_play_frame_exact(rom, path):
     machine = console(rom)
     machine.load_song(song.stream, loop_offset)
     count = min(song.total_frames + 200, 3000)
-    machine.run(count)
+    machine.run_until_played(count)
     assert machine.word("underruns") == 0
     assert_plays(machine, song.stream, loop_offset, count)
     assert_nmi_budget(machine)

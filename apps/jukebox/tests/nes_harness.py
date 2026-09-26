@@ -24,6 +24,9 @@ PPUSTATUS = 0x2002
 PPUCTRL_NMI = 0x80
 APU = 0x4000
 APU_LAST = 0x4017
+JOY1 = 0x4016
+JOY2 = 0x4017
+RETURN_TRAP = 0xFFF0  # call() returns here
 RTI = 0x40
 VBLANK = 0x80
 STALL_CYCLES = 10 * NTSC_FRAME_CYCLES
@@ -47,9 +50,11 @@ class Console:
         for offset, byte in enumerate(rom[INES_HEADER:INES_HEADER + PRG_SIZE]):
             self.memory[PRG_START + offset] = byte
         self.memory.subscribe_to_read([PPUSTATUS], lambda address: VBLANK)
-        self.memory.subscribe_to_write(range(APU, APU_LAST + 1), self._apu_write)
+        # $4016 is the controller strobe (OUT0), not an APU register.
+        apu = [a for a in range(APU, APU_LAST + 1) if a != JOY1]
+        self.memory.subscribe_to_write(apu, self._apu_write)
         self.reset_writes = []
-        self.frames = []  # per NMI: (writes, underran)
+        self.frames = []  # per NMI: (writes, underran, playing)
         self._writes = self.reset_writes
         self.nmi_cycles = []
         self.mpu = None
@@ -90,8 +95,6 @@ class Console:
             self.mpu = MPU(memory=self.memory)
             self.mpu.pc = self.memory[0xFFFC] | self.memory[0xFFFD] << 8
         mpu = self.mpu
-        main_wait = self.labels["main_wait"]
-        frame_count = self.labels["frame_count"]
         next_nmi = mpu.processorCycles + period()
         fired = 0
         while fired < nmis:
@@ -108,18 +111,50 @@ class Console:
                 returned_to = mpu.pc
                 continue
             returned_to = None
-            # main_wait spins on "cmp frame_count" until an NMI changes it.
-            idle = mpu.pc == main_wait and mpu.a == self.memory[frame_count]
-            if idle and mpu.processorCycles < next_nmi:
-                mpu.processorCycles = next_nmi
+            skip_to = self._idle_until(next_nmi)
+            if skip_to is not None and skip_to > mpu.processorCycles:
+                mpu.processorCycles = skip_to
                 continue
             mpu.step()
             if mpu.processorCycles > next_nmi + STALL_CYCLES:
                 raise AssertionError("ROM stalled with NMI disabled at $%04X" % mpu.pc)
 
+    def _idle_until(self, next_nmi):
+        """A cycle to skip ahead to when the CPU is only spinning, or None.
+
+        main_wait spins until an NMI moves frame_count past served_frame.
+        """
+        mpu = self.mpu
+        if (mpu.pc == self.labels["main_wait"]
+                and self.byte("frame_count") == self.byte("served_frame")):
+            return next_nmi
+        return None
+
+    def call(self, name, a=0, x=0, y=0, limit=200_000):
+        """Run one subroutine without booting, NMI off. Returns the MPU."""
+        if self.mpu is None:
+            self.mpu = MPU(memory=self.memory)
+        mpu = self.mpu
+        mpu.sp = 0xFD
+        self.memory[0x01FE] = (RETURN_TRAP - 1) & 0xFF
+        self.memory[0x01FF] = (RETURN_TRAP - 1) >> 8
+        mpu.pc = self.labels[name]
+        mpu.a, mpu.x, mpu.y = a, x, y
+        start = mpu.processorCycles
+        while mpu.pc != RETURN_TRAP:
+            skip_to = self._idle_until(float("inf"))
+            if skip_to is not None and skip_to > mpu.processorCycles:
+                mpu.processorCycles = skip_to
+            else:
+                mpu.step()
+            if mpu.processorCycles - start > limit:
+                raise AssertionError("%s did not return" % name)
+        return mpu
+
     def _nmi(self):
         mpu = self.mpu
         underruns = self.word("underruns")
+        playing = bool(self.byte("playing"))
         writes = []
         self._writes = writes
         start = mpu.processorCycles
@@ -131,11 +166,20 @@ class Console:
                 break
         self.nmi_cycles.append(mpu.processorCycles - start)
         self._writes = []
-        self.frames.append((writes, self.word("underruns") != underruns))
+        self.frames.append((writes, self.word("underruns") != underruns, playing))
+
+    def run_until_played(self, count, limit=100_000, **kwargs):
+        """Run until count frames have played, however many NMIs it takes."""
+        while len(self.played_frames()) < count:
+            if len(self.frames) >= limit:
+                raise AssertionError("only %d frames played in %d NMIs"
+                                     % (len(self.played_frames()), limit))
+            self.run(min(100, count), **kwargs)
 
     def played_frames(self):
-        """Writes per NMI, leaving out the NMIs that found the ring dry."""
-        return [writes for writes, underran in self.frames if not underran]
+        """Writes per NMI, leaving out NMIs before playback started and NMIs
+        that found the ring dry."""
+        return [writes for writes, underran, playing in self.frames if playing and not underran]
 
 
 def expected_frames(stream, loop_offset=None):

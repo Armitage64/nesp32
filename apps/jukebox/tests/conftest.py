@@ -3,4 +3,5 @@ import sys
 
 HERE = os.path.dirname(__file__)
 sys.path.insert(0, os.path.join(HERE, "..", "tools"))
+sys.path.insert(0, os.path.join(HERE, "..", "host"))
 sys.path.insert(0, HERE)

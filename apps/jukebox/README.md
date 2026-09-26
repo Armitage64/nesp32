@@ -14,8 +14,12 @@ Work in progress. See [`PLAN.md`](PLAN.md) for the design and phases, and
 - **Phase 2, built:** a player ROM with one song built in, decoded from the
   NMI through the ring buffer the serial link will fill later. It is tested
   on a 6502 emulator (py65), where every song plays frame-exact, and
-  confirmed by ear in Mesen 2. Not yet tried on real hardware.
-- No serial link or host streamer yet.
+  confirmed by ear in Mesen 2 and on real hardware.
+- **Phase 3a, done:** the serial link ROM, `build/jukebox_link.nes`, and the
+  host side of the link protocol. Verified against a cycle-exact model of
+  the serial line, including late hosts, line noise and baud error. It
+  needs the serial hardware (phase 3b) and a desktop streamer (phase 4)
+  before it plays anything for real.
 
 ## Building the ROM
 
@@ -26,7 +30,10 @@ make                                      # original demo tune
 make SONG="music/01 Running About.vgz"    # any rip, or a .jbs
 ```
 
-The ROM is `build/jukebox.nes` (NROM-256, mapper 0). Open it in an emulator
+`make` builds two ROMs: `build/jukebox.nes` with the song built in, and
+`build/jukebox_link.nes`, which fetches the song over controller port 2.
+
+The standalone ROM is `build/jukebox.nes` (NROM-256, mapper 0). Open it in an emulator
 such as Mesen, or copy it to a flash cart. The screen stays blank dark blue;
 the music is the point. A song can be up to 24 KB of stream, which covers
 every rip tried so far (6-14 KB).
@@ -57,8 +64,9 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/python -m pytest
 ```
 
-`make test` does the same. The player tests build the ROM and run it on
-py65, so they need cc65; they skip without it.
+`make test` does the same. The ROM tests build both ROMs and run them on
+py65, so they need cc65; they skip without it. The full suite takes about
+two minutes, mostly the serial link simulation.
 
 The tests build synthetic VGM files in code. The central test encodes
 random register writes, decodes the stream, and checks with the APU

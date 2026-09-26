@@ -254,10 +254,11 @@ visible to the decoder.
 - **Screen (v1):** a static title screen, the track number and title from a
   metadata record, and debug counters for underruns, CRC failures and aborts,
   like nes-radar's `ERROR n` field.
-- **Timing-critical routines** (`rx_byte_38400`, `tx_byte_38400`, and the
-  start-bit hunt) go in their own aligned segment. Each gets a cycle-model
-  verifier in `tools/`, following nes-radar's `verify_tx_timing.py`,
-  including the extra cycle a taken branch pays when it crosses a page.
+- **Timing-critical routines** (`rx_byte`, `tx_byte`, and the start-bit
+  hunt) live on their own pages in the `RXTX` segment, so no branch pays the
+  page-crossing cycle. `tests/test_serial_timing.py` measures every read and
+  write they make on py65, which charges page-crossing penalties, against
+  the ideal bit centers at their linked addresses.
 
 ## Repository layout
 
@@ -267,13 +268,16 @@ README.md               written in phase 1
 docs/PROTOCOL.md        stream format and link protocol
 tools/vgm2jbs.py        converter
 tools/apu_model.py      register-state model used by the tests
-tools/verify_rx_timing.py, tools/verify_tx_timing.py
-nes/                    jukebox.s, nrom256.cfg (Makefile at the root)
+tools/gen_crc_table.py  CRC-16 lookup tables for the link ROM
+nes/                    jukebox.s (player), fake_link.inc, serial_link.inc,
+                        nrom256.cfg (Makefile at the root)
 tools/embed_song.py     song -> build/song.bin + song.inc for the ROM
 tools/demo_song.py      original demo tune, so builds need no rips
-host/                   desktop streamer (pyserial), shared protocol module
+host/                   protocol.py (link protocol, host side); the desktop
+                        streamer comes in phase 4
 firmware/stick_s3/      MicroPython port of host/
-tests/                  pytest: converter, protocol, decoder running on py65
+tests/                  pytest: converter, protocol, both ROMs on py65, and
+                        a cycle-exact serial line model
 ```
 
 Copyrighted VGM rips are never committed. Tests build synthetic VGMs in code,
@@ -296,10 +300,35 @@ serial hardware.
    writes with `apu_model`. *Exit:* correct playback in an emulator (Mesen2
    recommended) and on a flash cart. **Built and tested on py65:** all five
    rips play frame-exact, with stress and targeted-NMI tests on the ring
-   handoff. **Confirmed by ear in Mesen 2.** Playback on real hardware from a
-   flash cart is still to do.
-3. **Link spike at 38400.** Build the lean RX and TX routines with cycle
-   verifiers, plus a loopback ROM: the host sends patterned bursts, the NES
+   handoff. **Done:** confirmed by ear in Mesen 2 and on real hardware.
+3. **Link at 38400, in two parts.**
+
+   **3a. Offline, before the hardware arrives.** Everything that does not
+   need a real wire, tested on py65 with a cycle-exact model of the serial
+   line (`$4017` reads see the host's bits at the exact CPU cycle; `$4016`
+   writes are decoded as the host's UART would):
+   - the lean RX and TX routines, with sweeps of baud error, start-bit phase
+     and stop bits that report the measured sampling margin;
+   - the link-mode ROM: requests, credits, bursts into the ring, CRC, and
+     the NMI cutting off a late burst;
+   - a Python host protocol module (`host/`), and a whole-system
+     simulation joining it to the ROM through the line model, with lost,
+     corrupted and late bytes.
+
+   **Done.** `make` builds `build/jukebox_link.nes` beside the standalone
+   ROM. Measured in simulation:
+   - samples land within 0.12 bit of center at every start-bit phase;
+     reception survives host baud error from -4.25% to +6.5%;
+   - transmit bits land within 0.62 cycles of ideal and decode at ±3%;
+   - full 24-byte bursts land before the next NMI with host turnaround up to
+     6.0 ms, which is the budget phase 3b must measure against;
+   - late hosts, corrupted and dropped burst bytes, corrupted requests, and
+     2% baud error both ways all keep the music frame-exact. The simulation
+     found two bugs first: requests went out only every other frame after
+     an abort, and a song shorter than the prefill never started.
+
+   **3b. On hardware.** Try `build/jukebox_link.nes` with the desktop host
+   first. For finer diagnosis, a loopback ROM: the host sends patterned bursts, the NES
    checks the CRC and replies, the host logs errors and measures `T_turn`.
    Test the FTDI cable first, then the StickS3. *Decides:* 38400 or 57600,
    the `T_turn` budget, and whether mark idle with noisy controller reads is
@@ -316,8 +345,13 @@ serial hardware.
    track, and the buttons control it. *Risk:* MicroPython's `T_turn`. If it
    is too slow, move the reply path to a UART RX IRQ handler, or prebuild
    bursts so a reply is a single `uart.write`.
-6. **Polish.** Title/metadata screen, fade-out by scaling envelope volumes on
-   the host, a playlist file.
+6. **Polish, including the user interface.** UI enhancements were
+   deliberately deferred until the link works, because screen updates must
+   fit around the receive window that phase 3 defines. Planned: a
+   title/metadata screen with the track name, track number and position,
+   controller navigation (next, previous, pause), and link and buffer
+   status (underruns, CRC retries). Also fade-out by scaling envelope
+   volumes on the host, and a playlist file.
 7. **Optional: preload and DPCM.** Target a board with 8 KB PRG-RAM, or a
    flash cart that provides it, for a larger buffer or whole-loop preload
    with LZ-compressed `.jbs`. For DPCM: a cartridge with RAM or writable

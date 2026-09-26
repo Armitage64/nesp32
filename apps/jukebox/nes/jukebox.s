@@ -1,31 +1,30 @@
-; NES Jukebox player, phase 2: a built-in song through a fake link.
+; NES Jukebox player.
 ;
 ; The NMI is the timebase. Each vblank it decodes exactly one frame of the
 ; .jbs stream (docs/PROTOCOL.md) from a 1 KB ring buffer at $0400-$07FF and
 ; writes it to the APU, the way the original game's sound engine ran from
-; its NMI. The main loop is the producer. After each NMI it tops up the ring,
-; here by copying from the song in PRG ROM. Phase 3 replaces only that copy
-; with the serial receiver; the ring, the decoder and the NMI stay as they
-; are.
+; its NMI. The main loop is the producer: after each NMI it asks the link to
+; top up the ring. Two links build from this file:
+;
+;   fake_link.inc     copies a song built into PRG ROM (the default)
+;   serial_link.inc   requests bursts over controller port 2 (-D LINK)
 ;
 ; Sharing the ring between the NMI and the main loop:
 ;
 ; - The NMI owns head and the main loop owns tail. Each is two bytes, and an
 ;   NMI can land between the two stores of an update.
-; - The main loop reads head with a retry (high, low, high again), which is
-;   enough because an NMI always finishes before the main loop resumes.
+; - The main loop reads head high byte first, so a torn read can only make
+;   head look older, which understates free space. It retries anyway.
 ; - The NMI cannot retry, because the main loop never runs while it waits.
-;   So the main loop copies tail to tail_prev, raises tail_busy, writes
-;   tail, and lowers tail_busy. The NMI reads tail_prev while tail_busy is
-;   set, and tail otherwise. Either way it sees a consistent value, at worst
-;   one commit old.
+;   So commit_tail copies tail to tail_prev, raises tail_busy, writes tail,
+;   and lowers tail_busy. The NMI reads tail_prev while tail_busy is set, and
+;   tail otherwise. Either way it sees a consistent value, at worst one
+;   commit old.
 ;
 ; A frame is decoded into a staging list first and written to the APU only
 ; once all of it is in the ring. If the ring runs dry partway through, the
 ; NMI writes nothing, leaves head alone and counts an underrun. The notes
 ; hold for a frame instead of playing half a frame's writes.
-
-.include "song.inc"
 
 PPUCTRL   = $2000
 PPUMASK   = $2001
@@ -35,7 +34,9 @@ PPUDATA   = $2007
 APU       = $4000
 APU_DMC   = $4010
 APU_STATUS = $4015
-APU_FRAME = $4017
+JOY1      = $4016
+JOY2      = $4017
+APU_FRAME = $4017               ; writes; reads are JOY2
 
 PPUCTRL_NMI = $80
 FRAME_IRQ_INHIBIT = $40
@@ -45,7 +46,6 @@ RING      = $0400
 RING_END_PAGE = $08
 RING_INDEX_HI = $03             ; ring positions are 10 bits
 PREFILL   = 768                 ; bytes buffered before playback starts
-FEED_MAX  = 32                  ; bytes per top-up, standing in for a burst
 STAGE_MAX = 64                  ; writes per frame; vgm2jbs enforces it
 
 OP_CHAIN   = $00
@@ -82,36 +82,22 @@ tail_prev:   .res 2
 tail_busy:   .res 1
 frame_count: .res 1
 ; main-loop-only
-src:         .res 2
-wptr:        .res 2
+served_frame: .res 1
+wptr:        .res 2             ; where the link writes next, uncommitted
 head_snap:   .res 2
 free:        .res 2
-feed_count:  .res 1
 
 .segment "BSS"
 playing:      .res 1
 ended:        .res 1
 wait_left:    .res 1
-source_done:  .res 1
+link_done:    .res 1            ; the link has nothing more to give
 stream_error: .res 1
 underruns:    .res 2
 stage_reg:    .res STAGE_MAX
 stage_val:    .res STAGE_MAX
 
-.segment "SONG"
-song_data:
-    .incbin "song.bin"
-song_data_end:
-
 .segment "RODATA"
-; The song descriptor. Everything reads the song through it, so the tests
-; can point it at other streams without rebuilding the ROM.
-song_desc:
-    .addr song_data
-    .addr song_data_end
-    .addr song_data + SONG_LOOP_OFFSET
-    .byte SONG_LOOPS
-
 ; Register groups in apply order (docs/PROTOCOL.md).
 ; Indexed by group: 0 status, 1-5 pulse 1 to DMC (header bits 0-4), 6 frame
 ; counter.
@@ -174,28 +160,6 @@ group_regs:
     lda #$00
     sta PPUADDR
 
-    jsr link_init
-    jsr prefill
-    lda #1
-    sta playing
-    lda #PPUCTRL_NMI
-    sta PPUCTRL
-    ; fall through
-.endproc
-
-; The tests fast-forward the emulated clock to the next NMI whenever the
-; CPU reaches main_wait, so keep it a plain label.
-main_loop:
-    lda frame_count
-main_wait:
-    cmp frame_count
-    beq main_wait
-    jsr feed
-    jmp main_loop
-
-; --- producer (main loop) ----------------------------------------------------
-
-.proc link_init
     lda #<RING
     sta head
     sta tail
@@ -204,18 +168,37 @@ main_wait:
     sta head + 1
     sta tail + 1
     sta tail_prev + 1
-    lda song_desc
-    sta src
-    lda song_desc + 1
-    sta src + 1
-    rts
+    jsr link_init
+    lda #PPUCTRL_NMI
+    sta PPUCTRL
+    ; fall through
 .endproc
 
-; Feed until PREFILL bytes are buffered or the song has all been copied.
-.proc prefill
-@again:
-    lda source_done
+; Serve the link once per frame, starting right after the NMI. The main loop
+; compares against the last frame it served rather than waiting for the next
+; change, because an NMI that cuts off a receive has already counted the new
+; frame, and that frame still needs its request.
+;
+; The tests fast-forward the emulated clock to the next NMI whenever the
+; CPU sits at main_wait with frame_count equal to served_frame, so keep it a
+; plain label.
+main_loop:
+main_wait:
+    lda frame_count
+    cmp served_frame
+    beq main_wait
+    sta served_frame
+    jsr link_service
+    jsr start_when_buffered
+    jmp main_loop
+
+; Playback starts once PREFILL bytes are buffered, or once the link has
+; delivered everything it has (a song shorter than PREFILL).
+.proc start_when_buffered
+    lda playing
     bne @done
+    lda link_done
+    bne @start
     jsr read_head
     sec
     lda tail
@@ -224,12 +207,15 @@ main_wait:
     sbc head_snap + 1
     and #RING_INDEX_HI
     cmp #>PREFILL
-    bcs @done
-    jsr feed
-    jmp @again
+    bcc @done
+@start:
+    lda #1
+    sta playing
 @done:
     rts
 .endproc
+
+; --- ring, main-loop side ------------------------------------------------------
 
 ; head is written by the NMI. Read it until the high byte is stable.
 .proc read_head
@@ -245,16 +231,10 @@ retry:
     rts
 .endproc
 
-; Copy up to FEED_MAX bytes of song into the ring and commit them. This is
-; the fake link; phase 3 puts the burst receiver here.
-.proc feed
-    lda source_done
-    beq @run
-    rts
-@run:
+; free = (head - tail - 1) mod 1024. One slot stays empty so a full ring and
+; an empty one look different. Leaves the high byte in A, with Z set on it.
+.proc ring_free
     jsr read_head
-    ; free = (head - tail - 1) mod 1024; one slot stays empty so a full ring
-    ; and an empty one look different.
     clc                         ; borrow in: subtracts the extra 1
     lda head_snap
     sbc tail
@@ -263,60 +243,36 @@ retry:
     sbc tail + 1
     and #RING_INDEX_HI
     sta free + 1
-    bne @use_max
-    lda free
-    cmp #FEED_MAX
-    bcc @have_count
-@use_max:
-    lda #FEED_MAX
-@have_count:
-    sta feed_count
-    cmp #0                      ; sta sets no flags; a full ring must not copy 256
-    bne @start
     rts
-@start:
+.endproc
+
+; wptr = tail, where the link starts writing.
+.proc begin_write
     lda tail
     sta wptr
     lda tail + 1
     sta wptr + 1
-    ldy #0
-@copy:
-    lda src + 1
-    cmp song_desc + 3
-    bne @byte
-    lda src
-    cmp song_desc + 2
-    bne @byte
-    lda song_desc + 6           ; at the end of the song: loop or stop
-    beq @source_end
-    lda song_desc + 4
-    sta src
-    lda song_desc + 5
-    sta src + 1
-@byte:
-    lda (src),y
-    sta (wptr),y
-    inc src
-    bne @src_done
-    inc src + 1
-@src_done:
+    rts
+.endproc
+
+; Step wptr to its next byte, wrapping $07FF to $0400. Preserves A, X, Y.
+; Anonymous labels only: a named one would end the caller's @-label scope.
+.macro advance_wptr
     inc wptr
-    bne @wptr_done
-    ldx wptr + 1
-    inx
-    cpx #RING_END_PAGE
-    bne @no_wrap
-    ldx #>RING
-@no_wrap:
-    stx wptr + 1
-@wptr_done:
-    dec feed_count
-    bne @copy
-    beq @commit
-@source_end:
-    lda #1
-    sta source_done
-@commit:
+    bne :++
+    inc wptr + 1
+    pha
+    lda wptr + 1
+    cmp #RING_END_PAGE
+    bne :+
+    lda #>RING
+    sta wptr + 1
+:   pla
+:
+.endmacro
+
+; Publish wptr as the new tail. See the header comment.
+.proc commit_tail
     lda tail
     sta tail_prev
     lda tail + 1
@@ -333,7 +289,15 @@ retry:
     rts
 .endproc
 
+.ifdef LINK
+    .include "serial_link.inc"
+.else
+    .include "fake_link.inc"
+.endif
+
 ; --- consumer (NMI) ----------------------------------------------------------
+
+.segment "CODE"
 
 .proc nmi
     pha
@@ -346,6 +310,7 @@ retry:
     jsr decode_frame
 @skip:
     inc frame_count
+    link_nmi_hook               ; from the link include
     pla
     tay
     pla
