@@ -17,9 +17,10 @@ Work in progress. See [`PLAN.md`](PLAN.md) for the design and phases, and
   confirmed by ear in Mesen 2 and on real hardware.
 - **Phase 3a, done:** the serial link ROM, `build/jukebox_link.nes`, and the
   host side of the link protocol. Verified against a cycle-exact model of
-  the serial line, including late hosts, line noise and baud error. It
-  needs the serial hardware (phase 3b) and a desktop streamer (phase 4)
-  before it plays anything for real.
+  the serial line, including late hosts, line noise and baud error.
+- **Phase 4, built:** the desktop streamer, `host/jukebox.py`. Tested
+  against the simulated NES; waiting on the serial hardware to try for
+  real.
 
 ## Building the ROM
 
@@ -43,6 +44,25 @@ For debugging, [Mesen 2](https://www.mesen.ca/) can import
 watch list show the ROM's labels, such as `head`, `tail`, `underruns` and
 `stream_error`. A write breakpoint on `$4000-$4017` stops at each frame's APU
 writes.
+
+## Streaming to a NES
+
+With the link ROM running on the console and the serial cable from
+nes-radar connected:
+
+```sh
+.venv/bin/pip install -r host/requirements.txt   # pyserial
+.venv/bin/python host/jukebox.py --list-ports
+.venv/bin/python host/jukebox.py --port /dev/cu.usbserial-XXXX music/
+```
+
+Keys: `n` next track, `p` previous, `r` restart, `q` quit. `--loops N`
+sets how many times a looping track plays before the next one, and
+`--repeat` starts the playlist over at the end. The status line shows
+requests, bursts and **resends**; a resend is a burst the NES missed, and a
+steady trickle of them means the host is replying too slowly (see
+docs/PROTOCOL.md, Timing). Track changes are heard after the few seconds of
+music the NES has already buffered.
 
 ## Converting music
 

@@ -5,7 +5,8 @@ records, and the NES decodes one frame's worth per NMI:
 
     $00         the next write record does not advance a frame
     $01-$7F     wait n frames with no writes
-    $80 cc      control record (cc: $00 end of track, $01 APU init)
+    $80 cc      control record (cc: $00 end of track, which also ends the
+                frame; $01 APU init, which does not)
     $81-$FF     write record, then advance one frame
 
 A write record's header bits select register groups. Each selected group
@@ -114,8 +115,7 @@ def decode(data, start=0):
 
     Returns (frames, tail). Each frame is a list of (register, value)
     writes and Control items in the order the NES applies them. tail holds
-    items after the last frame advance, such as a final end-of-track
-    control.
+    items after the last frame advance.
     """
     frames = []
     current = []
@@ -136,12 +136,46 @@ def decode(data, start=0):
                 raise StreamError("unknown control code $%02X at %d" % (code, pos + 1))
             current.append(Control(code))
             pos += 2
+            if code == CTRL_END:  # the last thing in its frame
+                frames.append(current)
+                current = []
         else:
             writes, pos = _decode_record(data, pos)
             current.extend(writes)
             frames.append(current)
             current = []
     return frames, current
+
+
+def frame_units(data):
+    """Split a stream into [(start, end)] units that are safe to cut between.
+
+    A unit is one control record, or the records of one frame up to and
+    including the record that advances it (a write record, or a wait). A
+    chain prefix stays with the record it chains. Cutting anywhere else
+    would hand the NES half a frame.
+    """
+    units = []
+    start = pos = 0
+    while pos < len(data):
+        op = data[pos]
+        if op == OP_CHAIN:
+            _, pos = _decode_record(data, pos + 1)
+            continue
+        if op == OP_CONTROL:
+            if pos != start:
+                raise StreamError("control record inside a frame at %d" % pos)
+            _byte(data, pos + 1)
+            pos += 2
+        elif op < OP_CONTROL:
+            pos += 1
+        else:
+            _, pos = _decode_record(data, pos)
+        units.append((start, pos))
+        start = pos
+    if start != pos:
+        raise StreamError("stream ends inside a frame")
+    return units
 
 
 @dataclass

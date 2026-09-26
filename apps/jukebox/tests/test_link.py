@@ -88,9 +88,11 @@ def test_no_host_means_no_playback_and_no_hang(link_rom):
     machine.run(30)
     assert machine.byte("playing") == 0
     data = [r for _, r in machine.requests if r.op == OP_DATA]
-    assert len(data) >= 29 and {r.seq for r in data} == {0}
-    # Each hunt is cut off by the next NMI, except the one still waiting.
-    assert machine.word("link_aborts") >= len(data) - 1
+    assert {r.seq for r in data} == {0}
+    # Each request waits HUNT_TIMEOUT_FRAMES (4) for a marker, then repeats.
+    assert 6 <= len(data) <= 8
+    assert machine.word("link_timeouts") >= len(data) - 1
+    assert machine.word("link_aborts") == 0
 
 
 @pytest.mark.parametrize("turnaround_ms", [2, 5])
@@ -122,6 +124,22 @@ def test_a_late_host_is_cut_off_and_resent(link_rom, demo):
     stats = counters(machine)
     assert stats["link_aborts"] > 0
     assert machine.host.stats["resends"] > 0
+
+
+@pytest.mark.parametrize("turnaround_ms", [8, 12, 16, 20])
+def test_a_steady_slow_host_still_delivers(link_rom, demo, turnaround_ms):
+    # Replies that always land across the NMI would lock up a link that
+    # retried at the same point in the frame. The NES moves its request
+    # later after each miss until the replies fit, and keeps what works.
+    frames = 400
+    machine = LinkConsole(*link_rom, host=Host(demo), turnaround=lambda: ms(turnaround_ms))
+    machine.run(frames)
+    stats = counters(machine)
+    assert stats["underruns"] == 0
+    assert stats["link_bursts"] * 24 / frames >= 5  # the demo needs about 4
+    played = len(machine.played_frames())
+    expected = itertools.islice(expected_frames(demo.stream, loop_offset(demo)), played)
+    assert machine.played_frames() == list(expected)
 
 
 def flip_random_bit(rng, rate):
@@ -201,3 +219,61 @@ def test_rips_over_the_link(link_rom, path):
     stats = counters(machine)
     assert stats["underruns"] == 0
     assert stats["link_aborts"] == stats["link_rejects"] == stats["link_crc_errors"] == 0
+
+
+class Recording:
+    """A source wrapper that keeps every byte handed to the host."""
+
+    def __init__(self, source):
+        self.source = source
+        self.log = bytearray()
+
+    def take(self, count):
+        data = self.source.take(count)
+        self.log += data
+        return data
+
+    def restart(self):
+        self.source.restart()
+        self.log.clear()
+
+
+def complete_frames(data):
+    """Decode the longest prefix of data that ends on a frame boundary."""
+    end = len(data)
+    while end:
+        try:
+            jbs.frame_units(bytes(data[:end]))
+            return bytes(data[:end])
+        except jbs.StreamError:
+            end -= 1
+    return b""
+
+
+def test_a_playlist_with_skips_plays_through_the_link(link_rom, demo):
+    from playlist import PlaylistSource
+
+    frames = [[(0x15, 0x0F)], [(0x04, 0xBF), (0x07, 0x08)]] + [[(0x04, 0xB0 | n)] for n in range(15)]
+    encoded = jbs.encode(frames, loop_frame=1)
+    short = jbs.JbsFile(stream=encoded.data, total_frames=len(frames), loop_frame=1,
+                        loop_offset=encoded.loop_offset)
+    started = []
+    source = PlaylistSource([("demo", demo), ("short", short)], loops=2,
+                            on_track=lambda index, title: started.append(title))
+    recording = Recording(source)
+    machine = LinkConsole(*link_rom, host=Host(recording))
+    machine.run(150)
+    source.skip(1)                  # mid-song, mid-burst
+    machine.run(250)
+    source.skip(-1)
+    machine.run(250)
+
+    sent = complete_frames(recording.log)
+    played = machine.played_frames()
+    expected = list(itertools.islice(expected_frames(sent, None), len(played)))
+    assert played == expected
+    assert machine.byte("stream_error") == 0
+    # The NES's hello at boot restarts the first track, so it is announced
+    # twice before the skips.
+    assert started == ["demo", "demo", "short", "demo"]
+    assert short.stream[2:] in bytes(recording.log)

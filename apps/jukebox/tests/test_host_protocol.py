@@ -54,15 +54,16 @@ def test_source_loops_and_non_looping_tracks_end():
     assert source.take(10) == b""
 
 
-def test_host_sends_next_bytes_and_resends_on_the_same_seq():
+def test_host_sends_next_bytes_and_resends_identically_on_the_same_seq():
     host = Host(looping_track())
     assert host.handle(Request(0x48, 0, 0)) == b""
     first = host.handle(Request(0x4A, 0, 8))
     assert first == protocol.burst_bytes(0, bytes([0x80, 0x01]) + bytes(range(0x81, 0x87)))
-    again = host.handle(Request(0x4A, 0, 4))           # lost: same seq, less credit
-    assert again == protocol.burst_bytes(0, bytes([0x80, 0x01, 0x81, 0x82]))
+    # Lost or late: the same seq gets the same burst, even with more credit,
+    # because an earlier copy may still be the one the NES commits.
+    assert host.handle(Request(0x4A, 0, 24)) == first
     nxt = host.handle(Request(0x4A, 1, 4))
-    assert nxt == protocol.burst_bytes(1, bytes(range(0x83, 0x87)))
+    assert nxt == protocol.burst_bytes(1, bytes(range(0x87, 0x8B)))
     assert host.stats["resends"] == 1
 
 

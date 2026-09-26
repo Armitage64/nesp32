@@ -5,10 +5,20 @@
 ; by the port's buffer) and reads OUT0 (bit 0 of $4016 writes). Both
 ; directions run at 38400 baud, bit-banged: the host sends 8N2, the NES 8N1.
 ;
-; Once per frame, right after the NMI, link_service asks for a burst with a
-; 4-byte request and receives it straight into the ring. If the host is late,
-; the next NMI still plays its frame on time and then abandons the receive
-; (link_nmi_hook), and the same burst is requested again.
+; Right after an NMI, link_service asks for a burst with a 4-byte request and
+; receives it straight into the ring. While it waits for the burst's marker,
+; NMIs play their frames and return to the wait, so a host that answers a
+; frame or two late still gets through. Only two things end a receive early
+; (link_nmi_hook): an NMI landing in the middle of a burst, since the bytes
+; that arrive during the NMI are lost, and HUNT_TIMEOUT_FRAMES of waiting
+; with no marker. Either way the same burst is requested again.
+;
+; A host whose reply time is steady but slow would otherwise land every
+; resend across the NMI at the same point in the frame, forever. So after a
+; receive is cut off or times out, the next request waits longer after the NMI, stepping
+; request_delay through 0-9 units of about 1.3 ms, three at a time. A
+; delay that works is kept, so a steady host settles within a few tries and
+; a fast one never moves off zero.
 ;
 ; Provides link_init, link_service and the link_nmi_hook macro.
 
@@ -20,6 +30,9 @@ REQUEST_SEED = $A5
 BURST_MARKER = $A5
 CREDIT_MAX = 24                 ; payload bytes per burst; sized in PLAN.md
 CREDIT_MIN = 8                  ; don't bother asking for less
+HUNT_TIMEOUT_FRAMES = 4         ; frames to wait for a marker before asking again
+DELAY_STEPS = 10                ; request_delay runs 0 .. DELAY_STEPS - 1
+DELAY_STRIDE = 3                ; units to move after a burst is cut off
 OUT0_MARK = $01
 
 .segment "ZEROPAGE"
@@ -37,10 +50,15 @@ crc_count:   .res 1
 crc_ptr:     .res 2
 
 .segment "BSS"
-rx_active:   .res 1             ; the NMI may abandon the receive
+rx_hunting:  .res 1             ; waiting for a burst's marker
+hunt_frames: .res 1             ; NMIs seen while waiting
+rx_active:   .res 1             ; a burst is arriving; an NMI must abandon it
 rx_sp:       .res 1             ; stack pointer to return to when it does
+rx_missed:   .res 1             ; the last receive was cut off or timed out
+request_delay: .res 1           ; units of about 1.3 ms to wait before asking
 link_bursts: .res 2             ; committed bursts
-link_aborts: .res 2             ; receives cut off by the NMI
+link_aborts: .res 2             ; bursts cut off by an NMI
+link_timeouts: .res 2           ; waits with no marker for HUNT_TIMEOUT_FRAMES
 link_rejects: .res 2            ; framing, length or sequence failures
 link_crc_errors: .res 2
 
@@ -52,15 +70,29 @@ link_crc_errors: .res 2
 :
 .endmacro
 
-; In the NMI, after the frame has played. If a receive is in flight, make the
-; NMI return to rx_abort instead of into it. The stack holds, from the top:
+; In the NMI, after the frame has played. To end a receive, make the NMI
+; return to rx_abort instead of into it. The stack holds, from the top:
 ; Y, X, A (pushed by nmi), then P, PCL, PCH (pushed by the CPU).
 .macro link_nmi_hook
-    .local done
+    .local hunting, abort, done
     lda rx_active
+    beq hunting
+    inc16 link_aborts
+    jmp abort
+hunting:
+    lda rx_hunting
     beq done
+    inc hunt_frames
+    lda hunt_frames
+    cmp #HUNT_TIMEOUT_FRAMES
+    bcc done
+    inc16 link_timeouts
+abort:
+    lda #1
+    sta rx_missed
     lda #0
     sta rx_active
+    sta rx_hunting
     tsx
     lda #<rx_abort
     sta $0105,x
@@ -101,12 +133,33 @@ done:
     cmp #CREDIT_MIN
     bcc @done
     sta credit
+    ldx request_delay
+    beq @ask
+@wait:
+    jsr wait_unit
+    dex
+    bne @wait
+@ask:
     lda #OP_DATA
     ldx link_seq
     ldy credit
     jsr send_request
     jsr rx_burst
-    bcs @done
+    bcc @received
+    lda rx_missed
+    beq @done
+    lda #0
+    sta rx_missed
+    lda request_delay           ; move the next request later in the frame
+    clc
+    adc #DELAY_STRIDE
+    cmp #DELAY_STEPS
+    bcc @moved
+    sbc #DELAY_STEPS
+@moved:
+    sta request_delay
+    rts
+@received:
     jsr commit_tail
     inc link_seq
     inc16 link_bursts
@@ -115,6 +168,17 @@ done:
     lda #1                      ; the host only sends empty bursts once the
     sta link_done               ; track has ended, so play what we have
 @done:
+    rts
+.endproc
+
+; About 1.3 ms (2306 cycles). Preserves X.
+.proc wait_unit
+    ldy #0
+@loop:
+    nop
+    nop
+    dey
+    bne @loop
     rts
 .endproc
 
@@ -147,13 +211,19 @@ done:
     tsx
     stx rx_sp
     jsr begin_write
+    lda #0
+    sta hunt_frames
     lda #1
-    sta rx_active
+    sta rx_hunting
 marker:
     jsr rx_byte
     bcs marker                  ; noise: keep looking
     cmp #BURST_MARKER
     bne marker
+    lda #1                      ; set before clearing rx_hunting, so an NMI
+    sta rx_active               ; in between still ends the receive
+    lda #0
+    sta rx_hunting
     jsr rx_byte
     bcs reject
     sta rx_seq
@@ -207,12 +277,11 @@ reject:
     rts
 .endproc
 
-; The NMI returns here when it cuts off a receive. Unwind to rx_burst's
-; caller as a failed receive.
+; The NMI returns here when it ends a receive, having counted why. Unwind
+; to rx_burst's caller as a failed receive.
 .proc rx_abort
     ldx rx_sp
     txs
-    inc16 link_aborts
     sec
     rts
 .endproc

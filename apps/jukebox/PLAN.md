@@ -339,6 +339,29 @@ serial hardware.
    Combined with the phase 2 ROM using the real link. *Exit:* 30 minutes of
    continuous playback on hardware with zero underruns. CRC retries are
    logged and recovered.
+
+   **Built and tested in simulation.** `host/jukebox.py` streams a playlist
+   (`host/playlist.py`) from files or directories, converting rips as it
+   loads them. Keys: n, p, r, q. Looping tracks play their loop `--loops`
+   times, then the next track follows directly in the same stream (each
+   starts with an APU init), always cut at a frame boundary. The status
+   line counts requests, bursts, resends and line noise, and shows the
+   program's own reply time. Testing it against slow hosts in the
+   simulation found and fixed:
+   - resends re-sliced by the new credit duplicated stream bytes when an
+     older copy was the one committed; resends are now identical;
+   - a host steadily slower than about 6 ms got no bursts through at all;
+     the NES now waits for the marker across NMIs, times out after 4
+     frames, and moves its request later in the frame after a miss;
+   - end-of-track was permanent, so a playlist could not continue past it;
+     the NES now stays silent until more stream arrives.
+
+   A track change is heard after the NES's buffer plays out (a few
+   seconds). Instant skip needs a flush command on the NES, which belongs
+   with the UI in phase 6. **Still to do on hardware:** measure the real
+   reply time with the FTDI cable (its USB latency timer), and the
+   30-minute exit run.
+
 5. **StickS3 port.** Port `host/` protocol code to MicroPython the way
    nes-radar does, with parity tests against the desktop module. Convert
    `.jbs` on the desktop and store it on the Stick's flash. The LCD shows the

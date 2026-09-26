@@ -140,10 +140,15 @@ def test_malformed_streams_are_rejected(data, message):
         jbs.decode(data)
 
 
-def test_end_control_after_the_last_frame_is_returned_as_tail():
-    frames, tail = jbs.decode(bytes([0x81, 0b0001, 0x30, 0x80, 0x00]))
-    assert frames == [[(0x00, 0x30)]]
-    assert tail == [jbs.Control(jbs.CTRL_END)]
+def test_end_control_ends_its_frame_and_more_stream_can_follow():
+    data = bytes([0x81, 0b0001, 0x30, 0x80, 0x00, 0x80, 0x01, 0x81, 0b0001, 0x31])
+    frames, tail = jbs.decode(data)
+    assert frames == [
+        [(0x00, 0x30)],
+        [jbs.Control(jbs.CTRL_END)],
+        [jbs.Control(jbs.CTRL_INIT), (0x00, 0x31)],
+    ]
+    assert tail == []
 
 
 def test_file_container_round_trips():

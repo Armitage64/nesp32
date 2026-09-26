@@ -15,7 +15,7 @@ has advanced exactly one frame, once per NMI.
 |---|---|---|
 | `$00` | chain: the write record that follows does not advance | 0 |
 | `$01`-`$7F` | wait *n* frames with no writes | *n* |
-| `$80 cc` | control record | 0 |
+| `$80 cc` | control record | 0 (end of track: 1) |
 | `$81`-`$FF` | write record | 1 |
 
 ### Write records
@@ -58,7 +58,7 @@ no format change.
 
 | Code | Meaning |
 |---|---|
-| `$00` | end of track: silence the APU (`$4015=0`) and stop consuming |
+| `$00` | end of track: silence the APU (`$4015=0`) and end the frame. The NES stays silent until more stream arrives, then carries on, so a playlist can restart after its end |
 | `$01` | APU init: `$4015=0`, `$4017=$40`, then the stream writes what it needs |
 
 Other codes are invalid in v1.
@@ -123,14 +123,22 @@ OP, SEQ, ARG, CHECK        CHECK = $A5 ^ OP ^ SEQ ^ ARG
 | `$42` 'B' | button | 0 | button bits: next, previous, pause (not yet sent) |
 
 The NES sends hello once at boot, after holding OUT0 at mark for about
-1.3 ms so the host's UART leaves break. After that it sends one data request
-per frame, right after the NMI, whenever at least 8 bytes of the ring are
-free. It asks for at most 24.
+1.3 ms so the host's UART leaves break. After that it sends a data request
+right after an NMI whenever at least 8 bytes of the ring are free, asking
+for at most 24, and waits for the burst.
 
-If a data request's `SEQ` equals the last burst sent, the host sends the
-same stream bytes again (fewer if `ARG` is smaller). If it is one more, the
-last burst was committed and the host moves on. This covers lost requests,
-lost or late bursts and CRC failures without a separate NAK.
+If a data request's `SEQ` equals the last burst sent, the host sends
+**exactly the same burst** again. If it is one more, the last burst was
+committed and the host moves on. This covers lost requests, lost or late
+bursts and CRC failures without a separate NAK.
+
+Resends must be identical. A slow host can have several copies of one burst
+on the wire, and the NES commits whichever arrives intact first; if the
+copies differed, the host could not know how much was committed. An
+identical copy always fits, because the NES's credit for a repeated
+sequence number never shrinks: nothing was committed, and playback only
+frees space. (The simulation caught an earlier host that re-sliced resends
+by the new credit, and duplicated stream bytes as a result.)
 
 The host decoder scans for a valid 4-byte frame and resyncs one byte at a
 time, so noise on OUT0 costs at most the frame it lands in.
@@ -151,17 +159,41 @@ Once a track has ended, the host answers with empty bursts (`LEN` 0). The
 NES takes an empty burst as the end of the track and starts playing
 whatever it has, even if that is less than the 768-byte prefill.
 
+### Waiting, cut-offs and retries
+
+- **Waiting for the marker spans NMIs.** An NMI that arrives while the NES
+  is still waiting for `$A5` plays its frame and returns to the wait, so a
+  reply that comes a frame or two late still gets through.
+- **An NMI in the middle of a burst ends the receive.** Bytes that arrive
+  during the NMI are lost, so the burst could not pass its CRC.
+- **No marker for 4 frames ends the receive** (`HUNT_TIMEOUT_FRAMES`).
+- After either, the NES requests the same `SEQ` again, and **moves its next
+  request later** after the NMI: `request_delay` steps through 0-9 units of
+  about 1.3 ms, three at a time, and keeps a value that works. Without this, a
+  host with a steady reply time that always lands across the NMI would never
+  get a burst through.
+
 ### Timing
 
-- **Budget:** a full 24-byte burst is 29 bytes, 8.3 ms at 8N2. With the
-  request (1.0 ms) and the NMI, it lands before the next NMI when the host
-  starts replying within **6.0 ms** of the request's last stop bit
-  (measured in simulation, `test_turnaround_budget_is_reported`).
-- **Late hosts:** if a burst is still arriving when the NMI comes, the NMI
-  plays its frame on time and then abandons the receive. The next frame's
-  request repeats the sequence number, and the host resends. The music is
-  never affected unless the ring runs dry.
+Measured in the cycle-exact simulation (`tests/test_link.py`,
+`tests/test_serial_timing.py`):
+
+| Host reply time | Result |
+|---|---|
+| up to 6 ms | full throughput (about 11.5 bytes per frame), no cut-offs |
+| steady 8-20 ms, or random 1-17 ms | about 8-10 bytes per frame |
+| 24-40 ms | 2-6 bytes per frame; still correct, may underrun |
+
+The music needs about 3-5 bytes per frame on average, so a host within
+20 ms is comfortable, and within 6 ms is ideal. In every case the music is
+frame-exact: faults can delay it (an underrun holds the notes for a frame),
+never change it.
+
 - **Sampling:** the NES samples within 0.12 bit of each bit's center for
   every start-bit phase, and receives correctly with host baud error from
   -4.25% to +6.5%. Its transmit writes land within 0.62 cycles of ideal and
-  decode with 3% error. See `tests/test_serial_timing.py`.
+  decode with 3% error.
+- **USB serial adapters** hold received bytes for a latency timer before
+  passing them to the computer (16 ms by default on FTDI chips). That adds
+  directly to the host's reply time, so set it low where the driver allows
+  it (1 ms).

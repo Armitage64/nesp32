@@ -324,8 +324,11 @@ retry:
 .endproc
 
 ; Decode one frame and apply it, or apply nothing if the ring runs dry.
+; After an end-of-track control the APU stays silent until more stream
+; arrives, as it does when a playlist is restarted after its end. A stream
+; error stops playback for good.
 .proc decode_frame
-    lda ended
+    lda stream_error
     bne @out
     lda wait_left
     beq @decode
@@ -364,6 +367,13 @@ retry:
     lda #$FF
     sta avail
 @counted_avail:
+    lda ended
+    beq @playing
+    lda avail
+    beq @out                    ; still nothing after the end
+    lda #0
+    sta ended
+@playing:
     lda #0
     sta stage_count
     sta wait_pending

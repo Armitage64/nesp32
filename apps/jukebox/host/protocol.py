@@ -96,6 +96,9 @@ class StreamSource:
             self.loop_offset = jbs_file.loop_offset
         self.position = 0
 
+    def restart(self):
+        self.position = 0
+
     def byte_at(self, position):
         if position < len(self.data):
             return self.data[position]
@@ -119,22 +122,32 @@ class Host:
     """Answer the NES's requests from one track.
 
     A data request names the burst the NES wants. The same sequence number
-    as the last burst means it never arrived intact, so the host sends those
-    stream bytes again (fewer if the credit is smaller). The next sequence
-    number means the last burst was committed, so the host moves on.
+    as the last burst means it never arrived intact, so the host sends
+    exactly the same burst again. The next sequence number means the last
+    burst was committed, so the host moves on.
+
+    Resends must be identical. A slow host can have several copies of one
+    burst on the wire, and the NES commits whichever arrives intact; if the
+    copies differed, the host could not know how much was committed. An
+    identical copy always fits, because the NES's credit for a repeated
+    sequence number never shrinks: nothing was committed, and playback only
+    frees space.
     """
 
-    def __init__(self, jbs_file):
-        self.jbs_file = jbs_file
+    def __init__(self, source):
+        """source is a JbsFile (one track) or anything with take(count) and
+        restart(), such as a playlist.PlaylistSource."""
+        self.source = StreamSource(source) if isinstance(source, jbs.JbsFile) else source
         self.stats = {"hello": 0, "bursts": 0, "resends": 0, "unexpected_seq": 0,
                       "buttons": 0}
         self.buttons = []
-        self._reset()
+        self.last_seq = None
+        self.last_burst = b""
 
     def _reset(self):
-        self.source = StreamSource(self.jbs_file)
+        self.source.restart()
         self.last_seq = None
-        self.burst_start = 0
+        self.last_burst = b""
 
     def handle(self, request):
         """Return the bytes to send for one request (empty for none)."""
@@ -148,12 +161,11 @@ class Host:
             return b""
         if request.seq == self.last_seq:
             self.stats["resends"] += 1
-            self.source.position = self.burst_start
-        else:
-            if self.last_seq is not None and request.seq != (self.last_seq + 1) & 0xFF:
-                self.stats["unexpected_seq"] += 1
-            self.burst_start = self.source.position
-            self.last_seq = request.seq
+            return self.last_burst
+        if self.last_seq is not None and request.seq != (self.last_seq + 1) & 0xFF:
+            self.stats["unexpected_seq"] += 1
         self.stats["bursts"] += 1
         payload = self.source.take(min(request.arg, MAX_BURST_PAYLOAD))
-        return burst_bytes(request.seq, payload)
+        self.last_seq = request.seq
+        self.last_burst = burst_bytes(request.seq, payload)
+        return self.last_burst

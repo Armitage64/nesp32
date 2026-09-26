@@ -203,7 +203,9 @@ def expected_frames(stream, loop_offset=None):
     for frame in frames:
         yield expand(frame)
     if loop_offset is None:
-        yield expand(tail + [jbs.Control(jbs.CTRL_END)])
+        ended = frames and frames[-1][-1:] == [jbs.Control(jbs.CTRL_END)]
+        if tail or not ended:
+            yield expand(tail + [jbs.Control(jbs.CTRL_END)])
         while True:
             yield []
     loop, _ = jbs.decode(stream, loop_offset)
