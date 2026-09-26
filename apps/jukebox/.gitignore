@@ -1,0 +1,20 @@
+# Build output
+build/
+nes/build/
+*.nes
+*.o
+*.dbg
+*.map
+
+# Local music. VGM rips are copyrighted and never committed.
+music/
+*.vgm
+*.vgz
+*.jbs
+
+# Python and macOS scratch
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+.venv/
