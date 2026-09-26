@@ -14,8 +14,11 @@ Goals:
   reach the audio.
 - The host feeds a RAM ring buffer on the NES through small bursts that the
   NES requests. The host never transmits unless asked.
-- Two hosts: a desktop Python streamer on the FTDI cable (the reference, as in
-  nes-radar), then the M5StickS3 in MicroPython.
+- The product's host is the **M5StickS3** in MicroPython. A desktop Python
+  streamer on nes-radar's FTDI cable exists for **testing and diagnosis
+  only**: it proves the NES side on hardware before the Stick's untested
+  parts join in. The Mac also stays the build machine that converts rips to
+  `.jbs` for the Stick.
 
 Non-goals for v1:
 
@@ -334,11 +337,14 @@ serial hardware.
    the `T_turn` budget, and whether mark idle with noisy controller reads is
    acceptable or OUT0 should rest at break with a mark guard (the radar
    approach).
-4. **Desktop streamer.** `host/jukebox.py`: track list, VGM → `.jbs` on the
-   fly or cached, the request/burst server, looping, and next/previous track.
-   Combined with the phase 2 ROM using the real link. *Exit:* 30 minutes of
-   continuous playback on hardware with zero underruns. CRC retries are
-   logged and recovered.
+4. **Desktop test host.** `host/jukebox.py`: track list, VGM → `.jbs` on the
+   fly, the request/burst server, looping, and next/previous track, over
+   the FTDI cable. It is a test fixture, not part of the product: the known
+   good cable and the simulation-verified protocol code mean the first
+   hardware session tests only the NES side. Keep it lean; tune the FTDI
+   latency timer only if resends get in the way of testing. *Exit:* music
+   plays over the link on a real console, with the resend rate and reply
+   time recorded. The long endurance run belongs to the StickS3 (phase 5).
 
    **Built and tested in simulation.** `host/jukebox.py` streams a playlist
    (`host/playlist.py`) from files or directories, converting rips as it
@@ -358,23 +364,26 @@ serial hardware.
 
    A track change is heard after the NES's buffer plays out (a few
    seconds). Instant skip needs a flush command on the NES, which belongs
-   with the UI in phase 6. **Still to do on hardware:** measure the real
-   reply time with the FTDI cable (its USB latency timer), and the
-   30-minute exit run.
+   with the UI in phase 6. **Still to do on hardware:** play over the link
+   and record the resend rate and reply time.
 
-5. **StickS3 port.** Port `host/` protocol code to MicroPython the way
-   nes-radar does, with parity tests against the desktop module. Convert
-   `.jbs` on the desktop and store it on the Stick's flash. The LCD shows the
-   track, and the buttons control it. *Risk:* MicroPython's `T_turn`. If it
-   is too slow, move the reply path to a UART RX IRQ handler, or prebuild
-   bursts so a reply is a single `uart.write`.
+5. **StickS3 host (the product).** Port `host/protocol.py` and
+   `host/playlist.py` to MicroPython the way nes-radar does, with parity
+   tests against the desktop modules. Convert `.jbs` on the Mac at deploy
+   time and store it on the Stick's flash. The LCD shows the track, and the
+   buttons control it. *Exit:* 30 minutes of continuous playback on
+   hardware with zero underruns; resends logged and recovered. *Risk:*
+   MicroPython's reply time. If it is too slow, move the reply path to a
+   UART RX IRQ handler, or prebuild bursts so a reply is a single
+   `uart.write`. If the Stick misbehaves, the desktop test host tells
+   whether the fault is on the Stick side or the NES side.
 6. **Polish, including the user interface.** UI enhancements were
    deliberately deferred until the link works, because screen updates must
    fit around the receive window that phase 3 defines. Planned: a
    title/metadata screen with the track name, track number and position,
    controller navigation (next, previous, pause), and link and buffer
    status (underruns, CRC retries). Also fade-out by scaling envelope
-   volumes on the host, and a playlist file.
+   volumes on the StickS3.
 7. **Optional: preload and DPCM.** Target a board with 8 KB PRG-RAM, or a
    flash cart that provides it, for a larger buffer or whole-loop preload
    with LZ-compressed `.jbs`. For DPCM: a cartridge with RAM or writable

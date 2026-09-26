@@ -18,9 +18,10 @@ Work in progress. See [`PLAN.md`](PLAN.md) for the design and phases, and
 - **Phase 3a, done:** the serial link ROM, `build/jukebox_link.nes`, and the
   host side of the link protocol. Verified against a cycle-exact model of
   the serial line, including late hosts, line noise and baud error.
-- **Phase 4, built:** the desktop streamer, `host/jukebox.py`. Tested
+- **Phase 4, built:** the desktop test host, `host/jukebox.py`. Tested
   against the simulated NES; waiting on the serial hardware to try for
-  real.
+  real. It is for testing and diagnosis; the product's host will be the
+  M5StickS3 (phase 5).
 
 ## Building the ROM
 
@@ -45,10 +46,11 @@ watch list show the ROM's labels, such as `head`, `tail`, `underruns` and
 `stream_error`. A write breakpoint on `$4000-$4017` stops at each frame's APU
 writes.
 
-## Streaming to a NES
+## Streaming to a NES (test host)
 
-With the link ROM running on the console and the serial cable from
-nes-radar connected:
+The desktop streamer is a test and diagnosis tool; the finished jukebox's
+host is the M5StickS3. With the link ROM running on the console and the
+serial cable from nes-radar connected:
 
 ```sh
 .venv/bin/pip install -r host/requirements.txt   # pyserial

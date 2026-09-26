@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
-"""NES Jukebox desktop streamer: plays a playlist to the link ROM over a
+"""NES Jukebox desktop test host: plays a playlist to the link ROM over a
 serial cable (the FTDI 5 V cable from nes-radar).
+
+This is for testing and diagnosis. The product's host is the M5StickS3,
+which runs a MicroPython port of protocol.py and playlist.py; this program
+proves the NES side on hardware first, and tells a Stick-side fault from a
+NES-side one later.
 
     host/jukebox.py --port /dev/cu.usbserial-XXXX music/
     host/jukebox.py --port /dev/cu.usbserial-XXXX --loops 1 a.vgz b.vgz
