@@ -134,3 +134,15 @@ def test_a_constant_dmc_level_costs_one_write():
     decoded, _ = jbs.decode(encoded.data)
     writes = [item for frame in decoded for item in frame if item != jbs.Control(jbs.CTRL_INIT)]
     assert writes == [(0x11, 0x30)]
+
+
+def test_a_rip_that_never_enables_its_channels_still_sounds():
+    """Castlevania's Vampire Killer rip has no $4015 write at all. On the
+    console, which starts a track with every channel disabled, it was silent."""
+    song = vgm.parse(VgmBuilder().write(0x00, 0xBF).write(0x02, 0xFD).write(0x03, 0x08)
+                     .frame().write(0x00, 0xB0).frame().build())
+    jbs_file, _ = vgm2jbs.convert(song)
+    frames, _ = jbs.decode(jbs_file.stream)
+    assert frames[0] == [jbs.Control(jbs.CTRL_INIT), (0x15, 0x0F),
+                         (0x00, 0xBF), (0x02, 0xFD), (0x03, 0x08)]
+    assert frames[1] == [(0x00, 0xB0)]

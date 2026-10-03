@@ -26,6 +26,7 @@ def test_rip_round_trips_and_fits_the_link(path):
     song = vgm.load(path)
     jbs_file, report = vgm2jbs.convert(song)
     frames, loop_frame, _ = vgm2jbs.normalize(song)
+    vgm2jbs.enable_channels(frames)
     encoded = jbs.Encoded(jbs_file.stream, jbs_file.loop_offset, [])
     assert_stream_matches(frames, encoded, loop_frame)
     loaded = jbs.JbsFile.from_bytes(jbs_file.to_bytes())

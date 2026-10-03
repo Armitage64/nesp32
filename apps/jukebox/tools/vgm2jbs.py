@@ -9,7 +9,8 @@ Pipeline:
 1. vgm.parse pulls out the 2A03 register writes with sample timestamps.
 2. normalize puts each write on the frame grid, drops what v1 cannot play
    (DMC samples, raw PCM through $4011), forces $4017 bit 6 (frame IRQ off, so the receiver is never
-   interrupted), and rescales PAL periods to NTSC pitch.
+   interrupted), and rescales PAL periods to NTSC pitch. convert then
+   enables the four channels at the start, as a VGM player does.
 3. jbs.encode merges, deduplicates and orders each frame's writes under the
    APU write-order model and emits the stream.
 
@@ -165,9 +166,21 @@ def _nearest_noise_index(pal_index):
     return min(range(16), key=lambda i: abs(NTSC_NOISE_PERIODS[i] / target - 1))
 
 
+def enable_channels(frames):
+    """Start the track with the four channels enabled, as a VGM player does.
+
+    A rip often starts after the game enabled its channels, so it never
+    writes $4015. The console starts each track with $4015 = 0 (the init
+    control), where length loads are ignored, and such a rip would be
+    silent from start to end.
+    """
+    frames[0].insert(0, (apu_model.STATUS, STATUS_CHANNELS))
+
+
 def convert(song, pal_rescale=True):
     """Return (JbsFile, report dict)."""
     frames, loop_frame, stats = normalize(song, pal_rescale)
+    enable_channels(frames)
     encoded = jbs.encode(frames, loop_frame)
     title = " - ".join(part for part in (song.game, song.title) if part)
     jbs_file = jbs.JbsFile(
