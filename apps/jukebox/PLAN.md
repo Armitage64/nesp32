@@ -19,6 +19,9 @@ Goals:
   only**: it proves the NES side on hardware before the Stick's untested
   parts join in. The Mac also stays the build machine that converts rips to
   `.jbs` for the Stick.
+- Until an S3 is on hand, hardware testing uses an **M5StickC Plus2**. The
+  Stick firmware runs on both and picks its pins by board; the Plus2 is a
+  stand-in, not a second product.
 
 Non-goals for v1:
 
@@ -75,7 +78,11 @@ These come from the analysis of the nes-radar link and the VGM format.
    A `$4017` read gates D0's level for that one cycle through an inverting
    74HC368 buffer, so the receiver is pure bit-banging. The wiring adds at
    most about 4% of a bit in edge delay, even on the StickS3's NPN stage
-   with a long cable. The CPU is the limit, and the budget holds:
+   with a long cable. The NES-to-host direction is slower on the Stick: its
+   RX base resistor is now 100 kΩ (so a MiSTer SNAC adapter's strobe still
+   reaches a valid high), which is estimated to distort a 38400 bit by about
+   8-15%. Measure it on a scope in phase 5. The CPU is the limit, and the
+   budget holds:
 
    | Item | Cycles | Share of a 46.6-cycle bit |
    |---|---|---|
@@ -164,6 +171,9 @@ phase 1.
   but keep a trigger if any of those writes was a trigger register.
 - If the fixed apply order would give a different end-of-frame APU state or
   trigger set than the original order, emit chained records with `0x00`.
+- Begin every track with `$4015=$0F`. A rip that starts after the game
+  enabled its channels never writes `$4015`, and was silent on the console
+  (found on hardware with Castlevania's Vampire Killer).
 - Force bit 6 on in every `$4017` write. That disables the APU frame
   interrupt, which would otherwise take cycles mid-byte from the receiver.
 - Drop `$4010`, `$4012`, `$4013` and `$4015` bit 4. Keep `$4011` as a plain
@@ -278,9 +288,11 @@ tools/embed_song.py     song -> build/song.bin + song.inc for the ROM
 tools/demo_song.py      original demo tune, so builds need no rips
 host/                   protocol.py (link protocol, host side); the desktop
                         streamer comes in phase 4
-firmware/stick_s3/      MicroPython port of host/
-tests/                  pytest: converter, protocol, both ROMs on py65, and
-                        a cycle-exact serial line model
+firmware/stick/         MicroPython port of host/ for the StickS3, and for
+                        the StickC Plus2 as a stand-in (its own README)
+tests/                  pytest: converter, protocol, both ROMs on py65, a
+                        cycle-exact serial line model, and the Stick
+                        firmware against the desktop host
 ```
 
 Copyrighted VGM rips are never committed. Tests build synthetic VGMs in code,
@@ -364,8 +376,23 @@ serial hardware.
 
    A track change is heard after the NES's buffer plays out (a few
    seconds). Instant skip needs a flush command on the NES, which belongs
-   with the UI in phase 6. **Still to do on hardware:** play over the link
-   and record the resend rate and reply time.
+   with the UI in phase 6.
+
+   **Done on hardware:** all five rips play over the FTDI cable on a real
+   NES. Resends were 50-60% of requests with the FTDI chip's default
+   16 ms latency timer. A first attempt to lower the timer set it to
+   232 ms by mistake (macOS takes milliseconds, not microseconds), which
+   gave over 80% resends and underruns; `--log` showed reads arriving
+   232 ms apart. Chasing that in the simulation found two real ROM bugs,
+   both fixed: the request after a late burst did not wait for an NMI
+   (a host replying in 6-10 ms lost every other burst), and a burst with
+   a damaged length byte could overwrite unplayed music. The NES now also
+   reports its link counters to the host.
+
+   **Measured with the timer at 1 ms:** 625 data requests in 40 s with no
+   resends, and none of the NES's counters (cut-offs, timeouts, rejects,
+   CRC errors, underruns) moved. The request delay stayed at 0, so the
+   whole reply, USB included, fits the 6 ms budget. Phase 4's exit is met.
 
 5. **StickS3 host (the product).** Port `host/protocol.py` and
    `host/playlist.py` to MicroPython the way nes-radar does, with parity
@@ -374,9 +401,44 @@ serial hardware.
    buttons control it. *Exit:* 30 minutes of continuous playback on
    hardware with zero underruns; resends logged and recovered. *Risk:*
    MicroPython's reply time. If it is too slow, move the reply path to a
-   UART RX IRQ handler, or prebuild bursts so a reply is a single
-   `uart.write`. If the Stick misbehaves, the desktop test host tells
-   whether the fault is on the Stick side or the NES side.
+   UART RX IRQ handler. If the Stick misbehaves, the desktop test host
+   tells whether the fault is on the Stick side or the NES side.
+
+   **Built and tested in simulation**, in `firmware/stick/`. One firmware
+   serves the StickS3 and the StickC Plus2 that stands in for it until an
+   S3 arrives; `board.py` picks the pins (S3: TX G8, RX G1; Plus2: TX G26,
+   RX G36). The hat is the same circuit, but its TX wire sits on a
+   different slot for each board, because G0 is on slot 3 of one and slot
+   5 of the other.
+   - The ports send the same bytes as the desktop modules under random
+     requests, noise, resends, skips and restarts, and play frame-exact on
+     the simulated NES at 1 ms and 12 ms reply times.
+   - For the reply-time risk, the next burst is built while the line is
+     idle, so the usual reply is a comparison and one `uart.write`. The
+     buttons, the screen (one row at a time) and a forced garbage
+     collection run right after a burst goes out.
+   - Having read one burst ahead, the Stick applies a track skip one burst
+     later than the desktop host, and a NES reset next to a track boundary
+     can restart the following track.
+   - `tools/deploy.sh` converts the music and copies everything;
+     `tools/link_monitor.py` tests the NES-to-Stick direction by itself.
+
+   **Still to do on hardware,** first on the Plus2, then again on the S3:
+   the bring-up steps in `firmware/stick/README.md`, recording the resend
+   share, the reply time and the longest garbage collection. On the S3
+   also scope the RX stage's edges, whose 100 kΩ base resistor is the
+   slowest part of the link at 38400.
+
+   **To do: a throughput test for the StickS3 and the NES.** Write a test
+   that measures the highest rate at which the link stays reliable, in
+   payload bytes per second, so the margin over what music needs (about
+   3-5 bytes per frame) is a number and not an estimate. It needs a test
+   ROM along the lines of phase 3b's loopback ROM, which takes patterned
+   bursts, checks them, and reports its counters (bursts, CRC errors,
+   cut-offs, timeouts) back to the Stick or on screen; and a Stick-side
+   tool that steps the load up (burst size, then baud rate: 38400, 57600)
+   and reports the error rate at each step. The result settles phase 3b's
+   open choice between 38400 and 57600.
 6. **Polish, including the user interface.** UI enhancements were
    deliberately deferred until the link works, because screen updates must
    fit around the receive window that phase 3 defines. Planned: a

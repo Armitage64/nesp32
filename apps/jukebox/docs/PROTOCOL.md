@@ -66,6 +66,10 @@ Other codes are invalid in v1.
 ### Guarantees the converter makes
 
 - Every stream starts with `$80 $01`.
+- The first frame begins with `$4015=$0F`, before the rip's own writes. A
+  rip often starts after the game enabled its channels and never writes
+  `$4015` itself; VGM players start with the channels enabled, and without
+  this such a rip is silent on the console.
 - Every `$4017` value has bit 6 set, so the APU frame IRQ can never fire.
 - Writes to `$4003`, `$4007`, `$400B` and `$400F` are never dropped as
   duplicates, because each one restarts the note.
@@ -121,11 +125,19 @@ OP, SEQ, ARG, CHECK        CHECK = $A5 ^ OP ^ SEQ ^ ARG
 | `$4A` 'J' | data | burst the NES wants | most payload bytes it can take |
 | `$48` 'H' | hello | 0 | 0; the host restarts the track and its sequence |
 | `$42` 'B' | button | 0 | button bits: next, previous, pause (not yet sent) |
+| `$53` 'S' | stats | which counter | the counter's low byte; no reply |
 
 The NES sends hello once at boot, after holding OUT0 at mark for about
 1.3 ms so the host's UART leaves break. After that it sends a data request
 right after an NMI whenever at least 8 bytes of the ring are free, asking
 for at most 24, and waits for the burst.
+
+Every 16th frame a stats request takes the place of the data request. The
+counters take turns, in this order: bursts cut off by an NMI (aborts),
+waits that timed out, rejects (framing, length or sequence), CRC errors,
+the current `request_delay`, underruns, and committed bursts. The console
+has no screen for them, and they are how a host tells *why* bursts are
+being asked for again. `host/jukebox.py` shows them in its status line.
 
 If a data request's `SEQ` equals the last burst sent, the host sends
 **exactly the same burst** again. If it is one more, the last burst was
@@ -151,8 +163,10 @@ $A5, SEQ, LEN, PAYLOAD[LEN], CRC_HI, CRC_LO
 
 The CRC is CRC-16/CCITT-FALSE (polynomial `$1021`, initial `$FFFF`) over
 `SEQ` through the payload. The NES stores the payload straight into its
-ring as it arrives, and only after the last byte checks `SEQ`, that `LEN`
-is within the credit, and the CRC. Only then does it commit the bytes. Bytes
+ring as it arrives. It drops a burst whose `LEN` is beyond the credit before
+storing any of it, because that could run past the free space, and after
+the last byte it checks `SEQ` and the CRC. Only then does it commit the
+bytes. Bytes
 before the `$A5` marker are ignored.
 
 Once a track has ended, the host answers with empty bursts (`LEN` 0). The
@@ -172,17 +186,23 @@ whatever it has, even if that is less than the 768-byte prefill.
   about 1.3 ms, three at a time, and keeps a value that works. Without this, a
   host with a steady reply time that always lands across the NMI would never
   get a burst through.
+- **After a burst that came a frame late, the next request waits for the
+  next NMI.** Such a burst ends partway through a frame, and a request sent
+  from there would have its reply cut off by the NMI that follows. (Found on
+  the simulation: before this, a host replying in 6-10 ms lost every other
+  burst.)
 
 ### Timing
 
 Measured in the cycle-exact simulation (`tests/test_link.py`,
-`tests/test_serial_timing.py`):
+`tests/test_serial_timing.py`), as the rate while the ring is filling:
 
 | Host reply time | Result |
 |---|---|
-| up to 6 ms | full throughput (about 11.5 bytes per frame), no cut-offs |
-| steady 8-20 ms, or random 1-17 ms | about 8-10 bytes per frame |
-| 24-40 ms | 2-6 bytes per frame; still correct, may underrun |
+| up to 6 ms | a burst every frame (about 22 bytes per frame), no resends |
+| 7-20 ms, steady to within a few ms | a burst every other frame (about 11 bytes per frame), about 1% resends |
+| random across a whole frame (1-17 ms) | about 10 bytes per frame, about 40% resends |
+| 30-40 ms | about 4 bytes per frame, about 30% resends; still correct, may underrun |
 
 The music needs about 3-5 bytes per frame on average, so a host within
 20 ms is comfortable, and within 6 ms is ideal. In every case the music is
@@ -197,3 +217,11 @@ never change it.
   passing them to the computer (16 ms by default on FTDI chips). That adds
   directly to the host's reply time, so set it low where the driver allows
   it (1 ms).
+  The timer runs free of the requests, so replies start anywhere in a
+  frame, and a burst that takes half a frame to send runs into the next NMI
+  about half the time. Measured with the FTDI cable on a real NES at the
+  default: 50-60% of requests were repeats, and the music still played
+  correctly. `host/jukebox.py` asks the driver for 1 ms when it opens the
+  port (`--latency-ms`; on macOS the driver takes milliseconds in one
+  byte). At 1 ms the same cable ran 625 requests with no repeats and
+  no errors counted by the NES.

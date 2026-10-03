@@ -22,6 +22,10 @@ Work in progress. See [`PLAN.md`](PLAN.md) for the design and phases, and
   against the simulated NES; waiting on the serial hardware to try for
   real. It is for testing and diagnosis; the product's host will be the
   M5StickS3 (phase 5).
+- **Phase 5, built:** the Stick firmware, in
+  [`firmware/stick`](firmware/stick/README.md). It runs on the M5StickS3,
+  and on an M5StickC Plus2 as a stand-in until an S3 is on hand. Tested
+  against the desktop host and the simulated NES; not yet run on hardware.
 
 ## Building the ROM
 
@@ -65,6 +69,28 @@ requests, bursts and **resends**; a resend is a burst the NES missed, and a
 steady trickle of them means the host is replying too slowly (see
 docs/PROTOCOL.md, Timing). Track changes are heard after the few seconds of
 music the NES has already buffered.
+
+The status line ends with the NES's own counters, which say *why* bursts
+were asked for again: `aborts` (a burst was cut off by the next vblank, so
+the reply came too late), `timeouts` (no reply arrived), `rejects` and
+`crc_errors` (bytes were damaged on the wire), and `underruns`. They count
+from when the console was switched on. `--log FILE` writes every read and
+request with its time, which is the first thing to look at when resends are
+high.
+
+The program asks the USB serial driver for 1 ms of receive latency
+(`--latency-ms`, 0 to leave it alone). With an FTDI cable's default of 16 ms
+about half of all requests are repeats, though the music still plays; at
+1 ms the same cable ran with none.
+
+## Streaming from a Stick
+
+```sh
+firmware/stick/tools/deploy.sh          # converts music/ and copies it over
+```
+
+See [`firmware/stick/README.md`](firmware/stick/README.md) for the hat's
+wiring on each board, setup, and the order to bring things up on hardware.
 
 ## Converting music
 
