@@ -2,7 +2,7 @@
 
 A port of host/protocol.py that sends the same bytes; tests/test_stick.py
 holds the two together. What differs is how the work is spread out, because
-the reply to a request should start within about 6 ms:
+the reply to a request should start within about 5.5 ms:
 
 - the CRC is table-driven;
 - nothing here deletes from or grows a buffer on the reply path. The decoder
@@ -18,6 +18,16 @@ OP_DATA = 0x4A      # 'J'
 OP_HELLO = 0x48     # 'H'
 OP_BUTTON = 0x42    # 'B'
 OP_STATS = 0x53     # 'S'
+
+# A button request's ARG: what the NES's controller asked for.
+BUTTON_NEXT = 0x01      # Right
+BUTTON_PREVIOUS = 0x02  # Left
+BUTTON_PLAY = 0x04      # Start or A: play, or pause
+
+# The NES reads its controller once a frame by holding OUT0 low for about
+# two bit times, which the UART receives as this byte. It is expected, not
+# noise.
+PAD_READ_BYTE = 0xFE
 
 # The counters the NES reports with OP_STATS, in the order of its index
 # (STATS_TABLE in nes/serial_link.inc). Each report carries a low byte.
@@ -61,6 +71,7 @@ class NesCounters:
 
 BURST_MARKER = 0xA5
 FLUSH_MARKER = 0x5A  # a burst that first drops what the NES has buffered
+PAUSE_MARKER = 0x3C  # an empty burst: the NES holds the music where it is
 MAX_BURST_PAYLOAD = 255
 BURST_HEADER = 3    # marker, sequence, length
 DEFAULT_CREDIT = 24  # CREDIT_MAX in nes/serial_link.inc
@@ -93,7 +104,8 @@ class RequestDecoder:
     push() returns True when a request completes and leaves it in op, seq
     and arg. A window with an unknown op or a bad check byte drops its oldest
     byte, as host/protocol.py's decoder does, so noise costs at most the
-    frame it lands in.
+    frame it lands in. `discarded` counts those bytes, leaving out the one
+    each controller read puts on the line.
     """
 
     def __init__(self):
@@ -116,10 +128,11 @@ class RequestDecoder:
             self.arg = window[2]
             self.count = 0
             return True
+        if op != PAD_READ_BYTE:
+            self.discarded += 1
         window[0] = window[1]
         window[1] = window[2]
         window[2] = window[3]
-        self.discarded += 1
         return False
 
 
@@ -140,7 +153,6 @@ class Host:
         self.source = source
         self.stats = {"hello": 0, "bursts": 0, "resends": 0, "unexpected_seq": 0,
                       "buttons": 0}
-        self.buttons = []
         self.counters = NesCounters()
         self.nes = self.counters.totals  # counter name -> total this session
         size = BURST_HEADER + MAX_BURST_PAYLOAD + 2
@@ -151,22 +163,33 @@ class Host:
         self.staged = 0
         self.sealed_seq = None  # the staged burst is complete for this request
         self.sealed_length = 0
-        self.sealed_flush = False
+        self.sealed_marker = BURST_MARKER
         # Stopped, every answer is an empty flush burst: the NES drops what
         # it has buffered, falls silent and keeps asking.
         self.stopped = stopped
+        # Paused, every answer is an empty pause burst: the NES falls silent
+        # and keeps what it has buffered. What is staged here stays staged.
+        self.paused = False
         self.flush_next = False
         self.last_seq = None
         self.last_length = 0    # whole bytes of the last burst, header to CRC
+        # For a clock: the NES starts playing once it holds its prefill, or
+        # when the stream runs out first. `fresh_starts` counts the times
+        # its buffer was emptied, `sent` the bytes sent to it since, and
+        # `drained` says an empty burst told it to play what it has.
+        self.fresh_starts = 0
+        self.sent = 0
+        self.drained = False
 
     def stop(self):
         self.stopped = True
+        self.paused = False
         self._discard()
 
     def play(self):
         """Start the current track again from its beginning."""
         self.source.restart()
-        self.stopped = False
+        self.stopped = self.paused = False
         self.flush()
 
     def flush(self):
@@ -175,12 +198,38 @@ class Host:
         self.flush_next = True
         self._discard()
 
+    def press(self, buttons):
+        """Do what the NES's controller asked for (BUTTON_* bits). Left and
+        Right change the track and start it playing, also from stopped or
+        paused. Start pauses and resumes; from stopped, or after the
+        playlist's end, it plays the current track from its beginning."""
+        source = self.source
+        if buttons & (BUTTON_NEXT | BUTTON_PREVIOUS):
+            if hasattr(source, "jump"):
+                source.jump(1 if buttons & BUTTON_NEXT else -1)
+                self.stopped = self.paused = False
+                self.flush()
+            else:
+                self.play()     # a single track: start it again
+        elif buttons & BUTTON_PLAY:
+            if self.stopped or getattr(source, "finished", False):
+                self.play()
+            else:
+                self.paused = not self.paused
+                self.sealed_seq = None  # the burst made ready is the wrong kind
+
     def _discard(self):
         self.staged = 0
         self.sealed_seq = None
 
+    def _fresh_start(self):
+        self.fresh_starts += 1
+        self.sent = 0
+        self.drained = False
+
     def _reset(self):
         self.source.restart()
+        self._fresh_start()
         self.staged = 0
         self.sealed_seq = None
         self.last_seq = None
@@ -194,17 +243,15 @@ class Host:
                 self.buffers[self.current][start:start + len(data)] = data
                 self.staged += len(data)
 
-    def _seal(self, seq, length, flush):
+    def _seal(self, seq, length, marker):
         buffer = self.buffers[self.current]
+        buffer[0] = marker
         buffer[1] = seq
         buffer[2] = length
         table = CRC_TABLE
         crc = 0xFFFF
-        if flush:   # its CRC covers the marker as well
-            buffer[0] = FLUSH_MARKER
-            crc = ((crc << 8) & 0xFF00) ^ table[(crc >> 8) ^ FLUSH_MARKER]
-        else:
-            buffer[0] = BURST_MARKER
+        if marker != BURST_MARKER:  # its CRC covers the marker as well
+            crc = ((crc << 8) & 0xFF00) ^ table[(crc >> 8) ^ marker]
         end = BURST_HEADER + length
         for index in range(1, end):
             crc = ((crc << 8) & 0xFF00) ^ table[(crc >> 8) ^ buffer[index]]
@@ -212,7 +259,7 @@ class Host:
         buffer[end + 1] = crc & 0xFF
         self.sealed_seq = seq
         self.sealed_length = length
-        self.sealed_flush = flush
+        self.sealed_marker = marker
 
     def prepare(self):
         """Build the burst the next request will most likely ask for. Call it
@@ -221,11 +268,17 @@ class Host:
             return
         seq = 0 if self.last_seq is None else (self.last_seq + 1) & 0xFF
         if self.stopped:
-            self._seal(seq, 0, True)
+            self._seal(seq, 0, FLUSH_MARKER)
+            return
+        if self.paused:
+            # Sealing writes the CRC where staged bytes sit, and those are
+            # still wanted; handle() moves them out of the way first.
+            if not self.staged:
+                self._seal(seq, 0, PAUSE_MARKER)
             return
         self._stage(self.credit)
         if self.staged <= self.credit:
-            self._seal(seq, self.staged, self.flush_next)
+            self._seal(seq, self.staged, FLUSH_MARKER if self.flush_next else BURST_MARKER)
 
     def handle(self, op, seq, arg):
         """Return the bytes to send for one request, or None for none. The
@@ -238,7 +291,7 @@ class Host:
             return None
         if op == OP_BUTTON:
             self.stats["buttons"] += 1
-            self.buttons.append(arg)
+            self.press(arg)
             return None
         if op == OP_STATS:
             self.counters.report(seq, arg)
@@ -251,15 +304,23 @@ class Host:
         self.stats["bursts"] += 1
         if self.stopped:
             length = 0
-            flush = True
+            marker = FLUSH_MARKER
+        elif self.paused:
+            length = 0
+            marker = PAUSE_MARKER
         else:
             self._stage(arg)
             length = min(self.staged, arg)
-            flush = self.flush_next
+            marker = FLUSH_MARKER if self.flush_next else BURST_MARKER
             self.flush_next = False
+        if marker == FLUSH_MARKER:
+            self._fresh_start()
+        self.sent += length
+        if not length and marker == BURST_MARKER:
+            self.drained = True
         sending = self.current
         if (self.sealed_seq != seq or self.sealed_length != length
-                or self.sealed_flush != flush):
+                or self.sealed_marker != marker):
             # Not the request prepare() expected. Bytes staged beyond this
             # credit move to the other buffer first, because the CRC is
             # about to be written where they sit.
@@ -268,7 +329,7 @@ class Host:
                 start = BURST_HEADER + length
                 self.buffers[1 - sending][BURST_HEADER:BURST_HEADER + extra] = (
                     self.buffers[sending][start:start + extra])
-            self._seal(seq, length, flush)
+            self._seal(seq, length, marker)
             self.staged = extra
         else:
             self.staged = 0

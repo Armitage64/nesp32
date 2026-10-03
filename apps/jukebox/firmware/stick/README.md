@@ -77,33 +77,42 @@ Plug the hat into controller port 2 and start `build/jukebox_link.nes` on the
 console. The order of powering up does not matter.
 
 Nothing plays until you press a button. The Stick starts stopped, shows
-`STOPPED - A PLAYS` once it hears the console, and answers the console's
+`STOPPED` once it hears the console, and answers the console's
 requests with nothing to play.
 
-| Button | Stopped | Playing |
-|---|---|---|
-| **A** (front) | play the track shown, from its start | next track |
-| **B** (side) | previous track (stays stopped) | previous track |
-| **B**, held 2 s | power off | power off |
-| **Power**, tapped | | stop |
+| Button | What it does |
+|---|---|
+| **A** (front) | pause, resume. From stopped (as at power-up), play the track shown from its start |
+| **B** (side) | previous track, and play it |
+| **Power**, tapped | next track, and play it |
+| **B**, held 2 s | power off |
 
-- Stops and track changes are heard at once, and the music starts again
+The NES's controller 1 does the same through the link: **Start** or **A**
+is the Stick's A, **Left** its B and **Right** its power button. The
+Stick's screen follows.
+
+- A pause is heard within a few frames and keeps what the NES has
+  buffered, so the music goes on from the same place.
+- Track changes are heard at once, and the music starts again
   after about half a second: the Stick tells the NES to drop the few
   seconds it has buffered.
 - Resetting the NES while a track plays starts that track again. Resetting
   it while stopped leaves it stopped.
 - The power button is read as UIFlow's `M5.BtnPWR`. It works on the StickC
-  Plus2; the StickS3's has not been tried, and a build without one never
-  stops.
+  Plus2; the StickS3's has not been tried, and a build without one has no
+  next-track button (the NES's controller still has one).
 
 The screen shows the track being sent, and once a second:
 
 | Row | Meaning |
 |---|---|
-| STATE | `PLAYING` or `STOPPED - A PLAYS` while requests arrive, `WAITING FOR NES` otherwise |
+| TIME | position in the track and its length. The NES does not report its position: the Stick works it out from when the NES's buffer filled, so it can be a moment off, and rests at 0:00 for the few seconds before a track that follows another by itself is heard |
+| STATE | `PLAYING`, `PAUSED` or `STOPPED` while requests arrive, `WAITING FOR NES` otherwise |
 | LINK | bursts sent, and the share of requests that were repeats. A repeat is a burst the NES missed |
 | REPLY | the average and slowest reply in the last second, in ms: the firmware's own time from bytes in to handing the burst to the UART. Then bytes that were not part of a request |
-| NES | the console's own counters: cut-offs / timeouts / rejects / CRC errors / underruns |
+
+The console's own counters (cut-offs, timeouts, rejects, CRC errors,
+underruns) are no longer on the screen; they are in the USB log line.
 
 The NES row says *why* bursts were resent. Cut-offs mean replies are
 arriving too late in the frame, timeouts mean they are not arriving at all,
@@ -138,7 +147,7 @@ Do these in order; each isolates one thing.
 4. **Play.** Reset the NES. Record from
    the screen after a minute: the resend share, the reply times, and the
    NES row. On the FTDI cable the same ROM ran 625 requests with no resends
-   and no counter moving, so that is the mark to compare against. Under 6 ms of total reply time the
+   and no counter moving, so that is the mark to compare against. Under 5.5 ms of total reply time the
    link runs at full rate with no resends; a few percent of resends is
    harmless (see docs/PROTOCOL.md, Timing).
 

@@ -1,8 +1,10 @@
 """Run the player ROM on py65 and record what it writes to the APU.
 
-py65 is a plain 6502, which is all the player needs: there is no PPU beyond
-PPUSTATUS always reporting vblank, and the APU is a set of write-only
-registers whose writes get recorded per NMI.
+py65 is a plain 6502, which is all the player needs. The APU is a set of
+write-only registers whose writes get recorded per NMI. The PPU is its
+address register and its memory, enough to see what the ROM put on the
+screen and when, with PPUSTATUS always reporting vblank. Controller 1 is a
+shift register loaded from `pad`.
 
 The emulated clock fires an NMI every NTSC frame (29781 cycles) while the ROM
 has NMI enabled, or at random intervals to stress the ring buffer handoff.
@@ -21,7 +23,13 @@ PRG_SIZE = 0x8000
 INES_HEADER = 16
 PPUCTRL = 0x2000
 PPUSTATUS = 0x2002
+PPUADDR = 0x2006
+PPUDATA = 0x2007
 PPUCTRL_NMI = 0x80
+PPUCTRL_DOWN = 0x04
+VBLANK_CYCLES = 2273    # 20 scanlines: PPU writes must be over by then
+PAD_A, PAD_B, PAD_SELECT, PAD_START = 0x80, 0x40, 0x20, 0x10
+PAD_UP, PAD_DOWN, PAD_LEFT, PAD_RIGHT = 0x08, 0x04, 0x02, 0x01
 APU = 0x4000
 APU_LAST = 0x4017
 JOY1 = 0x4016
@@ -49,7 +57,20 @@ class Console:
         self.memory = ObservableMemory()
         for offset, byte in enumerate(rom[INES_HEADER:INES_HEADER + PRG_SIZE]):
             self.memory[PRG_START + offset] = byte
-        self.memory.subscribe_to_read([PPUSTATUS], lambda address: VBLANK)
+        self.memory.subscribe_to_read([PPUSTATUS], self._read_ppustatus)
+        self.memory.subscribe_to_write([PPUADDR], self._write_ppuaddr)
+        self.memory.subscribe_to_write([PPUDATA], self._write_ppudata)
+        self.vram = bytearray(0x4000)
+        self.ppu_address = 0
+        self.ppu_latch = None       # the high byte, between the two writes
+        self.ppu_write_offsets = []  # per NMI: cycles in to its last PPU write
+        self._nmi_start = None
+        self._last_ppu_write = 0
+        self.pad = 0                # buttons held on controller 1 (PAD_*)
+        self._pad_shift = 0
+        self._strobe = 0
+        self.memory.subscribe_to_read([JOY1], self._read_joy1)
+        self.memory.subscribe_to_write([JOY1], self._strobe_joy1)
         # $4016 is the controller strobe (OUT0), not an APU register.
         apu = [a for a in range(APU, APU_LAST + 1) if a != JOY1]
         self.memory.subscribe_to_write(apu, self._apu_write)
@@ -61,6 +82,46 @@ class Console:
 
     def _apu_write(self, address, value):
         self._writes.append((address - APU, value))
+
+    def _read_ppustatus(self, address):
+        self.ppu_latch = None
+        return VBLANK
+
+    def _write_ppuaddr(self, address, value):
+        if self.ppu_latch is None:
+            self.ppu_latch = value
+        else:
+            self.ppu_address = (self.ppu_latch << 8 | value) & 0x3FFF
+            self.ppu_latch = None
+
+    def _write_ppudata(self, address, value):
+        self.vram[self.ppu_address] = value
+        down = self.memory[PPUCTRL] & PPUCTRL_DOWN
+        self.ppu_address = (self.ppu_address + (32 if down else 1)) & 0x3FFF
+        if self._nmi_start is not None:
+            self._last_ppu_write = self.mpu.processorCycles + 3 - self._nmi_start
+
+    def _strobe_joy1(self, address, value):
+        self._strobe = value & 1
+        if self._strobe:
+            self._pad_shift = self.pad
+
+    def _read_joy1(self, address):
+        # While the strobe is high the controller keeps loading its buttons
+        # and shows the first (A). Low, each read shifts the next one out.
+        if self._strobe:
+            return 0x40 | (self.pad >> 7)
+        bit = self._pad_shift >> 7
+        self._pad_shift = (self._pad_shift << 1 | 1) & 0xFF
+        return 0x40 | bit
+
+    def screen_text(self, column, row, length):
+        """What the nametable shows at a tile position, as text."""
+        start = 0x2000 + 32 * row + column
+        return bytes(self.vram[start:start + length]).decode("latin-1")
+
+    def nametable(self):
+        return bytes(self.vram[0x2000:0x2400])
 
     def load_song(self, stream, loop_offset=None):
         """Point the song descriptor at another stream, as embed_song would."""
@@ -105,9 +166,17 @@ class Console:
                 returned_to = mpu.pc  # don't fire again before moving on
                 continue
             if mpu.processorCycles >= next_nmi and enabled:
+                started = mpu.processorCycles
                 self._nmi()
                 fired += 1
-                next_nmi = mpu.processorCycles + period()
+                # Vblanks come a period apart however long the handler ran,
+                # so its time comes out of the frame. The stress tests use
+                # periods shorter than the handler; those count from its end,
+                # or the main loop would never run.
+                step = period()
+                next_nmi = started + step
+                if next_nmi <= mpu.processorCycles:
+                    next_nmi = mpu.processorCycles + step
                 returned_to = mpu.pc
                 continue
             returned_to = None
@@ -154,17 +223,23 @@ class Console:
     def _nmi(self):
         mpu = self.mpu
         underruns = self.word("underruns")
-        # An NMI that carries out a flush silences the APU and plays nothing.
-        playing = bool(self.byte("playing")) and not self.byte("flush_pending")
+        # An NMI that carries out a flush silences the APU and plays nothing,
+        # and neither does one that finds the music paused.
+        playing = (bool(self.byte("playing")) and not self.byte("flush_pending")
+                   and not self.byte("paused"))
         writes = []
         self._writes = writes
         start = mpu.processorCycles
+        self._nmi_start = start
+        self._last_ppu_write = 0
         mpu.nmi()
         while True:
             returning = self.memory[mpu.pc] == RTI
             mpu.step()
             if returning:
                 break
+        self._nmi_start = None
+        self.ppu_write_offsets.append(self._last_ppu_write)
         self.nmi_cycles.append(mpu.processorCycles - start)
         self._writes = []
         self.frames.append((writes, self.word("underruns") != underruns, playing))
@@ -192,6 +267,8 @@ def expected_frames(stream, loop_offset=None):
     def expand(frame):
         writes = []
         for item in frame:
+            if isinstance(item, (jbs.Title, jbs.Game, jbs.Length)):
+                continue
             if item == jbs.Control(jbs.CTRL_INIT):
                 writes += init
             elif item == jbs.Control(jbs.CTRL_END):

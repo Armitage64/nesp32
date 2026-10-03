@@ -27,6 +27,10 @@ A proof of concept, and work in progress. See [`PLAN.md`](PLAN.md) for the desig
   and on an M5StickC Plus2 as a stand-in until an S3 is on hand. It has
   played music on a real NES from the Plus2 with no resends; the S3 is
   still to try.
+- **Phase 6, working:** the console's screen and controller. Both ROMs
+  show the title, the game and track names, a clock, a status line and
+  bars that follow the music, and controller 1 plays, pauses and changes
+  tracks. See "The screen" below.
 
 ## Building the ROM
 
@@ -41,9 +45,43 @@ make SONG="music/01 Running About.vgz"    # any rip, or a .jbs
 `build/jukebox_link.nes`, which fetches the song over controller port 2.
 
 The standalone ROM is `build/jukebox.nes` (NROM-256, mapper 0). Open it in an emulator
-such as Mesen, or copy it to a flash cart. The screen stays blank dark blue;
-the music is the point. A song can be up to 24 KB of stream, which covers
-every rip tried so far (6-14 KB).
+such as Mesen, or copy it to a flash cart. A song can be up to 24 KB of
+stream, which covers every rip tried so far (6-14 KB).
+
+## The screen
+
+![The screen while a track plays](docs/screen.png)
+
+Both ROMs show the same screen: the title, the game a track came from and
+the track's name on a line each, a clock with the position and the track's
+length, a status line, and 28 bars that follow the music. The clock counts
+the frames the console has played, so it stops when the music does.
+
+The bars are not a spectrum of the sound, which the console cannot hear.
+They are drawn from what the stream writes to the APU: each channel lights
+the bar for its pitch (four bars to the octave, C1 at the left) to the
+height of its volume, and the bars then fall by themselves. The noise
+channel sits on the right by its period.
+
+Controller 1:
+
+| Button | Link ROM | Standalone ROM |
+|---|---|---|
+| **Start** or **A** | pause, resume; from stopped, play the current track from its start | pause, resume |
+| **Right** | next track, and play it | |
+| **Left** | previous track, and play it | |
+
+While the music is paused or stopped the clock flashes.
+
+On the link ROM the controller only asks: the press goes to the host as a
+button request, and the host changes the track as it does for its own
+buttons, so the name on the screen changes when the new track's first
+frame plays, about half a second later.
+
+The tiles, the screen's layout and the lookup tables all come from
+`tools/gen_ui.py`, which `make` runs. `tools/gen_ui.py build --preview
+screen.png` writes the still screen as a picture, to check a change to the
+layout without a console.
 
 For debugging, [Mesen 2](https://www.mesen.ca/) can import
 `build/jukebox.dbg` (cc65 debug info), so its debugger, memory viewer and
@@ -63,8 +101,8 @@ serial cable from nes-radar connected:
 .venv/bin/python host/jukebox.py --port /dev/cu.usbserial-XXXX music/
 ```
 
-Keys: `n` next track, `p` previous, `s` stop, `r` play the current track
-from its start (also after a stop), `q` quit. `--loops N` sets how many
+Keys: `n` next track, `p` previous, space to pause and resume, `s` stop,
+`r` play the current track from its start (also after a stop), `q` quit. `--loops N` sets how many
 times a looping track plays before the next one, `--repeat` starts the
 playlist over at the end, and `--stopped` starts silent until `r`, as the
 Stick does. The status line shows
@@ -117,8 +155,8 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 ```
 
 `make test` does the same. The ROM tests build both ROMs and run them on
-py65, so they need cc65; they skip without it. The full suite takes about
-two minutes, mostly the serial link simulation.
+py65, so they need cc65; they skip without it. The full suite takes several
+minutes, mostly the serial link simulation.
 
 The tests build synthetic VGM files in code. The central test encodes
 random register writes, decodes the stream, and checks with the APU

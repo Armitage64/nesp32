@@ -15,7 +15,7 @@ has advanced exactly one frame, once per NMI.
 |---|---|---|
 | `$00` | chain: the write record that follows does not advance | 0 |
 | `$01`-`$7F` | wait *n* frames with no writes | *n* |
-| `$80 cc` | control record | 0 (end of track: 1) |
+| `$80 cc ...` | control record | 0 (end of track: 1) |
 | `$81`-`$FF` | write record | 1 |
 
 ### Write records
@@ -60,12 +60,30 @@ no format change.
 |---|---|
 | `$00` | end of track: silence the APU (`$4015=0`) and end the frame. The NES stays silent until more stream arrives, then carries on, so a playlist can restart after its end |
 | `$01` | APU init: `$4015=0`, `$4017=$40`, then the stream writes what it needs |
+| `$02 n text` | track name: *n* characters (0-28) of printable ASCII for the console's screen |
+| `$03 n text` | game name, in the same form, for the line above it |
+| `$04 text` | track length: 5 characters as the screen shows them, `M:SS ` or `MM:SS`, or `-:-- ` for a track that never ends. It also starts the console's clock again from zero |
 
-Other codes are invalid in v1.
+Other codes are invalid in v1, and so is a name longer than 28. The last
+three write nothing to the APU.
+
+They are not part of a track's own stream: the converter never writes
+them, and a `.jbs` file keeps its title in the header. The host puts all
+three ahead of each track as it sends it (`jbs.intro`): game, track, then
+length. They reach the screen as the track's first notes play, however
+much of the previous track the console still had buffered, one line per
+vblank. The converter's titles are "game - track", split at the first
+` - `; a title without one is a track's name with no game. The length is
+the time the playlist will play the track for, loops included. The
+standalone ROM's song gets the same records from `tools/embed_song.py`.
+
+The console's clock counts the frames it plays, 60 to the second, from the
+length record on. It therefore shows what is being heard, stops while the
+music is stopped, and needs nothing more from the host.
 
 ### Guarantees the converter makes
 
-- Every stream starts with `$80 $01`.
+- Every track's stream starts with `$80 $01`.
 - The first frame begins with `$4015=$0F`, before the rip's own writes. A
   rip often starts after the game enabled its channels and never writes
   `$4015` itself; VGM players start with the channels enabled, and without
@@ -124,7 +142,7 @@ OP, SEQ, ARG, CHECK        CHECK = $A5 ^ OP ^ SEQ ^ ARG
 |---|---|---|---|
 | `$4A` 'J' | data | burst the NES wants | most payload bytes it can take |
 | `$48` 'H' | hello | 0 | 0; the host restarts the track and its sequence |
-| `$42` 'B' | button | 0 | button bits: next, previous, pause (not yet sent) |
+| `$42` 'B' | button | 0 | what controller 1 asked for: bit 0 next track, bit 1 previous, bit 2 play or pause; no reply |
 | `$53` 'S' | stats | which counter | the counter's low byte; no reply |
 
 The NES sends hello once at boot, after holding OUT0 at mark for about
@@ -140,6 +158,27 @@ has no screen for them, and they are how a host tells *why* bursts are
 being asked for again. A report is a low byte of a count that began when
 the console was switched on, so the hosts add up the steps between reports
 and show totals for their own session.
+
+A button request goes out when a button on controller 1 is pressed, in
+place of that frame's data or stats request: Right is next, Left is
+previous, and Start or A is play or pause. The host answers with what it
+would do for its own buttons. A track change jumps at once and starts
+playing, also from stopped or paused, and reaches the NES as a flush burst
+in reply to its next data request. Play or pause toggles between playing
+and paused (pause bursts, below); from stopped, or after the playlist has
+ended, it plays the current track from its beginning. A button request that is lost on
+the line is a press that did nothing, and is not sent again.
+
+**The controller read is on the line too.** The NES reads controller 1 by
+holding OUT0 low for the 8 reads, and OUT0 is the line to the host. It
+rests at mark, which keeps the controller loading its buttons, so there is
+no separate strobe pulse: each read is one low pulse of 94 CPU cycles, two
+bit times at 38400 baud. A UART receives that as the byte `$FE`, once a
+frame, at the start of the NMI. The read comes first in the NMI so that
+the byte is finished (ten bit times) long before the request that follows;
+in the simulation the gap is never under 12 bit times. The host's decoder
+passes over a `$FE` where a request should start without counting it as
+noise.
 
 If a data request's `SEQ` equals the last burst sent, the host sends
 **exactly the same burst** again. If it is one more, the last burst was
@@ -204,6 +243,29 @@ A flush waits for the NES's next request, and the NES asks only when 8
 bytes of its ring are free. In the middle of a long rest in the music that
 can take as long as the rest.
 
+### Pause burst (host to NES)
+
+```text
+$3C, SEQ, 0, CRC_HI, CRC_LO
+```
+
+An empty burst with its own marker, and the CRC taken over the marker as
+for a flush burst. When the NES accepts one it holds the music where it
+is: the NMI stops decoding, the APU is silenced (`$4015=0`), and
+everything buffered is kept. A paused host answers every request with one.
+
+Paused, the NES asks every frame whatever room its ring has, even none, so
+the link stays up and the host has a request to answer when the pause
+ends. The first burst that is not a pause burst ends it: the NES puts the
+channel enables back and decodes on from the frame it stopped at. Notes
+that were sounding are not restarted; each channel comes back with its next
+note.
+
+That first request after a pause can carry a credit of zero, and its
+answer is then an empty ordinary burst. The NES takes that as it always
+does ("the track has ended, play what you have"), which changes nothing
+while it is already playing.
+
 ### Waiting, cut-offs and retries
 
 - **Waiting for the marker spans NMIs.** An NMI that arrives while the NES
@@ -230,15 +292,23 @@ Measured in the cycle-exact simulation (`tests/test_link.py`,
 
 | Host reply time | Result |
 |---|---|
-| up to 6 ms | a burst every frame (about 22 bytes per frame), no resends |
+| up to 5.5 ms | a burst every frame (about 22 bytes per frame), no resends |
 | 7-20 ms, steady to within a few ms | a burst every other frame (about 11 bytes per frame), about 1% resends |
 | random across a whole frame (1-17 ms) | about 10 bytes per frame, about 40% resends |
 | 30-40 ms | about 4 bytes per frame, about 30% resends; still correct, may underrun |
 
 The music needs about 3-5 bytes per frame on average, so a host within
-20 ms is comfortable, and within 6 ms is ideal. In every case the music is
+20 ms is comfortable, and within 5.5 ms is ideal. In every case the music is
 frame-exact: faults can delay it (an underrun holds the notes for a frame),
 never change it.
+
+The first row was 6.5 ms before the console had a screen. Drawing it takes
+about 1 ms of each NMI (the controller read, half of the bars, and working
+out the next frame's bars), and the request cannot go out until the NMI is
+over. If a host needs that millisecond back, lowering `CREDIT_MAX` from 24
+to 20 in `nes/serial_link.inc` shortens every burst by more than it: the
+simulation then runs clean up to 7 ms, with prefill taking 38 frames
+where it took 32.
 
 - **Sampling:** the NES samples within 0.12 bit of each bit's center for
   every start-bit phase, and receives correctly with host baud error from

@@ -24,11 +24,14 @@ ROOT = os.path.join(os.path.dirname(__file__), "..")
 RIPS = sorted(glob.glob(os.path.join(ROOT, "music", "*.vg[mz]")))
 
 # The NMI must leave most of the frame to the link. Measured on real rips:
-# steady play stays under about 1 ms, and only a song's opening frame, where
-# a game's init writes 20+ registers in order, runs to about 3 ms. PLAN.md
-# budgets phase 3 from these.
-NMI_P99_BUDGET = 2000
-NMI_MAX_BUDGET = 6000
+# the music alone stays under about 1 ms, and only a song's opening frame,
+# where a game's init writes 20+ registers in order, runs to about 3 ms. The
+# screen adds about 1 ms to that: the controller read, half of the bars, and
+# working out the next frame's bars. A frame that draws a title is the
+# opening frame as well, at about 4.5 ms. PLAN.md budgets the link from
+# these.
+NMI_P99_BUDGET = 4500
+NMI_MAX_BUDGET = 9000
 
 
 def assert_nmi_budget(machine):

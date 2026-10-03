@@ -4,7 +4,7 @@ import jukebox
 import protocol
 from playlist import PlaylistSource
 from protocol import Host
-from test_playlist import A, B
+from test_playlist import A, B, titled
 
 
 def test_streamer_answers_requests_and_times_itself():
@@ -118,11 +118,11 @@ def test_run_answers_the_port_and_obeys_keys():
             pass
 
     jukebox.run(port, source, streamer, keys, out=Quiet())
-    assert port.written == protocol.burst_bytes(0, A.stream[:8])
+    assert port.written == protocol.burst_bytes(0, titled("A", A)[:8])
     # 'n' went to the next track at once; its first burst will flush the NES.
     assert source.index == 1 and streamer.host.flush_next
     assert streamer.host.handle(protocol.Request(0x4A, 1, 8)) == protocol.burst_bytes(
-        1, B.stream[:8], flush=True)
+        1, titled("B", B)[:8], flush=True)
 
 
 def test_stop_and_play_keys():
@@ -147,5 +147,6 @@ def test_stop_and_play_keys():
     jukebox.run(port, source, streamer, keys, out=Quiet())
     assert not host.stopped
     assert host.handle(protocol.Request(0x4A, 2, 8)) == protocol.burst_bytes(
-        2, A.stream[:8], flush=True)
-    assert host.handle(protocol.Request(0x4A, 3, 2)) == protocol.burst_bytes(3, A.stream[8:10])
+        2, titled("A", A)[:8], flush=True)
+    assert host.handle(protocol.Request(0x4A, 3, 2)) == protocol.burst_bytes(
+        3, titled("A", A)[8:10])

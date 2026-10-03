@@ -20,17 +20,23 @@
 ; delay that works is kept, so a steady host settles within a few tries and
 ; a fast one never moves off zero.
 ;
-; Provides link_init, link_service and the link_nmi_hook macro.
+; A press on the controller (ui.inc) goes to the host as a button request,
+; in place of one frame's data request. The host acts on it; what comes back
+; is the stream it then sends, usually starting with a flush burst.
+;
+; Provides link_init, link_service, link_button and the link_nmi_hook macro.
 
 .include "crc16_table.inc"
 
 OP_DATA   = $4A                 ; 'J'
 OP_HELLO  = $48                 ; 'H'
 OP_STATS  = $53                 ; 'S'
+OP_BUTTON = $42                 ; 'B'
 STATS_EVERY = 16                ; frames between counter reports; a power of 2
 REQUEST_SEED = $A5
 BURST_MARKER = $A5
 FLUSH_MARKER = $5A              ; a burst that first drops what is buffered
+PAUSE_MARKER = $3C              ; an empty burst: hold the music where it is
 CREDIT_MAX = 24                 ; payload bytes per burst; sized in PLAN.md
 CREDIT_MIN = 8                  ; don't bother asking for less
 HUNT_TIMEOUT_FRAMES = 4         ; frames to wait for a marker before asking again
@@ -42,7 +48,7 @@ OUT0_MARK = $01
 link_seq:    .res 1             ; burst the NES wants next
 credit:      .res 1
 rx_data:     .res 1
-rx_marker:   .res 1             ; BURST_MARKER or FLUSH_MARKER
+rx_marker:   .res 1             ; BURST_MARKER, FLUSH_MARKER or PAUSE_MARKER
 rx_seq:      .res 1
 rx_len:      .res 1
 rx_crc:      .res 2
@@ -61,6 +67,7 @@ rx_sp:       .res 1             ; stack pointer to return to when it does
 rx_missed:   .res 1             ; the last receive was cut off or timed out
 request_delay: .res 1           ; units of about 1.3 ms to wait before asking
 stats_index: .res 1             ; which counter the next report carries
+button_pending: .res 1          ; EVENT_* bits the host has not been told yet
 link_bursts: .res 2             ; committed bursts
 link_aborts: .res 2             ; bursts cut off by an NMI
 link_timeouts: .res 2           ; waits with no marker for HUNT_TIMEOUT_FRAMES
@@ -92,6 +99,8 @@ hunting:
     cmp #HUNT_TIMEOUT_FRAMES
     bcc done
     inc16 link_timeouts
+    lda #LINK_WAITING
+    sta link_state
 abort:
     lda #1
     sta rx_missed
@@ -125,8 +134,24 @@ done:
     jmp send_request
 .endproc
 
+; The controller asked for something (EVENT_* bits in A). Called from the
+; NMI; the main loop sends it with its next request.
+.proc link_button
+    ora button_pending
+    sta button_pending
+    rts
+.endproc
+
 ; Request a burst sized to the free ring space, receive it, and commit it.
 .proc link_service
+    ldy button_pending          ; a button press goes first, in place of this
+    beq @no_button              ; frame's request; the host does not answer it
+    lda #0
+    sta button_pending
+    lda #OP_BUTTON
+    ldx #0
+    jmp send_request
+@no_button:
     lda frame_count             ; every STATS_EVERY frames, a counter report
     and #STATS_EVERY - 1        ; takes the place of the data request
     bne @data
@@ -141,7 +166,11 @@ done:
     lda #CREDIT_MAX
 @have_credit:
     cmp #CREDIT_MIN
-    bcc @done
+    bcs @credit
+    ldx paused                  ; paused, keep asking with whatever room there
+    bne @credit                 ; is, even none: the answer says when to go on
+    jmp @done
+@credit:
     sta credit
     ldx request_delay
     beq @ask
@@ -170,6 +199,27 @@ done:
     sta request_delay
     rts
 @received:
+    ; A pause burst holds the music: the NMI stops decoding and the APU is
+    ; silenced, with everything buffered kept. Any other burst lets it go
+    ; on, with the channel enables put back from the screen's copy.
+    lda rx_marker
+    cmp #PAUSE_MARKER
+    bne @not_pause
+    lda paused
+    bne @commit
+    lda #1
+    sta paused
+    lda #0
+    sta APU_STATUS
+    beq @commit
+@not_pause:
+    lda paused
+    beq @running
+    lda apu_shadow + $15
+    sta APU_STATUS
+    lda #0
+    sta paused
+@running:
     lda rx_marker
     cmp #FLUSH_MARKER
     bne @commit
@@ -185,11 +235,18 @@ done:
     jsr commit_tail
     inc link_seq
     inc16 link_bursts
+    ldx #LINK_STREAMING
     lda rx_len
-    bne @done
+    bne @state
     lda rx_marker               ; an empty flush burst means "stopped": stay
     cmp #FLUSH_MARKER           ; quiet and keep asking
-    beq @done
+    bne @ended
+    ldx #LINK_STOPPED
+@state:
+    stx link_state
+    jmp @done
+@ended:
+    stx link_state
     lda #1                      ; the host only sends empty bursts once the
     sta link_done               ; track has ended, so play what we have
 @done:
@@ -282,6 +339,8 @@ marker:
     bcs marker                  ; noise: keep looking
     cmp #BURST_MARKER
     beq found
+    cmp #PAUSE_MARKER
+    beq found
     cmp #FLUSH_MARKER
     bne marker
 found:
@@ -353,15 +412,15 @@ reject:
 .endproc
 
 ; CRC-16/CCITT-FALSE over SEQ, LEN and the payload now in the ring at tail.
-; A flush burst's CRC covers its marker as well, so a damaged ordinary burst
-; cannot pass for one.
+; A flush or pause burst's CRC covers its marker as well, so a damaged
+; ordinary burst cannot pass for one.
 .proc burst_crc
     lda #$FF
     sta crc_hi
     sta crc_lo
     lda rx_marker
-    cmp #FLUSH_MARKER
-    bne @body
+    cmp #BURST_MARKER
+    beq @body
     jsr crc_update
 @body:
     lda rx_seq

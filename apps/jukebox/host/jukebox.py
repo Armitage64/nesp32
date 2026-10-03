@@ -11,12 +11,14 @@ NES-side one later.
     host/jukebox.py --port /dev/cu.usbserial-XXXX --loops 1 a.vgz b.vgz
     host/jukebox.py --list-ports
 
-Keys while playing: n next track, p previous, s stop, r play the current
-track from its start (also after a stop), q quit.
+Keys while playing: n next track, p previous, space pause and resume, s
+stop, r play the current track from its start (also after a stop), q quit.
+The NES's own controller works too: Right and Left change the track, Start
+or A pauses and resumes.
 
 The NES paces everything. It sends a request right after each vblank and
 waits for the burst; this program's only job is to answer quickly. For full
-throughput the reply should start within 6 ms of the request (see
+throughput the reply should start within 5.5 ms of the request (see
 docs/PROTOCOL.md), and the status line reports how the link is doing.
 Resends are the number to watch: each is a burst the NES missed.
 
@@ -37,7 +39,7 @@ import jbs  # noqa: E402
 import vgm  # noqa: E402
 import vgm2jbs  # noqa: E402
 from playlist import PlaylistSource  # noqa: E402
-from protocol import NES_COUNTERS, OP_DATA, Host, RequestDecoder  # noqa: E402
+from protocol import BUTTON_PLAY, NES_COUNTERS, OP_DATA, Host, RequestDecoder  # noqa: E402
 
 BAUD = 38400
 MUSIC_SUFFIXES = (".vgm", ".vgz", ".jbs")
@@ -217,6 +219,8 @@ def run(port, source, streamer, keys, out=sys.stdout):
                     host.play()
                 elif key == "s":
                     host.stop()
+                elif key == " ":
+                    host.press(BUTTON_PLAY)
         now = time.monotonic()
         if now >= next_status:
             next_status = now + STATUS_INTERVAL
@@ -276,7 +280,7 @@ def main(argv=None):
     streamer = Streamer(Host(source, stopped=args.stopped), log=log)
     keys = Keys(enabled=not args.no_keys)
     print("streaming at %d baud on %s, receive latency %s; keys: n next, p previous, "
-          "s stop, r play from the start, q quit" % (BAUD, args.port,
+          "space pause, s stop, r play from the start, q quit" % (BAUD, args.port,
                                  set_low_latency(port, args.latency_ms) if args.latency_ms
                                  else "left alone"))
     try:

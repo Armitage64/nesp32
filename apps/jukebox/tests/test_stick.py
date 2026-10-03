@@ -19,7 +19,7 @@ import pytest
 import jbs
 import protocol as desktop
 from playlist import PlaylistSource
-from test_playlist import A, B, song
+from test_playlist import A, B, song, titled
 
 STICK = os.path.join(os.path.dirname(__file__), "..", "firmware", "stick")
 sys.path.insert(0, STICK)
@@ -37,7 +37,8 @@ SONGS = [("A", A), ("B", B), ("C", C)]
 def stick_playlist(songs=SONGS, **kwargs):
     def load(index):
         title, item = songs[index]
-        return title, item.stream, item.loop_offset if item.loop_frame is not None else None
+        return (title, item.stream, item.loop_offset if item.loop_frame is not None else None,
+                item.total_frames, item.loop_frame)
     return tracks.Playlist(len(songs), load, **kwargs)
 
 
@@ -75,7 +76,7 @@ def test_decoder_finds_the_same_requests_in_noise():
     assert ours.discarded == theirs.discarded > 0
 
 
-def random_requests(rng, count, hellos=True):
+def random_requests(rng, count, hellos=True, presses=True):
     seq = 0
     for _ in range(count):
         roll = rng.random()
@@ -83,7 +84,7 @@ def random_requests(rng, count, hellos=True):
             seq = 0
             yield desktop.OP_HELLO, 0, 0
         elif roll < 0.04:
-            yield desktop.OP_BUTTON, 0, rng.randrange(8)
+            yield desktop.OP_BUTTON, 0, rng.randrange(8) if presses else 0
         elif roll < 0.07:
             yield desktop.OP_STATS, rng.randrange(9), rng.randrange(256)
         elif roll < 0.20:
@@ -104,16 +105,18 @@ def test_host_sends_the_same_bursts_as_the_desktop(seed, prepare, repeat):
     # A hello restarts the track the source is on. A host that prepares has
     # read up to one burst further, so near a track boundary it can restart
     # the next track where the desktop restarts the old one. That is the
-    # only difference, so hellos are compared without preparing.
+    # only difference, so hellos are compared without preparing. A button
+    # press that jumps or plays has the same difference, so the buttons here
+    # press nothing; the next test presses them on tracks that never end.
     rng = random.Random(seed)
     theirs = desktop.Host(PlaylistSource(SONGS, loops=2, repeat=repeat))
     ours = protocol.Host(PlaylistSource(SONGS, loops=2, repeat=repeat))
-    for op, seq, arg in random_requests(rng, 1500, hellos=prepare == "never"):
+    for op, seq, arg in random_requests(rng, 1500, hellos=prepare == "never", presses=False):
         want = theirs.handle(desktop.Request(op, seq, arg))
         assert sent(ours.handle(op, seq, arg)) == want
         if prepare == "always" or (prepare == "sometimes" and rng.random() < 0.5):
             ours.prepare()
-    assert ours.stats == theirs.stats and ours.buttons == theirs.buttons
+    assert ours.stats == theirs.stats
     assert ours.nes == theirs.nes
     if prepare != "never":  # no hellos, which start the counters over
         assert len(ours.nes) == 7 and max(ours.nes.values()) > 255  # totals, not low bytes
@@ -228,9 +231,10 @@ def test_tracks_pack_on_the_mac_and_load_on_the_stick(tmp_path):
 
     paths = tracks.list_tracks(str(out))
     assert [os.path.basename(path) for path in paths] == ["00.jbs", "01.jbs"]
-    title, stream, loop_offset = tracks.load_jbs(paths[0])
+    title, stream, loop_offset, frames, loop_frame = tracks.load_jbs(paths[0])
     assert (title, stream, loop_offset) == ("a", C.stream, C.loop_offset)
-    title, stream, loop_offset = tracks.load_jbs(paths[1])
+    assert (frames, loop_frame) == (C.total_frames, C.loop_frame)
+    title, stream, loop_offset, frames, loop_frame = tracks.load_jbs(paths[1])
     assert title == "G - Tune" and loop_offset is None and stream[:2] == b"\x80\x01"
     with pytest.raises(ValueError):
         tracks.load_jbs(str(music / "broken.jbs"))
@@ -546,7 +550,8 @@ def music(uart):
     stream = bytearray()
     for seq, burst in enumerate(uart.written):
         payload = burst[3:-2]
-        assert burst == desktop.burst_bytes(seq & 0xFF, payload, flush=burst[0] == 0x5A)
+        assert burst == desktop.burst_bytes(seq & 0xFF, payload, flush=burst[0] == 0x5A,
+                                            pause=burst[0] == 0x3C)
         stream += payload
     return bytes(stream)
 
@@ -584,29 +589,49 @@ def test_device_waits_for_button_a_before_the_first_track(uiflow):
     uart = run_device(uiflow, data_requests(300), press_a=False)
     # The NES is answered, so it does not time out, but with nothing to play.
     assert uart.written == [desktop.burst_bytes(seq & 0xFF, b"", flush=True) for seq in range(300)]
-    assert "STOPPED - A PLAYS" in drawn(uiflow) and "1/3" in drawn(uiflow)
+    assert "| STOPPED |" in drawn(uiflow) and "1/3" in drawn(uiflow)
 
 
-def test_device_power_button_stops_and_a_starts_the_track_again(uiflow):
+def test_device_button_a_pauses_and_resumes_where_it_was(uiflow):
     directory = uiflow.root / "tracks"
-    (directory / "00.jbs").write_bytes(C.to_bytes())    # long enough to stop in
+    (directory / "00.jbs").write_bytes(C.to_bytes())    # long enough to pause in
+
+    def press(call):
+        if call in (3, 30):
+            uiflow.M5.BtnA.presses = 1
+
+    uart = run_device(uiflow, data_requests(80), on_idle=press)
+    markers = [burst[0] for burst in uart.written]
+    paused = [index for index, marker in enumerate(markers) if marker == 0x3C]
+    assert len(paused) > 10 and paused == list(range(paused[0], paused[-1] + 1))
+    assert all(uart.written[index][2] == 0 for index in paused)     # empty
+    assert set(markers[paused[-1] + 1:]) == {0xA5}                  # on, with no flush
+    # Nothing was dropped or sent twice: the music is one unbroken stream.
+    stream = music(uart)
+    assert stream == stick_playlist([("", C), ("B", B), ("C", C)], loops=2,
+                                    repeat=True).take(len(stream))
+
+
+def test_device_says_paused(uiflow):
+    def press(call):
+        if call == 3:
+            uiflow.M5.BtnA.presses = 1
+
+    run_device(uiflow, data_requests(300), on_idle=press)
+    assert "| PAUSED |" in drawn(uiflow)
+
+
+def test_device_power_button_is_the_next_track(uiflow):
+    directory = uiflow.root / "tracks"
+    (directory / "00.jbs").write_bytes(C.to_bytes())
 
     def press(call):
         if call == 3:
             uiflow.M5.BtnPWR.presses = 1
-        if call == 30:
-            uiflow.M5.BtnA.presses = 1
 
-    uart = run_device(uiflow, data_requests(80), on_idle=press)
-    payloads = [burst[3:-2] for burst in uart.written]
-    first = payloads.index(C.stream[:24])
-    stopped = payloads.index(b"", first)
-    again = payloads.index(C.stream[:24], stopped)
-    assert first < stopped < again
-    assert all(payload == b"" for payload in payloads[stopped:again]) and again - stopped > 10
-    assert all(burst[0] == 0x5A for burst in uart.written[stopped:again + 1])
-    assert payloads[again + 1] == C.stream[24:48] and uart.written[again + 1][0] == 0xA5
+    uart = run_device(uiflow, data_requests(30), on_idle=press)
     music(uart)
+    assert flush_bursts(uart)[-1].startswith(titled("B", B)[:20])
 
 
 def test_device_shows_the_counters_the_nes_reports(uiflow, capsys):
@@ -614,7 +639,7 @@ def test_device_shows_the_counters_the_nes_reports(uiflow, capsys):
     script[100:100] = [desktop.request_bytes(0x53, 0, 3), desktop.request_bytes(0x53, 1, 12),
                        desktop.request_bytes(0x53, 5, 4)]
     run_device(uiflow, script)
-    assert "3/12/-/-/4" in drawn(uiflow)
+    assert "NES" not in drawn(uiflow).replace("NES JUKEBOX", "")  # the log only
     out = capsys.readouterr().out
     assert "NES aborts 3 timeouts 12 underruns 4" in out
     # On the fake clock every reading is 5 ms. The log line is timed apart
@@ -644,11 +669,105 @@ def test_device_buttons_change_the_track(uiflow):
     stream = music(uart)
     # Left alone, C would play through its loop twice and B would follow.
     two_passes = 2 * len(C.stream) - C.loop_offset
-    assert stream.startswith(C.stream[:24])
+    assert stream.startswith(titled("", C)[:24])
     assert 0 < stream.find(A.stream) < two_passes < stream.find(B.stream)
     # The change is at once: the new track starts a flush burst of its own.
-    assert A.stream in flush_bursts(uart)[-1] or flush_bursts(uart)[-1].startswith(A.stream[:10])
+    assert flush_bursts(uart)[-1] == titled("", A, 2)[:24]
     assert "/3" in drawn(uiflow)
+
+
+def test_device_clock_follows_what_the_nes_is_playing(uiflow):
+    device = uiflow.device
+    host = types.SimpleNamespace(fresh_starts=1, sent=0, drained=False, stopped=False,
+                                 paused=False)
+    playlist = types.SimpleNamespace(track_start=0, track_frames=60 * 100)
+    it = types.SimpleNamespace(player=types.SimpleNamespace(host=host), playlist=playlist,
+                               _fresh_starts=0, _playing_since=None, _paused_at=None)
+    position = lambda now: device.Device.position(it, now)  # noqa: E731
+
+    assert position(1000) == 0              # the NES is still filling its buffer
+    host.sent = 800
+    assert position(2000) == 0              # full: it starts to play now
+    assert position(12000) == 601           # ten seconds on, at 60.1 frames a second
+    assert device.clock_text(position(12000)) == "0:10"
+
+    host.paused = True                      # paused: the clock holds
+    assert position(12000) == 601 and position(50000) == 601
+    host.paused = False                     # and goes on from there
+    assert position(50000) == 601 and position(51000) == 661
+    playlist.track_start = 0
+    host.fresh_starts, host.sent = 2, 800   # the track starts over
+    assert position(60000) == 0 and position(70000) == 601
+    host.fresh_starts, host.sent = 3, 800
+    position(100000)
+
+    # The next track follows by itself. It was sent ahead of being heard, so
+    # the clock waits at zero until the NES gets there.
+    playlist.track_start = 900
+    assert position(101000) == 0
+    assert position(120000) == 1202 - 900
+    assert position(10 ** 6) == playlist.track_frames   # and stops at the end
+
+    host.fresh_starts, host.sent = 4, 24    # a jump: the NES starts over
+    playlist.track_start = 0
+    assert position(2000000) == 0
+    host.sent = 100
+    host.drained = True                     # a stream shorter than the prefill
+    assert position(2001000) == 0 and position(2002000) == 60
+    host.stopped = True
+    assert position(2010000) == 0
+
+
+def test_device_shows_the_clock_and_plain_stopped(uiflow):
+    run_device(uiflow, data_requests(300))
+    assert "| TIME | 0:0" in drawn(uiflow) and " / 0:0" in drawn(uiflow)
+    assert "A PLAYS" not in drawn(uiflow)
+
+
+def test_stick_host_counts_what_the_nes_holds():
+    host = protocol.Host(stick_playlist(loops=10 ** 6), stopped=True)
+    host.handle(protocol.OP_DATA, 0, 24)
+    assert (host.sent, host.drained) == (0, False)
+    host.play()
+    starts = host.fresh_starts
+    host.handle(protocol.OP_DATA, 1, 24)
+    host.handle(protocol.OP_DATA, 2, 24)
+    host.handle(protocol.OP_DATA, 2, 24)    # a resend sends nothing new
+    assert (host.sent, host.fresh_starts) == (48, starts + 1)
+    host.source.jump(1)
+    host.flush()
+    host.handle(protocol.OP_DATA, 3, 10)
+    assert (host.sent, host.fresh_starts) == (10, starts + 2)
+    assert host.source.frames_out >= 0 and host.source.track_start == 0
+
+
+def test_stick_playlist_counts_frames_for_the_clock():
+    playlist = stick_playlist(loops=2)
+    assert playlist.track_frames == jbs.play_frames(A.total_frames, A.loop_frame, 2)
+    while playlist.index == 0:
+        playlist.take(1)
+    # B has begun: everything before it was A, which played track_frames.
+    assert playlist.track_start == jbs.play_frames(A.total_frames, A.loop_frame, 2)
+    assert playlist.track_frames == B.total_frames
+    playlist.jump(1)
+    assert playlist.track_start == 0 and playlist.frames_out == 0
+
+
+def test_device_obeys_the_nes_controller(uiflow):
+    # Button requests from the NES: Right twice, then Start, then Start. The
+    # first Start pauses and the second goes on.
+    script = data_requests(60)
+    script[10:10] = [desktop.request_bytes(0x42, 0, protocol.BUTTON_NEXT)]
+    script[20:20] = [desktop.request_bytes(0x42, 0, protocol.BUTTON_NEXT)]
+    script[30:30] = [desktop.request_bytes(0x42, 0, protocol.BUTTON_PLAY)]
+    script[45:45] = [desktop.request_bytes(0x42, 0, protocol.BUTTON_PLAY)]
+    uart = run_device(uiflow, script)
+    music(uart)
+    # Each start is a flush burst: button A's at the beginning, then Right's.
+    begun = [payload for payload in flush_bursts(uart) if payload]
+    assert len(begun) == 3 and begun[0][:7] == titled("A", A)[:7]
+    markers = [burst[0] for burst in uart.written]
+    assert markers.count(0x3C) > 10 and markers[-1] == 0xA5
 
 
 def test_device_config_overrides_board_and_pins(uiflow):

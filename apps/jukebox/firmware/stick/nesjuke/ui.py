@@ -23,9 +23,9 @@ MAX_VALUE_CHARS = 27
 MAX_ERROR_CHARS = 34
 
 HEADER = "header"
-ROWS = ("track", "title", "state", "link", "reply", "nes", "error")
-LABELS = {"track": "TRACK", "title": "", "state": "STATE", "link": "LINK",
-          "reply": "REPLY", "nes": "NES", "error": ""}
+ROWS = ("track", "title", "time", "state", "link", "reply", "error")
+LABELS = {"track": "TRACK", "title": "", "time": "TIME", "state": "STATE", "link": "LINK",
+          "reply": "REPLY", "error": ""}
 
 
 class StatusScreen:

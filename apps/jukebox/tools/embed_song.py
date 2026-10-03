@@ -6,8 +6,9 @@
 
 Accepts a .jbs, or a .vgm/.vgz which it converts first. A song that does not
 loop gets an end-of-track control appended, standing in for the one the host
-sends when it stops. Outputs are only rewritten when their contents change,
-so make does not rebuild the ROM for nothing.
+sends when it stops, and every song gets its names and length in front, as
+a host sends ahead of each track. Outputs are only rewritten when their contents
+change, so make does not rebuild the ROM for nothing.
 """
 
 import argparse
@@ -29,12 +30,15 @@ def load_song(path):
         return jbs.JbsFile.from_bytes(handle.read())
 
 
-def embedded_image(song):
-    """Return (bytes for song.bin, text for song.inc)."""
+def embedded_image(song, title=""):
+    """Return (bytes for song.bin, text for song.inc). title stands in for a
+    song that has none of its own."""
     loops = song.loop_frame is not None
-    data = song.stream if loops else song.stream + END_OF_TRACK
     if loops and not 0 < song.loop_offset < len(song.stream):
         raise ValueError("loop offset %d is outside the stream" % song.loop_offset)
+    # A looping song never ends here, so it has no length to show.
+    intro = jbs.intro(song.title or title, None if loops else song.total_frames)
+    data = intro + (song.stream if loops else song.stream + END_OF_TRACK)
     if len(data) > SONG_CAPACITY:
         raise ValueError(
             "song is %d bytes; the ROM has room for %d" % (len(data), SONG_CAPACITY)
@@ -45,7 +49,8 @@ def embedded_image(song):
         "SONG_LENGTH = %d\n"
         "SONG_LOOP_OFFSET = %d\n"
         "SONG_LOOPS = %d\n"
-        % (song.title or "(untitled)", len(data), song.loop_offset if loops else 0, int(loops))
+        % (song.title or title or "(untitled)", len(data),
+           len(intro) + song.loop_offset if loops else 0, int(loops))
     )
     return data, include
 
@@ -67,7 +72,8 @@ def main(argv=None):
     parser.add_argument("out_dir", help="directory for song.bin and song.inc")
     args = parser.parse_args(argv)
     try:
-        data, include = embedded_image(load_song(args.song))
+        name = os.path.splitext(os.path.basename(args.song))[0]
+        data, include = embedded_image(load_song(args.song), name)
     except (OSError, ValueError) as error:
         print("%s: %s" % (args.song, error), file=sys.stderr)
         return 1

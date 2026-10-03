@@ -30,7 +30,18 @@ $(BUILD)/song.bin: FORCE $(if $(filter $(DEMO),$(SONG)),$(DEMO)) | $(BUILD)
 
 $(BUILD)/song.inc: $(BUILD)/song.bin
 
-$(BUILD)/jukebox.o: nes/jukebox.s nes/fake_link.inc $(BUILD)/song.bin $(BUILD)/song.inc
+# The screen: tiles, nametables and tables for nes/ui.inc.
+# gen_ui.py rewrites only the files whose contents changed, so the ROMs
+# depend on each of them, not on one that stands for all.
+UI := $(BUILD)/ui_data.inc $(BUILD)/chr.bin $(BUILD)/screen.bin $(BUILD)/screen_standalone.bin
+
+$(BUILD)/ui.stamp: tools/gen_ui.py | $(BUILD)
+	$(PYTHON) tools/gen_ui.py $(BUILD)
+	touch $@
+
+$(UI): $(BUILD)/ui.stamp ;
+
+$(BUILD)/jukebox.o: nes/jukebox.s nes/ui.inc nes/fake_link.inc $(UI) $(BUILD)/song.bin $(BUILD)/song.inc
 	ca65 -g -I $(BUILD) -I nes --bin-include-dir $(BUILD) -o $@ $<
 
 $(ROM): $(BUILD)/jukebox.o nes/nrom256.cfg
@@ -41,8 +52,8 @@ $(ROM): $(BUILD)/jukebox.o nes/nrom256.cfg
 $(BUILD)/crc16_table.inc: tools/gen_crc_table.py | $(BUILD)
 	$(PYTHON) tools/gen_crc_table.py $@
 
-$(BUILD)/jukebox_link.o: nes/jukebox.s nes/serial_link.inc $(BUILD)/crc16_table.inc
-	ca65 -g -D LINK -I $(BUILD) -I nes -o $@ $<
+$(BUILD)/jukebox_link.o: nes/jukebox.s nes/ui.inc nes/serial_link.inc $(UI) $(BUILD)/crc16_table.inc
+	ca65 -g -D LINK -I $(BUILD) -I nes --bin-include-dir $(BUILD) -o $@ $<
 
 $(LINK_ROM): $(BUILD)/jukebox_link.o nes/nrom256.cfg
 	ld65 -C nes/nrom256.cfg -o $@ -Ln $(BUILD)/jukebox_link.labels \

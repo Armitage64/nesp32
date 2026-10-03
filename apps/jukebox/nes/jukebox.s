@@ -25,6 +25,11 @@
 ; once all of it is in the ring. If the ring runs dry partway through, the
 ; NMI writes nothing, leaves head alone and counts an underrun. The notes
 ; hold for a frame instead of playing half a frame's writes.
+;
+; The screen (ui.inc) is drawn from the NMI as well: the PPU writes first,
+; while vblank lasts, then the frame's music, then the bars for the next
+; vblank. All of it comes before the main loop's request, so the link sees
+; only a later start to its frame.
 
 PPUCTRL   = $2000
 PPUMASK   = $2001
@@ -40,7 +45,6 @@ APU_FRAME = $4017               ; writes; reads are JOY2
 
 PPUCTRL_NMI = $80
 FRAME_IRQ_INHIBIT = $40
-BACKDROP_COLOR = $01            ; dark blue
 
 RING      = $0400
 RING_END_PAGE = $08
@@ -52,6 +56,19 @@ OP_CHAIN   = $00
 OP_CONTROL = $80
 CTRL_END   = $00
 CTRL_INIT  = $01
+CTRL_TITLE = $02
+CTRL_GAME  = $03
+CTRL_LENGTH = $04
+
+; link_state: what the link last heard, for the screen's status line.
+LINK_WAITING   = 0              ; no answer from a host
+LINK_STOPPED   = 1              ; the host is stopped
+LINK_STREAMING = 2
+
+; Bits of the A that link_button gets: what the controller asked for.
+EVENT_NEXT = $01
+EVENT_PREV = $02
+EVENT_PLAY = $04                ; play or pause
 
 ; Indices into group_regs for the registers the control records write.
 REG_INDEX_STATUS = 0
@@ -95,6 +112,8 @@ wait_left:    .res 1
 link_done:    .res 1            ; the link has nothing more to give
 flush_pending: .res 1           ; the link asks the NMI to drop what is buffered
 stream_error: .res 1
+link_state:   .res 1            ; LINK_*, set by the link
+paused:       .res 1            ; held: by a pause burst, or the standalone ROM's Start
 underruns:    .res 2
 stage_reg:    .res STAGE_MAX
 stage_val:    .res STAGE_MAX
@@ -150,17 +169,7 @@ group_regs:
     bit PPUSTATUS
     bpl @vblank2
 
-    ; Rendering stays off, so the screen shows the backdrop color.
-    lda #$3F
-    sta PPUADDR
-    lda #$00
-    sta PPUADDR
-    lda #BACKDROP_COLOR
-    sta PPUDATA
-    lda #$20
-    sta PPUADDR
-    lda #$00
-    sta PPUADDR
+    jsr ui_init                 ; rendering is off; the first NMI turns it on
 
     lda #<RING
     sta head
@@ -293,6 +302,8 @@ retry:
     rts
 .endproc
 
+.include "ui.inc"
+
 .ifdef LINK
     .include "serial_link.inc"
 .else
@@ -309,6 +320,7 @@ retry:
     pha
     tya
     pha
+    jsr ui_vblank               ; PPU writes first, while vblank lasts
     lda flush_pending
     beq @play
     jsr apply_flush
@@ -316,8 +328,11 @@ retry:
 @play:
     lda playing
     beq @skip
+    lda paused
+    bne @skip
     jsr decode_frame
 @skip:
+    jsr ui_update
     inc frame_count
     link_nmi_hook               ; from the link include
     pla
@@ -343,6 +358,7 @@ retry:
     sta head + 1
     lda #0
     sta APU_STATUS
+    sta apu_shadow + $15
     sta playing
     sta ended
     sta wait_left
@@ -361,6 +377,7 @@ retry:
     lda wait_left
     beq @decode
     dec wait_left
+    inc ui_ticks                ; a frame played, for the screen's clock
 @out:
     rts
 
@@ -421,6 +438,7 @@ retry:
     sta ended
     lda #0
     sta APU_STATUS
+    sta apu_shadow + $15
     rts
 @underrun:
     inc underruns
@@ -472,12 +490,33 @@ retry:
     bcs @failed
     jmp @next
 @not_init:
+    ldx #LINE_TITLE
+    cmp #CTRL_TITLE
+    beq @text
+    ldx #LINE_GAME
+    cmp #CTRL_GAME
+    bne @not_text
+@text:
+    jsr read_title
+    bcs @control_failed
+    jmp @next
+@control_failed:                ; @failed is out of a branch's reach from here
+    jmp @failed
+@not_text:
+    cmp #CTRL_LENGTH
+    bne @not_length
+    jsr read_length
+    bcs @control_failed
+    jmp @next
+@not_length:
     cmp #CTRL_END
-    bne @bad
+    beq @end
+    jmp @bad
+@end:
     ldx #REG_INDEX_STATUS
     lda #0
     jsr stage_write
-    bcs @failed
+    bcs @control_failed
     lda #1
     sta end_pending
     ; fall through to commit
@@ -490,6 +529,9 @@ retry:
     ldx stage_reg,y
     lda stage_val,y
     sta APU,x
+    sta apu_shadow,x            ; for the screen's bars
+    lda #1
+    sta apu_fresh,x
     iny
     bne @apply
 @applied:
@@ -501,6 +543,7 @@ retry:
     sta wait_left
     lda end_pending
     sta ended
+    inc ui_ticks
     rts
 
 .endproc
@@ -644,6 +687,9 @@ retry:
     sec
     rts
 .endproc
+
+.segment "CHARS"
+    .incbin "chr.bin"
 
 .segment "VECTORS"
     .addr nmi

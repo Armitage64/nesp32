@@ -19,6 +19,16 @@ OP_BUTTON = 0x42    # 'B'
 OP_STATS = 0x53     # 'S'
 OPS = frozenset({OP_DATA, OP_HELLO, OP_BUTTON, OP_STATS})
 
+# A button request's ARG: what the NES's controller asked for.
+BUTTON_NEXT = 0x01      # Right
+BUTTON_PREVIOUS = 0x02  # Left
+BUTTON_PLAY = 0x04      # Start or A: play, or pause
+
+# The NES reads its controller once a frame by holding OUT0 low for about
+# two bit times, which a UART receives as this byte. It is expected, not
+# noise.
+PAD_READ_BYTE = 0xFE
+
 # The counters the NES reports with OP_STATS, in the order of its index
 # (STATS_TABLE in nes/serial_link.inc). Each report carries a low byte.
 NES_COUNTERS = ("aborts", "timeouts", "rejects", "crc_errors", "request_delay",
@@ -61,6 +71,7 @@ class NesCounters:
 
 BURST_MARKER = 0xA5
 FLUSH_MARKER = 0x5A  # a burst that first drops what the NES has buffered
+PAUSE_MARKER = 0x3C  # an empty burst: the NES holds the music where it is
 MAX_BURST_PAYLOAD = 255
 
 
@@ -82,14 +93,16 @@ def request_bytes(op, seq, arg):
     return bytes([op, seq, arg, request_check(op, seq, arg)])
 
 
-def burst_bytes(seq, payload, flush=False):
-    """A burst, or a flush burst, whose CRC covers its marker as well."""
+def burst_bytes(seq, payload, flush=False, pause=False):
+    """A burst, or a flush or pause burst, whose CRC covers its marker as
+    well."""
     if len(payload) > MAX_BURST_PAYLOAD:
         raise ValueError("burst payload too long")
     body = bytes([seq, len(payload)]) + bytes(payload)
-    if flush:
-        crc = crc16(bytes([FLUSH_MARKER]) + body)
-        return bytes([FLUSH_MARKER]) + body + bytes([crc >> 8, crc & 0xFF])
+    if flush or pause:
+        marker = bytes([FLUSH_MARKER if flush else PAUSE_MARKER])
+        crc = crc16(marker + body)
+        return marker + body + bytes([crc >> 8, crc & 0xFF])
     crc = crc16(body)
     return bytes([BURST_MARKER]) + body + bytes([crc >> 8, crc & 0xFF])
 
@@ -104,10 +117,11 @@ class Request:
 class RequestDecoder:
     """Find requests in the byte stream from the NES.
 
-    The line carries noise as well: break bytes around bursts and glitches
-    from controller strobes. A candidate frame must have a known op and a
-    valid check byte; on failure the scan moves forward one byte, because a
-    good frame is often sitting one byte later.
+    The line carries other bytes as well: one from each controller read
+    (PAD_READ_BYTE, once a frame), and noise. A candidate frame must have a
+    known op and a valid check byte; on failure the scan moves forward one
+    byte, because a good frame is often sitting one byte later. `discarded`
+    counts the bytes passed over, leaving out the controller reads.
     """
 
     def __init__(self):
@@ -123,8 +137,9 @@ class RequestDecoder:
                 requests.append(Request(op, seq, arg))
                 del self.buffer[:REQUEST_LENGTH]
             else:
+                if op != PAD_READ_BYTE:
+                    self.discarded += 1
                 del self.buffer[0]
-                self.discarded += 1
         return requests
 
 
@@ -184,6 +199,10 @@ class Host:
     keeps asking, so the link stays alive. play() starts the current track
     again from its beginning, and flush() makes the next burst a flush burst,
     for a source that has just jumped to another track.
+
+    Paused, it answers with empty pause bursts: the NES falls silent but
+    keeps what it has buffered, and carries on from there with the first
+    ordinary burst after `paused` is cleared.
     """
 
     def __init__(self, source, stopped=False):
@@ -192,24 +211,44 @@ class Host:
         self.source = StreamSource(source) if isinstance(source, jbs.JbsFile) else source
         self.stats = {"hello": 0, "bursts": 0, "resends": 0, "unexpected_seq": 0,
                       "buttons": 0}
-        self.buttons = []
         self.counters = NesCounters()
         self.nes = self.counters.totals  # counter name -> total this session
         self.last_seq = None
         self.last_burst = b""
         self.stopped = stopped
+        self.paused = False
         self.flush_next = False
 
     def stop(self):
         self.stopped = True
+        self.paused = False
 
     def play(self):
         self.source.restart()
-        self.stopped = False
+        self.stopped = self.paused = False
         self.flush_next = True
 
     def flush(self):
         self.flush_next = True
+
+    def press(self, buttons):
+        """Do what the NES's controller asked for (BUTTON_* bits). Left and
+        Right change the track and start it playing, also from stopped or
+        paused. Start pauses and resumes; from stopped, or after the
+        playlist's end, it plays the current track from its beginning."""
+        source = self.source
+        if buttons & (BUTTON_NEXT | BUTTON_PREVIOUS):
+            if hasattr(source, "jump"):
+                source.jump(1 if buttons & BUTTON_NEXT else -1)
+                self.stopped = self.paused = False
+                self.flush()
+            else:
+                self.play()     # a single track: start it again
+        elif buttons & BUTTON_PLAY:
+            if self.stopped or getattr(source, "finished", False):
+                self.play()
+            else:
+                self.paused = not self.paused
 
     def _reset(self):
         self.source.restart()
@@ -226,7 +265,7 @@ class Host:
             return b""
         if request.op == OP_BUTTON:
             self.stats["buttons"] += 1
-            self.buttons.append(request.arg)
+            self.press(request.arg)
             return b""
         if request.op == OP_STATS:
             self.counters.report(request.seq, request.arg)
@@ -237,11 +276,14 @@ class Host:
         if self.last_seq is not None and request.seq != (self.last_seq + 1) & 0xFF:
             self.stats["unexpected_seq"] += 1
         self.stats["bursts"] += 1
+        pause = False
         if self.stopped:
             payload, flush = b"", True
+        elif self.paused:
+            payload, flush, pause = b"", False, True
         else:
             payload = self.source.take(min(request.arg, MAX_BURST_PAYLOAD))
             flush, self.flush_next = self.flush_next, False
         self.last_seq = request.seq
-        self.last_burst = burst_bytes(request.seq, payload, flush)
+        self.last_burst = burst_bytes(request.seq, payload, flush, pause)
         return self.last_burst

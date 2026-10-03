@@ -243,8 +243,9 @@ visible to the decoder.
 
 - **Mapper:** NROM-256 (mapper 0, 32 KB PRG, 8 KB CHR). No bank switching is
   needed. Assembled with ca65/ld65, like nes-radar.
-- **RAM map:** zero page for player state; `$0100` stack; `$0200` OAM shadow;
-  `$0300-$03FF` player and link state, including a 64-entry staging list;
+- **RAM map:** zero page for player state and the screen's bars; `$0100`
+  stack; `$0200-$03FF` player, link and screen state, including a 64-entry
+  staging list (there are no sprites, so no OAM shadow);
   **`$0400-$07FF` 1 KB ring buffer**. Using a whole number of pages keeps
   wrap-around cheap.
 - **Ring indices** (built in phase 2): head is the decoder's and tail is the
@@ -255,8 +256,10 @@ visible to the decoder.
 - **Staging** (built in phase 2): the NMI decodes a whole frame into a
   staging list before touching the APU. If the ring runs dry partway, it
   writes nothing, leaves head alone, and counts an underrun.
-- **NMI:** save registers, OAM DMA, decode exactly one frame (or consume one
-  frame of a wait), read controller 1, and increment a frame counter. On
+- **NMI:** save registers, read controller 1 and write to the PPU while
+  vblank lasts, decode exactly one frame (or consume one frame of a wait),
+  work out the screen's bars for the next vblank, and increment a frame
+  counter. On
   underrun, write nothing: the notes hold, and an underrun counter
   increments. If `rx_active` is set, rewrite the stacked return address to
   `rx_abort` before `rti`.
@@ -264,9 +267,10 @@ visible to the decoder.
   `B` request). If ring space is at least the minimum burst, compute
   `CREDIT = min(space, bytes_that_fit(time_left))`, send the request, set
   `rx_active`, receive, verify the CRC, commit, and clear `rx_active`.
-- **Screen (v1):** a static title screen, the track number and title from a
-  metadata record, and debug counters for underruns, CRC failures and aborts,
-  like nes-radar's `ERROR n` field.
+- **Screen** (built in phase 6, `nes/ui.inc`): the title, the game's
+  and the track's names and length from control records in the stream, a
+  clock, a status line, and 28 bars driven by the APU writes. Background tiles only. Everything is drawn
+  from the NMI, so the main loop's request keeps its fixed place after it.
 - **Timing-critical routines** (`rx_byte`, `tx_byte`, and the start-bit
   hunt) live on their own pages in the `RXTX` segment, so no branch pays the
   page-crossing cycle. `tests/test_serial_timing.py` measures every read and
@@ -282,8 +286,10 @@ docs/PROTOCOL.md        stream format and link protocol
 tools/vgm2jbs.py        converter
 tools/apu_model.py      register-state model used by the tests
 tools/gen_crc_table.py  CRC-16 lookup tables for the link ROM
-nes/                    jukebox.s (player), fake_link.inc, serial_link.inc,
-                        nrom256.cfg (Makefile at the root)
+nes/                    jukebox.s (player), ui.inc (screen and controller),
+                        fake_link.inc, serial_link.inc, nrom256.cfg
+                        (Makefile at the root)
+tools/gen_ui.py         tiles, the screen's layout and tables for ui.inc
 tools/embed_song.py     song -> build/song.bin + song.inc for the ROM
 tools/demo_song.py      original demo tune, so builds need no rips
 host/                   protocol.py (link protocol, host side); the desktop
@@ -492,6 +498,68 @@ serial hardware.
    controller navigation (next, previous, pause), and link and buffer
    status (underruns, CRC retries). Also fade-out by scaling envelope
    volumes on the StickS3.
+
+   **Done: the screen and the controller.** Built, tested in simulation,
+   and seen working on hardware: the screen, the clocks, the controller
+   and the Stick's buttons all do what they should.
+   - Both ROMs show the title, the game's name and the track's name on a
+     line each, a clock (position / length), a status line (waiting for
+     the link, press Start, loading; blank once a track is on the screen),
+     and 28 bars that follow the music. While the music is paused or
+     stopped the clock flashes. Under the title, in a 3 x 5 font, is a
+     credit line. `tools/gen_ui.py` makes the tiles, the nametable and the
+     tables, and can write the screen as a PNG.
+   - The names and the length arrive in the stream: three control records
+     (`$80 $03`, `$02`, `$04`), which the hosts put ahead of each track.
+     They are drawn as the track's first notes play, so they are right
+     however much the NES had buffered. Nothing changed in the `.jbs`
+     files. The NES's clock counts the frames it plays from the length
+     record on.
+   - The Stick shows the same clock. The NES does not report its position,
+     so the Stick works it out: the NES plays a frame per vblank from the
+     moment its buffer reached the prefill. Its screen lost the NES
+     counters row (they stay in the USB log) and says plain `STOPPED`.
+   - The bars are drawn from the stream's APU writes, not from sound. Each
+     channel lights the bar for its pitch to its volume, and bars fall by
+     themselves. Length counters, envelopes, the triangle's linear counter
+     and `$4015` are followed, so a note the console stops is stopped on
+     the screen. Sweeps are not followed.
+   - Controller 1: Right and Left change the track, Start or A pauses and
+     resumes (a *pause burst*, `$3C`: the NES holds the music and keeps
+     its buffer, so it goes on from the same frame). The Stick's buttons
+     now do the same three things: A pauses, B is previous, power is next. The NES sends a button request (`$42`) and the host acts on
+     it, the desktop host and the Stick alike. On the standalone ROM Start
+     pauses.
+   - Reading the controller means pulling OUT0 low, which is the serial
+     line. The read is one low pulse of 94 cycles at the start of the NMI;
+     the host's UART receives it as `$FE` once a frame, and both decoders
+     pass over it without counting noise. In the simulation it never comes
+     within 12 bit times of a request, and decodes cleanly at ±3% baud.
+
+   **What the screen costs the link.** All of it runs in the NMI, before
+   the main loop's request: the PPU writes must be in vblank, and nothing
+   may run during a burst. Measured on py65 over the five rips: the NMI's
+   median went from about 0.2 ms to 1.1 ms (2000 cycles) and its 99th
+   percentile from 1 ms to about 2 ms; a track's opening frame, which also
+   copies the title, runs to 4.4 ms. PPU writes end at most 1200 cycles
+   into the 2273 of vblank. A frame draws the title, or the status line,
+   or the changed bars of one half of the display, which is what keeps
+   that bounded.
+
+   The host's reply budget fell from 6.5 ms to 5.5 ms. (The earlier 6.0 ms
+   figure came from a harness that started each frame when the NMI handler
+   returned, which hid the handler's time; it now starts frames a fixed
+   period apart.) The Stick's replies measured 0.9 ms on average and
+   3.9 ms at worst, so there is room, but less. `CREDIT_MAX` 20 in place
+   of 24 would give 7 ms, at the cost of a prefill of 38 frames for 32.
+
+   **Not yet measured on hardware:** the resend share and the NES's
+   counters with the screen running, to compare with phase 5's figures;
+   whether the hosts' noise counts stay still with a `$FE` arriving every
+   frame; and how far the Stick's clock drifts from the NES's.
+
+   **Still to do here:** the track's number, the link's counters on the
+   screen, and fade-out.
 7. **Optional: preload and DPCM.** Target a board with 8 KB PRG-RAM, or a
    flash cart that provides it, for a larger buffer or whole-loop preload
    with LZ-compressed `.jbs`. For DPCM: a cartridge with RAM or writable

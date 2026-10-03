@@ -103,3 +103,92 @@ def test_an_ended_track_answers_with_empty_bursts():
     host = Host(jbs.JbsFile(stream=b"\x80\x01\x05", total_frames=5))
     assert host.handle(Request(0x4A, 0, 24)) == protocol.burst_bytes(0, b"\x80\x01\x05\x80\x00")
     assert host.handle(Request(0x4A, 1, 24)) == protocol.burst_bytes(1, b"")
+
+
+def test_the_controller_read_byte_is_passed_over_without_counting_as_noise():
+    # The NES's controller read puts $FE on the line once a frame, ahead of
+    # the request. The same value inside a request is just data.
+    decoder = RequestDecoder()
+    line = (b"\xFE" + protocol.request_bytes(0x4A, 0, 24)
+            + b"\xFE" + protocol.request_bytes(0x4A, 0xFE, 0xFE))
+    assert decoder.feed(line) == [Request(0x4A, 0, 24), Request(0x4A, 0xFE, 0xFE)]
+    assert decoder.discarded == 0
+    assert decoder.feed(b"\x00\xFE" + protocol.request_bytes(0x53, 1, 2)) == [Request(0x53, 1, 2)]
+    assert decoder.discarded == 1
+
+
+def button(host, buttons):
+    assert host.handle(Request(protocol.OP_BUTTON, 0, buttons)) == b""
+
+
+def test_the_controller_changes_track_stops_and_plays():
+    from playlist import PlaylistSource
+    from test_playlist import A, B, titled
+
+    source = PlaylistSource([("A", A), ("B", B)], loops=10 ** 6)
+    host = Host(source, stopped=True)
+    empty = protocol.burst_bytes(0, b"", flush=True)
+    assert host.handle(Request(0x4A, 0, 24)) == empty
+
+    button(host, protocol.BUTTON_PLAY)              # Start, from stopped
+    assert not host.stopped
+    assert host.handle(Request(0x4A, 1, 8)) == protocol.burst_bytes(1, titled("A", A)[:8], flush=True)
+
+    button(host, protocol.BUTTON_NEXT)              # Right: the next track, at once
+    assert source.index == 1
+    assert host.handle(Request(0x4A, 2, 8)) == protocol.burst_bytes(2, titled("B", B)[:8], flush=True)
+    button(host, protocol.BUTTON_PREVIOUS)
+    assert source.index == 0
+
+    assert host.handle(Request(0x4A, 3, 8)) == protocol.burst_bytes(3, titled("A", A)[:8], flush=True)
+    button(host, protocol.BUTTON_PLAY)              # Start, while playing: pause
+    assert host.paused and not host.stopped
+    assert host.handle(Request(0x4A, 4, 24)) == protocol.burst_bytes(4, b"", pause=True)
+    assert host.handle(Request(0x4A, 5, 0)) == protocol.burst_bytes(5, b"", pause=True)
+    assert host.handle(Request(0x4A, 5, 0)) == protocol.burst_bytes(5, b"", pause=True)  # resent
+    button(host, protocol.BUTTON_PLAY)              # and again: on from where it was
+    assert not host.paused
+    assert host.handle(Request(0x4A, 6, 4)) == protocol.burst_bytes(
+        6, titled("A", A, 10 ** 6)[8:12])
+
+    button(host, protocol.BUTTON_PLAY)
+    button(host, protocol.BUTTON_NEXT)              # Right from paused plays the next
+    assert not host.paused and source.index == 1
+    assert host.handle(Request(0x4A, 7, 8)) == protocol.burst_bytes(7, titled("B", B)[:8], flush=True)
+
+    host.stop()
+    button(host, protocol.BUTTON_NEXT)              # and from stopped
+    assert not host.stopped and source.index == 0
+    assert host.stats["buttons"] == 8
+
+
+def test_a_pause_burst_is_told_apart_by_its_marker_and_crc():
+    burst = protocol.burst_bytes(9, b"", pause=True)
+    assert burst[:3] == bytes([protocol.PAUSE_MARKER, 9, 0])
+    assert burst[3:] != protocol.burst_bytes(9, b"")[3:]
+    assert burst[3:] != protocol.burst_bytes(9, b"", flush=True)[3:]
+
+
+def test_start_plays_again_after_the_playlist_has_ended():
+    from playlist import PlaylistSource
+    from test_playlist import B, titled
+
+    source = PlaylistSource([("B", B)], loops=1)
+    host = Host(source)
+    seq = 0
+    while host.handle(Request(0x4A, seq, 24)) != protocol.burst_bytes(seq, b""):
+        seq += 1
+    assert source.finished and not host.stopped
+    button(host, protocol.BUTTON_PLAY)
+    assert host.handle(Request(0x4A, seq + 1, 8)) == protocol.burst_bytes(
+        seq + 1, titled("B", B)[:8], flush=True)
+
+
+def test_a_single_track_host_takes_the_buttons_too():
+    host = Host(looping_track())
+    host.handle(Request(0x4A, 0, 10))
+    button(host, protocol.BUTTON_NEXT)              # no other track: start it again
+    assert host.handle(Request(0x4A, 1, 4)) == protocol.burst_bytes(
+        1, looping_track().stream[:4], flush=True)
+    button(host, protocol.BUTTON_PLAY)
+    assert host.paused

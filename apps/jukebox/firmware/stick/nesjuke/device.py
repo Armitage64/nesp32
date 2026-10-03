@@ -27,7 +27,7 @@ import time
 
 from nesjuke import VERSION, board, tracks
 from nesjuke.player import Player
-from nesjuke.protocol import Host
+from nesjuke.protocol import BUTTON_NEXT, BUTTON_PLAY, BUTTON_PREVIOUS, Host
 from nesjuke.ui import StatusScreen
 
 FS_ROOT = "/flash"
@@ -37,15 +37,22 @@ TRACKS_PATH = FS_ROOT + "/tracks"
 GC_EVERY = 64               # bursts, about one second of playing
 IDLE_CHORES_MS = 20         # buttons and screen while no bursts are going out
 STATUS_MS = 1000
+CLOCK_MS = 250
 LOG_MS = 5000
 BATTERY_MS = 10000
 PLAYING_WITHIN_MS = 500     # of the last data request
+NES_PREFILL = 768           # PREFILL in nes/jukebox.s: bytes before it plays
 SLEEP_AFTER_MS = 2000       # with no requests, stop spinning and nap
 NAP_MS = 2
 
 
-# The counters the NES reports (protocol.NES_COUNTERS) that go on the screen.
-NES_ROW = ("aborts", "timeouts", "rejects", "crc_errors", "underruns")
+# The counters the NES reports (protocol.NES_COUNTERS) that go in the log.
+NES_LOG = ("aborts", "timeouts", "rejects", "crc_errors", "underruns")
+
+
+def clock_text(frames):
+    seconds = frames // 60
+    return "%d:%02d" % (seconds // 60, seconds % 60)
 
 
 class PowerOff(Exception):
@@ -79,9 +86,13 @@ class Device:
         now = time.ticks_ms()
         self._chores_at = now
         self._status_at = now
+        self._clock_at = now
         self._log_at = now
         self._battery_at = time.ticks_add(now, -BATTERY_MS)
         self._request_at = time.ticks_add(now, -SLEEP_AFTER_MS)
+        self._fresh_starts = 0
+        self._playing_since = None  # when the NES began to play what it holds
+        self._paused_at = None      # when it was paused, while it is
 
     def on_track(self, index, title):
         # The track being sent, or the one button A will start.
@@ -105,28 +116,65 @@ class Device:
         a_pressed, b_clicked, b_held, power_clicked = self.buttons.poll()
         if b_held:
             raise PowerOff()
-        # Stopped, A starts the current track from its beginning. Playing,
-        # A and B change the track. Either way the next burst is a flush
-        # burst, so the NES drops the seconds of music it already holds.
+        # The buttons do what the NES's controller does (Host.press). A
+        # pauses and resumes, or from stopped plays the current track from
+        # its beginning. B is the previous track and the power button the
+        # next, played at once: the next burst is a flush burst, so the NES
+        # drops the seconds of music it already holds.
         host = self.player.host
-        if power_clicked:
-            host.stop()
         if a_pressed:
-            if host.stopped:
-                host.play()
-            else:
-                self.playlist.jump(1)
-                host.flush()
+            host.press(BUTTON_PLAY)
         if b_clicked:
-            self.playlist.jump(-1)
-            host.flush()
+            host.press(BUTTON_PREVIOUS)
+        if power_clicked:
+            host.press(BUTTON_NEXT)
         if time.ticks_diff(now, self._battery_at) >= BATTERY_MS:
             self._battery_at = now
             self.screen.set(battery="%d%%" % board.battery_percent())
+        if time.ticks_diff(now, self._clock_at) >= CLOCK_MS:
+            self._clock_at = now
+            self.screen.set(time="%s / %s" % (clock_text(self.position(now)),
+                                              clock_text(self.playlist.track_frames)))
         if time.ticks_diff(now, self._status_at) >= STATUS_MS:
             self._status_at = now
             self.show_status(now)
         self.screen.refresh()
+
+    def position(self, now):
+        """Frames into the track that the NES is playing now, worked out
+        from the clock: the NES does not report it.
+
+        The NES plays one frame per vblank from the moment its buffer
+        reaches the prefill, so it is that many frames into what was sent
+        since its buffer was last emptied. The playlist knows where in that
+        the track it is sending began. That track is a few seconds ahead of
+        the one being heard when one follows another by itself, so the
+        clock rests at zero for those seconds."""
+        host = self.player.host
+        if host.fresh_starts != self._fresh_starts:
+            self._fresh_starts = host.fresh_starts
+            self._playing_since = None
+        if host.stopped:
+            self._playing_since = None
+            return 0
+        if self._playing_since is None:
+            self._paused_at = None
+            if host.paused or (host.sent < NES_PREFILL and not host.drained):
+                return 0
+            self._playing_since = now
+        # A pause stops the NES's frames. The time spent paused is taken out
+        # by moving the start later when the music goes on.
+        if host.paused:
+            if self._paused_at is None:
+                self._paused_at = now
+            now = self._paused_at
+        elif self._paused_at is not None:
+            self._playing_since = time.ticks_add(
+                self._playing_since, time.ticks_diff(now, self._paused_at))
+            self._paused_at = None
+        played = time.ticks_diff(now, self._playing_since) * 601 // 10000  # 60.1 a second
+        playlist = self.playlist
+        return min(max(played - playlist.track_start, 0), playlist.track_frames)
 
     def show_status(self, now):
         player = self.player
@@ -138,14 +186,14 @@ class Device:
             self.write_us_max = write_us
         # The NES's own counters (low bytes) say why it asked again: bursts
         # cut off by its NMI, waits that timed out, rejects, CRC errors and
-        # underruns, as totals since this Stick first heard from it.
+        # underruns, as totals since this Stick first heard from it. They go
+        # in the USB log line.
         nes = player.host.nes
-        counters = " ".join("%s %d" % (name, nes[name]) for name in NES_ROW if name in nes)
+        counters = " ".join("%s %d" % (name, nes[name]) for name in NES_LOG if name in nes)
         self.screen.set(
-            # The row is too narrow for names: values only, in NES_ROW's order.
-            nes="/".join(str(nes.get(name, "-")) for name in NES_ROW) if nes else "",
             state=("WAITING FOR NES" if not playing
-                   else "STOPPED - A PLAYS" if player.host.stopped else "PLAYING"),
+                   else "STOPPED" if player.host.stopped
+                   else "PAUSED" if player.host.paused else "PLAYING"),
             link="%d sent, %d%% resent" % (stats["bursts"], resend_pct),
             reply="%d.%d avg %d.%d max, noise %d" % (
                 average_us // 1000, average_us % 1000 // 100,

@@ -6,7 +6,9 @@ records, and the NES decodes one frame's worth per NMI:
     $00         the next write record does not advance a frame
     $01-$7F     wait n frames with no writes
     $80 cc      control record (cc: $00 end of track, which also ends the
-                frame; $01 APU init, which does not)
+                frame; $01 APU init, which does not; $02 track name and
+                $03 game name, each followed by a length and that many
+                characters; $04 track length, followed by five characters)
     $81-$FF     write record, then advance one frame
 
 A write record's header bits select register groups. Each selected group
@@ -31,7 +33,13 @@ INIT_WRITES = 2
 
 CTRL_END = 0x00
 CTRL_INIT = 0x01
-CONTROL_CODES = frozenset({CTRL_END, CTRL_INIT})
+CTRL_TITLE = 0x02
+CTRL_GAME = 0x03
+CTRL_LENGTH = 0x04
+CONTROL_CODES = frozenset({CTRL_END, CTRL_INIT})  # those with nothing after the code
+TITLE_MAX = 28  # characters: one line of the console's screen
+LENGTH_CHARS = 5
+FRAMES_PER_SECOND = 60
 
 Group = namedtuple("Group", "name bit registers")
 
@@ -53,6 +61,69 @@ RANK = {
 }
 
 Control = namedtuple("Control", "code")
+Title = namedtuple("Title", "text")      # the track's name
+Game = namedtuple("Game", "text")        # the game it came from
+Length = namedtuple("Length", "text")    # "M:SS ", as the console shows it
+TEXT_CONTROLS = {CTRL_TITLE: Title, CTRL_GAME: Game}
+
+
+def split_title(title):
+    """(game, track) as the console shows them: printable ASCII, a line each.
+
+    The converter's titles are "game - track". A title without the hyphen is
+    a track's name with no game."""
+    text = _ascii_title(title).decode("ascii")
+    game, separator, track = text.partition(" - ")
+    if not separator:
+        game, track = "", text
+    return game[:TITLE_MAX].strip(), track[:TITLE_MAX].strip()
+
+
+def play_frames(total_frames, loop_frame, loops):
+    """How long a track plays in a playlist: once through, then its loop
+    another loops - 1 times."""
+    if loop_frame is None:
+        return total_frames
+    return total_frames + (max(1, loops) - 1) * (total_frames - loop_frame)
+
+
+def length_text(frames):
+    """A length as the five characters the console shows, "M:SS " or
+    "MM:SS". None, for a track that never ends, is dashes."""
+    if frames is None:
+        return b"-:-- "
+    seconds = min(frames // FRAMES_PER_SECOND, 99 * 60 + 59)
+    return (b"%d:%02d" % (seconds // 60, seconds % 60)).ljust(LENGTH_CHARS)
+
+
+def intro(title, frames=None):
+    """The control records a host sends ahead of a track: the game's name,
+    the track's name, and how long it will play. They write nothing to the
+    APU and advance no frame. The length record also starts the console's
+    clock again from zero."""
+    game, track = (part.encode("ascii") for part in split_title(title))
+    return (bytes([OP_CONTROL, CTRL_GAME, len(game)]) + game
+            + bytes([OP_CONTROL, CTRL_TITLE, len(track)]) + track
+            + bytes([OP_CONTROL, CTRL_LENGTH]) + length_text(frames))
+
+
+def _control_end(data, pos):
+    """The position after the control record at pos."""
+    code = _byte(data, pos + 1)
+    if code in TEXT_CONTROLS:
+        length = _byte(data, pos + 2)
+        if length > TITLE_MAX:
+            raise StreamError("title of %d characters at %d" % (length, pos))
+        end = pos + 3 + length
+    elif code == CTRL_LENGTH:
+        end = pos + 2 + LENGTH_CHARS
+    elif code in CONTROL_CODES:
+        end = pos + 2
+    else:
+        raise StreamError("unknown control code $%02X at %d" % (code, pos + 1))
+    if end > len(data):
+        raise StreamError("stream truncated at %d" % len(data))
+    return end
 
 
 class StreamError(ValueError):
@@ -131,9 +202,16 @@ def decode(data, start=0):
             current = []
             pos += 1
         elif op == OP_CONTROL:
-            code = _byte(data, pos + 1)
-            if code not in CONTROL_CODES:
-                raise StreamError("unknown control code $%02X at %d" % (code, pos + 1))
+            end = _control_end(data, pos)
+            code = data[pos + 1]
+            if code in TEXT_CONTROLS:
+                current.append(TEXT_CONTROLS[code](data[pos + 3:end].decode("latin-1")))
+                pos = end
+                continue
+            if code == CTRL_LENGTH:
+                current.append(Length(data[pos + 2:end].decode("latin-1")))
+                pos = end
+                continue
             current.append(Control(code))
             pos += 2
             if code == CTRL_END:  # the last thing in its frame
@@ -165,8 +243,7 @@ def frame_units(data):
         if op == OP_CONTROL:
             if pos != start:
                 raise StreamError("control record inside a frame at %d" % pos)
-            _byte(data, pos + 1)
-            pos += 2
+            pos = _control_end(data, pos)
         elif op < OP_CONTROL:
             pos += 1
         else:

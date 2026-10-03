@@ -21,19 +21,26 @@ HEADER_SIZE = 24
 
 OP_CHAIN = 0x00
 OP_CONTROL = 0x80
+CTRL_TITLE = 0x02
+CTRL_GAME = 0x03
+CTRL_LENGTH = 0x04
 END_OF_TRACK = b"\x80\x00"
+TITLE_MAX = 28  # characters: one line of the console's screen
+FRAMES_PER_SECOND = 60
 
 # Set bits in a group's submask, which is how many values follow it.
 _BITS = b"\x00\x01\x01\x02\x01\x02\x02\x03\x01\x02\x02\x03\x02\x03\x03\x04"
 
 
 def load_jbs(path):
-    """Return (title, stream, loop offset or None) from a .jbs file."""
+    """Return (title, stream, loop offset or None, frames, loop frame) from
+    a .jbs file. The loop frame means nothing without a loop offset."""
     with open(path, "rb") as handle:
         data = handle.read()
     if len(data) <= HEADER_SIZE:
         raise ValueError("not a .jbs file: " + path)
-    magic, version, flags, _, _, _, loop_offset, length = struct.unpack_from(HEADER, data, 0)
+    magic, version, flags, _, frames, loop_frame, loop_offset, length = struct.unpack_from(
+        HEADER, data, 0)
     if magic != FILE_MAGIC or version != FILE_VERSION:
         raise ValueError("not a .jbs file: " + path)
     start = HEADER_SIZE + 1 + data[HEADER_SIZE]
@@ -41,12 +48,40 @@ def load_jbs(path):
     if len(stream) != length:
         raise ValueError("truncated: " + path)
     title = str(data[HEADER_SIZE + 1:start], "ascii")
-    return title, stream, loop_offset if flags & FLAG_LOOPS else None
+    return title, stream, loop_offset if flags & FLAG_LOOPS else None, frames, loop_frame
 
 
 def list_tracks(directory):
     return sorted(directory + "/" + name for name in os.listdir(directory)
                   if name.endswith(".jbs"))
+
+
+def intro(title, frames):
+    """The control records sent ahead of a track, as tools/jbs.py builds
+    them: the game's name, the track's name, and how long it will play. The
+    converter's titles are "game - track"."""
+    cut = title.find(" - ")
+    if cut < 0:
+        game, track = "", title
+    else:
+        game, track = title[:cut], title[cut + 3:]
+    game = bytes(game[:TITLE_MAX].strip(), "ascii")
+    track = bytes(track[:TITLE_MAX].strip(), "ascii")
+    seconds = min(frames // FRAMES_PER_SECOND, 99 * 60 + 59)
+    return (bytes((OP_CONTROL, CTRL_GAME, len(game))) + game
+            + bytes((OP_CONTROL, CTRL_TITLE, len(track))) + track
+            + bytes((OP_CONTROL, CTRL_LENGTH))
+            + bytes(("%d:%02d " % (seconds // 60, seconds % 60))[:5], "ascii"))
+
+
+def unit_frames(data, pos):
+    """How many frames the unit starting at pos plays for."""
+    op = data[pos]
+    if op == OP_CONTROL:
+        return 1 if data[pos + 1] == 0 else 0   # only end-of-track takes one
+    if OP_CHAIN < op < OP_CONTROL:
+        return op                               # a wait
+    return 1
 
 
 def _record_end(data, pos):
@@ -71,7 +106,10 @@ def unit_end(data, pos):
         pos = _record_end(data, pos + 1)
         op = data[pos]
     if op == OP_CONTROL:
-        return pos + 2
+        code = data[pos + 1]
+        if code == CTRL_TITLE or code == CTRL_GAME:
+            return pos + 3 + data[pos + 2]
+        return pos + 7 if code == CTRL_LENGTH else pos + 2
     if op < OP_CONTROL:
         return pos + 1
     return _record_end(data, pos)
@@ -79,9 +117,14 @@ def unit_end(data, pos):
 
 class Playlist:
     def __init__(self, count, load, loops=2, repeat=False, on_track=None):
-        """load(index) returns (title, stream, loop offset or None) for one
-        of the count tracks. on_track(index, title) is called when the host
-        starts sending a track."""
+        """load(index) returns load_jbs's tuple for one of the count tracks.
+        on_track(index, title) is called when the host starts sending a
+        track.
+
+        For a clock: frames_out counts the frames handed out since the
+        stream last started over (a jump or a restart), track_start is its
+        value where the current track began, and track_frames is how long
+        that track plays."""
         if not count:
             raise ValueError("empty playlist")
         self.count = count
@@ -92,14 +135,20 @@ class Playlist:
         self.pending = b""
         self.finished = False
         self.requested = None
+        self.frames_out = 0
         self._start(0)
 
     def _start(self, index):
         self.data = b""  # let go of the old track before loading the next
-        title, self.data, self.loop_offset = self.load(index)
+        title, self.data, self.loop_offset, frames, loop_frame = self.load(index)
+        if self.loop_offset is not None:
+            frames += (self.loops - 1) * (frames - loop_frame)
         self.index = index
         self.pos = 0
         self.passes_left = self.loops
+        self.track_start = self.frames_out
+        self.track_frames = frames
+        self.intro = intro(title, frames)
         if self.on_track:
             self.on_track(index, title)
 
@@ -116,6 +165,7 @@ class Playlist:
         self.requested = None
         self.pending = b""
         self.finished = False
+        self.frames_out = 0
         self._start((base + delta) % self.count)
 
     def restart(self):
@@ -123,6 +173,7 @@ class Playlist:
         self.pending = b""
         self.finished = False
         self.requested = None
+        self.frames_out = 0
         self._start(self.index)
 
     def take(self, count):
@@ -145,6 +196,10 @@ class Playlist:
             else:
                 self.finished = True
                 return END_OF_TRACK
+        if self.intro:
+            intro, self.intro = self.intro, None
+            return intro
         start = self.pos
+        self.frames_out += unit_frames(self.data, start)
         self.pos = unit_end(self.data, start)
         return self.data[start:self.pos]

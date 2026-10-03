@@ -5,6 +5,10 @@ notice of a track change: the next track's bytes simply follow the last
 frame of the previous one. Tracks are cut only between frame units
 (jbs.frame_units), never inside a frame.
 
+Ahead of each track go its game's name, its own name and its length
+(jbs.intro), which reach the console's screen at the moment its first frame
+plays.
+
 A looping track plays its loop `loops` times in all, then the playlist moves
 on. After the last track the stream ends with an end-of-track control,
 unless the playlist repeats.
@@ -43,6 +47,8 @@ class PlaylistSource:
                 raise ValueError("%s: loop offset is not a frame boundary" % title)
             self.loop_unit = starts.index(song.loop_offset)
         self.passes_left = self.loops
+        self.intro = jbs.intro(title, jbs.play_frames(song.total_frames, song.loop_frame,
+                                                      self.loops))
         if self.on_track:
             self.on_track(index, title)
 
@@ -88,6 +94,9 @@ class PlaylistSource:
             else:
                 self.finished = True
                 return END_OF_TRACK
+        if self.intro:
+            intro, self.intro = self.intro, None
+            return intro
         start, end = self.units[self.unit]
         self.unit += 1
         return self.data[start:end]

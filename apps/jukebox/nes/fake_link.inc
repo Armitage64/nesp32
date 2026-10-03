@@ -1,7 +1,7 @@
 ; Fake link: copies a song built into PRG ROM into the ring, standing in for
 ; the serial link. Used by the standalone ROM and as a self-test.
 ;
-; Provides link_init, link_service and the link_nmi_hook macro.
+; Provides link_init, link_service, link_button and the link_nmi_hook macro.
 
 .include "song.inc"
 
@@ -30,8 +30,29 @@ song_desc:
 .macro link_nmi_hook
 .endmacro
 
+; Start pauses and resumes; there is no host to change the track. The
+; channel enables are put back from the screen's copy of $4015.
+.proc link_button
+    and #EVENT_PLAY
+    beq @done
+    lda paused
+    eor #1
+    sta paused
+    beq @resume
+    lda #0
+    sta APU_STATUS
+    rts
+@resume:
+    lda apu_shadow + $15
+    sta APU_STATUS
+@done:
+    rts
+.endproc
+
 ; Point at the song and fill the ring before NMI is enabled.
 .proc link_init
+    lda #LINK_STREAMING
+    sta link_state
     lda song_desc
     sta src
     lda song_desc + 1
