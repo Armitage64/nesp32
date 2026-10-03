@@ -83,17 +83,22 @@ def open_link_uart(tx, rx, invert=True):
 
 
 class Buttons:
-    """Front button A and side button B, through M5Unified's debounced state."""
+    """Front button A, side button B and the power button, through
+    M5Unified's debounced state."""
 
     def poll(self):
-        """Returns (A was pressed, B was clicked, B held long enough to power off).
+        """Returns (A was pressed, B was clicked, B held long enough to power
+        off, the power button was clicked).
 
         A click is a release before M5Unified's hold threshold, so the press
-        that starts a power-off hold never also changes the track.
+        that starts a power-off hold never also changes the track. A build
+        of UIFlow without M5.BtnPWR just never reports the power button.
         """
         M5.update()
+        power = getattr(M5, "BtnPWR", None)
         return (M5.BtnA.wasPressed(), M5.BtnB.wasClicked(),
-                M5.BtnB.pressedFor(POWER_OFF_HOLD_MS))
+                M5.BtnB.pressedFor(POWER_OFF_HOLD_MS),
+                power.wasClicked() if power is not None else False)
 
 
 def battery_percent():

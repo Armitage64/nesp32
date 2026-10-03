@@ -60,6 +60,7 @@ class NesCounters:
         self.raw[name] = value
 
 BURST_MARKER = 0xA5
+FLUSH_MARKER = 0x5A  # a burst that first drops what the NES has buffered
 MAX_BURST_PAYLOAD = 255
 BURST_HEADER = 3    # marker, sequence, length
 DEFAULT_CREDIT = 24  # CREDIT_MAX in nes/serial_link.inc
@@ -135,7 +136,7 @@ class Host:
     number with the same credit as last time.
     """
 
-    def __init__(self, source, credit=DEFAULT_CREDIT):
+    def __init__(self, source, credit=DEFAULT_CREDIT, stopped=False):
         self.source = source
         self.stats = {"hello": 0, "bursts": 0, "resends": 0, "unexpected_seq": 0,
                       "buttons": 0}
@@ -150,8 +151,33 @@ class Host:
         self.staged = 0
         self.sealed_seq = None  # the staged burst is complete for this request
         self.sealed_length = 0
+        self.sealed_flush = False
+        # Stopped, every answer is an empty flush burst: the NES drops what
+        # it has buffered, falls silent and keeps asking.
+        self.stopped = stopped
+        self.flush_next = False
         self.last_seq = None
         self.last_length = 0    # whole bytes of the last burst, header to CRC
+
+    def stop(self):
+        self.stopped = True
+        self._discard()
+
+    def play(self):
+        """Start the current track again from its beginning."""
+        self.source.restart()
+        self.stopped = False
+        self.flush()
+
+    def flush(self):
+        """Make the next burst a flush burst, for a source that has just
+        jumped to another track. What was read ahead belongs to the old one."""
+        self.flush_next = True
+        self._discard()
+
+    def _discard(self):
+        self.staged = 0
+        self.sealed_seq = None
 
     def _reset(self):
         self.source.restart()
@@ -168,13 +194,17 @@ class Host:
                 self.buffers[self.current][start:start + len(data)] = data
                 self.staged += len(data)
 
-    def _seal(self, seq, length):
+    def _seal(self, seq, length, flush):
         buffer = self.buffers[self.current]
-        buffer[0] = BURST_MARKER
         buffer[1] = seq
         buffer[2] = length
         table = CRC_TABLE
         crc = 0xFFFF
+        if flush:   # its CRC covers the marker as well
+            buffer[0] = FLUSH_MARKER
+            crc = ((crc << 8) & 0xFF00) ^ table[(crc >> 8) ^ FLUSH_MARKER]
+        else:
+            buffer[0] = BURST_MARKER
         end = BURST_HEADER + length
         for index in range(1, end):
             crc = ((crc << 8) & 0xFF00) ^ table[(crc >> 8) ^ buffer[index]]
@@ -182,16 +212,20 @@ class Host:
         buffer[end + 1] = crc & 0xFF
         self.sealed_seq = seq
         self.sealed_length = length
+        self.sealed_flush = flush
 
     def prepare(self):
         """Build the burst the next request will most likely ask for. Call it
         while the line is idle: right after a reply, or while waiting."""
         if self.sealed_seq is not None:
             return
+        seq = 0 if self.last_seq is None else (self.last_seq + 1) & 0xFF
+        if self.stopped:
+            self._seal(seq, 0, True)
+            return
         self._stage(self.credit)
         if self.staged <= self.credit:
-            seq = 0 if self.last_seq is None else (self.last_seq + 1) & 0xFF
-            self._seal(seq, self.staged)
+            self._seal(seq, self.staged, self.flush_next)
 
     def handle(self, op, seq, arg):
         """Return the bytes to send for one request, or None for none. The
@@ -215,10 +249,17 @@ class Host:
         if self.last_seq is not None and seq != (self.last_seq + 1) & 0xFF:
             self.stats["unexpected_seq"] += 1
         self.stats["bursts"] += 1
-        self._stage(arg)
-        length = min(self.staged, arg)
+        if self.stopped:
+            length = 0
+            flush = True
+        else:
+            self._stage(arg)
+            length = min(self.staged, arg)
+            flush = self.flush_next
+            self.flush_next = False
         sending = self.current
-        if self.sealed_seq != seq or self.sealed_length != length:
+        if (self.sealed_seq != seq or self.sealed_length != length
+                or self.sealed_flush != flush):
             # Not the request prepare() expected. Bytes staged beyond this
             # credit move to the other buffer first, because the CRC is
             # about to be written where they sit.
@@ -227,7 +268,7 @@ class Host:
                 start = BURST_HEADER + length
                 self.buffers[1 - sending][BURST_HEADER:BURST_HEADER + extra] = (
                     self.buffers[sending][start:start + extra])
-            self._seal(seq, length)
+            self._seal(seq, length, flush)
             self.staged = extra
         else:
             self.staged = 0

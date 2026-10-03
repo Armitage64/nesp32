@@ -374,9 +374,9 @@ serial hardware.
    - end-of-track was permanent, so a playlist could not continue past it;
      the NES now stays silent until more stream arrives.
 
-   A track change is heard after the NES's buffer plays out (a few
-   seconds). Instant skip needs a flush command on the NES, which belongs
-   with the UI in phase 6.
+   A track change was heard only after the NES's buffer played out (a
+   few seconds). The flush burst added in phase 5 makes it immediate; the
+   keys are now n, p, s (stop), r (play from the start) and q.
 
    **Done on hardware:** all five rips play over the FTDI cable on a real
    NES. Resends were 50-60% of requests with the FTDI chip's default
@@ -453,24 +453,26 @@ serial hardware.
    and reports the error rate at each step. The result settles phase 3b's
    open choice between 38400 and 57600.
 
-   **To do: wait for a button before the first track.** Music should not
-   start by itself when the Stick powers up and finds the NES. The Stick
-   should show that it is ready and hold off until the user presses a
-   button, then start the first track. To settle when it is built: what
-   the Stick sends meanwhile (the NES asks for data as soon as it boots
-   and times out every 4 frames if nothing answers), and whether a NES
-   reset later in a session waits for the button again.
-
-   **To do: stop and restart from the buttons.** A tap of the power
-   button stops the current song. A tap of the front button restarts
-   playback. To settle when it is built: the front button is next track
-   today, so it needs to mean "start" only while stopped (which also
-   covers the wait before the first track, above); whether restarting
-   begins the song again or carries on from where it stopped; and how to
-   silence the NES at once, since it holds a few seconds of music the
-   Stick has already sent (the flush command that instant skip needs).
-   The firmware does not read the power button yet, and the S3's and the
-   Plus2's may not behave alike under UIFlow.
+   **Done on the Plus2: start stopped, stop, and instant track
+   changes.** Two to-do entries asked for no music until a button is
+   pressed, and for the power button to stop and the front button to
+   restart. Both rest on one addition to the link, the *flush burst*
+   (`docs/PROTOCOL.md`): a burst with marker `$5A` that makes the NES drop
+   what it has buffered, silence the APU, and refill before it plays.
+   - The Stick starts stopped and answers every request with an empty
+     flush burst, so the NES stays silent without timing out.
+   - Button A plays the current track from its start. While playing, A and
+     B change track, and the power button stops.
+   - A NES reset restarts the track if one was playing, and stays stopped
+     if not.
+   - A stop or a change is heard at once, and the music returns after the
+     prefill (about half a second), where it used to take the few seconds
+     the NES had buffered. This is the instant skip phase 6 wanted.
+   - In simulation: frame-exact through stops, plays and jumps, with a
+     noisy line and slow replies as well.
+   - On a real NES with the Plus2: every button does what it should, and
+     stops, plays and track changes are immediate. The power button is
+     read as UIFlow's `M5.BtnPWR`; the S3's is still to try.
 
    **To do: investigate streaming digital audio.** Find out whether
    sampled sound (raw PCM through `$4011`) can be streamed to the NES

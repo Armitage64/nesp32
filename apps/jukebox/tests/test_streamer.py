@@ -119,4 +119,33 @@ def test_run_answers_the_port_and_obeys_keys():
 
     jukebox.run(port, source, streamer, keys, out=Quiet())
     assert port.written == protocol.burst_bytes(0, A.stream[:8])
-    assert source.requested == 1  # 'n' queued the next track
+    # 'n' went to the next track at once; its first burst will flush the NES.
+    assert source.index == 1 and streamer.host.flush_next
+    assert streamer.host.handle(protocol.Request(0x4A, 1, 8)) == protocol.burst_bytes(
+        1, B.stream[:8], flush=True)
+
+
+def test_stop_and_play_keys():
+    port, keys = PipePort(), PipeKeys()
+    source = PlaylistSource([("A", A), ("B", B)], loops=1)
+    streamer = jukebox.Streamer(Host(source))
+    os.write(port.nes_fd, protocol.request_bytes(0x4A, 0, 8))
+    os.write(keys.typist, b"sq")
+
+    class Quiet:
+        def write(self, text):
+            pass
+
+        def flush(self):
+            pass
+
+    jukebox.run(port, source, streamer, keys, out=Quiet())
+    host = streamer.host
+    assert host.stopped
+    assert host.handle(protocol.Request(0x4A, 1, 8)) == protocol.burst_bytes(1, b"", flush=True)
+    os.write(keys.typist, b"rq")
+    jukebox.run(port, source, streamer, keys, out=Quiet())
+    assert not host.stopped
+    assert host.handle(protocol.Request(0x4A, 2, 8)) == protocol.burst_bytes(
+        2, A.stream[:8], flush=True)
+    assert host.handle(protocol.Request(0x4A, 3, 2)) == protocol.burst_bytes(3, A.stream[8:10])

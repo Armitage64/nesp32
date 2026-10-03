@@ -311,3 +311,99 @@ def test_a_playlist_with_skips_plays_through_the_link(link_rom, demo):
     # twice before the skips.
     assert started == ["demo", "demo", "short", "demo"]
     assert short.stream[2:] in bytes(recording.log)
+
+
+# -- stop, play and flush ------------------------------------------------------
+
+def frames_from_the_start(song, count):
+    return list(itertools.islice(expected_frames(song.stream, loop_offset(song)), count))
+
+
+def apu_silenced_since(machine, nmis):
+    """True if some NMI in the last `nmis` wrote $4015 = 0 and nothing else."""
+    return any(writes == [(0x15, 0x00)] for writes, _, _ in machine.frames[-nmis:])
+
+
+def test_a_stopped_host_keeps_the_nes_quiet_and_the_link_alive(link_rom, demo):
+    host = Host(demo, stopped=True)
+    machine = LinkConsole(*link_rom, host=host)
+    machine.run(200)
+    assert machine.byte("playing") == 0 and machine.played_frames() == []
+    stats = counters(machine)
+    assert stats["underruns"] == 0 and machine.word("link_timeouts") == 0
+    assert stats["link_bursts"] > 150          # an empty flush burst nearly every frame
+    assert host.stats["resends"] == 0
+
+    host.play()
+    machine.run_until_played(300)
+    assert machine.played_frames()[:300] == frames_from_the_start(demo, 300)
+    assert counters(machine)["underruns"] == 0
+
+
+def test_stop_silences_at_once_and_play_starts_the_song_again(link_rom, demo):
+    host = Host(demo)
+    machine = LinkConsole(*link_rom, host=host)
+    machine.run_until_played(150)
+    host.stop()
+    machine.run(6)
+    played = len(machine.played_frames())
+    assert machine.byte("playing") == 0 and apu_silenced_since(machine, 6)
+    machine.run(120)
+    assert len(machine.played_frames()) == played    # nothing more came out
+    assert counters(machine)["underruns"] == 0 and machine.word("link_timeouts") == 0
+
+    host.play()
+    machine.run_until_played(played + 200)
+    frames = machine.played_frames()
+    assert frames[:played] == frames_from_the_start(demo, played)
+    assert frames[played:played + 200] == frames_from_the_start(demo, 200)
+    assert counters(machine)["underruns"] == 0
+
+
+def test_a_jump_is_heard_within_a_second(link_rom, demo):
+    from playlist import PlaylistSource
+
+    frames = [[(0x15, 0x0F)], [(0x04, 0xBF), (0x07, 0x08)]] + [[(0x04, 0xB0 | n)] for n in range(15)]
+    encoded = jbs.encode(frames, loop_frame=1)
+    short = jbs.JbsFile(stream=encoded.data, total_frames=len(frames), loop_frame=1,
+                        loop_offset=encoded.loop_offset)
+    source = PlaylistSource([("demo", demo), ("short", short)], loops=50)
+    host = Host(source)
+    machine = LinkConsole(*link_rom, host=host)
+    machine.run_until_played(150)
+    source.jump(1)
+    host.flush()
+    machine.run(8)
+    played = len(machine.played_frames())      # where the old track was cut
+    nmis = len(machine.frames)
+    machine.run_until_played(played + 100)
+    got = machine.played_frames()
+    assert got[:played] == frames_from_the_start(demo, played)
+    assert got[played:played + 100] == frames_from_the_start(short, 100)
+    # The NES held about 3 s of the old track. The new one needs only the
+    # prefill: 768 bytes, or about 32 frames, then it plays.
+    silent = next(index for index, (_, underran, playing) in enumerate(machine.frames[nmis:])
+                  if playing and not underran)
+    assert silent < 60
+    assert counters(machine)["underruns"] == 0
+
+
+@pytest.mark.parametrize("seed", range(4))
+def test_stop_and_play_survive_a_noisy_line(link_rom, demo, seed):
+    rng = random.Random(seed)
+    host = Host(demo, stopped=True)
+    machine = LinkConsole(*link_rom, host=host, reply_fault=flip_random_bit(rng, 0.15),
+                          turnaround=lambda: ms(rng.uniform(0.5, 9)))
+    played = 0
+    for _ in range(4):
+        machine.run(rng.randrange(20, 90))
+        assert len(machine.played_frames()) == played
+        host.play()
+        machine.run_until_played(played + 120)
+        host.stop()
+        machine.run(40)                        # resends may delay the flush
+        got = machine.played_frames()
+        assert machine.byte("playing") == 0
+        assert got[played:] == frames_from_the_start(demo, len(got) - played)
+        played = len(got)
+    assert machine.byte("stream_error") == 0

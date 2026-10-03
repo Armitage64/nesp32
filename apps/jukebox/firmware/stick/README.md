@@ -12,7 +12,7 @@ by asking UIFlow which one it is on:
 
 This is a proof of concept. **It has played music on a real NES from a
 StickC Plus2**: about two minutes with no resends and no errors counted by
-the console. It has not run on a StickS3 yet, and has had no long run on
+the console, and the buttons start, stop and change tracks at once. It has not run on a StickS3 yet, and has had no long run on
 either. The protocol and playlist code is also tested byte for byte against
 the desktop host and against the simulated NES (`tests/test_stick.py`).
 
@@ -76,16 +76,31 @@ which slows the stage's edges. Either should work at 38400 on a real NES;
 Plug the hat into controller port 2 and start `build/jukebox_link.nes` on the
 console. The order of powering up does not matter.
 
-- **Button A** (front): next track. **Button B** (side): previous track; hold
-  2 s to power off.
-- A track change is heard after the few seconds of music the NES has already
-  buffered.
+Nothing plays until you press a button. The Stick starts stopped, shows
+`STOPPED - A PLAYS` once it hears the console, and answers the console's
+requests with nothing to play.
+
+| Button | Stopped | Playing |
+|---|---|---|
+| **A** (front) | play the track shown, from its start | next track |
+| **B** (side) | previous track (stays stopped) | previous track |
+| **B**, held 2 s | power off | power off |
+| **Power**, tapped | | stop |
+
+- Stops and track changes are heard at once, and the music starts again
+  after about half a second: the Stick tells the NES to drop the few
+  seconds it has buffered.
+- Resetting the NES while a track plays starts that track again. Resetting
+  it while stopped leaves it stopped.
+- The power button is read as UIFlow's `M5.BtnPWR`. It works on the StickC
+  Plus2; the StickS3's has not been tried, and a build without one never
+  stops.
 
 The screen shows the track being sent, and once a second:
 
 | Row | Meaning |
 |---|---|
-| STATE | `PLAYING` while requests arrive, `WAITING FOR NES` otherwise |
+| STATE | `PLAYING` or `STOPPED - A PLAYS` while requests arrive, `WAITING FOR NES` otherwise |
 | LINK | bursts sent, and the share of requests that were repeats. A repeat is a burst the NES missed |
 | REPLY | the average and slowest reply in the last second, in ms: the firmware's own time from bytes in to handing the burst to the UART. Then bytes that were not part of a request |
 | NES | the console's own counters: cut-offs / timeouts / rejects / CRC errors / underruns |

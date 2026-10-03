@@ -60,6 +60,7 @@ class NesCounters:
         self.raw[name] = value
 
 BURST_MARKER = 0xA5
+FLUSH_MARKER = 0x5A  # a burst that first drops what the NES has buffered
 MAX_BURST_PAYLOAD = 255
 
 
@@ -81,10 +82,14 @@ def request_bytes(op, seq, arg):
     return bytes([op, seq, arg, request_check(op, seq, arg)])
 
 
-def burst_bytes(seq, payload):
+def burst_bytes(seq, payload, flush=False):
+    """A burst, or a flush burst, whose CRC covers its marker as well."""
     if len(payload) > MAX_BURST_PAYLOAD:
         raise ValueError("burst payload too long")
     body = bytes([seq, len(payload)]) + bytes(payload)
+    if flush:
+        crc = crc16(bytes([FLUSH_MARKER]) + body)
+        return bytes([FLUSH_MARKER]) + body + bytes([crc >> 8, crc & 0xFF])
     crc = crc16(body)
     return bytes([BURST_MARKER]) + body + bytes([crc >> 8, crc & 0xFF])
 
@@ -173,9 +178,15 @@ class Host:
     identical copy always fits, because the NES's credit for a repeated
     sequence number never shrinks: nothing was committed, and playback only
     frees space.
+
+    The host can also be stopped. It then answers every request with an
+    empty flush burst: the NES drops what it has buffered, falls silent and
+    keeps asking, so the link stays alive. play() starts the current track
+    again from its beginning, and flush() makes the next burst a flush burst,
+    for a source that has just jumped to another track.
     """
 
-    def __init__(self, source):
+    def __init__(self, source, stopped=False):
         """source is a JbsFile (one track) or anything with take(count) and
         restart(), such as a playlist.PlaylistSource."""
         self.source = StreamSource(source) if isinstance(source, jbs.JbsFile) else source
@@ -186,6 +197,19 @@ class Host:
         self.nes = self.counters.totals  # counter name -> total this session
         self.last_seq = None
         self.last_burst = b""
+        self.stopped = stopped
+        self.flush_next = False
+
+    def stop(self):
+        self.stopped = True
+
+    def play(self):
+        self.source.restart()
+        self.stopped = False
+        self.flush_next = True
+
+    def flush(self):
+        self.flush_next = True
 
     def _reset(self):
         self.source.restart()
@@ -213,7 +237,11 @@ class Host:
         if self.last_seq is not None and request.seq != (self.last_seq + 1) & 0xFF:
             self.stats["unexpected_seq"] += 1
         self.stats["bursts"] += 1
-        payload = self.source.take(min(request.arg, MAX_BURST_PAYLOAD))
+        if self.stopped:
+            payload, flush = b"", True
+        else:
+            payload = self.source.take(min(request.arg, MAX_BURST_PAYLOAD))
+            flush, self.flush_next = self.flush_next, False
         self.last_seq = request.seq
-        self.last_burst = burst_bytes(request.seq, payload)
+        self.last_burst = burst_bytes(request.seq, payload, flush)
         return self.last_burst

@@ -175,6 +175,35 @@ Once a track has ended, the host answers with empty bursts (`LEN` 0). The
 NES takes an empty burst as the end of the track and starts playing
 whatever it has, even if that is less than the 768-byte prefill.
 
+### Flush burst (host to NES)
+
+```text
+$5A, SEQ, LEN, PAYLOAD[LEN], CRC_HI, CRC_LO
+```
+
+The same as a burst, with a different marker, and with the CRC taken over
+the marker as well (`$5A`, `SEQ`, `LEN`, payload), so a damaged ordinary
+burst cannot pass for one. When the NES accepts it, it drops everything it
+has buffered and not yet played, silences the APU (`$4015=0`), and stops
+playing until the ring has refilled to the prefill. The burst's payload is
+the first thing in the emptied ring. Sequence numbers and resends work as
+for any burst.
+
+The host uses it for everything that should be heard at once, where the NES
+would otherwise first play out the few seconds it holds:
+
+- **Changing or restarting a track:** the first burst of the new stream is
+  a flush burst. The music starts again after the prefill, about half a
+  second.
+- **Stopped:** the host answers every request with an *empty* flush burst.
+  The NES stays silent and keeps asking every frame, so nothing times out
+  and the host can see that the console is there. Unlike an empty ordinary
+  burst, this does not start playback.
+
+A flush waits for the NES's next request, and the NES asks only when 8
+bytes of its ring are free. In the middle of a long rest in the music that
+can take as long as the rest.
+
 ### Waiting, cut-offs and retries
 
 - **Waiting for the marker spans NMIs.** An NMI that arrives while the NES

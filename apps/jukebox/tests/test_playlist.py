@@ -70,6 +70,17 @@ def test_skip_lands_on_a_frame_boundary():
     jbs.decode(stream)  # never a torn frame
 
 
+def test_jump_switches_at_once_and_drops_what_was_pending():
+    started = []
+    source = PlaylistSource([("A", A), ("B", B)], loops=5, on_track=lambda i, t: started.append(t))
+    source.take(3)                  # generates a whole frame; 3 bytes of it are taken
+    source.jump(1)
+    assert source.take(len(B.stream)) == B.stream   # none of A's leftover first
+    source.jump(1)                  # wraps to A
+    assert source.take(len(A.stream)) == A.stream
+    assert started == ["A", "B", "A"]
+
+
 def test_skip_backwards_wraps_and_restart_replays():
     source = PlaylistSource([("A", A), ("B", B)], loops=1)
     source.skip(-1)

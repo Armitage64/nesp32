@@ -11,7 +11,8 @@ NES-side one later.
     host/jukebox.py --port /dev/cu.usbserial-XXXX --loops 1 a.vgz b.vgz
     host/jukebox.py --list-ports
 
-Keys while playing: n next track, p previous, r restart, q quit.
+Keys while playing: n next track, p previous, s stop, r play the current
+track from its start (also after a stop), q quit.
 
 The NES paces everything. It sends a request right after each vblank and
 waits for the burst; this program's only job is to answer quickly. For full
@@ -19,8 +20,8 @@ throughput the reply should start within 6 ms of the request (see
 docs/PROTOCOL.md), and the status line reports how the link is doing.
 Resends are the number to watch: each is a burst the NES missed.
 
-A track change reaches the speakers after what is already buffered on the
-NES has played, a few seconds.
+A track change, stop or restart is heard within about a second: the next
+burst tells the NES to drop the music it has buffered.
 """
 
 import argparse
@@ -205,12 +206,17 @@ def run(port, source, streamer, keys, out=sys.stdout):
             for key in keys.read().lower():
                 if key == "q":
                     return
+                host = streamer.host
                 if key == "n":
-                    source.skip(1)
+                    source.jump(1)
+                    host.flush()
                 elif key == "p":
-                    source.skip(-1)
+                    source.jump(-1)
+                    host.flush()
                 elif key == "r":
-                    source.skip(0)
+                    host.play()
+                elif key == "s":
+                    host.stop()
         now = time.monotonic()
         if now >= next_status:
             next_status = now + STATUS_INTERVAL
@@ -232,6 +238,8 @@ def main(argv=None):
     parser.add_argument("--loops", type=int, default=2, help="times through a looping track")
     parser.add_argument("--repeat", action="store_true", help="start over after the last track")
     parser.add_argument("--no-keys", action="store_true", help="don't read the keyboard")
+    parser.add_argument("--stopped", action="store_true",
+                        help="start stopped, as the Stick does; r plays")
     parser.add_argument("--list-ports", action="store_true", help="show serial ports and exit")
     parser.add_argument("--log", help="write every read and request, with times, to this file")
     parser.add_argument("--latency-ms", type=int, default=1,
@@ -265,10 +273,10 @@ def main(argv=None):
         return 1
     source = PlaylistSource(tracks, loops=args.loops, repeat=args.repeat, on_track=announce)
     log = open(args.log, "w") if args.log else None
-    streamer = Streamer(Host(source), log=log)
+    streamer = Streamer(Host(source, stopped=args.stopped), log=log)
     keys = Keys(enabled=not args.no_keys)
     print("streaming at %d baud on %s, receive latency %s; keys: n next, p previous, "
-          "r restart, q quit" % (BAUD, args.port,
+          "s stop, r play from the start, q quit" % (BAUD, args.port,
                                  set_low_latency(port, args.latency_ms) if args.latency_ms
                                  else "left alone"))
     try:

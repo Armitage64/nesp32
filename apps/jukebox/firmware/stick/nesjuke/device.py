@@ -84,7 +84,7 @@ class Device:
         self._request_at = time.ticks_add(now, -SLEEP_AFTER_MS)
 
     def on_track(self, index, title):
-        # The track being sent. The NES plays it once its buffer catches up.
+        # The track being sent, or the one button A will start.
         self.screen.set(track="%d/%d" % (index + 1, self.track_count), title=title)
 
     def chores(self, now):
@@ -102,13 +102,24 @@ class Device:
                 self.chore_us_max = elapsed
 
     def _chores(self, now):
-        a_pressed, b_clicked, b_held = self.buttons.poll()
+        a_pressed, b_clicked, b_held, power_clicked = self.buttons.poll()
         if b_held:
             raise PowerOff()
+        # Stopped, A starts the current track from its beginning. Playing,
+        # A and B change the track. Either way the next burst is a flush
+        # burst, so the NES drops the seconds of music it already holds.
+        host = self.player.host
+        if power_clicked:
+            host.stop()
         if a_pressed:
-            self.playlist.skip(1)
+            if host.stopped:
+                host.play()
+            else:
+                self.playlist.jump(1)
+                host.flush()
         if b_clicked:
-            self.playlist.skip(-1)
+            self.playlist.jump(-1)
+            host.flush()
         if time.ticks_diff(now, self._battery_at) >= BATTERY_MS:
             self._battery_at = now
             self.screen.set(battery="%d%%" % board.battery_percent())
@@ -133,7 +144,8 @@ class Device:
         self.screen.set(
             # The row is too narrow for names: values only, in NES_ROW's order.
             nes="/".join(str(nes.get(name, "-")) for name in NES_ROW) if nes else "",
-            state="PLAYING" if playing else "WAITING FOR NES",
+            state=("WAITING FOR NES" if not playing
+                   else "STOPPED - A PLAYS" if player.host.stopped else "PLAYING"),
             link="%d sent, %d%% resent" % (stats["bursts"], resend_pct),
             reply="%d.%d avg %d.%d max, noise %d" % (
                 average_us // 1000, average_us % 1000 // 100,
@@ -203,7 +215,8 @@ class Device:
             repeat=config.get("repeat", True),
             on_track=self.on_track,
         )
-        self.player = Player(uart, Host(self.playlist))
+        # Nothing plays until button A is pressed.
+        self.player = Player(uart, Host(self.playlist, stopped=True))
         self.collect()
 
     def run(self):

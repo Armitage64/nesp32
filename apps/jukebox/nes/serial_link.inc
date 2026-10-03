@@ -30,6 +30,7 @@ OP_STATS  = $53                 ; 'S'
 STATS_EVERY = 16                ; frames between counter reports; a power of 2
 REQUEST_SEED = $A5
 BURST_MARKER = $A5
+FLUSH_MARKER = $5A              ; a burst that first drops what is buffered
 CREDIT_MAX = 24                 ; payload bytes per burst; sized in PLAN.md
 CREDIT_MIN = 8                  ; don't bother asking for less
 HUNT_TIMEOUT_FRAMES = 4         ; frames to wait for a marker before asking again
@@ -41,6 +42,7 @@ OUT0_MARK = $01
 link_seq:    .res 1             ; burst the NES wants next
 credit:      .res 1
 rx_data:     .res 1
+rx_marker:   .res 1             ; BURST_MARKER or FLUSH_MARKER
 rx_seq:      .res 1
 rx_len:      .res 1
 rx_crc:      .res 2
@@ -168,11 +170,26 @@ done:
     sta request_delay
     rts
 @received:
+    lda rx_marker
+    cmp #FLUSH_MARKER
+    bne @commit
+    lda tail                    ; a flush burst: the NMI moves head to here,
+    sta flush_head              ; the start of this burst's payload, and
+    lda tail + 1                ; stops playback until the ring refills.
+    sta flush_head + 1          ; flush_head is whole before the flag is set.
+    lda #0
+    sta link_done
+    lda #1
+    sta flush_pending
+@commit:
     jsr commit_tail
     inc link_seq
     inc16 link_bursts
     lda rx_len
     bne @done
+    lda rx_marker               ; an empty flush burst means "stopped": stay
+    cmp #FLUSH_MARKER           ; quiet and keep asking
+    beq @done
     lda #1                      ; the host only sends empty bursts once the
     sta link_done               ; track has ended, so play what we have
 @done:
@@ -264,7 +281,11 @@ marker:
     jsr rx_byte
     bcs marker                  ; noise: keep looking
     cmp #BURST_MARKER
+    beq found
+    cmp #FLUSH_MARKER
     bne marker
+found:
+    sta rx_marker
     lda #1                      ; set before clearing rx_hunting, so an NMI
     sta rx_active               ; in between still ends the receive
     lda #0
@@ -332,10 +353,17 @@ reject:
 .endproc
 
 ; CRC-16/CCITT-FALSE over SEQ, LEN and the payload now in the ring at tail.
+; A flush burst's CRC covers its marker as well, so a damaged ordinary burst
+; cannot pass for one.
 .proc burst_crc
     lda #$FF
     sta crc_hi
     sta crc_lo
+    lda rx_marker
+    cmp #FLUSH_MARKER
+    bne @body
+    jsr crc_update
+@body:
     lda rx_seq
     jsr crc_update
     lda rx_len

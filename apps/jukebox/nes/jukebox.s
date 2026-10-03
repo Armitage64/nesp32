@@ -86,12 +86,14 @@ served_frame: .res 1
 wptr:        .res 2             ; where the link writes next, uncommitted
 head_snap:   .res 2
 free:        .res 2
+flush_head:  .res 2             ; where head goes when a flush is pending
 
 .segment "BSS"
 playing:      .res 1
 ended:        .res 1
 wait_left:    .res 1
 link_done:    .res 1            ; the link has nothing more to give
+flush_pending: .res 1           ; the link asks the NMI to drop what is buffered
 stream_error: .res 1
 underruns:    .res 2
 stage_reg:    .res STAGE_MAX
@@ -195,6 +197,8 @@ main_wait:
 ; Playback starts once PREFILL bytes are buffered, or once the link has
 ; delivered everything it has (a song shorter than PREFILL).
 .proc start_when_buffered
+    lda flush_pending           ; head is about to move: decide next frame
+    bne @done
     lda playing
     bne @done
     lda link_done
@@ -305,6 +309,11 @@ retry:
     pha
     tya
     pha
+    lda flush_pending
+    beq @play
+    jsr apply_flush
+    jmp @skip
+@play:
     lda playing
     beq @skip
     jsr decode_frame
@@ -321,6 +330,25 @@ retry:
 
 .proc irq
     rti
+.endproc
+
+; The link received a flush burst: drop everything not yet played, silence
+; the APU, and wait for the buffer to fill again. head moves here, in the
+; NMI, because the NMI owns it. flush_head is the tail from before the flush
+; burst's own payload, so that payload is the first thing in the ring.
+.proc apply_flush
+    lda flush_head
+    sta head
+    lda flush_head + 1
+    sta head + 1
+    lda #0
+    sta APU_STATUS
+    sta playing
+    sta ended
+    sta wait_left
+    sta stream_error
+    sta flush_pending
+    rts
 .endproc
 
 ; Decode one frame and apply it, or apply nothing if the ring runs dry.

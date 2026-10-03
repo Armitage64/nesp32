@@ -154,7 +154,8 @@ class Console:
     def _nmi(self):
         mpu = self.mpu
         underruns = self.word("underruns")
-        playing = bool(self.byte("playing"))
+        # An NMI that carries out a flush silences the APU and plays nothing.
+        playing = bool(self.byte("playing")) and not self.byte("flush_pending")
         writes = []
         self._writes = writes
         start = mpu.processorCycles

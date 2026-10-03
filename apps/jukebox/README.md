@@ -63,13 +63,16 @@ serial cable from nes-radar connected:
 .venv/bin/python host/jukebox.py --port /dev/cu.usbserial-XXXX music/
 ```
 
-Keys: `n` next track, `p` previous, `r` restart, `q` quit. `--loops N`
-sets how many times a looping track plays before the next one, and
-`--repeat` starts the playlist over at the end. The status line shows
+Keys: `n` next track, `p` previous, `s` stop, `r` play the current track
+from its start (also after a stop), `q` quit. `--loops N` sets how many
+times a looping track plays before the next one, `--repeat` starts the
+playlist over at the end, and `--stopped` starts silent until `r`, as the
+Stick does. The status line shows
 requests, bursts and **resends**; a resend is a burst the NES missed, and a
 steady trickle of them means the host is replying too slowly (see
-docs/PROTOCOL.md, Timing). Track changes are heard after the few seconds of
-music the NES has already buffered.
+docs/PROTOCOL.md, Timing). A track change, stop or restart is heard within
+about a second: the host's next burst tells the NES to drop the music it
+has buffered.
 
 The status line ends with the NES's own counters, which say *why* bursts
 were asked for again: `aborts` (a burst was cut off by the next vblank, so

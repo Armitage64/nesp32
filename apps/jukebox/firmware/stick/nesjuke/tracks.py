@@ -109,6 +109,15 @@ class Playlist:
         self.requested = (base + delta) % self.count
         self.finished = False
 
+    def jump(self, delta):
+        """Switch tracks now, dropping what was generated but not yet taken.
+        The NES still holds the old track, so the host must flush it."""
+        base = self.requested if self.requested is not None else self.index
+        self.requested = None
+        self.pending = b""
+        self.finished = False
+        self._start((base + delta) % self.count)
+
     def restart(self):
         """Begin the current track again, for a NES that has just reset."""
         self.pending = b""
