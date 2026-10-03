@@ -31,8 +31,24 @@ def test_host_keeps_the_counters_the_nes_reports():
     assert host.handle(Request(protocol.OP_STATS, 1, 176)) == b""
     assert host.handle(Request(protocol.OP_STATS, 3, 0)) == b""
     assert host.handle(Request(protocol.OP_STATS, 200, 9)) == b""   # no such counter
-    assert host.nes == {"timeouts": 176, "crc_errors": 0}
+    # The NES was already running: what it counted before does not show.
+    assert host.nes == {"timeouts": 0, "crc_errors": 0}
     assert host.stats["bursts"] == host.stats["resends"] == 0
+    host.handle(Request(protocol.OP_STATS, 1, 250))
+    host.handle(Request(protocol.OP_STATS, 1, 4))      # the low byte wrapped
+    host.handle(Request(protocol.OP_STATS, 4, 3))      # request_delay is a level
+    host.handle(Request(protocol.OP_STATS, 4, 0))
+    assert host.nes == {"timeouts": 84, "crc_errors": 0, "request_delay": 0}
+
+
+def test_counters_start_from_zero_when_the_nes_has_just_booted():
+    host = Host(looping_track())
+    host.handle(Request(protocol.OP_STATS, 0, 9))
+    host.handle(Request(protocol.OP_HELLO, 0, 0))
+    assert host.nes == {}
+    host.handle(Request(protocol.OP_STATS, 0, 2))      # cut off twice since boot
+    host.handle(Request(protocol.OP_STATS, 0, 5))
+    assert host.nes == {"aborts": 5}
 
 
 def test_decoder_resyncs_through_noise_and_split_reads():

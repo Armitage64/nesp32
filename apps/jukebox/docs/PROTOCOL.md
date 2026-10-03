@@ -137,7 +137,9 @@ counters take turns, in this order: bursts cut off by an NMI (aborts),
 waits that timed out, rejects (framing, length or sequence), CRC errors,
 the current `request_delay`, underruns, and committed bursts. The console
 has no screen for them, and they are how a host tells *why* bursts are
-being asked for again. `host/jukebox.py` shows them in its status line.
+being asked for again. A report is a low byte of a count that began when
+the console was switched on, so the hosts add up the steps between reports
+and show totals for their own session.
 
 If a data request's `SEQ` equals the last burst sent, the host sends
 **exactly the same burst** again. If it is one more, the last burst was

@@ -114,7 +114,9 @@ def test_host_sends_the_same_bursts_as_the_desktop(seed, prepare, repeat):
         if prepare == "always" or (prepare == "sometimes" and rng.random() < 0.5):
             ours.prepare()
     assert ours.stats == theirs.stats and ours.buttons == theirs.buttons
-    assert ours.nes == theirs.nes and len(ours.nes) == 7
+    assert ours.nes == theirs.nes
+    if prepare != "never":  # no hellos, which start the counters over
+        assert len(ours.nes) == 7 and max(ours.nes.values()) > 255  # totals, not low bytes
     assert ours.stats["resends"] > 50 and ours.stats["unexpected_seq"] > 5
 
 
@@ -230,11 +232,39 @@ def test_player_answers_requests_split_across_reads():
     assert player.requests == 3 and player.data_requests == 2
     assert player.host.nes == {}
     assert player.decoder.discarded == 1
-    assert player.take_reply_us_max() == 300 and player.take_reply_us_max() == 0
+    assert player.take_reply_us() == (300, 300, 300) and player.take_reply_us() == (0, 0, 0)
+
+
+def test_player_knows_when_the_next_request_cannot_be_near():
+    request = desktop.request_bytes(0x4A, 0, 24)
+    now = [0]
+    uart = ScriptedUart([b"", request, b"", desktop.request_bytes(0x4A, 1, 24)])
+    player = Player(uart, protocol.Host(stick_playlist()), ticks_us=lambda: now[0])
+    assert player.quiet(123456)             # nothing heard yet: any time will do
+    player.poll()
+    now[0] = 500
+    assert player.poll() is True            # a request, 0.5 ms after an empty poll
+    frame = 16639
+    for frames in (0, 1, 7, 200):
+        start = 500 + frames * frame
+        assert not player.quiet(start + 500)        # the reply is going out
+        assert player.quiet(start + 1000) and player.quiet(start + 6000)
+        assert not player.quiet(start + 6500)       # too close to the next one
+        assert not player.quiet(start + frame - 100)
+    assert player.quiet(500 + 5000001 + 9000)       # too long ago to go by
+
+    # Bytes found after a pause were waiting in the UART: they do not move
+    # the phase.
+    now[0] = 20000
+    assert player.poll() is False
+    now[0] = 29000                          # 9 ms spent on something else
+    assert player.poll() is True
+    assert player.request_us == 500
 
 
 def test_player_keeps_the_counters_the_nes_reports():
-    uart = ScriptedUart([desktop.request_bytes(0x53, 1, 7) + desktop.request_bytes(0x53, 5, 2)
+    uart = ScriptedUart([desktop.request_bytes(0x48, 0, 0)
+                         + desktop.request_bytes(0x53, 1, 7) + desktop.request_bytes(0x53, 5, 2)
                          + desktop.request_bytes(0x53, 99, 1)])
     player = Player(uart, protocol.Host(stick_playlist()))
     assert player.poll() is False and uart.written == []
@@ -466,7 +496,11 @@ def test_device_shows_the_counters_the_nes_reports(uiflow, capsys):
                        desktop.request_bytes(0x53, 5, 4)]
     run_device(uiflow, script)
     assert "3/12/-/-/4" in drawn(uiflow)
-    assert "NES aborts 3 timeouts 12 underruns 4" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "NES aborts 3 timeouts 12 underruns 4" in out
+    # On the fake clock every reading is 5 ms. The log line is timed apart
+    # from the chore it runs in, so it does not show up as a long chore.
+    assert "chore max 10000 us log 5000 us" in out.splitlines()[-1]
 
 
 def test_device_uses_the_s3_pins_on_an_s3(uiflow):

@@ -356,7 +356,7 @@ serial hardware.
    hardware session tests only the NES side. Keep it lean; tune the FTDI
    latency timer only if resends get in the way of testing. *Exit:* music
    plays over the link on a real console, with the resend rate and reply
-   time recorded. The long endurance run belongs to the StickS3 (phase 5).
+   time recorded.
 
    **Built and tested in simulation.** `host/jukebox.py` streams a playlist
    (`host/playlist.py`) from files or directories, converting rips as it
@@ -398,13 +398,17 @@ serial hardware.
    `host/playlist.py` to MicroPython the way nes-radar does, with parity
    tests against the desktop modules. Convert `.jbs` on the Mac at deploy
    time and store it on the Stick's flash. The LCD shows the track, and the
-   buttons control it. *Exit:* 30 minutes of continuous playback on
-   hardware with zero underruns; resends logged and recovered. *Risk:*
+   buttons control it. *Exit:* music plays from the Stick on a real
+   console with no underruns, and the resend rate and reply time are
+   recorded. (This was first a 30-minute endurance run with zero
+   underruns. The project is a proof of concept, so that run was dropped.)
+   *Risk:*
    MicroPython's reply time. If it is too slow, move the reply path to a
    UART RX IRQ handler. If the Stick misbehaves, the desktop test host
    tells whether the fault is on the Stick side or the NES side.
 
-   **Built and tested in simulation**, in `firmware/stick/`. One firmware
+   **Done on the StickC Plus2**, in `firmware/stick/`; the StickS3 is
+   still to try. One firmware
    serves the StickS3 and the StickC Plus2 that stands in for it until an
    S3 arrives; `board.py` picks the pins (S3: TX G8, RX G1; Plus2: TX G26,
    RX G36). The hat is the same circuit, but its TX wire sits on a
@@ -423,11 +427,20 @@ serial hardware.
    - `tools/deploy.sh` converts the music and copies everything;
      `tools/link_monitor.py` tests the NES-to-Stick direction by itself.
 
-   **Still to do on hardware,** first on the Plus2, then again on the S3:
-   the bring-up steps in `firmware/stick/README.md`, recording the resend
-   share, the reply time and the longest garbage collection. On the S3
-   also scope the RX stage's edges, whose 100 kΩ base resistor is the
-   slowest part of the link at 38400.
+   **On the Plus2, over about two minutes of play:** 1433 bursts with no
+   resends, and no cut-offs, timeouts, rejects, CRC errors or underruns
+   counted by the NES. Replies took 0.9 ms on average and 3.9 ms at worst,
+   `uart.write` 0.1 ms, and the longest garbage collection 3 ms. An
+   earlier build ran its idle chores at any time and had about 2.5%
+   resends, all bursts cut off by the NES's NMI; running them where no
+   request can be due removed those. The longest chore was 20 ms, thought
+   to be the USB log line, which is now timed by itself.
+
+   That meets the exit on the Plus2. **Still to do, when an S3 is on
+   hand:** move the hat's TX wire to slot 5 and repeat the bring-up steps
+   in `firmware/stick/README.md`. Its RX stage has a 100 kΩ base
+   resistor, the slowest part of the link at 38400, so scope its edges if
+   requests fail to decode there.
 
    **To do: a throughput test for the StickS3 and the NES.** Write a test
    that measures the highest rate at which the link stays reliable, in
@@ -439,6 +452,37 @@ serial hardware.
    tool that steps the load up (burst size, then baud rate: 38400, 57600)
    and reports the error rate at each step. The result settles phase 3b's
    open choice between 38400 and 57600.
+
+   **To do: wait for a button before the first track.** Music should not
+   start by itself when the Stick powers up and finds the NES. The Stick
+   should show that it is ready and hold off until the user presses a
+   button, then start the first track. To settle when it is built: what
+   the Stick sends meanwhile (the NES asks for data as soon as it boots
+   and times out every 4 frames if nothing answers), and whether a NES
+   reset later in a session waits for the button again.
+
+   **To do: stop and restart from the buttons.** A tap of the power
+   button stops the current song. A tap of the front button restarts
+   playback. To settle when it is built: the front button is next track
+   today, so it needs to mean "start" only while stopped (which also
+   covers the wait before the first track, above); whether restarting
+   begins the song again or carries on from where it stopped; and how to
+   silence the NES at once, since it holds a few seconds of music the
+   Stick has already sent (the flush command that instant skip needs).
+   The firmware does not read the power button yet, and the S3's and the
+   Plus2's may not behave alike under UIFlow.
+
+   **To do: investigate streaming digital audio.** Find out whether
+   sampled sound (raw PCM through `$4011`) can be streamed to the NES
+   over this interface. It is a non-goal for v1 because of the numbers:
+   38400 baud with 2 stop bits carries at most about 3500 bytes a second,
+   so about 3.5 kHz of 7-bit samples even if the NES did nothing else, and
+   today the receiver stops for every NMI. Questions to answer: what
+   sample rate is the least worth hearing; whether the UART link can reach
+   it at 57600 or with a receive loop that writes `$4011` as bytes arrive;
+   how samples keep steady timing when the bytes do not; and whether it
+   needs the clocked link described under "Future enhancement", which is
+   some 40 times faster.
 6. **Polish, including the user interface.** UI enhancements were
    deliberately deferred until the link works, because screen updates must
    fit around the receive window that phase 3 defines. Planned: a

@@ -23,9 +23,10 @@ def test_status_shows_the_nes_counters_and_the_log_shows_each_read():
     streamer = jukebox.Streamer(Host(PlaylistSource([("A", A)])), log=log)
     again = protocol.request_bytes(0x4A, 0, 24)
     streamer.on_bytes(again, 5.0)
-    streamer.on_bytes(again + protocol.request_bytes(0x53, 1, 176), 5.232)
+    streamer.on_bytes(again + protocol.request_bytes(0x53, 1, 176)
+                      + protocol.request_bytes(0x53, 1, 180), 5.232)
     assert "resends 1 (50.0%)" in streamer.status()
-    assert streamer.status().endswith("NES: timeouts 176")
+    assert streamer.status().endswith("NES: timeouts 4")
     lines = log.getvalue().splitlines()
     assert lines[0] == "0.00 read 4a 00 18 f7"
     assert lines[1].startswith("0.00 J seq 0 arg 24 -> ") and "resend" not in lines[1]

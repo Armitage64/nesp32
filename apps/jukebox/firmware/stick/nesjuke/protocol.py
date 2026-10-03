@@ -23,6 +23,41 @@ OP_STATS = 0x53     # 'S'
 # (STATS_TABLE in nes/serial_link.inc). Each report carries a low byte.
 NES_COUNTERS = ("aborts", "timeouts", "rejects", "crc_errors", "request_delay",
                 "underruns", "bursts")
+NES_LEVELS = ("request_delay",)  # a setting, not a count
+
+
+class NesCounters:
+    """The NES's counters as totals for this session.
+
+    A report is only the low byte of a count that started when the console
+    was switched on. Here each count starts from the first report heard, or
+    from zero if the NES said hello (it has just booted), and the steps
+    between reports are added up, so it neither wraps at 256 nor includes
+    what happened before this host was listening.
+    """
+
+    def __init__(self):
+        self.totals = {}
+        self.raw = {}
+        self.booted = False
+
+    def hello(self):
+        self.totals = {}
+        self.raw = {}
+        self.booted = True
+
+    def report(self, index, value):
+        if index >= len(NES_COUNTERS):
+            return
+        name = NES_COUNTERS[index]
+        if name in NES_LEVELS:
+            self.totals[name] = value
+            return
+        if name in self.raw:
+            self.totals[name] += (value - self.raw[name]) & 0xFF
+        else:
+            self.totals[name] = value if self.booted else 0
+        self.raw[name] = value
 
 BURST_MARKER = 0xA5
 MAX_BURST_PAYLOAD = 255
@@ -105,7 +140,8 @@ class Host:
         self.stats = {"hello": 0, "bursts": 0, "resends": 0, "unexpected_seq": 0,
                       "buttons": 0}
         self.buttons = []
-        self.nes = {}  # counter name -> the low byte the NES last reported
+        self.counters = NesCounters()
+        self.nes = self.counters.totals  # counter name -> total this session
         size = BURST_HEADER + MAX_BURST_PAYLOAD + 2
         self.buffers = (bytearray(size), bytearray(size))
         self.views = (memoryview(self.buffers[0]), memoryview(self.buffers[1]))
@@ -163,14 +199,15 @@ class Host:
         if op == OP_HELLO:
             self.stats["hello"] += 1
             self._reset()
+            self.counters.hello()
+            self.nes = self.counters.totals
             return None
         if op == OP_BUTTON:
             self.stats["buttons"] += 1
             self.buttons.append(arg)
             return None
         if op == OP_STATS:
-            if seq < len(NES_COUNTERS):
-                self.nes[NES_COUNTERS[seq]] = arg
+            self.counters.report(seq, arg)
             return None
         if seq == self.last_seq:
             self.stats["resends"] += 1

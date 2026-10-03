@@ -4,7 +4,7 @@ Stream music from NES `.vgm` rips to a real NES over the controller-2
 serial link from [nes-radar](../nes-radar), and play it on the console's own
 APU.
 
-Work in progress. See [`PLAN.md`](PLAN.md) for the design and phases, and
+A proof of concept, and work in progress. See [`PLAN.md`](PLAN.md) for the design and phases, and
 [`docs/PROTOCOL.md`](docs/PROTOCOL.md) for the stream format and link.
 
 ## Status
@@ -18,14 +18,15 @@ Work in progress. See [`PLAN.md`](PLAN.md) for the design and phases, and
 - **Phase 3a, done:** the serial link ROM, `build/jukebox_link.nes`, and the
   host side of the link protocol. Verified against a cycle-exact model of
   the serial line, including late hosts, line noise and baud error.
-- **Phase 4, built:** the desktop test host, `host/jukebox.py`. Tested
-  against the simulated NES; waiting on the serial hardware to try for
-  real. It is for testing and diagnosis; the product's host will be the
-  M5StickS3 (phase 5).
-- **Phase 5, built:** the Stick firmware, in
+- **Phase 4, done:** the desktop test host, `host/jukebox.py`. It plays
+  all five test rips on a real NES over the FTDI cable with no resends. It
+  is for testing and diagnosis; the product's host will be the M5StickS3
+  (phase 5).
+- **Phase 5, done on the Plus2:** the Stick firmware, in
   [`firmware/stick`](firmware/stick/README.md). It runs on the M5StickS3,
-  and on an M5StickC Plus2 as a stand-in until an S3 is on hand. Tested
-  against the desktop host and the simulated NES; not yet run on hardware.
+  and on an M5StickC Plus2 as a stand-in until an S3 is on hand. It has
+  played music on a real NES from the Plus2 with no resends; the S3 is
+  still to try.
 
 ## Building the ROM
 
@@ -73,8 +74,8 @@ music the NES has already buffered.
 The status line ends with the NES's own counters, which say *why* bursts
 were asked for again: `aborts` (a burst was cut off by the next vblank, so
 the reply came too late), `timeouts` (no reply arrived), `rejects` and
-`crc_errors` (bytes were damaged on the wire), and `underruns`. They count
-from when the console was switched on. `--log FILE` writes every read and
+`crc_errors` (bytes were damaged on the wire), and `underruns`. They are
+totals since the program first heard from the console. `--log FILE` writes every read and
 request with its time, which is the first thing to look at when resends are
 high.
 

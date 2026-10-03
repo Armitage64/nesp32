@@ -10,10 +10,11 @@ by asking UIFlow which one it is on:
 | M5StickS3 | the product | G8 (hat slot 5) | G1 (hat slot 4) |
 | M5StickC Plus2 | stand-in for testing until an S3 is on hand | G26 (hat slot 3) | G36 (hat slot 4) |
 
-**Not yet run on hardware.** The protocol and playlist code is tested byte
-for byte against the desktop host and against the simulated NES
-(`tests/test_stick.py`). The modules that touch UIFlow (`board.py`, `ui.py`,
-`device.py`) have only run on stand-ins for the `M5` and `machine` modules.
+This is a proof of concept. **It has played music on a real NES from a
+StickC Plus2**: about two minutes with no resends and no errors counted by
+the console. It has not run on a StickS3 yet, and has had no long run on
+either. The protocol and playlist code is also tested byte for byte against
+the desktop host and against the simulated NES (`tests/test_stick.py`).
 
 ## The hat
 
@@ -86,18 +87,19 @@ The screen shows the track being sent, and once a second:
 |---|---|
 | STATE | `PLAYING` while requests arrive, `WAITING FOR NES` otherwise |
 | LINK | bursts sent, and the share of requests that were repeats. A repeat is a burst the NES missed |
-| REPLY | the slowest reply in the last second (the firmware's own time, not the UART's), and bytes that were not part of a request |
-| NES | the console's own counters since it was switched on: cut-offs / timeouts / rejects / CRC errors / underruns |
+| REPLY | the average and slowest reply in the last second, in ms: the firmware's own time from bytes in to handing the burst to the UART. Then bytes that were not part of a request |
+| NES | the console's own counters: cut-offs / timeouts / rejects / CRC errors / underruns |
 
 The NES row says *why* bursts were resent. Cut-offs mean replies are
 arriving too late in the frame, timeouts mean they are not arriving at all,
-and rejects or CRC errors mean bytes are damaged on the wire. The counters
-are low bytes, so they wrap at 256, and only a power cycle of the console
-zeroes them.
+and rejects or CRC errors mean bytes are damaged on the wire. They are
+totals since the Stick first heard from the console, or since the console
+was switched on if that came later, so nothing from an earlier test shows.
 
 Every 5 s it also prints a line over USB (`mpremote` shows it) with the same
-counters by name, and the longest garbage collection, which is the pause
-most likely to cost a burst.
+counters by name, and the longest pauses: `write` (handing a burst to the
+UART), `chore` (buttons, battery and screen), `log` (printing this line) and
+`gc` (garbage collection).
 
 ## Bring-up on hardware
 
@@ -115,16 +117,19 @@ Do these in order; each isolates one thing.
    the link ROM. Expect `HELLO`, then `DATA seq 0 credit 24`, and a data
    count that climbs by about 13 a second with the noise count standing
    still. The `NES:` line should show `timeouts` climbing and nothing else,
-   since nothing is answering. This proves OUT0, the RX stage and the baud rate without the Stick
+   since nothing is answering. The Stick's screen says `LINK MONITOR`; the
+   output is on USB. This proves OUT0, the RX stage and the baud rate without the Stick
    sending anything. Run `mpremote reset` afterwards.
-4. **Play.** Power-cycle the NES, which zeroes its counters. Record from
-   the screen after a minute: the resend share, the slowest reply, and the
+4. **Play.** Reset the NES. Record from
+   the screen after a minute: the resend share, the reply times, and the
    NES row. On the FTDI cable the same ROM ran 625 requests with no resends
    and no counter moving, so that is the mark to compare against. Under 6 ms of total reply time the
    link runs at full rate with no resends; a few percent of resends is
    harmless (see docs/PROTOCOL.md, Timing).
-5. **Endurance:** 30 minutes of continuous play (phase 5's exit), noting
-   the resend share and the `gc max` figure from the USB log.
+
+On a StickC Plus2 this gave 1433 bursts with no resends, replies of 0.9 ms
+on average and 3.9 ms at worst, and every NES counter at zero. No longer
+run has been done.
 
 ## Files
 

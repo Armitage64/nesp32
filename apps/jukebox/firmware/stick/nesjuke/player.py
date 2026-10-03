@@ -25,6 +25,13 @@ else:  # CPython, for the tests
         return a - b
 
 
+FRAME_US = 16639        # one NTSC frame: requests come this far apart, or a multiple
+QUIET_FROM_US = 1000    # after a request arrives: the reply is on its way
+QUIET_UNTIL_US = 6000   # late enough to leave 10 ms before the next can come
+TRUST_PHASE_US = 5000000
+TIGHT_POLL_US = 1000
+
+
 class Player:
     def __init__(self, uart, host, ticks_us=ticks_us):
         self.uart = uart
@@ -35,14 +42,44 @@ class Player:
         self.requests = 0
         self.data_requests = 0
         self.stale = 0          # data requests passed over for a newer one
-        self.reply_us_max = 0   # this code's own time from bytes in to burst out
+        # This code's own time from bytes in to handing the burst to the
+        # UART, which is when it starts to go out; and how long write() then
+        # took, which matters only if it holds up the next poll.
+        self.reply_us_max = 0
+        self.reply_us_sum = 0
+        self.replies = 0
+        self.write_us_max = 0
+        self.request_us = None  # when a request last arrived, for quiet()
+        self.polled_us = None
+
+    def quiet(self, now_us):
+        """True when now is a safe time to start up to 10 ms of other work.
+
+        The NES sends requests at a fixed point after its vblank, so the
+        next one can only arrive a whole number of frames after the last.
+        Work that starts just after that point is over before the next. With
+        no recent request to go by, any time is as good as another.
+        """
+        if self.request_us is None:
+            return True
+        age = ticks_diff(now_us, self.request_us)
+        if age > TRUST_PHASE_US:
+            return True
+        return QUIET_FROM_US <= age % FRAME_US <= QUIET_UNTIL_US
 
     def poll(self):
         """Answer what has arrived. True if a burst went out."""
         count = self.uart.readinto(self.rx)
         if not count:
+            self.polled_us = self.ticks_us()
             return False
         started = self.ticks_us()
+        # These bytes arrived just now only if the last poll was a moment
+        # ago. After a pause they may have been waiting, and say nothing
+        # about where in the frame requests fall.
+        timely = (self.polled_us is not None
+                  and ticks_diff(started, self.polled_us) < TIGHT_POLL_US)
+        self.polled_us = started
         rx = self.rx
         decoder = self.decoder
         host = self.host
@@ -52,6 +89,8 @@ class Player:
             if not decoder.push(rx[index]):
                 continue
             self.requests += 1
+            if timely:
+                self.request_us = started
             if decoder.op == OP_DATA:
                 # After a pause several requests can be waiting. The NES
                 # only listens for an answer to its latest, and repeats
@@ -68,14 +107,24 @@ class Player:
                     wanted = False
         if not wanted:
             return False
-        self.uart.write(host.handle(OP_DATA, seq, arg))
-        elapsed = ticks_diff(self.ticks_us(), started)
+        burst = host.handle(OP_DATA, seq, arg)
+        ready = self.ticks_us()
+        self.uart.write(burst)
+        written = self.ticks_us()
+        elapsed = ticks_diff(ready, started)
         if elapsed > self.reply_us_max:
             self.reply_us_max = elapsed
+        self.reply_us_sum += elapsed
+        self.replies += 1
+        elapsed = ticks_diff(written, ready)
+        if elapsed > self.write_us_max:
+            self.write_us_max = elapsed
         host.prepare()
         return True
 
-    def take_reply_us_max(self):
-        """The slowest reply since the last call, in microseconds."""
-        worst, self.reply_us_max = self.reply_us_max, 0
-        return worst
+    def take_reply_us(self):
+        """(slowest, average, slowest write) since the last call, in microseconds."""
+        timing = (self.reply_us_max, self.reply_us_sum // max(1, self.replies),
+                  self.write_us_max)
+        self.reply_us_max = self.reply_us_sum = self.replies = self.write_us_max = 0
+        return timing

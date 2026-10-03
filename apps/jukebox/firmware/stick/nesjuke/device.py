@@ -5,6 +5,11 @@ screen and garbage collection run right after a burst goes out, when the NES
 cannot ask again before its next vblank. A collection is forced there every
 GC_EVERY bursts so that one never starts by itself in the middle of a reply.
 
+Between bursts the same chores run only at the point in the NES's frame
+where a request has just been due (Player.quiet). On hardware, chores run at
+any time delayed about one reply every 3 s by a screen row's worth, and the
+NES cut those bursts off.
+
 Tracks are the .jbs files in /flash/tracks, in name order, as
 tools/deploy.sh leaves them. /flash/config.json is optional:
 
@@ -67,6 +72,10 @@ class Device:
         self.player = None
         self.track_count = 0
         self.gc_us_max = 0
+        self.write_us_max = 0
+        self.chore_us_max = 0
+        self.log_us = 0         # time the last chore spent printing the log line
+        self.last_log_us = 0
         now = time.ticks_ms()
         self._chores_at = now
         self._status_at = now
@@ -81,6 +90,18 @@ class Device:
     def chores(self, now):
         """Everything except the link. Called between requests; keep it short."""
         self._chores_at = now
+        started = time.ticks_us()
+        try:
+            self._chores(now)
+        finally:
+            # The USB log line is timed by itself: it is the longest thing
+            # here by far, and would hide what the other chores take.
+            elapsed = time.ticks_diff(time.ticks_us(), started) - self.log_us
+            self.log_us = 0
+            if elapsed > self.chore_us_max:
+                self.chore_us_max = elapsed
+
+    def _chores(self, now):
         a_pressed, b_clicked, b_held = self.buttons.poll()
         if b_held:
             raise PowerOff()
@@ -101,10 +122,12 @@ class Device:
         stats = player.host.stats
         playing = time.ticks_diff(now, self._request_at) < PLAYING_WITHIN_MS
         resend_pct = 100 * stats["resends"] // max(1, player.data_requests)
-        reply_us = player.take_reply_us_max()
+        reply_us, average_us, write_us = player.take_reply_us()
+        if write_us > self.write_us_max:
+            self.write_us_max = write_us
         # The NES's own counters (low bytes) say why it asked again: bursts
         # cut off by its NMI, waits that timed out, rejects, CRC errors and
-        # underruns. They start at zero when the console is switched on.
+        # underruns, as totals since this Stick first heard from it.
         nes = player.host.nes
         counters = " ".join("%s %d" % (name, nes[name]) for name in NES_ROW if name in nes)
         self.screen.set(
@@ -112,16 +135,21 @@ class Device:
             nes="/".join(str(nes.get(name, "-")) for name in NES_ROW) if nes else "",
             state="PLAYING" if playing else "WAITING FOR NES",
             link="%d sent, %d%% resent" % (stats["bursts"], resend_pct),
-            reply="%d.%d ms max, noise %d" % (reply_us // 1000, reply_us % 1000 // 100,
-                                           player.decoder.discarded),
+            reply="%d.%d avg %d.%d max, noise %d" % (
+                average_us // 1000, average_us % 1000 // 100,
+                reply_us // 1000, reply_us % 1000 // 100, player.decoder.discarded),
         )
         if time.ticks_diff(now, self._log_at) >= LOG_MS:
             self._log_at = now
-            print("req %d bursts %d resends %d hello %d noise %d stale %d gc max %d us; NES %s"
+            started = time.ticks_us()
+            print("req %d bursts %d resends %d hello %d noise %d stale %d "
+                  "write max %d us chore max %d us log %d us gc max %d us; NES %s"
                   % (player.requests, stats["bursts"], stats["resends"], stats["hello"],
-                     player.decoder.discarded, player.stale, self.gc_us_max,
+                     player.decoder.discarded, player.stale, self.write_us_max,
+                     self.chore_us_max, self.last_log_us, self.gc_us_max,
                      counters or "has not reported"))
-            self.gc_us_max = 0
+            self.gc_us_max = self.write_us_max = self.chore_us_max = 0
+            self.log_us = self.last_log_us = time.ticks_diff(time.ticks_us(), started)
 
     def collect(self):
         started = time.ticks_us()
@@ -144,7 +172,8 @@ class Device:
                     self.collect()
                 continue
             now = time.ticks_ms()
-            if time.ticks_diff(now, self._chores_at) >= IDLE_CHORES_MS:
+            if (time.ticks_diff(now, self._chores_at) >= IDLE_CHORES_MS
+                    and player.quiet(time.ticks_us())):
                 self.chores(now)
             if time.ticks_diff(now, self._request_at) >= SLEEP_AFTER_MS:
                 time.sleep_ms(NAP_MS)
