@@ -26,6 +26,8 @@
 
 OP_DATA   = $4A                 ; 'J'
 OP_HELLO  = $48                 ; 'H'
+OP_STATS  = $53                 ; 'S'
+STATS_EVERY = 16                ; frames between counter reports; a power of 2
 REQUEST_SEED = $A5
 BURST_MARKER = $A5
 CREDIT_MAX = 24                 ; payload bytes per burst; sized in PLAN.md
@@ -56,6 +58,7 @@ rx_active:   .res 1             ; a burst is arriving; an NMI must abandon it
 rx_sp:       .res 1             ; stack pointer to return to when it does
 rx_missed:   .res 1             ; the last receive was cut off or timed out
 request_delay: .res 1           ; units of about 1.3 ms to wait before asking
+stats_index: .res 1             ; which counter the next report carries
 link_bursts: .res 2             ; committed bursts
 link_aborts: .res 2             ; bursts cut off by an NMI
 link_timeouts: .res 2           ; waits with no marker for HUNT_TIMEOUT_FRAMES
@@ -122,6 +125,11 @@ done:
 
 ; Request a burst sized to the free ring space, receive it, and commit it.
 .proc link_service
+    lda frame_count             ; every STATS_EVERY frames, a counter report
+    and #STATS_EVERY - 1        ; takes the place of the data request
+    bne @data
+    jmp send_stats
+@data:
     jsr ring_free
     bne @use_max
     lda free
@@ -168,8 +176,45 @@ done:
     lda #1                      ; the host only sends empty bursts once the
     sta link_done               ; track has ended, so play what we have
 @done:
+    ; A burst that came a frame late ends partway through a frame. Count
+    ; that frame as served, so the next request waits for the next NMI. Sent
+    ; from here, its reply would run into that NMI and be cut off, and a
+    ; slow host would lose every other burst. (A receive that was cut off
+    ; returns above without this: it ends at an NMI, and that frame still
+    ; needs its request.)
+    lda frame_count
+    sta served_frame
     rts
 .endproc
+
+; Tell the host one of the link counters (its low byte), taking them in
+; turn. The console has no screen for them, and they are the only way to
+; tell a cut-off from a timeout from a damaged burst on real hardware.
+.proc send_stats
+    ldx stats_index
+    lda stats_lo,x
+    sta crc_ptr
+    lda stats_hi,x
+    sta crc_ptr + 1
+    ldy #0
+    lda (crc_ptr),y
+    tay
+    lda #OP_STATS
+    jsr send_request
+    ldx stats_index
+    inx
+    cpx #STATS_COUNT
+    bcc @store
+    ldx #0
+@store:
+    stx stats_index
+    rts
+.endproc
+
+.define STATS_TABLE link_aborts, link_timeouts, link_rejects, link_crc_errors, request_delay, underruns, link_bursts
+stats_lo: .lobytes STATS_TABLE
+stats_hi: .hibytes STATS_TABLE
+STATS_COUNT = * - stats_hi
 
 ; About 1.3 ms (2306 cycles). Preserves X.
 .proc wait_unit
@@ -230,7 +275,10 @@ marker:
     jsr rx_byte
     bcs reject
     sta rx_len
-    tax
+    lda credit                  ; a length beyond the credit is damage, and
+    cmp rx_len                  ; storing it would run past the free space
+    bcc reject                  ; into music that has not played yet
+    ldx rx_len
     beq crc_bytes
 payload:
     jsr rx_byte
@@ -253,9 +301,6 @@ crc_bytes:
     lda rx_seq
     cmp link_seq
     bne reject
-    lda credit
-    cmp rx_len
-    bcc reject                  ; more than the credit
     jsr burst_crc
     lda crc_hi
     cmp rx_crc

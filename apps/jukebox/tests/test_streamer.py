@@ -17,6 +17,46 @@ def test_streamer_answers_requests_and_times_itself():
     assert "req 1" in streamer.status() and "noise 1" in streamer.status()
 
 
+def test_status_shows_the_nes_counters_and_the_log_shows_each_read():
+    import io
+    log = io.StringIO()
+    streamer = jukebox.Streamer(Host(PlaylistSource([("A", A)])), log=log)
+    again = protocol.request_bytes(0x4A, 0, 24)
+    streamer.on_bytes(again, 5.0)
+    streamer.on_bytes(again + protocol.request_bytes(0x53, 1, 176), 5.232)
+    assert "resends 1 (50.0%)" in streamer.status()
+    assert streamer.status().endswith("NES: timeouts 176")
+    lines = log.getvalue().splitlines()
+    assert lines[0] == "0.00 read 4a 00 18 f7"
+    assert lines[1].startswith("0.00 J seq 0 arg 24 -> ") and "resend" not in lines[1]
+    # The 232 ms between reads is what gave away a mis-set latency timer.
+    assert lines[2].startswith("232.00 read ") and lines[3].endswith("(resend)")
+    assert lines[4] == "232.00 S seq 1 arg 176 -> 0 bytes"
+
+
+def test_low_latency_asks_macos_for_milliseconds(monkeypatch):
+    """Apple's header says microseconds, but 1000 set a real FTDI cable's
+    timer to 1000 & 255 = 232 ms, and the NES timed out on every request."""
+    import fcntl
+    import struct
+    import sys
+    asked = []
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(fcntl, "ioctl", lambda fd, request, arg: asked.append((fd, request, arg)))
+
+    class Port:
+        def fileno(self):
+            return 7
+
+    assert jukebox.set_low_latency(Port()) == "1 ms requested"
+    assert asked == [(7, jukebox.IOSSDATALAT, struct.pack("L", 1))]
+
+    def refuse(fd, request, arg):
+        raise OSError("not a serial port")
+    monkeypatch.setattr(fcntl, "ioctl", refuse)
+    assert jukebox.set_low_latency(Port()).startswith("driver default")
+
+
 def test_tracks_load_from_rips_and_jbs(tmp_path):
     from vgmbuild import VgmBuilder
     vgm_path = tmp_path / "tune.vgm"

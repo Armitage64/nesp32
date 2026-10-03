@@ -16,7 +16,13 @@ REQUEST_LENGTH = 4
 OP_DATA = 0x4A      # 'J'
 OP_HELLO = 0x48     # 'H'
 OP_BUTTON = 0x42    # 'B'
-OPS = frozenset({OP_DATA, OP_HELLO, OP_BUTTON})
+OP_STATS = 0x53     # 'S'
+OPS = frozenset({OP_DATA, OP_HELLO, OP_BUTTON, OP_STATS})
+
+# The counters the NES reports with OP_STATS, in the order of its index
+# (STATS_TABLE in nes/serial_link.inc). Each report carries a low byte.
+NES_COUNTERS = ("aborts", "timeouts", "rejects", "crc_errors", "request_delay",
+                "underruns", "bursts")
 
 BURST_MARKER = 0xA5
 MAX_BURST_PAYLOAD = 255
@@ -141,6 +147,7 @@ class Host:
         self.stats = {"hello": 0, "bursts": 0, "resends": 0, "unexpected_seq": 0,
                       "buttons": 0}
         self.buttons = []
+        self.nes = {}  # counter name -> the low byte the NES last reported
         self.last_seq = None
         self.last_burst = b""
 
@@ -158,6 +165,10 @@ class Host:
         if request.op == OP_BUTTON:
             self.stats["buttons"] += 1
             self.buttons.append(request.arg)
+            return b""
+        if request.op == OP_STATS:
+            if request.seq < len(NES_COUNTERS):
+                self.nes[NES_COUNTERS[request.seq]] = request.arg
             return b""
         if request.seq == self.last_seq:
             self.stats["resends"] += 1

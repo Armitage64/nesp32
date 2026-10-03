@@ -26,6 +26,15 @@ def test_request_and_burst_layout():
     assert burst == bytes([0xA5, 3, 2, 1, 2, crc >> 8, crc & 0xFF])
 
 
+def test_host_keeps_the_counters_the_nes_reports():
+    host = Host(looping_track())
+    assert host.handle(Request(protocol.OP_STATS, 1, 176)) == b""
+    assert host.handle(Request(protocol.OP_STATS, 3, 0)) == b""
+    assert host.handle(Request(protocol.OP_STATS, 200, 9)) == b""   # no such counter
+    assert host.nes == {"timeouts": 176, "crc_errors": 0}
+    assert host.stats["bursts"] == host.stats["resends"] == 0
+
+
 def test_decoder_resyncs_through_noise_and_split_reads():
     decoder = RequestDecoder()
     data = b"\x00\xFF" + protocol.request_bytes(0x48, 0, 0) + b"\x4A\x00" + protocol.request_bytes(0x4A, 1, 24)

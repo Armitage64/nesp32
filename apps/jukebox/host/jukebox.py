@@ -36,7 +36,7 @@ import jbs  # noqa: E402
 import vgm  # noqa: E402
 import vgm2jbs  # noqa: E402
 from playlist import PlaylistSource  # noqa: E402
-from protocol import OP_DATA, Host, RequestDecoder  # noqa: E402
+from protocol import NES_COUNTERS, OP_DATA, Host, RequestDecoder  # noqa: E402
 
 BAUD = 38400
 MUSIC_SUFFIXES = (".vgm", ".vgz", ".jbs")
@@ -69,20 +69,33 @@ def expand_paths(paths):
 class Streamer:
     """Requests in, bursts out, with timing statistics. No I/O of its own."""
 
-    def __init__(self, host):
+    def __init__(self, host, log=None):
         self.host = host
         self.decoder = RequestDecoder()
         self.requests = 0
         self.data_requests = 0
         self.reply_ms = []  # this program's own time from bytes in to bytes out
+        self.log = log      # a text file: one line per read and per request
+        self.started = None
 
     def on_bytes(self, data, received_at, clock=time.monotonic):
         out = bytearray()
+        if self.log:
+            if self.started is None:
+                self.started = received_at
+            at_ms = (received_at - self.started) * 1000.0
+            self.log.write("%.2f read %s\n" % (at_ms, data.hex(" ")))
         for request in self.decoder.feed(data):
             self.requests += 1
             if request.op == OP_DATA:
                 self.data_requests += 1
-            out += self.host.handle(request)
+            resends = self.host.stats["resends"]
+            reply = self.host.handle(request)
+            out += reply
+            if self.log:
+                self.log.write("%.2f %s seq %d arg %d -> %d bytes%s\n" % (
+                    at_ms, chr(request.op), request.seq, request.arg, len(reply),
+                    " (resend)" if self.host.stats["resends"] != resends else ""))
         if out:
             self.reply_ms.append((clock() - received_at) * 1000.0)
         return bytes(out)
@@ -92,9 +105,15 @@ class Streamer:
         replies = self.reply_ms or [0.0]
         resend_pct = 100.0 * stats["resends"] / max(1, self.data_requests)
         self.reply_ms = []
-        return ("req %d  bursts %d  resends %d (%.1f%%)  noise %d  host reply max %.1f ms"
+        line = ("req %d  bursts %d  resends %d (%.1f%%)  noise %d  host reply max %.1f ms"
                 % (self.requests, stats["bursts"], stats["resends"], resend_pct,
                    self.decoder.discarded, max(replies)))
+        if self.host.nes:
+            # The NES's own counters (low bytes): why it asked again.
+            line += "  NES: " + " ".join(
+                "%s %d" % (name.replace("request_", ""), self.host.nes[name])
+                for name in NES_COUNTERS if name in self.host.nes and name != "bursts")
+        return line
 
 
 def open_port(path):
@@ -117,6 +136,35 @@ def open_port(path):
     port.reset_output_buffer()
     time.sleep(0.02)
     return port
+
+
+IOSSDATALAT = 0x80085400  # macOS <IOKit/serial/ioss.h>: _IOW('T', 0, unsigned long)
+
+
+def set_low_latency(port, milliseconds=1):
+    """Ask the USB serial driver to hand over received bytes at once.
+
+    An FTDI chip holds them for a latency timer, 16 ms by default, and that
+    wait is added to every reply. It is not tied to the request, so replies
+    start anywhere in a frame and about half of the bursts run into the
+    NES's next NMI and are sent again. Returns a word for the startup line.
+
+    On macOS the value is the timer in milliseconds, kept to one byte.
+    Apple's header calls it microseconds, but asking for 1000 set the FTDI
+    timer to 1000 & 255 = 232 ms on a real cable: reads came 232 ms apart
+    and the NES timed out on nearly every request.
+    """
+    try:
+        if sys.platform == "darwin":
+            import fcntl
+            import struct
+
+            fcntl.ioctl(port.fileno(), IOSSDATALAT, struct.pack("L", milliseconds))
+        else:
+            port.set_low_latency_mode(True)  # Linux; other systems raise
+    except (OSError, AttributeError, NotImplementedError) as error:
+        return "driver default (%s)" % error
+    return "%d ms requested" % milliseconds
 
 
 class Keys:
@@ -185,6 +233,9 @@ def main(argv=None):
     parser.add_argument("--repeat", action="store_true", help="start over after the last track")
     parser.add_argument("--no-keys", action="store_true", help="don't read the keyboard")
     parser.add_argument("--list-ports", action="store_true", help="show serial ports and exit")
+    parser.add_argument("--log", help="write every read and request, with times, to this file")
+    parser.add_argument("--latency-ms", type=int, default=1,
+                        help="USB serial receive latency to ask for; 0 leaves the driver's own")
     args = parser.parse_args(argv)
 
     if args.list_ports:
@@ -213,10 +264,13 @@ def main(argv=None):
         print("can't open %s: %s" % (args.port, error), file=sys.stderr)
         return 1
     source = PlaylistSource(tracks, loops=args.loops, repeat=args.repeat, on_track=announce)
-    streamer = Streamer(Host(source))
+    log = open(args.log, "w") if args.log else None
+    streamer = Streamer(Host(source), log=log)
     keys = Keys(enabled=not args.no_keys)
-    print("streaming at %d baud on %s; keys: n next, p previous, r restart, q quit"
-          % (BAUD, args.port))
+    print("streaming at %d baud on %s, receive latency %s; keys: n next, p previous, "
+          "r restart, q quit" % (BAUD, args.port,
+                                 set_low_latency(port, args.latency_ms) if args.latency_ms
+                                 else "left alone"))
     try:
         run(port, source, streamer, keys)
     except KeyboardInterrupt:
@@ -224,6 +278,8 @@ def main(argv=None):
     finally:
         keys.close()
         port.close()
+        if log:
+            log.close()
         print()
     return 0
 

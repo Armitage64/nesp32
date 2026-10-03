@@ -20,6 +20,7 @@ import vgm
 import vgm2jbs
 from link_harness import LinkConsole, ms
 from nes_harness import NTSC_FRAME_CYCLES, expected_frames
+import protocol
 from protocol import Host, OP_DATA, OP_HELLO
 from serial_line import HostToNes, NesToHost
 
@@ -102,6 +103,35 @@ def test_turnaround_inside_the_budget_never_aborts(link_rom, demo, turnaround_ms
     assert counters(machine)["link_aborts"] == 0
 
 
+@pytest.mark.parametrize("low_ms, high_ms", [(7, 7), (6, 9), (10, 14)])
+def test_a_host_just_past_the_budget_settles(link_rom, demo, low_ms, high_ms):
+    """A reply this late arrives in the frame after its request. The NES then
+    asked again at once, partway through that frame, and the reply to that
+    ran into the next NMI, so every other burst was lost and request_delay
+    never settled. The request after a late burst now waits for an NMI."""
+    rng = random.Random(5)
+    machine = LinkConsole(*link_rom, host=Host(demo),
+                          turnaround=lambda: ms(rng.uniform(low_ms, high_ms)))
+    played_exactly(machine, demo, 400)
+    stats = machine.host.stats
+    assert stats["resends"] <= 0.05 * stats["bursts"]
+    assert counters(machine)["underruns"] == 0
+
+
+def test_the_nes_reports_its_counters_to_the_host(link_rom, demo):
+    """The console shows nothing, so the host's status line is the only
+    place to see why bursts were asked for again."""
+    rng = random.Random(6)
+    machine = LinkConsole(*link_rom, host=Host(demo), reply_fault=flip_random_bit(rng, 0.2))
+    played_exactly(machine, demo, 400)
+    reported = machine.host.nes
+    assert set(reported) == set(protocol.NES_COUNTERS)
+    assert reported["crc_errors"] + reported["rejects"] + reported["aborts"] > 5
+    for name in ("aborts", "timeouts", "rejects", "crc_errors", "underruns"):
+        # Reports take turns, so each is at most a couple of seconds old.
+        assert 0 <= machine.word(name if name == "underruns" else "link_" + name) - reported[name] <= 30
+
+
 def test_turnaround_budget_is_reported(link_rom, demo):
     """The longest host turnaround at which a full-credit burst still lands
     before the next NMI, for PLAN.md's budget."""
@@ -161,9 +191,13 @@ def drop_random_byte(rng, rate):
     return fault
 
 
-def test_corrupted_bursts_are_rejected_and_resent(link_rom, demo):
-    rng = random.Random(2)
-    machine = LinkConsole(*link_rom, host=Host(demo), reply_fault=flip_random_bit(rng, 0.1))
+@pytest.mark.parametrize("seed", [2, 6, 7, 9])
+def test_corrupted_bursts_are_rejected_and_resent(link_rom, demo, seed):
+    """Seeds 6, 7 and 9 flip a burst's length byte while the ring is nearly
+    full. The receiver used to store such a burst before checking its length
+    against the credit, and it ran over music that had not played yet."""
+    rng = random.Random(seed)
+    machine = LinkConsole(*link_rom, host=Host(demo), reply_fault=flip_random_bit(rng, 0.2))
     played_exactly(machine, demo, 500)
     stats = counters(machine)
     assert stats["link_crc_errors"] + stats["link_rejects"] + stats["link_aborts"] > 0
