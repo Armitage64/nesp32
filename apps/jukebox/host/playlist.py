@@ -12,17 +12,25 @@ plays.
 A looping track plays its loop `loops` times in all, then the playlist moves
 on. After the last track the stream ends with an end-of-track control,
 unless the playlist repeats.
+
+A track may be sampled sound (pcm.Sound), which is not part of this stream:
+its samples go to the console at a rate of their own. Its place in the
+stream is its names and length and then a sound record. Once that has been
+handed out, `sound` is the track and the stream gives nothing more until
+sound_done() is called, which is when the samples have been sent.
 """
 
 import jbs
+import pcm
 
 END_OF_TRACK = bytes([jbs.OP_CONTROL, jbs.CTRL_END])
 
 
 class PlaylistSource:
     def __init__(self, tracks, loops=2, repeat=False, on_track=None):
-        """tracks is a list of (title, JbsFile). on_track(index, title) is
-        called when the host starts sending a track."""
+        """tracks is a list of (title, JbsFile or pcm.Sound).
+        on_track(index, title) is called when the host starts sending a
+        track."""
         if not tracks:
             raise ValueError("empty playlist")
         self.tracks = tracks
@@ -37,6 +45,19 @@ class PlaylistSource:
     def _start(self, index):
         title, song = self.tracks[index]
         self.index = index
+        self.sound = None
+        self.sound_next = None
+        if isinstance(song, pcm.Sound):
+            self.sound_next = song
+            self.data = jbs.sound_record(song.rate)
+            self.units = [(0, len(self.data))]
+            self.unit = 0
+            self.loop_unit = None
+            self.passes_left = 1
+            self.intro = jbs.intro(title, song.frames)
+            if self.on_track:
+                self.on_track(index, title)
+            return
         self.data = song.stream
         self.units = jbs.frame_units(song.stream)
         self.unit = 0
@@ -74,8 +95,12 @@ class PlaylistSource:
         self.requested = None
         self._start(self.index)
 
+    def sound_done(self):
+        """The sound's samples have been sent, or will not be."""
+        self.sound = None
+
     def take(self, count):
-        while len(self.pending) < count and not self.finished:
+        while len(self.pending) < count and not self.finished and self.sound is None:
             self.pending += self._next_unit()
         out = bytes(self.pending[:count])
         del self.pending[:count]
@@ -99,4 +124,5 @@ class PlaylistSource:
             return intro
         start, end = self.units[self.unit]
         self.unit += 1
+        self.sound = self.sound_next    # after a sound record, wait for the sound
         return self.data[start:end]

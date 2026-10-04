@@ -27,9 +27,11 @@ Non-goals for v1:
 
 - DPCM sample playback. The DMC can only fetch from `$C000-$FFFF`, which is
   cartridge ROM, not NES RAM. See phase 7.
-- Raw PCM through `$4011` (voice or drum streams). It is thousands of writes
-  per second and cannot be streamed. Occasional `$4011` level writes are
-  kept, because the level changes the triangle and noise mix.
+- Raw PCM through `$4011` inside a rip (voice or drum streams). It is
+  thousands of writes per second, far more than the stream of register
+  writes can carry. Occasional `$4011` level writes are kept, because the
+  level changes the triangle and noise mix. (Sampled sound as a track of
+  its own came later and goes another way: see phase 5.)
 - Expansion audio (VRC6, VRC7, N163, MMC5, 5B). VGM does not carry it. FDS is
   representable in VGM but needs the FDS hardware.
 - PAL consoles. As in nes-radar, only NTSC is in scope.
@@ -292,6 +294,10 @@ nes/                    jukebox.s (player), ui.inc (screen and controller),
 tools/gen_ui.py         tiles, the screen's layout and tables for ui.inc
 tools/embed_song.py     song -> build/song.bin + song.inc for the ROM
 tools/demo_song.py      original demo tune, so builds need no rips
+tools/pcm.py            sampled sound: rates, bytes, and the .pcm file
+tools/gen_pcm.py        the link ROM's routines that play it, one per rate
+tools/wav2pcm.py, mp32pcm.py, pcm_preview.py
+                        make a .pcm file; hear one without a console
 host/                   protocol.py (link protocol, host side); the desktop
                         streamer comes in phase 4
 firmware/stick/         MicroPython port of host/ for the StickS3, and for
@@ -507,10 +513,70 @@ serial hardware.
    The throughput test has since put numbers on the UART: on the Plus2 it
    carries 298296 baud to the NES, about 27000 bytes a second, with a
    receiver that samples in 6 cycles. That is the rate of a bare receive
-   loop with every cycle used, so it bounds what streaming can reach and
-   leaves no time to write `$4011` between bytes; at 223722 baud (about
-   20000 bytes a second) a quarter of the CPU is free. Both are well past
-   the 3500 this entry started from.
+   loop with every cycle used, so it bounds what streaming can reach; at
+   223722 baud (about 20000 bytes a second) a quarter of the CPU is free.
+   Both are well past the 3500 this entry started from.
+
+   **Investigated, built into the jukebox, and heard on a real NES.** Of
+   the ways to make sampled sound on a stock cartridge:
+   - *Raw PCM through `$4011`* is the one built. The write costs less than
+     the store a receive loop already does (`sta $4011` and a branch are 6
+     or 7 cycles; storing and counting a byte is 9 to 11), so it fits at
+     every rate. A byte is a sample, the host sends each already scrambled
+     the way the fast receiver unscrambles it, and bit 7, which `$4011`
+     ignores, marks the end. The host's UART is the clock, so there is
+     nothing to keep in step.
+   - *The DMC playing DPCM* can only fetch from `$8000-$FFFF`, so it
+     cannot play streamed data from RAM. A trick would work on plain NROM:
+     pin byte n at `$C000 + 64n`, loop a 1-byte sample, and write each
+     received byte to `$4012`, which the DMC reloads at every fetch. It is
+     not worth building: 1-bit deltas at 33 kHz reach full level only up
+     to about 170 Hz, the DMC eats bytes on the console's clock while the
+     host sends on its own, and its fetches take cycles from the receiver.
+   - *The pulse channels' volume* is a 4-bit DAC gated by a duty sequencer
+     that cannot be stopped: 31 levels from both, for two writes a sample.
+     *The noise channel's* is gated by a random bit. Neither is of use.
+
+   A sound is a track in the playlist (`docs/PROTOCOL.md`, part 4). Its
+   place in the stream is a sound record; when the NES plays it, it asks
+   for the sound, the host answers with a go burst, and from there the
+   NES turns its NMI off and writes each byte to `$4011` as it arrives,
+   at one of six rates from 7748 to 20338 samples a second, until a byte
+   marked as the last. `tools/wav2pcm.py` and `tools/mp32pcm.py` make the
+   files, both hosts play them, and `tools/pcm_preview.py` renders what
+   the console's DAC would put out.
+   - In simulation: every sample reaches the DAC at every start-bit phase
+     and with the host's clock 1% off; the music on either side of a sound
+     stays frame-exact; a go burst that is lost, damaged or cut short is
+     asked for again and the sound plays once; a console that cannot play
+     a sound says so and is sent past it; and a console left in a sound
+     is freed by the next host to start.
+   - A full-scale tone has its noise 41 to 46 dB down in band.
+   - While a sound plays the console does nothing else: no screen
+     updates, no controller, no clock.
+
+   **On a real NES with the Plus2:** a 30-second clip from an MP3, at
+   10169 samples a second, sounded right. So MicroPython keeps the UART
+   fed from flash at 10 KB a second, and the go burst, the change of rate
+   and the way back to the music all work there.
+
+   **Still to try on hardware:** the other five rates, 20338 samples a
+   second above all, where the Stick must find 20 KB a second; the Stick's
+   buttons during a sound; the desktop host, and whether an FTDI cable
+   takes these baud rates; and the S3.
+
+   **Looked at and left out, this being a prototype:** a running clock
+   and the controller during a sound. Both are possible at the three
+   slower rates (21, 16 and 14 cycles a bit), where the gaps between a
+   byte's samples are 8 cycles or more: the stream routine would poll
+   `$2002` for vblank once a byte, and in the vblanks it finds count
+   frames, read controller 1, and write the clock's digits, a fixed-length
+   step to a gap, with X and Y only, since A holds the byte. A press would
+   have the NES leave the sound by itself and send something the host
+   cannot miss, as the host is not listening at 38400. At 12 cycles a bit
+   and under the gaps are too short. Button A alone can be read with OUT0
+   at rest, in 8 cycles, at four of the six rates. A clock on the Stick's
+   own screen would cost next to nothing.
 6. **Polish, including the user interface.** UI enhancements were
    deliberately deferred until the link works, because screen updates must
    fit around the receive window that phase 3 defines. Planned: a

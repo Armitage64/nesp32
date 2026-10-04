@@ -10,7 +10,11 @@ where a request has just been due (Player.quiet). On hardware, chores run at
 any time delayed about one reply every 3 s by a screen row's worth, and the
 NES cut those bursts off.
 
-Tracks are the .jbs files in /flash/tracks, in name order, as
+A sound track (a .pcm file) takes the loop over: once the NES has taken the
+go burst, play_sound changes the UART's rate and copies the file to it, and
+nothing else runs but the buttons, which stop the sound.
+
+Tracks are the .jbs and .pcm files in /flash/tracks, in name order, as
 tools/deploy.sh leaves them. /flash/config.json is optional:
 
     board    "s3" or "plus2", if the board is not recognised
@@ -25,9 +29,10 @@ import json
 import sys
 import time
 
-from nesjuke import VERSION, board, tracks
+from nesjuke import VERSION, board, sound, tracks
 from nesjuke.player import Player
-from nesjuke.protocol import BUTTON_NEXT, BUTTON_PLAY, BUTTON_PREVIOUS, Host
+from nesjuke.protocol import (BUTTON_NEXT, BUTTON_PLAY, BUTTON_PREVIOUS, SOUND_LISTEN_MS,
+                              SOUND_START_MS, Host)
 from nesjuke.ui import StatusScreen
 
 FS_ROOT = "/flash"
@@ -44,6 +49,7 @@ PLAYING_WITHIN_MS = 500     # of the last data request
 NES_PREFILL = 768           # PREFILL in nes/jukebox.s: bytes before it plays
 SLEEP_AFTER_MS = 2000       # with no requests, stop spinning and nap
 NAP_MS = 2
+RATE_CHANGE_MS = 10         # after a change of rate, before trusting what was received
 
 
 # The counters the NES reports (protocol.NES_COUNTERS) that go in the log.
@@ -93,6 +99,9 @@ class Device:
         self._fresh_starts = 0
         self._playing_since = None  # when the NES began to play what it holds
         self._paused_at = None      # when it was paused, while it is
+        self._go_at = now           # when the last go burst went out
+        self._sound_press = 0       # BUTTON_* that stopped a sound
+        self.invert = True
 
     def on_track(self, index, title):
         # The track being sent, or the one button A will start.
@@ -218,13 +227,76 @@ class Device:
         if elapsed > self.gc_us_max:
             self.gc_us_max = elapsed
 
+    def sound_stop(self):
+        """Asked between chunks of a sound: true once a button says stop."""
+        a_pressed, b_clicked, b_held, power_clicked = self.buttons.poll()
+        if b_held:
+            self._sound_press = -1
+        elif a_pressed:
+            self._sound_press = BUTTON_PLAY
+        elif b_clicked:
+            self._sound_press = BUTTON_PREVIOUS
+        elif power_clicked:
+            self._sound_press = BUTTON_NEXT
+        return self._sound_press != 0
+
+    def play_sound(self):
+        """Send the sound track the NES is waiting for, and take the link
+        back. The NES took the go burst _go_at ago and listens for samples
+        from 150 ms after it; until its last sample it does nothing else,
+        so neither does this."""
+        host = self.player.host
+        uart = self.player.uart
+        track = host.sound_begin()
+        rate = sound.baud(track.period)
+        self.screen.set(state="SOUND", time=clock_text(self.playlist.track_frames))
+        self.screen.refresh(everything=True)
+        self.collect()
+        board.set_link_baud(uart, rate, self.invert)
+        wait = SOUND_START_MS - time.ticks_diff(time.ticks_ms(), self._go_at)
+        if wait > 0:
+            time.sleep_ms(wait)
+        self._sound_press = 0
+        started = time.ticks_ms()
+        with open(track.path, "rb") as handle:
+            handle.seek(track.start)
+            sent = sound.send(uart, handle, self.sound_stop)
+        took = time.ticks_diff(time.ticks_ms(), started)
+        # Everything queued must leave before the rate changes back.
+        time.sleep_ms((board.TX_BUFFER + 1) * sound.FRAME_BITS * 1000 // rate + 2)
+        if hasattr(uart, "flush"):
+            uart.flush()
+        board.set_link_baud(uart, board.BAUD, self.invert)
+        time.sleep_ms(RATE_CHANGE_MS)
+        while uart.read():      # a change of rate can leave junk in the receiver
+            pass
+        host.sound_end()
+        # The time is the check that the Stick kept up: it should be the
+        # sound's length, less what the UART still held at the end.
+        print("sound: %d samples at %d baud, %d ms of sound, queued in %d ms"
+              % (sent, rate, sent * sound.FRAME_BITS * 1000 // rate, took))
+        pressed = self._sound_press
+        if pressed < 0:
+            raise PowerOff()
+        if pressed == BUTTON_PLAY:
+            host.stop()         # A stops a sound: it cannot be paused
+        elif pressed:
+            host.press(pressed)
+        self._request_at = time.ticks_ms()
+
     def serve(self):
         player = self.player
+        host = player.host
         since_gc = 0
         while True:
             if player.poll():
                 now = time.ticks_ms()
                 self._request_at = now
+                if host.sound_due:
+                    # A go burst is out. If the NES took it, it now hears
+                    # nothing but samples, so the buttons wait.
+                    self._go_at = now
+                    continue
                 self.chores(now)
                 since_gc += 1
                 if since_gc >= GC_EVERY:
@@ -232,6 +304,11 @@ class Device:
                     self.collect()
                 continue
             now = time.ticks_ms()
+            if host.sound_due:
+                # Silence since the go burst says the NES took it.
+                if time.ticks_diff(now, self._go_at) >= SOUND_LISTEN_MS:
+                    self.play_sound()
+                continue
             if (time.ticks_diff(now, self._chores_at) >= IDLE_CHORES_MS
                     and player.quiet(time.ticks_us())):
                 self.chores(now)
@@ -255,10 +332,14 @@ class Device:
               % (VERSION, label, tx, rx, len(paths)))
         self.track_count = len(paths)
         # Open the UART before loading anything, so TX rests at mark.
-        uart = board.open_link_uart(tx, rx, invert=config.get("invert", True))
+        self.invert = config.get("invert", True)
+        uart = board.open_link_uart(tx, rx, invert=self.invert)
+        # A console left waiting for the rest of a sound, by a Stick that
+        # was switched off, takes this for its end. To any other it is noise.
+        uart.write(sound.FILLER)
         self.playlist = tracks.Playlist(
             len(paths),
-            lambda index: tracks.load_jbs(paths[index]),
+            lambda index: tracks.load_track(paths[index]),
             loops=config.get("loops", 2),
             repeat=config.get("repeat", True),
             on_track=self.on_track,

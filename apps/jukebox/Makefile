@@ -52,7 +52,11 @@ $(ROM): $(BUILD)/jukebox.o nes/nrom256.cfg
 $(BUILD)/crc16_table.inc: tools/gen_crc_table.py | $(BUILD)
 	$(PYTHON) tools/gen_crc_table.py $@
 
-$(BUILD)/jukebox_link.o: nes/jukebox.s nes/ui.inc nes/serial_link.inc $(UI) $(BUILD)/crc16_table.inc
+# The routines that play sampled sound, one per rate.
+$(BUILD)/pcm_rates.inc: tools/gen_pcm.py tools/pcm.py | $(BUILD)
+	$(PYTHON) tools/gen_pcm.py $@
+
+$(BUILD)/jukebox_link.o: nes/jukebox.s nes/ui.inc nes/serial_link.inc $(UI) $(BUILD)/crc16_table.inc $(BUILD)/pcm_rates.inc
 	ca65 -g -D LINK -I $(BUILD) -I nes --bin-include-dir $(BUILD) -o $@ $<
 
 $(LINK_ROM): $(BUILD)/jukebox_link.o nes/nrom256.cfg

@@ -188,3 +188,17 @@ def test_a_frame_the_player_cannot_stage_is_rejected():
         jbs.encode([[], [(0x03, 0x08)] * 65])
     with pytest.raises(ValueError, match="stages at most 64"):
         jbs.encode([[(0x03, 0x08)] * 63])   # plus the two init writes
+
+
+def test_a_sound_record_ends_its_frame_and_units_cut_around_it():
+    stream = (jbs.intro("Voices - Hello", 120) + jbs.sound_record(3)
+              + bytes([jbs.OP_CONTROL, jbs.CTRL_INIT]) + jbs.encode_record([(0x00, 0x30)]))
+    assert jbs.sound_record(3) == bytes([0x80, 0x05, 3])
+    frames, tail = jbs.decode(stream)
+    assert tail == [] and len(frames) == 2
+    assert frames[0][-1] == jbs.SoundRecord(3) and isinstance(frames[0][-1], jbs.SoundRecord)
+    assert frames[1] == [jbs.Control(jbs.CTRL_INIT), (0x00, 0x30)]
+    units = jbs.frame_units(stream)
+    assert stream[units[3][0]:units[3][1]] == jbs.sound_record(3)
+    with pytest.raises(jbs.StreamError):
+        jbs.decode(stream[:units[3][0] + 2])        # the rate is missing

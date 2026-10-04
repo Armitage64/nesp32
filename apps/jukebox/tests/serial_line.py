@@ -5,7 +5,8 @@ console's, so each direction has its own bit length, and tests can skew
 either one to model baud error.
 
 HostToNes is the host's transmitter as the NES sees it on D0: the line level
-at any cycle. NesToHost is the host's receiver: it takes OUT0 levels as the
+at any cycle. Each byte carries its own bit length, since a host changes
+its UART's rate to send sampled sound. NesToHost is the host's receiver: it takes OUT0 levels as the
 NES writes them and decodes bytes the way a UART does, finding the falling
 edge of a start bit and sampling each bit at its center.
 """
@@ -29,24 +30,30 @@ class HostToNes:
         self.frame_bits = 1 + 8 + stop_bits
         self.starts = []
         self.bytes = []
+        self.bits = []
         self.busy_until = 0.0
         self.sent = 0
 
-    def send(self, data, at):
-        """Queue bytes back to back, starting no earlier than cycle at."""
+    def send(self, data, at, bit=None):
+        """Queue bytes back to back, starting no earlier than cycle at, at
+        the link's rate or with bits of another length. Returns the cycle
+        they end."""
+        bit = self.bit if bit is None else bit
         start = max(at, self.busy_until)
         for byte in data:
             self.starts.append(start)
             self.bytes.append(byte)
-            start += self.bit * self.frame_bits
+            self.bits.append(bit)
+            start += bit * self.frame_bits
         self.busy_until = start
         self.sent += len(data)
+        return start
 
     def level(self, cycle):
         index = bisect.bisect_right(self.starts, cycle) - 1
         if index < 0:
             return MARK
-        offset = (cycle - self.starts[index]) / self.bit
+        offset = (cycle - self.starts[index]) / self.bits[index]
         if offset < 1:
             return SPACE
         if offset < 9:
@@ -56,7 +63,7 @@ class HostToNes:
     def in_frame(self, cycle):
         """True from a start bit until its stop bits begin."""
         index = bisect.bisect_right(self.starts, cycle) - 1
-        return index >= 0 and cycle < self.starts[index] + 9 * self.bit
+        return index >= 0 and cycle < self.starts[index] + 9 * self.bits[index]
 
     def next_start_after(self, cycle):
         index = bisect.bisect_right(self.starts, cycle)

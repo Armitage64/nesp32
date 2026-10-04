@@ -11,6 +11,7 @@ music/
 *.vgm
 *.vgz
 *.jbs
+*.pcm
 
 # Python and macOS scratch
 __pycache__/

@@ -24,6 +24,13 @@ Resends are the number to watch: each is a burst the NES missed.
 
 A track change, stop or restart is heard within about a second: the next
 burst tells the NES to drop the music it has buffered.
+
+A playlist may hold sampled sound as well: .pcm files (tools/wav2pcm.py,
+tools/mp32pcm.py), or .wav and .mp3 files, which are converted as they are
+loaded. Sound goes to the console at a baud rate of its own, several times
+the link's, and the console does nothing else meanwhile: its screen stands
+still and its controller is not read. A key stops the sound, and then does
+what it always does.
 """
 
 import argparse
@@ -36,18 +43,37 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "tools"))
 
 import jbs  # noqa: E402
+import mp32pcm  # noqa: E402
+import pcm  # noqa: E402
 import vgm  # noqa: E402
 import vgm2jbs  # noqa: E402
+import wav2pcm  # noqa: E402
 from playlist import PlaylistSource  # noqa: E402
-from protocol import BUTTON_PLAY, NES_COUNTERS, OP_DATA, Host, RequestDecoder  # noqa: E402
+from protocol import (BUTTON_PLAY, NES_COUNTERS, OP_DATA, SOUND_LISTEN_MS,  # noqa: E402
+                      SOUND_START_MS, Host, RequestDecoder)
 
 BAUD = 38400
-MUSIC_SUFFIXES = (".vgm", ".vgz", ".jbs")
+SOUND_SUFFIXES = (".pcm", ".wav", ".mp3")
+MUSIC_SUFFIXES = (".vgm", ".vgz", ".jbs") + SOUND_SUFFIXES
 STATUS_INTERVAL = 1.0
+SOUND_CHUNK = 256               # bytes of sound handed to the serial port at a time
+SOUND_AHEAD = 0.1               # seconds of sound to keep queued in it
 
 
 def load_track(path):
-    """Return (title, JbsFile) for a .vgm, .vgz or .jbs file."""
+    """Return (title, JbsFile) for a .vgm, .vgz or .jbs file, or (title,
+    pcm.Sound) for a .pcm, .wav or .mp3 file."""
+    name = path.lower()
+    if name.endswith(SOUND_SUFFIXES):
+        if name.endswith(".pcm"):
+            with open(path, "rb") as handle:
+                sound = pcm.Sound.from_bytes(handle.read())
+        elif name.endswith(".wav"):
+            sound = wav2pcm.from_wav(path)
+        else:
+            sound = mp32pcm.from_file(path)
+        sound.title = sound.title or wav2pcm.title_of(path)
+        return sound.title, sound
     if path.lower().endswith(".jbs"):
         with open(path, "rb") as handle:
             song = jbs.JbsFile.from_bytes(handle.read())
@@ -138,6 +164,9 @@ def open_port(path):
     port.reset_input_buffer()
     port.reset_output_buffer()
     time.sleep(0.02)
+    # A console left waiting for the rest of a sound by a host that was
+    # stopped takes this for its end. To any other it is noise.
+    port.write(pcm.FILLER)
     return port
 
 
@@ -193,9 +222,72 @@ class Keys:
             termios.tcsetattr(self.fd, termios.TCSADRAIN, self.saved)
 
 
+def play_sound(port, host, go_at, poll_keys=lambda: "", clock=time.monotonic,
+               sleep=time.sleep):
+    """Send the sound the console is waiting for, at its own baud rate, and
+    put the port back at the link's. go_at is when the go burst went out;
+    the console listens from 150 ms after it.
+
+    The serial port is fed a little ahead of the time the samples take, so
+    that a key can stop the sound: what is queued still plays, and then
+    the byte that ends the stream. Returns the keys that stopped it.
+    """
+    sound = host.sound_begin()
+    per_second = pcm.baud(sound.period) / pcm.FRAME_BITS
+    port.flush()
+    port.baudrate = pcm.baud(sound.period)
+    wait = go_at + SOUND_START_MS / 1000.0 - clock()
+    if wait > 0:
+        sleep(wait)
+    began = clock()
+    sent = 0
+    keys = ""
+    while sent < len(sound.samples) and not keys:
+        chunk = sound.samples[sent:sent + SOUND_CHUNK]
+        port.write(chunk)
+        sent += len(chunk)
+        ahead = sent / per_second - (clock() - began) - SOUND_AHEAD
+        if ahead > 0:
+            sleep(ahead)
+        keys = poll_keys()
+    port.write(pcm.LAST_BYTE)
+    port.flush()
+    port.baudrate = BAUD
+    port.reset_input_buffer()
+    host.sound_end()
+    return keys
+
+
+def press_key(key, host, source):
+    """Do what a key asks. True for the one that quits."""
+    if key == "q":
+        return True
+    if key == "n":
+        source.jump(1)
+        host.flush()
+    elif key == "p":
+        source.jump(-1)
+        host.flush()
+    elif key == "r":
+        host.play()
+    elif key == "s":
+        host.stop()
+    elif key == " ":
+        host.press(BUTTON_PLAY)
+    return False
+
+
 def run(port, source, streamer, keys, out=sys.stdout):
     watched = [port.fileno()] + ([keys.fd] if keys.fd is not None else [])
     next_status = time.monotonic() + STATUS_INTERVAL
+    host = streamer.host
+    go_at = 0.0
+
+    def waiting_keys():
+        if keys.fd is not None and select.select([keys.fd], [], [], 0)[0]:
+            return keys.read().lower()
+        return ""
+
     while True:
         ready, _, _ = select.select(watched, [], [], 0.05)
         if port.fileno() in ready:
@@ -204,23 +296,20 @@ def run(port, source, streamer, keys, out=sys.stdout):
             reply = streamer.on_bytes(data, received_at)
             if reply:
                 port.write(reply)
-        if keys.fd is not None and keys.fd in ready:
-            for key in keys.read().lower():
-                if key == "q":
-                    return
-                host = streamer.host
-                if key == "n":
-                    source.jump(1)
-                    host.flush()
-                elif key == "p":
-                    source.jump(-1)
-                    host.flush()
-                elif key == "r":
-                    host.play()
-                elif key == "s":
-                    host.stop()
-                elif key == " ":
-                    host.press(BUTTON_PLAY)
+                go_at = time.monotonic()
+        pressed = ""
+        if host.sound_due:
+            # A go burst is out. Keys wait: if the console took it, it now
+            # hears nothing but samples. Silence for long enough says it did.
+            if time.monotonic() - go_at >= SOUND_LISTEN_MS / 1000.0:
+                out.write("\r\033[Kplaying sound: %s\n" % host.sound_begin().title)
+                out.flush()
+                pressed = play_sound(port, host, go_at, waiting_keys)
+        elif keys.fd is not None and keys.fd in ready:
+            pressed = keys.read().lower()
+        for key in pressed:
+            if press_key(key, host, source):
+                return
         now = time.monotonic()
         if now >= next_status:
             next_status = now + STATUS_INTERVAL
@@ -237,7 +326,8 @@ def list_ports():
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("music", nargs="*", help="files or directories (.vgm, .vgz, .jbs)")
+    parser.add_argument("music", nargs="*",
+                        help="files or directories (.vgm, .vgz, .jbs; .pcm, .wav, .mp3)")
     parser.add_argument("--port", help="serial device, e.g. /dev/cu.usbserial-XXXX")
     parser.add_argument("--loops", type=int, default=2, help="times through a looping track")
     parser.add_argument("--repeat", action="store_true", help="start over after the last track")

@@ -18,6 +18,7 @@ OP_DATA = 0x4A      # 'J'
 OP_HELLO = 0x48     # 'H'
 OP_BUTTON = 0x42    # 'B'
 OP_STATS = 0x53     # 'S'
+OP_SOUND = 0x50     # 'P': a sound record has played; ARG is its rate
 
 # A button request's ARG: what the NES's controller asked for.
 BUTTON_NEXT = 0x01      # Right
@@ -72,9 +73,18 @@ class NesCounters:
 BURST_MARKER = 0xA5
 FLUSH_MARKER = 0x5A  # a burst that first drops what the NES has buffered
 PAUSE_MARKER = 0x3C  # an empty burst: the NES holds the music where it is
+SOUND_MARKER = 0xC3  # a go burst: sound follows, at the rate in its payload
 MAX_BURST_PAYLOAD = 255
 BURST_HEADER = 3    # marker, sequence, length
 DEFAULT_CREDIT = 24  # CREDIT_MAX in nes/serial_link.inc
+
+# After a go burst the Stick keeps listening this long. A console that
+# missed the burst asks again, at the latest after its 4-frame timeout; one
+# that took it is silent. Then the Stick changes its UART's rate and starts
+# the samples this long after the go burst. The console listens from 150 ms
+# after it (SOUND_SETTLE in nes/serial_link.inc).
+SOUND_LISTEN_MS = 100
+SOUND_START_MS = 175
 
 
 def _crc_table():
@@ -121,7 +131,8 @@ class RequestDecoder:
             self.count += 1
             return False
         op = window[0]
-        if ((op == OP_DATA or op == OP_HELLO or op == OP_BUTTON or op == OP_STATS)
+        if ((op == OP_DATA or op == OP_HELLO or op == OP_BUTTON or op == OP_STATS
+             or op == OP_SOUND)
                 and window[3] == REQUEST_SEED ^ op ^ window[1] ^ window[2]):
             self.op = op
             self.seq = window[1]
@@ -147,6 +158,10 @@ class Host:
     source, starting at BURST_HEADER. prepare() also seals it (header and
     CRC) for the request the NES will most likely send, the next sequence
     number with the same credit as last time.
+
+    Sound tracks are as in host/protocol.py: a sound request is answered
+    with a go burst, which sets `sound_due`, and device.py does the rest
+    with sound_begin() and sound_end().
     """
 
     def __init__(self, source, credit=DEFAULT_CREDIT, stopped=False):
@@ -171,6 +186,8 @@ class Host:
         # and keeps what it has buffered. What is staged here stays staged.
         self.paused = False
         self.flush_next = False
+        self.sound_due = False  # a go burst went out, and its sound has not
+        self.last_go = False    # the last burst was one
         self.last_seq = None
         self.last_length = 0    # whole bytes of the last burst, header to CRC
         # For a clock: the NES starts playing once it holds its prefill, or
@@ -184,7 +201,19 @@ class Host:
     def stop(self):
         self.stopped = True
         self.paused = False
+        self.sound_due = False
         self._discard()
+
+    def sound_begin(self):
+        """The sound to send now: a sound.Sound."""
+        return self.source.sound
+
+    def sound_end(self):
+        """The samples have gone. The next burst is a flush burst, so the
+        music after a sound starts from a full buffer as a track change
+        does."""
+        self.source.sound_done()
+        self.flush()
 
     def play(self):
         """Start the current track again from its beginning."""
@@ -196,6 +225,7 @@ class Host:
         """Make the next burst a flush burst, for a source that has just
         jumped to another track. What was read ahead belongs to the old one."""
         self.flush_next = True
+        self.sound_due = False
         self._discard()
 
     def press(self, buttons):
@@ -204,6 +234,7 @@ class Host:
         paused. Start pauses and resumes; from stopped, or after the
         playlist's end, it plays the current track from its beginning."""
         source = self.source
+        self.sound_due = False
         if buttons & (BUTTON_NEXT | BUTTON_PREVIOUS):
             if hasattr(source, "jump"):
                 source.jump(1 if buttons & BUTTON_NEXT else -1)
@@ -234,6 +265,7 @@ class Host:
         self.sealed_seq = None
         self.last_seq = None
         self.last_length = 0
+        self.sound_due = False
 
     def _stage(self, want):
         if self.staged < want:
@@ -296,26 +328,54 @@ class Host:
         if op == OP_STATS:
             self.counters.report(seq, arg)
             return None
+        credit = arg
         if seq == self.last_seq:
-            self.stats["resends"] += 1
-            return self.views[1 - self.current][:self.last_length]
-        if self.last_seq is not None and seq != (self.last_seq + 1) & 0xFF:
+            # A go burst is only sent again while its sound is still due. If
+            # that was called off (a button), the NES gets a new answer
+            # under the same number, which is safe: it committed nothing.
+            if self.sound_due or not self.last_go:
+                self.stats["resends"] += 1
+                return self.views[1 - self.current][:self.last_length]
+        elif self.last_seq is not None and seq != (self.last_seq + 1) & 0xFF:
             self.stats["unexpected_seq"] += 1
         self.stats["bursts"] += 1
+        go = False
+        if op == OP_SOUND:
+            credit = self.credit    # a sound request carries its rate, not a credit
         if self.stopped:
             length = 0
             marker = FLUSH_MARKER
         elif self.paused:
             length = 0
             marker = PAUSE_MARKER
+        elif op == OP_SOUND:
+            sound = getattr(self.source, "sound", None)
+            if sound is not None and arg == sound.rate:
+                # Nothing is staged: the source gives no more until the
+                # sound is over. The payload is the rate.
+                go = True
+                self.buffers[self.current][BURST_HEADER] = arg
+                self.staged = length = 1
+                marker = SOUND_MARKER
+            else:
+                # The console cannot play it, or no sound is waiting here.
+                # A flush burst ends its wait and carries on.
+                if sound is not None:
+                    self.source.sound_done()
+                self._stage(DEFAULT_CREDIT)
+                length = min(self.staged, DEFAULT_CREDIT)
+                marker = FLUSH_MARKER
+                self.flush_next = False
         else:
             self._stage(arg)
             length = min(self.staged, arg)
             marker = FLUSH_MARKER if self.flush_next else BURST_MARKER
             self.flush_next = False
+        self.sound_due = self.last_go = go
         if marker == FLUSH_MARKER:
             self._fresh_start()
-        self.sent += length
+        if not go:
+            self.sent += length
         if not length and marker == BURST_MARKER:
             self.drained = True
         sending = self.current
@@ -335,7 +395,7 @@ class Host:
             self.staged = 0
         self.current = 1 - sending
         self.sealed_seq = None
-        self.credit = arg
+        self.credit = credit
         self.last_seq = seq
         self.last_length = BURST_HEADER + length + 2
         return self.views[sending][:self.last_length]

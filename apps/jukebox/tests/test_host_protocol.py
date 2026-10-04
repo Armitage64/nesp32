@@ -192,3 +192,94 @@ def test_a_single_track_host_takes_the_buttons_too():
         1, looping_track().stream[:4], flush=True)
     button(host, protocol.BUTTON_PLAY)
     assert host.paused
+
+
+# -- sound ---------------------------------------------------------------------
+
+def sound_playlist():
+    import pcm
+    from playlist import PlaylistSource
+    from test_playlist import B
+
+    voice = pcm.Sound("Voices - Hello", 12, pcm.encode(range(100)))
+    return PlaylistSource([("Voices - Hello", voice), ("B", B)], loops=1), voice
+
+
+def drained(host, seq=0):
+    """Answer data requests until the source gives nothing. Returns the
+    next sequence number."""
+    while host.handle(Request(protocol.OP_DATA, seq, 24))[2]:
+        seq += 1
+    return seq + 1
+
+
+def test_a_go_burst_carries_the_rate_and_its_crc_covers_the_marker():
+    burst = protocol.burst_bytes(9, bytes([3]), go=True)
+    crc = protocol.crc16(bytes([0xC3, 9, 1, 3]))
+    assert burst == bytes([0xC3, 9, 1, 3, crc >> 8, crc & 0xFF])
+    assert protocol.OP_SOUND in protocol.OPS
+    decoder = RequestDecoder()
+    assert decoder.feed(protocol.request_bytes(protocol.OP_SOUND, 9, 3)) == [
+        Request(protocol.OP_SOUND, 9, 3)]
+
+
+def test_a_sound_request_gets_a_go_burst_and_the_sound_is_due():
+    source, voice = sound_playlist()
+    host = Host(source)
+    seq = drained(host)
+    assert source.sound is voice and not host.sound_due
+    go = protocol.burst_bytes(seq, bytes([voice.rate]), go=True)
+    assert host.handle(Request(protocol.OP_SOUND, seq, voice.rate)) == go
+    assert host.sound_due and host.sound_begin() is voice
+    # The console missed it and asks again: the same burst, still due.
+    assert host.handle(Request(protocol.OP_SOUND, seq, voice.rate)) == go
+    assert host.sound_due and host.stats["resends"] == 1
+    host.sound_end()
+    assert not host.sound_due and source.sound is None
+    # The music after it starts from an emptied buffer.
+    from test_playlist import B, titled
+    assert host.handle(Request(protocol.OP_DATA, seq + 1, 16)) == protocol.burst_bytes(
+        seq + 1, titled("B", B)[:16], flush=True)
+
+
+def test_a_request_that_is_not_for_sound_calls_the_sound_off():
+    for other in (Request(protocol.OP_HELLO, 0, 0), Request(protocol.OP_BUTTON, 0, 1)):
+        source, voice = sound_playlist()
+        host = Host(source)
+        seq = drained(host)
+        host.handle(Request(protocol.OP_SOUND, seq, voice.rate))
+        assert host.sound_due
+        host.handle(other)
+        assert not host.sound_due
+    # After the button the console asks once more for the sound it was
+    # about to play. It gets a new answer under the old number, never the
+    # go burst again: nobody would send the samples.
+    answer = host.handle(Request(protocol.OP_SOUND, seq, voice.rate))
+    assert answer[0] == protocol.FLUSH_MARKER and not host.sound_due
+    assert source.index == 1
+
+
+def test_a_console_that_cannot_play_a_sound_is_sent_past_it():
+    source, voice = sound_playlist()
+    host = Host(source)
+    seq = drained(host)
+    answer = host.handle(Request(protocol.OP_SOUND, seq, protocol.SOUND_REFUSED))
+    assert answer[0] == protocol.FLUSH_MARKER and len(answer) == 24 + 5
+    assert not host.sound_due and source.sound is None and source.index == 1
+
+
+def test_stopped_and_paused_hosts_do_not_start_a_sound():
+    source, voice = sound_playlist()
+    host = Host(source)
+    seq = drained(host)
+    host.paused = True
+    assert host.handle(Request(protocol.OP_SOUND, seq, voice.rate)) == protocol.burst_bytes(
+        seq, b"", pause=True)
+    assert not host.sound_due and source.sound is voice
+    host.stop()
+    assert host.handle(Request(protocol.OP_SOUND, seq + 1, voice.rate)) == protocol.burst_bytes(
+        seq + 1, b"", flush=True)
+    assert not host.sound_due
+    host.play()                     # the track starts again, and will ask again
+    assert source.sound is None
+    assert drained(host, seq + 2) and source.sound is voice

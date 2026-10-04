@@ -12,7 +12,7 @@ waiting, and write(buffer).
 
 import time
 
-from nesjuke.protocol import OP_DATA, OP_HELLO, RequestDecoder
+from nesjuke.protocol import OP_DATA, OP_HELLO, OP_SOUND, RequestDecoder
 
 if hasattr(time, "ticks_us"):
     ticks_us = time.ticks_us
@@ -84,21 +84,23 @@ class Player:
         decoder = self.decoder
         host = self.host
         wanted = False
-        seq = arg = 0
+        op = seq = arg = 0
         for index in range(count):
             if not decoder.push(rx[index]):
                 continue
             self.requests += 1
             if timely:
                 self.request_us = started
-            if decoder.op == OP_DATA:
+            if decoder.op == OP_DATA or decoder.op == OP_SOUND:
                 # After a pause several requests can be waiting. The NES
                 # only listens for an answer to its latest, and repeats
-                # are the same request again, so answer once.
+                # are the same request again, so answer once. A sound
+                # request is answered as a data request is.
                 self.data_requests += 1
                 if wanted:
                     self.stale += 1
                 wanted = True
+                op = decoder.op
                 seq = decoder.seq
                 arg = decoder.arg
             else:
@@ -107,7 +109,7 @@ class Player:
                     wanted = False
         if not wanted:
             return False
-        burst = host.handle(OP_DATA, seq, arg)
+        burst = host.handle(op, seq, arg)
         ready = self.ticks_us()
         self.uart.write(burst)
         written = self.ticks_us()

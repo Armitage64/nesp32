@@ -24,19 +24,34 @@
 ; in place of one frame's data request. The host acts on it; what comes back
 ; is the stream it then sends, usually starting with a flush burst.
 ;
+; Sampled sound (docs/PROTOCOL.md, part 4) takes the link over. When the
+; NMI plays a sound record, link_service asks for the sound in place of
+; data, and the host answers with a go burst. From there the console does
+; nothing but receive: the NMI is off, the screen stands still, and one of
+; the routines in pcm_rates.inc writes each byte to $4011 as it arrives, at
+; a rate several times the link's own, until a byte marked as the last.
+; Then the NMI goes back on and the link carries on where it was.
+;
 ; Provides link_init, link_service, link_button and the link_nmi_hook macro.
 
 .include "crc16_table.inc"
+.include "pcm_rates.inc"
 
 OP_DATA   = $4A                 ; 'J'
 OP_HELLO  = $48                 ; 'H'
 OP_STATS  = $53                 ; 'S'
 OP_BUTTON = $42                 ; 'B'
+OP_SOUND  = $50                 ; 'P'
 STATS_EVERY = 16                ; frames between counter reports; a power of 2
 REQUEST_SEED = $A5
 BURST_MARKER = $A5
 FLUSH_MARKER = $5A              ; a burst that first drops what is buffered
 PAUSE_MARKER = $3C              ; an empty burst: hold the music where it is
+SOUND_MARKER = $C3              ; a go burst: sound follows, at the rate it names
+SOUND_REFUSED = $FF             ; a sound request's rate when the console cannot play it
+SOUND_SETTLE = 116              ; units of 1.3 ms before listening for sound: 150 ms,
+                                ; while the host makes sure and changes its rate
+SOUND_REST = 23                 ; and after it, while the host changes back: 30 ms
 CREDIT_MAX = 24                 ; payload bytes per burst; sized in PLAN.md
 CREDIT_MIN = 8                  ; don't bother asking for less
 HUNT_TIMEOUT_FRAMES = 4         ; frames to wait for a marker before asking again
@@ -58,8 +73,11 @@ crc_hi:      .res 1
 crc_lo:      .res 1
 crc_count:   .res 1
 crc_ptr:     .res 2
+sound_vector: .res 2            ; the routine for the rate
 
 .segment "BSS"
+req_op:      .res 1             ; the request this frame sends: OP_DATA or OP_SOUND
+req_arg:     .res 1             ; its credit, or its rate
 rx_hunting:  .res 1             ; waiting for a burst's marker
 hunt_frames: .res 1             ; NMIs seen while waiting
 rx_active:   .res 1             ; a burst is arriving; an NMI must abandon it
@@ -157,6 +175,37 @@ done:
     bne @data
     jmp send_stats
 @data:
+    lda sound_wanted
+    beq @music
+    ; A sound record has played. Ask for the sound, once every line the
+    ; record's frame changed is on the screen and the bars are off it: it
+    ; will not be drawn again until the sound is over. The answer may be a flush burst
+    ; instead (a host that was stopped, or changed track), so there is
+    ; credit for one.
+    lda text_pending
+    bne @idle
+    lda ui_status
+    cmp status_drawn
+    bne @idle
+    ldx #BAR_COUNT - 1          ; and every bar is down, on the screen too
+@bar:
+    lda ui_drawn,x
+    ora ui_level,x
+    bne @idle
+    dex
+    bpl @bar
+    jsr sound_rate
+    sta req_arg
+    lda #OP_SOUND
+    sta req_op
+    lda #CREDIT_MAX
+    sta credit
+    bne @delay
+@idle:
+    jmp @done
+@music:
+    lda #OP_DATA
+    sta req_op
     jsr ring_free
     bne @use_max
     lda free
@@ -172,6 +221,8 @@ done:
     jmp @done
 @credit:
     sta credit
+    sta req_arg
+@delay:
     ldx request_delay
     beq @ask
 @wait:
@@ -179,14 +230,16 @@ done:
     dex
     bne @wait
 @ask:
-    lda #OP_DATA
+    lda req_op
     ldx link_seq
-    ldy credit
+    ldy req_arg
     jsr send_request
     jsr rx_burst
     bcc @received
     lda rx_missed
-    beq @done
+    bne @missed
+    jmp @done
+@missed:
     lda #0
     sta rx_missed
     lda request_delay           ; move the next request later in the frame
@@ -203,6 +256,11 @@ done:
     ; silenced, with everything buffered kept. Any other burst lets it go
     ; on, with the channel enables put back from the screen's copy.
     lda rx_marker
+    cmp #SOUND_MARKER
+    bne @not_go
+    jsr sound_go
+    jmp @done
+@not_go:
     cmp #PAUSE_MARKER
     bne @not_pause
     lda paused
@@ -229,6 +287,7 @@ done:
     sta flush_head + 1          ; flush_head is whole before the flag is set.
     lda #0
     sta link_done
+    sta sound_wanted            ; a sound that was due went with the rest
     lda #1
     sta flush_pending
 @commit:
@@ -258,6 +317,77 @@ done:
     ; needs its request.)
     lda frame_count
     sta served_frame
+    rts
+.endproc
+
+; A = the rate to ask for sound at: the one its record named, or
+; SOUND_REFUSED if this console cannot play it. That is a rate it has no
+; routine for, or a port that does not read as the routines count on (the
+; line is at rest here: the host only sends when asked). A refusal stays
+; refused until the host's flush burst takes it away.
+.proc sound_rate
+    ldx sound_wanted
+    dex
+    cpx #PCM_COUNT
+    bcs @refuse
+    lda JOY2
+    cmp #PORT_IDLE
+    bne @refuse
+    txa
+    rts
+@refuse:
+    lda #SOUND_REFUSED
+    sta sound_wanted
+    rts
+.endproc
+
+; A go burst arrived: play the sound it announces, if it is the one asked
+; for. The host listens for a moment in case this console missed the burst
+; and asks again, then changes its UART's rate and sends the samples; the
+; wait before listening for them covers both. An NMI would take cycles from
+; the receiver, so it is off until the sound is over.
+.proc sound_go
+    inc link_seq
+    inc16 link_bursts
+    ldx sound_wanted
+    dex
+    cpx #PCM_COUNT
+    bcs @out                    ; none was asked for
+    lda rx_len
+    cmp #1
+    bne @out
+    txa
+    ldy #0
+    cmp (tail),y                ; its payload, the rate, is in the ring uncommitted
+    bne @out
+    lda #0
+    sta PPUCTRL
+    sta APU_STATUS
+    sta sound_wanted
+    lda pcm_stream_lo,x
+    sta sound_vector
+    lda pcm_stream_hi,x
+    sta sound_vector + 1
+    ldx #SOUND_SETTLE
+    jsr wait_units
+    jsr @play
+    ldx #SOUND_REST
+    jsr wait_units
+    bit PPUSTATUS               ; a vblank that came and went is not an NMI now
+    lda #PPUCTRL_NMI
+    sta PPUCTRL
+@out:
+    rts
+@play:
+    jmp (sound_vector)
+.endproc
+
+; X units of about 1.3 ms.
+.proc wait_units
+@unit:
+    jsr wait_unit
+    dex
+    bne @unit
     rts
 .endproc
 
@@ -340,6 +470,8 @@ marker:
     cmp #BURST_MARKER
     beq found
     cmp #PAUSE_MARKER
+    beq found
+    cmp #SOUND_MARKER
     beq found
     cmp #FLUSH_MARKER
     bne marker

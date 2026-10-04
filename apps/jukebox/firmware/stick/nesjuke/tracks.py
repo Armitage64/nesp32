@@ -5,6 +5,11 @@ same bytes. It differs in two ways that save memory: only the current track
 is loaded, and frame boundaries are found by walking the stream as it is
 sent, not listed up front.
 
+A track may be sampled sound, a .pcm file (sound.py), which is not part of
+the stream: its place there is its names and length and then a sound
+record. Once that has been handed out, `sound` is the track and the stream
+gives nothing more until sound_done().
+
 The files are checked on the Mac at deploy time (tools/pack_tracks.py): each
 stream decodes, and each loop offset is a frame boundary. This module trusts
 them.
@@ -12,6 +17,8 @@ them.
 
 import os
 import struct
+
+from nesjuke import sound
 
 FILE_MAGIC = b"JBS\x1a"
 FILE_VERSION = 1
@@ -24,6 +31,7 @@ OP_CONTROL = 0x80
 CTRL_TITLE = 0x02
 CTRL_GAME = 0x03
 CTRL_LENGTH = 0x04
+CTRL_SOUND = 0x05
 END_OF_TRACK = b"\x80\x00"
 TITLE_MAX = 28  # characters: one line of the console's screen
 FRAMES_PER_SECOND = 60
@@ -51,9 +59,21 @@ def load_jbs(path):
     return title, stream, loop_offset if flags & FLAG_LOOPS else None, frames, loop_frame
 
 
+def load_sound(path):
+    """load_jbs's tuple for a .pcm file, with the sound itself after it:
+    its stream is one sound record."""
+    title, track = sound.load(path)
+    return (title, bytes((OP_CONTROL, CTRL_SOUND, track.rate)), None, sound.frames(track), 0,
+            track)
+
+
+def load_track(path):
+    return load_sound(path) if path.endswith(".pcm") else load_jbs(path)
+
+
 def list_tracks(directory):
     return sorted(directory + "/" + name for name in os.listdir(directory)
-                  if name.endswith(".jbs"))
+                  if name.endswith(".jbs") or name.endswith(".pcm"))
 
 
 def intro(title, frames):
@@ -109,6 +129,8 @@ def unit_end(data, pos):
         code = data[pos + 1]
         if code == CTRL_TITLE or code == CTRL_GAME:
             return pos + 3 + data[pos + 2]
+        if code == CTRL_SOUND:
+            return pos + 3
         return pos + 7 if code == CTRL_LENGTH else pos + 2
     if op < OP_CONTROL:
         return pos + 1
@@ -117,7 +139,8 @@ def unit_end(data, pos):
 
 class Playlist:
     def __init__(self, count, load, loops=2, repeat=False, on_track=None):
-        """load(index) returns load_jbs's tuple for one of the count tracks.
+        """load(index) returns load_jbs's tuple for one of the count tracks,
+        or load_sound's.
         on_track(index, title) is called when the host starts sending a
         track.
 
@@ -140,7 +163,10 @@ class Playlist:
 
     def _start(self, index):
         self.data = b""  # let go of the old track before loading the next
-        title, self.data, self.loop_offset, frames, loop_frame = self.load(index)
+        track = self.load(index)
+        title, self.data, self.loop_offset, frames, loop_frame = track[:5]
+        self.sound = None
+        self.sound_next = track[5] if len(track) > 5 else None
         if self.loop_offset is not None:
             frames += (self.loops - 1) * (frames - loop_frame)
         self.index = index
@@ -176,8 +202,12 @@ class Playlist:
         self.frames_out = 0
         self._start(self.index)
 
+    def sound_done(self):
+        """The sound's samples have been sent, or will not be."""
+        self.sound = None
+
     def take(self, count):
-        while len(self.pending) < count and not self.finished:
+        while len(self.pending) < count and not self.finished and self.sound is None:
             self.pending += self._next_unit()
         out = self.pending[:count]
         self.pending = self.pending[count:]
@@ -202,4 +232,5 @@ class Playlist:
         start = self.pos
         self.frames_out += unit_frames(self.data, start)
         self.pos = unit_end(self.data, start)
+        self.sound = self.sound_next    # after a sound record, wait for the sound
         return self.data[start:self.pos]

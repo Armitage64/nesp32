@@ -38,6 +38,15 @@ A proof of concept, and work in progress. See [`PLAN.md`](PLAN.md) for the desig
   left, and 223722 baud from it. A receiver built the way the jukebox's
   is passed up to 149148 baud, about four times the 38400 it runs at.
 
+- **Sampled sound, heard on a real NES:** a playlist can hold recordings
+  as well as music. The link ROM plays them through `$4011`, the console's
+  7-bit DAC, at 7748 to 20338 samples a second, fed a byte a sample at up
+  to 223722 baud. Converters from WAV and MP3, both hosts and the ROM are
+  built and tested on the simulated console. On a real one, a 30-second
+  clip from an MP3 at 10169 samples a second, sent by a StickC Plus2,
+  sounded right; the other rates and the desktop host are untried there.
+  See "Sampled sound" below.
+
 ## Building the ROM
 
 Needs [cc65](https://cc65.github.io/) (`ca65`, `ld65`).
@@ -131,6 +140,50 @@ The program asks the USB serial driver for 1 ms of receive latency
 about half of all requests are repeats, though the music still plays; at
 1 ms the same cable ran with none.
 
+## Sampled sound
+
+The link ROM can also play recordings: speech, a song off a CD, anything
+sampled. A sound track sits in a playlist beside the music. When its turn
+comes the console shows its name and `SAMPLED SOUND`, and then plays it
+through `$4011`, its 7-bit DAC, as the bytes arrive: one byte a sample, at
+a baud rate of its own. **It has played on a real NES from a StickC
+Plus2** at the default rate; the other five rates, and the desktop host,
+have only run in simulation.
+
+```sh
+tools/mp32pcm.py song.mp3 music/song.pcm            # or tools/wav2pcm.py song.wav ...
+tools/mp32pcm.py song.mp3 music/song.pcm --period 8 --title "Band - Song"
+tools/wav2pcm.py --tone 440 music/tone.pcm          # a test tone
+tools/pcm_preview.py music/song.pcm build/song_nes.wav
+```
+
+- `mp32pcm.py` has no decoder of its own: it runs `ffmpeg` if there is
+  one, and macOS's `afconvert` otherwise. It takes whatever they read.
+  `wav2pcm.py` needs nothing, and is slow on a long file (about a third
+  of the file's length).
+- `--period` picks the rate, in CPU cycles a bit: 21, 16 (the default,
+  10169 samples a second), 14, 12, 10 or 8 (20338). A minute is 465 KB at
+  the slowest and 1220 KB at the fastest.
+- `--seconds` keeps only that much from the start, for a Stick with
+  little flash to spare.
+- `--title` is what the console shows, "game - track" as for music. It
+  defaults to the file's name.
+- `pcm_preview.py` writes a WAV of what the console's DAC would put out,
+  from the ROM's own routine on the simulated console. It is the way to
+  hear a file without a console: an emulator has nothing on its controller
+  port to send the bytes. It plays the first 10 seconds unless told
+  otherwise. In it a full-scale tone has its noise 41 to 46 dB down within
+  the band the rate carries, which is what 7 bits through the DAC's curve
+  give; the console's own output filter is not modelled.
+
+Both hosts take `.pcm` files in a playlist, and `.wav` and `.mp3` files
+too, which they convert at the default rate as they load them.
+
+While a sound plays the console does nothing else: its screen stands still,
+with the bars down and the clock at 0:00, and its controller is not read. A key on the test host, or a button on the
+Stick, stops the sound and then does what it always does. See
+[`docs/PROTOCOL.md`](docs/PROTOCOL.md), part 4.
+
 ## Streaming from a Stick
 
 ```sh
@@ -151,7 +204,8 @@ Each conversion prints the stream size and bytes per frame (mean, 99th
 percentile, maximum, worst second), plus anything it had to drop, such as
 DMC writes and data blocks, FDS writes, or other chips.
 
-VGM rips are copyrighted. Keep them in `music/`, which git ignores.
+VGM rips are copyrighted, and so are most recordings. Keep them in
+`music/`, which git ignores, as it does `.pcm` files anywhere.
 
 ## Tests
 

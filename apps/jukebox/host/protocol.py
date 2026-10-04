@@ -17,7 +17,8 @@ OP_DATA = 0x4A      # 'J'
 OP_HELLO = 0x48     # 'H'
 OP_BUTTON = 0x42    # 'B'
 OP_STATS = 0x53     # 'S'
-OPS = frozenset({OP_DATA, OP_HELLO, OP_BUTTON, OP_STATS})
+OP_SOUND = 0x50     # 'P': a sound record has played; ARG is its rate
+OPS = frozenset({OP_DATA, OP_HELLO, OP_BUTTON, OP_STATS, OP_SOUND})
 
 # A button request's ARG: what the NES's controller asked for.
 BUTTON_NEXT = 0x01      # Right
@@ -72,7 +73,18 @@ class NesCounters:
 BURST_MARKER = 0xA5
 FLUSH_MARKER = 0x5A  # a burst that first drops what the NES has buffered
 PAUSE_MARKER = 0x3C  # an empty burst: the NES holds the music where it is
+SOUND_MARKER = 0xC3  # a go burst: sound follows, at the rate in its payload
+SOUND_REFUSED = 0xFF  # a sound request's ARG from a console that cannot play it
 MAX_BURST_PAYLOAD = 255
+DEFAULT_CREDIT = 24  # CREDIT_MAX in nes/serial_link.inc
+
+# After a go burst the host keeps listening this long. A console that
+# missed the burst asks again, at the latest after its 4-frame timeout; one
+# that took it is silent. Then the host changes its UART's rate and starts
+# the samples this long after the go burst. The console listens from 150 ms
+# after it (SOUND_SETTLE in nes/serial_link.inc).
+SOUND_LISTEN_MS = 100
+SOUND_START_MS = 175
 
 
 def crc16(data, crc=0xFFFF):
@@ -93,14 +105,14 @@ def request_bytes(op, seq, arg):
     return bytes([op, seq, arg, request_check(op, seq, arg)])
 
 
-def burst_bytes(seq, payload, flush=False, pause=False):
-    """A burst, or a flush or pause burst, whose CRC covers its marker as
-    well."""
+def burst_bytes(seq, payload, flush=False, pause=False, go=False):
+    """A burst, or a flush, pause or go burst, whose CRC covers its marker
+    as well."""
     if len(payload) > MAX_BURST_PAYLOAD:
         raise ValueError("burst payload too long")
     body = bytes([seq, len(payload)]) + bytes(payload)
-    if flush or pause:
-        marker = bytes([FLUSH_MARKER if flush else PAUSE_MARKER])
+    if flush or pause or go:
+        marker = bytes([FLUSH_MARKER if flush else PAUSE_MARKER if pause else SOUND_MARKER])
         crc = crc16(marker + body)
         return marker + body + bytes([crc >> 8, crc & 0xFF])
     crc = crc16(body)
@@ -203,6 +215,17 @@ class Host:
     Paused, it answers with empty pause bursts: the NES falls silent but
     keeps what it has buffered, and carries on from there with the first
     ordinary burst after `paused` is cleared.
+
+    A source may hold sound tracks (playlist.PlaylistSource). When the NES
+    reaches one it sends a sound request, and the answer is a go burst,
+    which sets `sound_due`. Whoever owns the serial port then does the
+    rest: if no request arrives for SOUND_LISTEN_MS, the NES took the burst
+    and is waiting for samples, so it sends sound_begin()'s samples at
+    their own baud rate and calls sound_end(). A request in that time
+    means the NES is not waiting: a sound request is answered with the same
+    go burst and the wait starts over, and anything else clears
+    `sound_due`. The host's own buttons must wait while it is set, because
+    a console that took the go burst hears nothing but samples.
     """
 
     def __init__(self, source, stopped=False):
@@ -218,17 +241,34 @@ class Host:
         self.stopped = stopped
         self.paused = False
         self.flush_next = False
+        self.sound_due = False  # a go burst went out; see the class comment
+        self.last_go = False    # the last burst was one
 
     def stop(self):
         self.stopped = True
         self.paused = False
+        self.sound_due = False
 
     def play(self):
         self.source.restart()
         self.stopped = self.paused = False
         self.flush_next = True
+        self.sound_due = False
 
     def flush(self):
+        self.flush_next = True
+        self.sound_due = False
+
+    def sound_begin(self):
+        """The sound to send now: a pcm.Sound."""
+        return self.source.sound
+
+    def sound_end(self):
+        """The samples have gone. The next burst is a flush burst, so the
+        music after a sound starts from a full buffer as a track change
+        does."""
+        self.source.sound_done()
+        self.sound_due = False
         self.flush_next = True
 
     def press(self, buttons):
@@ -237,6 +277,7 @@ class Host:
         paused. Start pauses and resumes; from stopped, or after the
         playlist's end, it plays the current track from its beginning."""
         source = self.source
+        self.sound_due = False
         if buttons & (BUTTON_NEXT | BUTTON_PREVIOUS):
             if hasattr(source, "jump"):
                 source.jump(1 if buttons & BUTTON_NEXT else -1)
@@ -254,6 +295,7 @@ class Host:
         self.source.restart()
         self.last_seq = None
         self.last_burst = b""
+        self.sound_due = False
 
     def handle(self, request):
         """Return the bytes to send for one request (empty for none)."""
@@ -270,20 +312,38 @@ class Host:
         if request.op == OP_STATS:
             self.counters.report(request.seq, request.arg)
             return b""
+        wants_sound = request.op == OP_SOUND
         if request.seq == self.last_seq:
-            self.stats["resends"] += 1
-            return self.last_burst
-        if self.last_seq is not None and request.seq != (self.last_seq + 1) & 0xFF:
+            # A go burst is only sent again while its sound is still due. If
+            # that was called off (a button), the NES gets a new answer
+            # under the same number, which is safe: it committed nothing.
+            if self.sound_due or not self.last_go:
+                self.stats["resends"] += 1
+                return self.last_burst
+        elif self.last_seq is not None and request.seq != (self.last_seq + 1) & 0xFF:
             self.stats["unexpected_seq"] += 1
         self.stats["bursts"] += 1
-        pause = False
+        pause = go = False
         if self.stopped:
             payload, flush = b"", True
         elif self.paused:
             payload, flush, pause = b"", False, True
+        elif wants_sound:
+            sound = getattr(self.source, "sound", None)
+            if sound is not None and request.arg == sound.rate:
+                payload, flush, go = bytes([sound.rate]), False, True
+            else:
+                # The console cannot play it (SOUND_REFUSED), or this host
+                # has no sound waiting. A flush burst ends its wait, and
+                # carries on with whatever is next.
+                if sound is not None:
+                    self.source.sound_done()
+                payload, flush = self.source.take(DEFAULT_CREDIT), True
+                self.flush_next = False
         else:
             payload = self.source.take(min(request.arg, MAX_BURST_PAYLOAD))
             flush, self.flush_next = self.flush_next, False
+        self.sound_due = self.last_go = go
         self.last_seq = request.seq
-        self.last_burst = burst_bytes(request.seq, payload, flush, pause)
+        self.last_burst = burst_bytes(request.seq, payload, flush, pause, go)
         return self.last_burst

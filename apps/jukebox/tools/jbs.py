@@ -8,7 +8,9 @@ records, and the NES decodes one frame's worth per NMI:
     $80 cc      control record (cc: $00 end of track, which also ends the
                 frame; $01 APU init, which does not; $02 track name and
                 $03 game name, each followed by a length and that many
-                characters; $04 track length, followed by five characters)
+                characters; $04 track length, followed by five characters;
+                $05 sampled sound is due, followed by its rate, which ends
+                the frame as $00 does)
     $81-$FF     write record, then advance one frame
 
 A write record's header bits select register groups. Each selected group
@@ -36,6 +38,7 @@ CTRL_INIT = 0x01
 CTRL_TITLE = 0x02
 CTRL_GAME = 0x03
 CTRL_LENGTH = 0x04
+CTRL_SOUND = 0x05
 CONTROL_CODES = frozenset({CTRL_END, CTRL_INIT})  # those with nothing after the code
 TITLE_MAX = 28  # characters: one line of the console's screen
 LENGTH_CHARS = 5
@@ -64,6 +67,7 @@ Control = namedtuple("Control", "code")
 Title = namedtuple("Title", "text")      # the track's name
 Game = namedtuple("Game", "text")        # the game it came from
 Length = namedtuple("Length", "text")    # "M:SS ", as the console shows it
+SoundRecord = namedtuple("SoundRecord", "rate")  # sampled sound is due (tools/pcm.py)
 TEXT_CONTROLS = {CTRL_TITLE: Title, CTRL_GAME: Game}
 
 
@@ -107,6 +111,13 @@ def intro(title, frames=None):
             + bytes([OP_CONTROL, CTRL_LENGTH]) + length_text(frames))
 
 
+def sound_record(rate):
+    """The control record a host sends where a sound track plays: the
+    console asks for the sound when it gets here. The rate is an index
+    into pcm.PERIODS."""
+    return bytes([OP_CONTROL, CTRL_SOUND, rate])
+
+
 def _control_end(data, pos):
     """The position after the control record at pos."""
     code = _byte(data, pos + 1)
@@ -117,6 +128,8 @@ def _control_end(data, pos):
         end = pos + 3 + length
     elif code == CTRL_LENGTH:
         end = pos + 2 + LENGTH_CHARS
+    elif code == CTRL_SOUND:
+        end = pos + 3
     elif code in CONTROL_CODES:
         end = pos + 2
     else:
@@ -210,6 +223,12 @@ def decode(data, start=0):
                 continue
             if code == CTRL_LENGTH:
                 current.append(Length(data[pos + 2:end].decode("latin-1")))
+                pos = end
+                continue
+            if code == CTRL_SOUND:  # the last thing in its frame, as an end is
+                current.append(SoundRecord(data[pos + 2]))
+                frames.append(current)
+                current = []
                 pos = end
                 continue
             current.append(Control(code))

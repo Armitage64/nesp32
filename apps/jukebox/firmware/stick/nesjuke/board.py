@@ -30,6 +30,7 @@ from machine import UART
 import M5
 
 BAUD = 38400
+TX_BUFFER = 1024    # bytes; sampled sound is fed through it, 50 to 130 ms of it
 LINK_UART_ID = 1
 POWER_OFF_HOLD_MS = 2000
 
@@ -76,10 +77,19 @@ def open_link_uart(tx, rx, invert=True):
         tx=tx,
         rx=rx,
         rxbuf=256,
-        txbuf=512,
+        txbuf=TX_BUFFER,
         timeout=0,
         invert=(UART.INV_TX | UART.INV_RX) if invert else 0,
     )
+
+
+def set_link_baud(uart, baud, invert=True):
+    """Change the link's rate, for sampled sound and back. What was written
+    must have left the wire first. Everything is named again: some builds
+    put back the default for whatever init is not given, and the default is
+    not inverted."""
+    uart.init(baudrate=baud, bits=8, parity=None, stop=2, timeout=0,
+              invert=(UART.INV_TX | UART.INV_RX) if invert else 0)
 
 
 class Buttons:

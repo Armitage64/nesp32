@@ -56,7 +56,7 @@ HELP_STANDALONE = "START=PAUSE"
 # Indexed by ui_status in nes/ui.inc. Playing shows nothing: the clock
 # running says as much.
 STATUS_TEXT = ("WAITING FOR LINK", "PRESS START", "LOADING", "", "PAUSED",
-               "THE END")
+               "THE END", "SAMPLED SOUND")
 
 # --- tiles ---------------------------------------------------------------------
 

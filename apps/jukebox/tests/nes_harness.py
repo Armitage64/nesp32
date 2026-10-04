@@ -8,6 +8,8 @@ shift register loaded from `pad`.
 
 The emulated clock fires an NMI every NTSC frame (29781 cycles) while the ROM
 has NMI enabled, or at random intervals to stress the ring buffer handoff.
+While the ROM has it off, as it does to play sampled sound, vblanks pass
+with no NMI.
 Whenever the CPU sits at main_wait with nothing to do, the clock skips ahead
 to the next NMI, which is what keeps whole songs fast enough to test.
 """
@@ -31,6 +33,7 @@ VBLANK_CYCLES = 2273    # 20 scanlines: PPU writes must be over by then
 PAD_A, PAD_B, PAD_SELECT, PAD_START = 0x80, 0x40, 0x20, 0x10
 PAD_UP, PAD_DOWN, PAD_LEFT, PAD_RIGHT = 0x08, 0x04, 0x02, 0x01
 APU = 0x4000
+APU_DMC_LEVEL = 0x4011
 APU_LAST = 0x4017
 JOY1 = 0x4016
 JOY2 = 0x4017
@@ -38,6 +41,7 @@ RETURN_TRAP = 0xFFF0  # call() returns here
 RTI = 0x40
 VBLANK = 0x80
 STALL_CYCLES = 10 * NTSC_FRAME_CYCLES
+SOUND_MODE_CYCLES = 3_000_000   # the longest the ROM may keep the NMI off once booted
 
 
 def load_labels(path):
@@ -75,6 +79,8 @@ class Console:
         apu = [a for a in range(APU, APU_LAST + 1) if a != JOY1]
         self.memory.subscribe_to_write(apu, self._apu_write)
         self.reset_writes = []
+        self.level_log = None   # set to a list to record (cycle, value) writes to $4011
+        self.nmi_off_since = None
         self.frames = []  # per NMI: (writes, underran, playing)
         self._writes = self.reset_writes
         self.nmi_cycles = []
@@ -82,6 +88,8 @@ class Console:
 
     def _apu_write(self, address, value):
         self._writes.append((address - APU, value))
+        if address == APU_DMC_LEVEL and self.level_log is not None:
+            self.level_log.append((self.mpu.processorCycles + 3, value))
 
     def _read_ppustatus(self, address):
         self.ppu_latch = None
@@ -160,6 +168,17 @@ class Console:
         fired = 0
         while fired < nmis:
             enabled = self.memory[PPUCTRL] & PPUCTRL_NMI
+            if enabled:
+                self.nmi_off_since = None
+            elif fired or self.frames:
+                # Off after the first NMI: the ROM is playing sound. Vblanks
+                # go by, and the frame clock keeps its phase.
+                if self.nmi_off_since is None:
+                    self.nmi_off_since = mpu.processorCycles
+                if mpu.processorCycles >= next_nmi:
+                    next_nmi += period()
+                if mpu.processorCycles - self.nmi_off_since > SOUND_MODE_CYCLES:
+                    raise AssertionError("ROM stalled with NMI disabled at $%04X" % mpu.pc)
             if enabled and mpu.pc in targets and mpu.pc != returned_to:
                 self._nmi()
                 fired += 1
@@ -187,6 +206,12 @@ class Console:
             mpu.step()
             if mpu.processorCycles > next_nmi + STALL_CYCLES:
                 raise AssertionError("ROM stalled with NMI disabled at $%04X" % mpu.pc)
+
+    def run_cycles(self, cycles, **kwargs):
+        """Run for at least this many CPU cycles, in whole NMIs."""
+        end = self.mpu.processorCycles + cycles
+        while self.mpu.processorCycles < end:
+            self.run(1, **kwargs)
 
     def _idle_until(self, next_nmi):
         """A cycle to skip ahead to when the CPU is only spinning, or None.
@@ -269,7 +294,9 @@ def expected_frames(stream, loop_offset=None):
         for item in frame:
             if isinstance(item, (jbs.Title, jbs.Game, jbs.Length)):
                 continue
-            if item == jbs.Control(jbs.CTRL_INIT):
+            if isinstance(item, jbs.SoundRecord):   # a tuple of one, as a Control is
+                writes += end
+            elif item == jbs.Control(jbs.CTRL_INIT):
                 writes += init
             elif item == jbs.Control(jbs.CTRL_END):
                 writes += end

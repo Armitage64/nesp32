@@ -141,3 +141,56 @@ def test_a_title_longer_than_the_line_is_malformed():
         jbs.decode(bytes([0x80, 0x02, 29]) + b"x" * 29)
     with pytest.raises(jbs.StreamError, match="truncated"):
         jbs.frame_units(bytes([0x80, 0x02, 5]) + b"abc")
+
+
+# -- sound tracks --------------------------------------------------------------
+
+def hello(count=1000, period=16):
+    import pcm
+    return pcm.Sound("Voices - Hello", period, pcm.encode([index & 0x7F for index in range(count)]))
+
+
+def test_a_sound_tracks_place_in_the_stream_is_its_names_and_a_record():
+    voice = hello(10169)        # a second of it
+    source = PlaylistSource([("A", A), ("Voices - Hello", voice), ("B", B)], loops=1)
+    first = titled("A", A)
+    assert source.take(len(first)) == first and source.sound is None
+    # Then the sound's names and length, its record, and nothing more.
+    place = jbs.intro("Voices - Hello", voice.frames) + jbs.sound_record(voice.rate)
+    assert announced(place) == [("Voices", "Hello", "0:00 ")] and voice.frames == 59
+    assert source.take(len(place) - 1) == place[:-1]
+    assert source.sound is voice and source.index == 1
+    assert source.take(100) == place[-1:] and source.take(100) == b""
+    assert not source.finished
+    source.sound_done()
+    assert source.sound is None
+    assert source.take(1000) == titled("B", B) + END_OF_TRACK and source.finished
+
+
+def test_a_jump_or_a_restart_leaves_a_sound_that_was_waiting():
+    started = []
+    source = PlaylistSource([("Voices - Hello", hello()), ("B", B)], loops=1,
+                            on_track=lambda index, title: started.append(title))
+    drain(source)
+    assert source.sound is not None
+    source.jump(1)
+    assert source.sound is None and source.take(1000) == titled("B", B) + END_OF_TRACK
+    source.jump(-1)
+    drain(source)
+    assert source.sound is not None
+    source.restart()                # the NES was reset: the sound is due again
+    assert source.sound is None
+    drain(source)
+    assert source.sound is not None
+    assert started == ["Voices - Hello", "B", "Voices - Hello", "Voices - Hello"]
+
+
+def test_a_playlist_of_one_sound_repeats_or_ends():
+    source = PlaylistSource([("Voices - Hello", hello())], loops=3)
+    place = drain(source)
+    source.sound_done()
+    assert drain(source) == END_OF_TRACK and source.finished
+    again = PlaylistSource([("Voices - Hello", hello())], repeat=True)
+    assert drain(again) == place
+    again.sound_done()
+    assert drain(again) == place and not again.finished

@@ -9,13 +9,20 @@ baud error can all be staged.
 The receive loop's hunt for a start bit is fast-forwarded in whole loop
 iterations while the line is idle, which keeps the loop's phase against the
 next start bit exactly as it would have been.
+
+Sampled sound: this stands in for the part of a host that owns the serial
+port (host/jukebox.py's run, the Stick's device.py). After a go burst it
+waits SOUND_LISTEN_MS for another request, as they do, and then puts the
+sound's samples on the line at their own bit length.
 """
 
+import pcm
 from nes_harness import JOY1, JOY2, Console
-from protocol import RequestDecoder
+from protocol import SOUND_LISTEN_MS, SOUND_START_MS, RequestDecoder
 from serial_line import CPU_HZ, MARK, HostToNes, NesToHost
 
 LDA_ABS = 0xAD
+READS_ABS = (LDA_ABS, 0xCC, 0xCD, 0x4D)   # lda, cpy, cmp, eor: all read on their 4th cycle
 STORE_ABS = (0x8C, 0x8D, 0x8E)  # sty, sta, stx absolute
 HUNT_LOOP_CYCLES = 9            # lda abs 4 + lsr 2 + bcc taken 3
 POLL_CYCLES = 200
@@ -42,19 +49,24 @@ class LinkConsole(Console):
         self.read_log = None  # set to a list to record (cycle, level) reads
         self.write_log = None  # set to a list to record (cycle, level) writes
         self.next_poll = 0
+        self.go_at = None       # when the last go burst went out
+        self.sound_fault = None  # bytes -> bytes, for a sound's samples
+        self.sounds = []        # (cycle its samples start, cycle they end, pcm.Sound)
+        self.sound_screens = []  # the nametable as each sound's samples were queued
+        self.port_bits = pcm.PORT_IDLE  # what the port's unused bits read
         self.rx_hunt = self.labels["rx_hunt"]
         self.memory.subscribe_to_read([JOY2], self._read_joy2)
         self.memory.subscribe_to_write([JOY1], self._write_joy1)
 
     def _read_joy2(self, address):
         mpu = self.mpu
-        if self.memory[mpu.pc - 1] != LDA_ABS:
+        if self.memory[mpu.pc - 1] not in READS_ABS:
             raise AssertionError("$4017 read by opcode $%02X" % self.memory[mpu.pc - 1])
         cycle = mpu.processorCycles + 3
         level = self.to_nes.level(cycle)
         if self.read_log is not None:
             self.read_log.append((cycle, level))
-        return 0x40 | (level ^ 1)  # the port's buffer inverts D0
+        return self.port_bits | (level ^ 1)  # the port's buffer inverts D0
 
     def _write_joy1(self, address, value):
         mpu = self.mpu
@@ -80,7 +92,28 @@ class LinkConsole(Console):
                 if reply and self.reply_fault:
                     reply = self.reply_fault(reply)
                 if reply:
-                    self.to_nes.send(reply, end + self.turnaround())
+                    at = end + self.turnaround()
+                    self.to_nes.send(reply, at)
+                else:
+                    at = end            # nothing went out, or a fault took it
+                if getattr(self.host, "sound_due", False):
+                    self.go_at = at     # a go burst went out, or was meant to
+        if (self.host is not None and getattr(self.host, "sound_due", False)
+                and now >= self.go_at + ms(SOUND_LISTEN_MS)):
+            self._send_sound()
+
+    def _send_sound(self):
+        host = self.host
+        sound = host.sound_begin()
+        samples = sound.samples + pcm.LAST_BYTE
+        if self.sound_fault:
+            samples = self.sound_fault(samples)
+        start = self.go_at + ms(SOUND_START_MS)
+        clock = self.to_nes.bit / (CPU_HZ / 38400.0)    # the host's baud error, if any
+        end = self.to_nes.send(samples, start, bit=sound.period * clock)
+        self.sounds.append((start, end, sound))
+        self.sound_screens.append(self.nametable())
+        host.sound_end()
 
     def _idle_until(self, next_nmi):
         mpu = self.mpu

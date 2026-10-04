@@ -1,5 +1,6 @@
 import os
 
+import jbs
 import jukebox
 import protocol
 from playlist import PlaylistSource
@@ -150,3 +151,152 @@ def test_stop_and_play_keys():
         2, titled("A", A)[:8], flush=True)
     assert host.handle(protocol.Request(0x4A, 3, 2)) == protocol.burst_bytes(
         3, titled("A", A)[8:10])
+
+
+# -- sound ---------------------------------------------------------------------
+
+def voice(count=1000):
+    import pcm
+    return pcm.Sound("Voices - Hello", 12, pcm.encode([index & 0x7F for index in range(count)]))
+
+
+def test_sound_tracks_load_from_pcm_and_wav(tmp_path):
+    import wave
+
+    import pcm
+
+    (tmp_path / "a.pcm").write_bytes(voice().to_bytes())
+    untitled = voice()
+    untitled.title = ""
+    (tmp_path / "b named by its file.pcm").write_bytes(untitled.to_bytes())
+    with wave.open(str(tmp_path / "c.wav"), "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(8000)
+        handle.writeframes(bytes(1600))
+    paths = jukebox.expand_paths([str(tmp_path)])
+    assert [os.path.basename(p) for p in paths] == ["a.pcm", "b named by its file.pcm", "c.wav"]
+    loaded = [jukebox.load_track(p) for p in paths]
+    assert [title for title, _ in loaded] == ["Voices - Hello", "b named by its file", "c"]
+    assert all(isinstance(track, pcm.Sound) for _, track in loaded)
+    assert loaded[2][1].period == pcm.DEFAULT_PERIOD
+    assert jukebox.expand_paths(["x.mp3"]) == ["x.mp3"]
+
+
+class SoundPort:
+    """A pyserial port as play_sound uses it, on a clock that only it and
+    the sleeps move."""
+
+    def __init__(self):
+        self.baudrate = jukebox.BAUD
+        self.events = []
+        self.now = 10.0
+
+    def write(self, data):
+        self.events.append((self.baudrate, bytes(data)))
+
+    def flush(self):
+        self.events.append("flush")
+
+    def reset_input_buffer(self):
+        self.events.append("reset")
+
+    def clock(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.events.append(("sleep", round(seconds, 3)))
+        self.now += seconds
+
+
+def waiting_host(sound):
+    source = PlaylistSource([("Voices - Hello", sound), ("B", B)], loops=1)
+    host = Host(source)
+    seq = 0
+    while host.handle(protocol.Request(0x4A, seq, 24))[2]:
+        seq += 1
+    host.handle(protocol.Request(protocol.OP_SOUND, seq + 1, sound.rate))
+    assert host.sound_due
+    return host, source
+
+
+def test_play_sound_sends_the_samples_at_their_rate_and_gives_the_link_back():
+    import pcm
+
+    sound = voice(3000)
+    host, source = waiting_host(sound)
+    port = SoundPort()
+    keys = jukebox.play_sound(port, host, go_at=port.now - 0.1, clock=port.clock,
+                              sleep=port.sleep)
+    assert keys == ""
+    baud = pcm.baud(12)
+    # What was queued at the link's rate leaves first, and the samples
+    # start 175 ms after the go burst.
+    assert port.events[:2] == ["flush", ("sleep", 0.075)]
+    sent = [event for event in port.events if isinstance(event[1], bytes)]
+    assert {rate for rate, _ in sent} == {baud}
+    assert b"".join(data for _, data in sent) == sound.samples + pcm.LAST_BYTE
+    assert port.events[-2:] == ["flush", "reset"] and port.baudrate == jukebox.BAUD
+    # Paced: the port was never more than 0.1 s ahead of the samples' time.
+    slept = sum(event[1] for event in port.events[2:] if event[0] == "sleep")
+    assert abs(slept - (3000 / (baud / 11) - jukebox.SOUND_AHEAD)) < 0.03
+    assert not host.sound_due and source.sound is None and host.flush_next
+
+
+def test_a_key_stops_a_sound_and_is_handed_back():
+    import pcm
+
+    sound = voice(3000)
+    host, source = waiting_host(sound)
+    port = SoundPort()
+    pressed = iter(["", "", "n"])
+    keys = jukebox.play_sound(port, host, go_at=port.now - 1, poll_keys=lambda: next(pressed),
+                              clock=port.clock, sleep=port.sleep)
+    assert keys == "n"
+    sent = b"".join(event[1] for event in port.events if isinstance(event[1], bytes))
+    assert sent == sound.samples[:3 * jukebox.SOUND_CHUNK] + pcm.LAST_BYTE
+    assert port.baudrate == jukebox.BAUD and not host.sound_due
+    assert not jukebox.press_key("n", host, source) and source.index == 1   # and then it is obeyed
+
+
+def test_run_plays_a_sound_once_the_console_has_gone_quiet(monkeypatch):
+    import pcm
+
+    sound = voice(600)
+    port, keys = PipePort(), PipeKeys()
+    port.baudrate = jukebox.BAUD
+    port.flush = port.reset_input_buffer = lambda: None
+    rates = []
+    write = port.write
+
+    def record(data):
+        rates.append(port.baudrate)
+        write(data)
+        if data == pcm.LAST_BYTE:
+            os.write(keys.typist, b"q")     # typed as the sound ends
+
+    port.write = record
+    monkeypatch.setattr(jukebox, "SOUND_START_MS", 0)
+    source = PlaylistSource([("Voices - Hello", sound), ("B", B)], loops=1)
+    streamer = jukebox.Streamer(Host(source))
+    place = jbs.intro("Voices - Hello", sound.frames) + jbs.sound_record(sound.rate)
+    os.write(port.nes_fd, protocol.request_bytes(0x4A, 0, 64)
+             + protocol.request_bytes(protocol.OP_SOUND, 1, sound.rate))
+
+    class Out:
+        text = ""
+
+        def write(self, text):
+            Out.text += text
+
+        def flush(self):
+            pass
+
+    jukebox.run(port, source, streamer, keys, out=Out())
+    go = protocol.burst_bytes(1, bytes([sound.rate]), go=True)
+    assert bytes(port.written) == (protocol.burst_bytes(0, place) + go + sound.samples
+                                   + pcm.LAST_BYTE)
+    # Both answers went out in one write, at the link's rate; the rest is sound.
+    assert rates[0] == jukebox.BAUD and set(rates[1:]) == {pcm.baud(12)}
+    assert "playing sound: Voices - Hello" in Out.text
+    assert port.baudrate == jukebox.BAUD and source.sound is None

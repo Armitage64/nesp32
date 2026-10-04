@@ -38,6 +38,7 @@ PPUADDR   = $2006
 PPUDATA   = $2007
 APU       = $4000
 APU_DMC   = $4010
+APU_DMC_LEVEL = $4011           ; the sample channel's 7-bit DAC
 APU_STATUS = $4015
 JOY1      = $4016
 JOY2      = $4017
@@ -59,6 +60,7 @@ CTRL_INIT  = $01
 CTRL_TITLE = $02
 CTRL_GAME  = $03
 CTRL_LENGTH = $04
+CTRL_SOUND = $05                ; the link ROM only
 
 ; link_state: what the link last heard, for the screen's status line.
 LINK_WAITING   = 0              ; no answer from a host
@@ -114,6 +116,7 @@ flush_pending: .res 1           ; the link asks the NMI to drop what is buffered
 stream_error: .res 1
 link_state:   .res 1            ; LINK_*, set by the link
 paused:       .res 1            ; held: by a pause burst, or the standalone ROM's Start
+sound_wanted: .res 1            ; a sound record played: its rate + 1, or SOUND_REFUSED
 underruns:    .res 2
 stage_reg:    .res STAGE_MAX
 stage_val:    .res STAGE_MAX
@@ -509,6 +512,29 @@ retry:
     bcs @control_failed
     jmp @next
 @not_length:
+.ifdef LINK
+    ; A sound record: sampled sound is due here. The frame ends as a track
+    ; does, with the APU silenced, and the link asks the host for the
+    ; sound once the screen has caught up (serial_link.inc).
+    cmp #CTRL_SOUND
+    bne @not_sound
+    jsr read_byte               ; the rate
+    bcs @control_failed
+    tax
+    inx
+    stx sound_wanted            ; a rate of 255 is refused later
+    ; The screen stands still while a sound plays, so the bars of the
+    ; notes before it come down now and not at their own pace. The next
+    ; two vblanks draw them; the link waits for that.
+    ldx #BAR_COUNT - 1
+    lda #0
+@clear_bar:
+    sta ui_level,x
+    dex
+    bpl @clear_bar
+    bmi @end                    ; always
+@not_sound:
+.endif
     cmp #CTRL_END
     beq @end
     jmp @bad

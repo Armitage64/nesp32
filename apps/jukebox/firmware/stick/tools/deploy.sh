@@ -12,7 +12,7 @@
 #   - copies nesjuke/ and main.py (and config.json if present here) into
 #     /flash, UIFlow's user filesystem;
 #   - replaces /flash/tracks with the music, converted to .jbs on this
-#     computer;
+#     computer, and with sampled sound (.pcm, .wav, .mp3) as .pcm;
 #   - saves UIFlow's existing /flash/main.py as /flash/main_uiflow.py the
 #     first time, so tools/restore_uiflow.sh can put it back;
 #   - sets UIFlow's boot_option to 0, so the Stick runs the jukebox at
@@ -80,7 +80,7 @@ print('UIFlow boot_option set to 0: the Stick will start the jukebox')
     exit 1
 fi
 "$@" cp "$HERE"/nesjuke/*.py :/flash/nesjuke/
-"$@" cp "$BUILD"/tracks/*.jbs :/flash/tracks/
+"$@" cp "$BUILD"/tracks/*.* :/flash/tracks/
 if [ -f "$HERE/config.json" ]; then
     "$@" cp "$HERE/config.json" :/flash/config.json
 fi

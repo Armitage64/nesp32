@@ -49,6 +49,7 @@ STATUS_STOPPED = 1              ; 0 and 2 are LINK_WAITING and LINK_STREAMING
 STATUS_PLAYING = 3
 STATUS_PAUSED  = 4
 STATUS_ENDED   = 5
+STATUS_SOUND   = 6              ; sampled sound is about to play, or is playing
 
 BAR_DECAY = 4                   ; pixels a bar falls each time it is drawn
 TRIANGLE_VOLUME = 11            ; the triangle has no volume; draw it this loud
@@ -361,6 +362,10 @@ LINE_COUNT = * - line_bit
     beq @not_paused
     ldx #STATUS_STOPPED
 @not_paused:
+    lda sound_wanted            ; the screen stands still while sound plays,
+    beq @no_sound               ; so this is drawn before it starts
+    ldx #STATUS_SOUND
+@no_sound:
 .endif
     ; Stopped with a track on the screen: no "press Start", which the foot
     ; of the screen says already. The clock flashes instead, about once a

@@ -125,6 +125,49 @@ counters by name, and the longest pauses: `write` (handing a burst to the
 UART), `chore` (buttons, battery and screen), `log` (printing this line) and
 `gc` (garbage collection).
 
+## Sampled sound
+
+The playlist can hold recordings as well as music: `deploy.sh` takes
+`.pcm`, `.wav` and `.mp3` files along with the rips, and puts them on the
+Stick as `.pcm` (see the top-level README, "Sampled sound"). **It has
+played on a real NES from a StickC Plus2**: a 30-second clip at the default
+rate, 10169 samples a second, which sounded right. The faster rates, the
+buttons during a sound and the StickS3 have not been tried.
+
+When a sound's turn comes the NES asks for it, and the Stick changes its
+UART to the sound's rate (85227 to 223722 baud) and copies the file to it.
+Until the last sample nothing else runs but the buttons:
+
+| Button | During a sound |
+|---|---|
+| **A** | stop. A again plays the sound from its start; it cannot be paused |
+| **B** | stop, and play the previous track |
+| **Power**, tapped | stop, and play the next track |
+| **B**, held 2 s | power off |
+
+The NES's controller does nothing during a sound, since the console is not
+reading it. The screen says `SOUND` and shows the sound's length; the clock
+does not run.
+
+Things to know before trying it:
+
+- **It is big.** A minute at the default rate is 610 KB of the Stick's
+  flash, all of it copied over USB by `mpremote`. A Plus2 has room for
+  little: make a clip with the converters' `--seconds` (30 seconds is
+  299 KB). Note that `deploy.sh` with no arguments takes everything in
+  `music/`, recordings included.
+- **The Stick must keep its UART fed** from flash at 8 to 20 KB a second.
+  At 10 KB a second a Plus2 does.
+  The UART's buffer holds 1024 bytes, 50 to 130 ms. After each sound the
+  USB log has a line with the time it took to hand over the samples, which
+  should be the sound's length: longer means it did not keep up, and the
+  sound dragged.
+- **`uart.write` must wait while that buffer is full.** That is what paces
+  the samples. If a build's write returns at once instead, samples are
+  lost, and the same log line shows a time far too short.
+- **A NES left in the middle of a sound** (the Stick was switched off)
+  waits for the rest. Starting the Stick again frees it; so does Reset.
+
 ## Bring-up on hardware
 
 Do these in order; each isolates one thing.
@@ -161,8 +204,9 @@ run has been done.
 |---|---|
 | `nesjuke/protocol.py` | requests, bursts and resends; a port of `host/protocol.py` |
 | `nesjuke/tracks.py` | `.jbs` files and the playlist stream; a port of `host/playlist.py` |
+| `nesjuke/sound.py` | `.pcm` files, and copying one to the UART; what the Stick needs of `tools/pcm.py` |
 | `nesjuke/player.py` | the reply loop |
 | `nesjuke/board.py`, `ui.py`, `device.py` | pins and UART per board, the screen, and the main loop (UIFlow only) |
-| `tools/deploy.sh`, `tools/pack_tracks.py` | convert music and copy everything to the Stick |
+| `tools/deploy.sh`, `tools/pack_tracks.py` | convert music and sound and copy everything to the Stick |
 | `tools/link_monitor.py` | bench helper for step 3 |
 | `tools/stick_repl.py`, `tools/restore_uiflow.sh` | from nes-radar: run code without a soft reset; go back to the UIFlow launcher |

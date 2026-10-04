@@ -4,7 +4,9 @@ Status: the stream format (part 1) and the file container (part 2) are
 implemented by `tools/jbs.py` and fixed for v1. The link protocol (part 3)
 is implemented by `nes/serial_link.inc` and `host/protocol.py` and verified
 in a cycle-exact simulation. Its timing still needs confirming on hardware
-(phase 3b).
+(phase 3b). Sampled sound (part 4) is implemented by the same two, with
+`tools/pcm.py` for its file and its bytes. It has played on a real NES
+from a StickC Plus2 at one of its six rates.
 
 ## 1. Stream format
 
@@ -63,9 +65,10 @@ no format change.
 | `$02 n text` | track name: *n* characters (0-28) of printable ASCII for the console's screen |
 | `$03 n text` | game name, in the same form, for the line above it |
 | `$04 text` | track length: 5 characters as the screen shows them, `M:SS ` or `MM:SS`, or `-:-- ` for a track that never ends. It also starts the console's clock again from zero |
+| `$05 r` | sound record: sampled sound is due here, at rate *r* (part 4). It silences the APU and ends the frame as `$00` does, and the console then asks the host for the sound. The link ROM only; to the standalone ROM it is invalid |
 
-Other codes are invalid in v1, and so is a name longer than 28. The last
-three write nothing to the APU.
+Other codes are invalid in v1, and so is a name longer than 28. The three
+with text write nothing to the APU.
 
 They are not part of a track's own stream: the converter never writes
 them, and a `.jbs` file keeps its title in the header. The host puts all
@@ -144,6 +147,7 @@ OP, SEQ, ARG, CHECK        CHECK = $A5 ^ OP ^ SEQ ^ ARG
 | `$48` 'H' | hello | 0 | 0; the host restarts the track and its sequence |
 | `$42` 'B' | button | 0 | what controller 1 asked for: bit 0 next track, bit 1 previous, bit 2 play or pause; no reply |
 | `$53` 'S' | stats | which counter | the counter's low byte; no reply |
+| `$50` 'P' | sound | burst the NES wants | the rate of the sound record it has played, or `$FF` if it cannot play it (part 4) |
 
 The NES sends hello once at boot, after holding OUT0 at mark for about
 1.3 ms so the host's UART leaves break. After that it sends a data request
@@ -332,3 +336,141 @@ where it took 32.
   port (`--latency-ms`; on macOS the driver takes milliseconds in one
   byte). At 1 ms the same cable ran 625 requests with no repeats and
   no errors counted by the NES.
+
+## 4. Sampled sound
+
+A playlist may hold sampled sound: a recording, played through `$4011`, the
+7-bit DAC of the console's sample channel. It does not travel in the stream
+or in bursts. The console writes each byte to `$4011` as it arrives, a byte
+a sample, at a baud rate several times the link's, and nothing is stored.
+That takes all of its CPU: for as long as a sound plays the NMI is off, the
+screen stands still, and the controller is not read.
+
+**Status: heard on a real NES at one rate.** A 30-second clip at rate 1
+(10169 samples a second), sent by a StickC Plus2, sounded right. The other
+rates have only run in the simulation, as has the desktop host's side; the
+receive routines are the throughput test's fast receiver
+(`throughput/README.md`), which passed on that console at every rate used
+here.
+
+### Rates
+
+A rate is a whole number of CPU cycles a bit, so the console's bit-banged
+receiver hits every bit. The host sends 8N2 as on the link, 11 bits a
+byte, and its UART is the clock: the sample rate is the baud rate over 11.
+
+| Rate | Cycles a bit | Baud | Samples a second | A minute is |
+|---|---|---|---|---|
+| 0 | 21 | 85227 | 7748 | 465 KB |
+| 1 | 16 | 111861 | 10169 | 610 KB |
+| 2 | 14 | 127841 | 11622 | 697 KB |
+| 3 | 12 | 149148 | 13559 | 814 KB |
+| 4 | 10 | 178977 | 16271 | 976 KB |
+| 5 | 8 | 223722 | 20338 | 1220 KB |
+
+### The bytes
+
+The receiver keeps the byte in A and folds each read of the port into it
+(shift left, XOR `$4017`), 6 cycles a sample where the link's takes 11. It
+ends up with the byte's bits reversed and inverted, and with the `$40` that
+the port's unused bits read left in from the last two reads. Nothing puts
+that right on the console: the host sends each sample as the byte this
+turns into its level (`pcm.sample_byte`).
+
+Bit 7 of what the console ends up with says there is more, and `$4011`
+ignores it. The stream ends at the first byte without it, which is also
+written to `$4011`. A host ends a sound with `$FC`, which leaves the DAC at
+0.
+
+A sample comes out a fixed time after its start bit, plus the 0 to 7 cycles
+by which the receiver's hunt for the start bit missed the edge, under 4
+millionths of a second. If the host is late with a byte the DAC holds its
+level and the hunt waits: a pause is not an error.
+
+The routines count on the unused bits of `$4017` reading `$40` with the
+line at rest. The console checks before it asks for a sound, and refuses
+if they do not.
+
+### From music to sound and back
+
+```text
+ stream:  ... the track before | names and length | $80 $05 r |   (nothing more)
+
+ NES                                         host
+ plays the sound record: APU silent
+ draws the names, and SAMPLED SOUND
+ P, SEQ, r, CHECK        ---------------->
+                         <----------------   $C3, SEQ, 1, r, CRC   (go burst)
+ NMI off; waits 150 ms                       listens 100 ms for another request
+                                             changes its UART to the sound's rate
+                         <----------------   samples, from 175 ms after the go burst
+ writes each to $4011                        ...
+                         <----------------   $FC
+ waits 30 ms; NMI on                         changes its UART back to 38400
+ J, SEQ+1, credit        ---------------->
+                         <----------------   flush burst: the next track
+```
+
+- **The sound record** is the sound's place in the stream. The host sends
+  the sound's names and length ahead of it, as for any track, and after it
+  gives the NES nothing more, answering data requests with empty bursts.
+  The NES plays out what it has buffered and comes to the record at the
+  moment the sound should start.
+- **The sound request** (`$50`) takes the place of the data request from
+  then on, every frame, once the lines the record's frame changed are on
+  the screen and the bars of the music before it, which the record brings
+  down, are off it. Its `ARG` is the record's rate. A console that cannot play
+  it (no routine for the rate, or a port that reads otherwise) sends `$FF`.
+- **The go burst** is a burst with marker `$C3`, a payload of one byte, the
+  rate, and the CRC taken over the marker as for a flush burst. When the
+  NES accepts one that matches its request, it turns the NMI off, waits
+  150 ms, and receives samples until the last.
+- **The host cannot see that the NES took the go burst**, and must not send
+  samples to one that did not. So it listens for 100 ms first. A console
+  that missed the burst asks again, at the latest after its 4-frame
+  timeout, and gets the same burst; one that took it is silent, since
+  even its controller read has stopped. Only then does the host change its
+  UART's rate, and it starts the samples 175 ms after the go burst.
+- **Other answers to a sound request.** A stopped host answers with an
+  empty flush burst and a paused one with a pause burst, as they answer a
+  data request. A host with no sound to give (it was restarted, or the
+  rate was `$FF`) answers with a flush burst that carries on with whatever
+  is next. Any flush burst takes the console's sound away: it asks for
+  data again.
+- **A sound that was called off.** A button request or a hello in the
+  100 ms means the NES is not waiting, and the host drops the sound. If
+  the NES then repeats its sound request, it gets a new answer under the
+  same sequence number, never the go burst again; that is safe because it
+  committed nothing.
+- **After the last sample** the NES waits 30 ms, turns the NMI back on and
+  asks for data with the next sequence number. The host's answer is a
+  flush burst, so the music after a sound starts from a full buffer.
+
+### A console left in a sound
+
+The receive routines have no timeout: an NMI would take cycles from them,
+and there is nothing else to count with. A console whose host went away in
+the middle of a sound waits for the rest until it is reset, or until a host
+starts up: both hosts send four zero bytes at 38400 baud when they open
+their UART. Those are long lows, which the routines take for last bytes at
+any rate, and which the link at rest passes over as noise.
+
+### File container (`.pcm`)
+
+The host stores and reads this file. `tools/wav2pcm.py` and
+`tools/mp32pcm.py` write it.
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 4 | magic `NPCM` |
+| 4 | 1 | version, 1 |
+| 5 | 1 | cycles a bit: 21, 16, 14, 12, 10 or 8 |
+| 6 | 1 | title length *n* |
+| 7 | 1 | reserved, 0 |
+| 8 | *n* | title, printable ASCII, "game - track" as for a `.jbs` |
+| 8+*n* | | the samples, each as the byte to send |
+
+The converters pick each level through the DAC's curve, which is not a
+straight line (the console's mixer squeezes the top of the range: level 127
+gives 64% of 127 times level 1), and ramp to and from level 0 over 20 ms at
+each end, so a sound neither starts nor ends with a click.

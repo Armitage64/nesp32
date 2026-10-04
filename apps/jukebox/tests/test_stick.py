@@ -248,6 +248,16 @@ class ScriptedUart:
     def __init__(self, chunks):
         self.chunks = list(chunks)
         self.written = []
+        self.inits = []         # the settings of each change of rate
+        self.rate = 38400
+        self.rates = []         # the rate each write went out at
+
+    def init(self, **settings):
+        self.inits.append(settings)
+        self.rate = settings["baudrate"]
+
+    def read(self):
+        return None
 
     def readinto(self, buffer):
         if not self.chunks:
@@ -258,6 +268,7 @@ class ScriptedUart:
 
     def write(self, data):
         self.written.append(bytes(data))
+        self.rates.append(self.rate)
 
 
 def test_player_answers_requests_split_across_reads():
@@ -541,6 +552,9 @@ def run_device(uiflow, script, on_idle=None, press_a=True):
 
     m5.update = update
     uiflow.device.main()
+    # As the UART opens: for a console left in the middle of a sound.
+    assert machine.uart.written.pop(0) == bytes(4)
+    machine.uart.rates.pop(0)
     return machine.uart
 
 
@@ -790,3 +804,283 @@ def test_device_shows_what_is_wrong(uiflow, capsys, break_it, message):
     uiflow.device.main()
     assert message in drawn(uiflow) and "ERROR" in drawn(uiflow)
     assert not uiflow.machine.opened
+
+
+# -- sampled sound -------------------------------------------------------------
+
+import pcm  # noqa: E402
+from nesjuke import sound as stick_sound  # noqa: E402
+
+VOICE = pcm.Sound("Voices - Hello", 12, pcm.encode([index & 0x7F for index in range(1500)]))
+
+
+def test_the_sound_module_matches_the_desktops(tmp_path):
+    assert stick_sound.PERIODS == pcm.PERIODS and stick_sound.CPU_HZ == pcm.CPU_HZ
+    assert [stick_sound.baud(period) for period in pcm.PERIODS] == [
+        pcm.baud(period) for period in pcm.PERIODS]
+    assert stick_sound.LAST_BYTE == pcm.LAST_BYTE and stick_sound.FILLER == pcm.FILLER
+    assert stick_sound.FRAME_BITS == pcm.FRAME_BITS
+    assert (protocol.SOUND_LISTEN_MS, protocol.SOUND_START_MS, protocol.SOUND_MARKER) == (
+        desktop.SOUND_LISTEN_MS, desktop.SOUND_START_MS, desktop.SOUND_MARKER)
+    path = tmp_path / "00.pcm"
+    path.write_bytes(VOICE.to_bytes())
+    title, track = stick_sound.load(str(path))
+    assert (title, track.period, track.rate, track.count) == (
+        "Voices - Hello", 12, VOICE.rate, len(VOICE.samples))
+    assert path.read_bytes()[track.start:] == VOICE.samples
+    assert stick_sound.frames(track) == VOICE.frames
+    for bad in (b"JBS\x1a" + bytes(30), VOICE.to_bytes()[:5],
+                b"NPCM\x01\x2f" + VOICE.to_bytes()[6:]):
+        path.write_bytes(bad)
+        with pytest.raises(ValueError):
+            stick_sound.load(str(path))
+
+
+def mixed_playlists(tmp_path, **kwargs):
+    """The same playlist, music and sound, as the desktop's and the Stick's."""
+    path = tmp_path / "01.pcm"
+    path.write_bytes(VOICE.to_bytes())
+    songs = [("A", A), ("Voices - Hello", VOICE), ("C", C)]
+
+    def load(index):
+        title, item = songs[index]
+        if item is VOICE:
+            return tracks.load_sound(str(path))
+        return (title, item.stream, item.loop_offset if item.loop_frame is not None else None,
+                item.total_frames, item.loop_frame)
+
+    return (PlaylistSource(songs, **kwargs), tracks.Playlist(len(songs), load, **kwargs))
+
+
+@pytest.mark.parametrize("seed", range(4))
+def test_playlist_with_sound_matches_the_desktop(tmp_path, seed):
+    rng = random.Random(40 + seed)
+    theirs, ours = mixed_playlists(tmp_path, loops=2, repeat=True)
+    sounds = total = 0
+    for _ in range(800):
+        roll = rng.random()
+        assert (ours.sound is None) == (theirs.sound is None)
+        if theirs.sound is not None:
+            assert ours.sound.rate == theirs.sound.rate
+        if theirs.sound is not None and roll < 0.3:
+            theirs.sound_done()
+            ours.sound_done()
+            sounds += 1
+        elif roll < 0.05:
+            delta = rng.choice([1, -1])
+            theirs.jump(delta)
+            ours.jump(delta)
+        elif roll < 0.08:
+            theirs.restart()
+            ours.restart()
+        else:
+            count = rng.choice([24, 24, 1, 7, 100])
+            data = theirs.take(count)
+            assert ours.take(count) == data
+            total += len(data)
+    assert sounds > 5 and total > 1000
+
+
+@pytest.mark.parametrize("seed", range(4))
+@pytest.mark.parametrize("prepare", [False, True])
+def test_host_with_sound_matches_the_desktop(tmp_path, seed, prepare):
+    """Data requests and sound requests at both hosts: the same bytes back,
+    and the same moments at which a sound is due. A sound request comes
+    when a console would send one, after the last of the sound's record;
+    and as in the tests above, nothing here jumps, since a host that has
+    read ahead does that from a burst further on."""
+    rng = random.Random(60 + seed)
+    theirs_source, ours_source = mixed_playlists(tmp_path, loops=1, repeat=True)
+    theirs, ours = desktop.Host(theirs_source), protocol.Host(ours_source)
+    seq = 0
+    go_bursts = refused = 0
+    for _ in range(1500):
+        roll = rng.random()
+        asking = theirs_source.sound is not None and not theirs_source.pending
+        if asking and roll < 0.7:
+            op, arg = desktop.OP_SOUND, VOICE.rate if roll < 0.6 else 0xFF
+        else:
+            op, arg = 0x4A, rng.choice([24, 24, 24, 8, 0])
+        this = seq if rng.random() > 0.15 else (seq - 1) & 0xFF     # now and then a repeat
+        expected = theirs.handle(desktop.Request(op, this, arg))
+        assert sent(ours.handle(op, this, arg)) == expected
+        assert ours.sound_due == theirs.sound_due
+        if this == seq:
+            seq = (seq + 1) & 0xFF
+            go_bursts += expected[:1] == bytes([desktop.SOUND_MARKER])
+            refused += op == desktop.OP_SOUND and arg == 0xFF
+        if theirs.sound_due and rng.random() < 0.4:         # the samples went
+            assert ours.sound_begin().rate == theirs.sound_begin().rate
+            theirs.sound_end()
+            ours.sound_end()
+        if prepare:
+            ours.prepare()
+    assert go_bursts > 5 and refused > 2
+    assert ours.stats == theirs.stats
+
+
+def test_sound_packs_on_the_mac_and_loads_on_the_stick(tmp_path):
+    import pack_tracks
+
+    music = tmp_path / "music"
+    music.mkdir()
+    (music / "a.jbs").write_bytes(C.to_bytes())
+    untitled = pcm.Sound("", 16, VOICE.samples)
+    (music / "b voice.pcm").write_bytes(untitled.to_bytes())
+    out = tmp_path / "tracks"
+    out.mkdir()
+    (out / "07.pcm").write_bytes(b"left over from last time")
+    written = pack_tracks.pack([str(music)], str(out))
+    assert written == [("00.jbs", "a", len(C.stream)), ("01.pcm", "b voice", len(VOICE.samples))]
+    paths = tracks.list_tracks(str(out))
+    assert [os.path.basename(path) for path in paths] == ["00.jbs", "01.pcm"]
+    assert tracks.load_track(paths[0])[:2] == ("a", C.stream)
+    title, stream, loop_offset, frames, _, track = tracks.load_track(paths[1])
+    assert (title, stream, loop_offset) == ("b voice", jbs.sound_record(1), None)
+    assert frames == untitled.frames and track.period == 16
+
+
+class SoundFile:
+    """What LinkConsole needs of a sound: the Stick's has only its path."""
+
+    def __init__(self, track):
+        self.period = track.period
+        with open(track.path, "rb") as handle:
+            handle.seek(track.start)
+            self.samples = handle.read()
+
+
+class AsDesktopHostWithSound(AsDesktopHost):
+    @property
+    def sound_due(self):
+        return self.host.sound_due
+
+    def sound_begin(self):
+        return SoundFile(self.host.sound_begin())
+
+    def sound_end(self):
+        self.host.sound_end()
+        self.host.prepare()
+
+
+@needs_cc65
+@pytest.mark.parametrize("turnaround_ms", [1.0, 12.0])
+def test_stick_host_plays_a_sound_track_on_the_simulated_nes(tmp_path_factory, tmp_path,
+                                                             turnaround_ms):
+    import subprocess
+
+    from link_harness import LinkConsole, ms
+    from test_sound import music_is_exact
+
+    build = tmp_path_factory.mktemp("stick_sound")
+    root = os.path.join(os.path.dirname(__file__), "..")
+    subprocess.run(["make", "-s", "BUILD=%s" % build, "verify"], cwd=root, check=True)
+    path = tmp_path / "01.pcm"
+    path.write_bytes(VOICE.to_bytes())
+    songs = [("C", C), ("Voices - Hello", VOICE), ("A", A)]
+
+    def load(index):
+        title, item = songs[index]
+        if item is VOICE:
+            return tracks.load_sound(str(path))
+        return (title, item.stream, item.loop_offset if item.loop_frame is not None else None,
+                item.total_frames, item.loop_frame)
+
+    playlist = tracks.Playlist(len(songs), load, loops=3, repeat=True)
+    log = bytearray()
+    take = playlist.take
+    playlist.take = lambda count: (lambda data: log.extend(data) or data)(take(count))
+    restart = playlist.restart
+    playlist.restart = lambda: (log.clear(), restart())
+    machine = LinkConsole(str(build / "jukebox_link.nes"), str(build / "jukebox_link.labels"),
+                          host=AsDesktopHostWithSound(protocol.Host(playlist)),
+                          turnaround=lambda: ms(turnaround_ms))
+    machine.level_log = []
+    while len(machine.sounds) < 2:
+        assert len(machine.frames) < 3000
+        machine.run(10)
+    machine.run(60)
+    # The music writes $4011 too (C sets the level); a sound is what was
+    # written while its samples were on the line.
+    whole = pcm.decode(VOICE.samples) + [0]
+    for start, end, _ in machine.sounds[:2]:
+        assert [value & 0x7F for cycle, value in machine.level_log
+                if start <= cycle <= end + 1000] == whole
+    music_is_exact(machine, types.SimpleNamespace(log=log))
+    assert machine.word("link_crc_errors") == machine.word("link_rejects") == 0
+
+
+def sound_device(uiflow, script, **kwargs):
+    """Run the device with a sound as its first track and music after it."""
+    directory = uiflow.root / "tracks"
+    (directory / "00.pcm").write_bytes(VOICE.to_bytes())
+    (directory / "00.jbs").unlink()
+    (directory / "02.jbs").unlink()
+    return run_device(uiflow, script, **kwargs)
+
+
+def sound_script(after=40):
+    """The console as a sound track plays: hello, a request answered while
+    the Stick is still stopped (button A comes after it), the requests that
+    fetch the sound's names and its record, its sound request, silence
+    while it waits and plays, and then requests for the music after it."""
+    return ([desktop.request_bytes(0x48, 0, 0), desktop.request_bytes(0x4A, 0, 24),
+             desktop.request_bytes(0x4A, 1, 24), desktop.request_bytes(0x4A, 2, 24),
+             desktop.request_bytes(0x50, 3, VOICE.rate)]
+            + [b""] * 30
+            + [desktop.request_bytes(0x4A, seq, 24) for seq in range(4, 4 + after)])
+
+
+PLACE = jbs.intro("Voices - Hello", VOICE.frames) + jbs.sound_record(VOICE.rate)
+GO = desktop.burst_bytes(3, bytes([VOICE.rate]), go=True)
+# The playlist is the sound and then B, over and over.
+AFTER = desktop.burst_bytes(4, (titled("B", B, loops=2) + PLACE)[:24], flush=True)
+
+
+def test_device_plays_a_sound_track_and_takes_the_link_back(uiflow, capsys):
+    uart = sound_device(uiflow, sound_script())
+    written = uart.written
+    assert written[0] == desktop.burst_bytes(0, b"", flush=True)
+    assert written[1] == desktop.burst_bytes(1, PLACE[:24], flush=True)
+    assert written[2] == desktop.burst_bytes(2, PLACE[24:])
+    assert written[3] == GO
+    # Then the samples, in chunks, at their own rate, and the byte that ends them.
+    chunks = len(VOICE.samples) // stick_sound.CHUNK + 1
+    assert b"".join(written[4:4 + chunks]) == VOICE.samples
+    assert written[4 + chunks] == pcm.LAST_BYTE
+    assert [init["baudrate"] for init in uart.inits] == [pcm.baud(12), 38400]
+    assert all(init["stop"] == 2 and init["invert"] == 5 for init in uart.inits)
+    assert uart.rates[:4] == [38400] * 4
+    assert uart.rates[4:5 + chunks] == [pcm.baud(12)] * (chunks + 1)
+    # The link is back: the music after the sound, from an emptied buffer.
+    assert uart.rates[5 + chunks] == 38400 and written[5 + chunks] == AFTER
+    assert "sound: 1500 samples at 149148 baud" in capsys.readouterr().out
+
+
+def test_device_does_not_send_samples_to_a_console_that_asks_again(uiflow):
+    """Another request inside the wait means the console missed the go
+    burst. It gets the same one, and the wait starts over."""
+    script = sound_script()
+    script[5:5] = [b""] * 5 + [desktop.request_bytes(0x50, 3, VOICE.rate)]
+    uart = sound_device(uiflow, script)
+    assert uart.written[3:5] == [GO, GO]
+    assert uart.rates[:5] == [38400] * 5 and uart.rates[5] == pcm.baud(12)
+    assert [init["baudrate"] for init in uart.inits] == [pcm.baud(12), 38400]
+
+
+def test_device_button_stops_a_sound(uiflow):
+    m5 = uiflow.M5
+    polls = []
+
+    def on_idle(count):
+        # The first poll inside the sound is the first after the go burst.
+        if uiflow.machine.uart.inits and not polls:
+            polls.append(count)
+            m5.BtnPWR.presses = 1
+
+    uart = sound_device(uiflow, sound_script(), on_idle=on_idle)
+    written = uart.written
+    assert written[4] == VOICE.samples[:stick_sound.CHUNK] and written[5] == pcm.LAST_BYTE
+    assert [init["baudrate"] for init in uart.inits] == [pcm.baud(12), 38400]
+    # The power button is "next": the track after the sound, flushed.
+    assert written[6] == AFTER
