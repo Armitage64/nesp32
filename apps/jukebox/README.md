@@ -31,6 +31,12 @@ A proof of concept, and work in progress. See [`PLAN.md`](PLAN.md) for the desig
   show the title, the game and track names, a clock, a status line and
   bars that follow the music, and controller 1 plays, pauses and changes
   tracks. See "The screen" below.
+- **Link throughput, measured:** a separate test ROM and Stick script in
+  [`throughput`](throughput/README.md) find the fastest rate the link
+  holds in each direction. On a real NES with the Plus2: 298296 baud to
+  the console (about 27000 bytes a second), where its CPU has no cycles
+  left, and 223722 baud from it. A receiver built the way the jukebox's
+  is passed up to 149148 baud, about four times the 38400 it runs at.
 
 ## Building the ROM
 

@@ -448,16 +448,28 @@ serial hardware.
    resistor, the slowest part of the link at 38400, so scope its edges if
    requests fail to decode there.
 
-   **To do: a throughput test for the StickS3 and the NES.** Write a test
-   that measures the highest rate at which the link stays reliable, in
-   payload bytes per second, so the margin over what music needs (about
-   3-5 bytes per frame) is a number and not an estimate. It needs a test
-   ROM along the lines of phase 3b's loopback ROM, which takes patterned
-   bursts, checks them, and reports its counters (bursts, CRC errors,
-   cut-offs, timeouts) back to the Stick or on screen; and a Stick-side
-   tool that steps the load up (burst size, then baud rate: 38400, 57600)
-   and reports the error rate at each step. The result settles phase 3b's
-   open choice between 38400 and 57600.
+   **A throughput test for the Stick and the NES: built, and run on the
+   Plus2.** It measures the highest rate at which the link stays reliable,
+   so the margin over what music needs (about 3-5 bytes per frame) is a
+   number and not an estimate. It lives by itself in
+   [`throughput/`](throughput/README.md): a test ROM with receive and send
+   routines for a ladder of rates from 9622 baud up, and a Stick script
+   that climbs them in each direction, backs off to the fastest rate that
+   passes a long trial, and shows the trial in progress on both screens.
+   The Stick is in charge there, the reverse of this link, and commands
+   always travel at 9622 baud.
+
+   **On a real NES with the Plus2**, with 1024-byte trials: 298296 baud
+   to the NES, which is 6 CPU cycles a bit and the fastest the console can
+   sample, and 223722 baud from it, where the next rate up failed. To get
+   there the test grew two faster receivers: one that samples in 6 cycles
+   and counts on what the unused bits of `$4017` read, and one that tracks
+   the start bit instead of hunting for it. So 57600 has a very wide margin
+   on this hat, which answers phase 3b's choice for the Plus2. The limit
+   to the NES is the console's CPU, not the wire: a rate one step past it,
+   which needs 120% of the CPU, failed as it should. The jukebox's own
+   receiver passed up to 149148 baud in those runs; the test has since
+   dropped it for the faster one at every rate. **Still to do:** the S3.
 
    **Done on the Plus2: start stopped, stop, and instant track
    changes.** Two to-do entries asked for no music until a button is
@@ -491,6 +503,14 @@ serial hardware.
    how samples keep steady timing when the bytes do not; and whether it
    needs the clocked link described under "Future enhancement", which is
    some 40 times faster.
+
+   The throughput test has since put numbers on the UART: on the Plus2 it
+   carries 298296 baud to the NES, about 27000 bytes a second, with a
+   receiver that samples in 6 cycles. That is the rate of a bare receive
+   loop with every cycle used, so it bounds what streaming can reach and
+   leaves no time to write `$4011` between bytes; at 223722 baud (about
+   20000 bytes a second) a quarter of the CPU is free. Both are well past
+   the 3500 this entry started from.
 6. **Polish, including the user interface.** UI enhancements were
    deliberately deferred until the link works, because screen updates must
    fit around the receive window that phase 3 defines. Planned: a
@@ -579,7 +599,10 @@ sets the pace:
 - No baud rate and no cycle counting. An NMI or DMA in the middle only pauses
   the transfer, it doesn't corrupt it.
 - About 8-12 cycles per bit in a read loop, roughly 150-200 kbps. D3 and D4 on
-  port 2 could carry 2 more bits per read.
+  port 2 could carry 2 more bits per read. (The throughput test later got
+  the UART link itself to 6 cycles per bit, 298 kbps on the wire, so on
+  rate alone this is no longer ahead; what it still offers is that an NMI
+  only pauses a transfer.)
 - Wiring: add CLK on pin 2, with another level-shifting stage. Suggested
   roles: OUT0 as select, CLK as clock, D0 (and D3/D4) as data.
 - The host must have the next bit ready within a few microseconds of each

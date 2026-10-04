@@ -314,6 +314,12 @@ where it took 32.
   every start-bit phase, and receives correctly with host baud error from
   -4.25% to +6.5%. Its transmit writes land within 0.62 cycles of ideal and
   decode with 3% error.
+- **Headroom, measured:** the throughput test (`throughput/README.md`) ran
+  a receiver built the way this one is (the same sampling and start-bit
+  hunt, timed for each rate) on a real NES from a StickC Plus2 at rates up
+  to 149148 baud with no errors in its trials, and the wiring itself
+  carried 298296 baud to the console and 223722 from it. 38400 is far
+  inside what the link can do.
 - **USB serial adapters** hold received bytes for a latency timer before
   passing them to the computer (16 ms by default on FTDI chips). That adds
   directly to the host's reply time, so set it low where the driver allows
