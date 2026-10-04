@@ -4,15 +4,20 @@
 #
 #   tools/deploy.sh [-p serial-port] [music files or directories ...]
 #
-# With no music named it takes ../../music. Needs mpremote (pip install
-# mpremote). mpremote finds a single attached board by itself; name the port
-# when the FTDI test cable is plugged in as well.
+# With no music named it takes ../../music. Needs mpremote 1.24 or later
+# (pip install mpremote). mpremote finds a single attached board by itself;
+# name the port when the FTDI test cable is plugged in as well.
+#
+# A file the Stick already holds is not copied again: mpremote compares a
+# hash of each file with the Stick's copy and passes over the ones that
+# match, so a second run sends only what changed.
 #
 # What it changes on the Stick:
 #   - copies nesjuke/ and main.py (and config.json if present here) into
 #     /flash, UIFlow's user filesystem;
-#   - replaces /flash/tracks with the music, converted to .jbs on this
-#     computer, and with sampled sound (.pcm, .wav, .mp3) as .pcm;
+#   - makes /flash/tracks hold the music, converted to .jbs on this
+#     computer, and sampled sound (.pcm, .wav, .mp3) as .pcm, and removes
+#     the tracks there that are not in this playlist;
 #   - saves UIFlow's existing /flash/main.py as /flash/main_uiflow.py the
 #     first time, so tools/restore_uiflow.sh can put it back;
 #   - sets UIFlow's boot_option to 0, so the Stick runs the jukebox at
@@ -37,6 +42,7 @@ if [ $# -eq 0 ]; then
     set -- "$ROOT/music"
 fi
 "$PYTHON" "$HERE/tools/pack_tracks.py" "$BUILD/tracks" "$@"
+TRACKS=$(cd "$BUILD/tracks" && echo *.*)
 
 if [ "$PORT" = auto ]; then
     set -- mpremote
@@ -49,8 +55,9 @@ fi
 # First step without a soft reset (tools/stick_repl.py): it works even from
 # the UIFlow launcher, which holds the REPL. Setting boot_option 0 here means
 # every mpremote soft reset below reruns boot.py without starting the
-# launcher, so the copies reach the REPL. Old tracks go now, so a shorter
-# playlist leaves none behind.
+# launcher, so the copies reach the REPL. Tracks that are not in this
+# playlist go now, so a shorter one leaves none behind; the rest stay for
+# mpremote to compare.
 if ! "$PYTHON" "$HERE/tools/stick_repl.py" ${REPL_PORT:+--port "$REPL_PORT"} "
 import os, esp32
 try:
@@ -67,7 +74,9 @@ for name in ('/flash/nesjuke', '/flash/tracks'):
     except OSError:
         pass
 for name in os.listdir('/flash/tracks'):
-    os.remove('/flash/tracks/' + name)
+    if name not in '$TRACKS'.split():
+        os.remove('/flash/tracks/' + name)
+        print('removed /flash/tracks/' + name)
 nvs = esp32.NVS('uiflow')
 nvs.set_u8('boot_option', 0)
 nvs.commit()

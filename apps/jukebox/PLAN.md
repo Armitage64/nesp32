@@ -558,10 +558,11 @@ serial hardware.
    **On a real NES with the Plus2:** a 30-second clip from an MP3, at
    10169 samples a second, sounded right. So MicroPython keeps the UART
    fed from flash at 10 KB a second, and the go burst, the change of rate
-   and the way back to the music all work there.
+   and the way back to the music all work there. The same clip at 20338
+   samples a second, the fastest rate, played correctly and sounded good
+   too, so the Stick finds 20 KB a second as well.
 
-   **Still to try on hardware:** the other five rates, 20338 samples a
-   second above all, where the Stick must find 20 KB a second; the Stick's
+   **Still to try on hardware:** the four rates not yet heard; the Stick's
    buttons during a sound; the desktop host, and whether an FTDI cable
    takes these baud rates; and the S3.
 

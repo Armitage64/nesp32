@@ -43,8 +43,9 @@ A proof of concept, and work in progress. See [`PLAN.md`](PLAN.md) for the desig
   7-bit DAC, at 7748 to 20338 samples a second, fed a byte a sample at up
   to 223722 baud. Converters from WAV and MP3, both hosts and the ROM are
   built and tested on the simulated console. On a real one, a 30-second
-  clip from an MP3 at 10169 samples a second, sent by a StickC Plus2,
-  sounded right; the other rates and the desktop host are untried there.
+  clip from an MP3, sent by a StickC Plus2, sounded right at 10169 samples
+  a second and at 20338, the fastest; the four rates between and below,
+  and the desktop host, are untried there.
   See "Sampled sound" below.
 
 ## Building the ROM
@@ -147,8 +148,8 @@ sampled. A sound track sits in a playlist beside the music. When its turn
 comes the console shows its name and `SAMPLED SOUND`, and then plays it
 through `$4011`, its 7-bit DAC, as the bytes arrive: one byte a sample, at
 a baud rate of its own. **It has played on a real NES from a StickC
-Plus2** at the default rate; the other five rates, and the desktop host,
-have only run in simulation.
+Plus2** at the default rate and at the fastest; the other four rates, and
+the desktop host, have only run in simulation.
 
 ```sh
 tools/mp32pcm.py song.mp3 music/song.pcm            # or tools/wav2pcm.py song.wav ...

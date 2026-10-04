@@ -346,9 +346,10 @@ a sample, at a baud rate several times the link's, and nothing is stored.
 That takes all of its CPU: for as long as a sound plays the NMI is off, the
 screen stands still, and the controller is not read.
 
-**Status: heard on a real NES at one rate.** A 30-second clip at rate 1
-(10169 samples a second), sent by a StickC Plus2, sounded right. The other
-rates have only run in the simulation, as has the desktop host's side; the
+**Status: heard on a real NES at two rates.** A 30-second clip at rate 1
+(10169 samples a second) and at rate 5 (20338), sent by a StickC Plus2,
+sounded right. The other rates have only run in the simulation, as has the
+desktop host's side; the
 receive routines are the throughput test's fast receiver
 (`throughput/README.md`), which passed on that console at every rate used
 here.

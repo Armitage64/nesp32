@@ -64,6 +64,10 @@ which slows the stage's edges. Either should work at 38400 on a real NES;
 
    It converts the music to `.jbs` on this computer, copies it and the
    firmware to `/flash`, and sets UIFlow to start the jukebox at power-on.
+   A file the Stick already holds is not copied again: `mpremote` (1.24 or
+   later) compares a hash of each file with the Stick's copy, so a second
+   run sends only what changed, and tracks no longer in the playlist are
+   removed.
    Name the port when the FTDI test cable is plugged in too.
    `tools/restore_uiflow.sh` brings the UIFlow launcher back.
 3. **Optional `config.json`** next to `config.example.json`: `board` (`"s3"`
@@ -131,8 +135,9 @@ The playlist can hold recordings as well as music: `deploy.sh` takes
 `.pcm`, `.wav` and `.mp3` files along with the rips, and puts them on the
 Stick as `.pcm` (see the top-level README, "Sampled sound"). **It has
 played on a real NES from a StickC Plus2**: a 30-second clip at the default
-rate, 10169 samples a second, which sounded right. The faster rates, the
-buttons during a sound and the StickS3 have not been tried.
+rate, 10169 samples a second, and at the fastest, 20338, which both sounded
+right. The other four rates, the buttons during a sound and the StickS3
+have not been tried.
 
 When a sound's turn comes the NES asks for it, and the Stick changes its
 UART to the sound's rate (85227 to 223722 baud) and copies the file to it.
@@ -152,12 +157,12 @@ does not run.
 Things to know before trying it:
 
 - **It is big.** A minute at the default rate is 610 KB of the Stick's
-  flash, all of it copied over USB by `mpremote`. A Plus2 has room for
-  little: make a clip with the converters' `--seconds` (30 seconds is
-  299 KB). Note that `deploy.sh` with no arguments takes everything in
+  flash, all of it copied over USB by `mpremote` the first time. A Plus2
+  has room for little: make a clip with the converters' `--seconds` (30
+  seconds is 299 KB). Note that `deploy.sh` with no arguments takes everything in
   `music/`, recordings included.
 - **The Stick must keep its UART fed** from flash at 8 to 20 KB a second.
-  At 10 KB a second a Plus2 does.
+  A Plus2 does, at 10 KB a second and at 20.
   The UART's buffer holds 1024 bytes, 50 to 130 ms. After each sound the
   USB log has a line with the time it took to hand over the samples, which
   should be the sound's length: longer means it did not keep up, and the
