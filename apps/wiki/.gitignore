@@ -1,0 +1,16 @@
+# Build output
+build/
+*.nes
+*.o
+*.dbg
+*.map
+
+# Python and macOS scratch
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+.venv/
+
+# A Stick's own settings
+firmware/stick/config.json
