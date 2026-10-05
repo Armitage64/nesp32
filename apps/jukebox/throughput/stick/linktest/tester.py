@@ -37,6 +37,7 @@ SWITCH_MS = 10                  # after a rate change, before trusting what was 
 SHOW_BYTES = 8                  # of a failed block from the console, for the log
 PING_MS = 60
 DRAW_MS = 100                   # the console waits for a vblank to draw
+PAD_MS = 80                     # a settle after the read, and the reply
 RX_REPLY_MS = 150               # settle, checking the block, and the reply
 TX_MARGIN_MS = 60
 COMMAND_TRIES = 3
@@ -74,20 +75,20 @@ class Direction:
         return (100 * self.work(period) + total // 2) // total
 
 
-# The console's screen, in tiles. Text is 28 columns wide from LEFT. Each
-# direction has a title row and, under it, a row for each of ROWS.
+# The console's screen, in tiles, under the header the ROM comes up with
+# (tools/gen_screen.py). Text is 28 columns wide from LEFT. Each direction
+# has a title row and, under it, a row for each of ROWS.
 LEFT = 2
 WIDTH = 28
-TITLE_ROW = 2
-STATE_ROW = 4
+STATE_ROW = 9
 NAMETABLE = 0x2000
 COLUMNS = 32
 ROWS = ("STATUS", "SPEED", "SENT", "BAD", "CPU", "FASTEST")
 VALUE_COLUMN = LEFT + 9
 VALUE_WIDTH = WIDTH - 9
 
-RX = Direction("RX", "STICK TO NES", rates.TO_NES, rates.to_nes_byte, rates.to_nes_work, 7)
-TX = Direction("TX", "NES TO STICK", rates.TO_STICK, rates.to_stick_byte, rates.to_stick_work, 16)
+RX = Direction("RX", "STICK TO NES", rates.TO_NES, rates.to_nes_byte, rates.to_nes_work, 11)
+TX = Direction("TX", "NES TO STICK", rates.TO_STICK, rates.to_stick_byte, rates.to_stick_work, 19)
 
 
 class LinkError(Exception):
@@ -167,6 +168,13 @@ class Link:
     def port_value(self):
         """What the console's $4017 reads with the line at rest, or None."""
         return self._exchange(proto.OP_PORT, b"", PING_MS)
+
+    def pad(self):
+        """The buttons held on the console's controller 1 (proto.PAD_*), or
+        None. Reading them puts a short low on the line to the Stick, which
+        its UART may take for a byte; the reply comes a settle later."""
+        value = self._exchange(proto.OP_PAD, b"", PAD_MS, tries=1)
+        return None if value in (None, proto.ERROR_VALUE) else value
 
     def draw(self, row, column, text):
         """Put text on the console's screen. True if it said it did."""
@@ -259,7 +267,9 @@ class Session:
     """One whole test: both directions, both screens, and the log.
 
     display is the Stick's own screen, anything with set(**rows); log takes
-    a line of text. Either can be left out.
+    a line of text. Either can be left out. button() says whether the
+    Stick's button was pressed since it was last asked; a run does not
+    start until it was, or Start is down on the console's controller 1.
 
     The console's screen has the first direction on its upper half and the
     other on its lower. A half shows the trial that is running: the rate,
@@ -268,10 +278,11 @@ class Session:
     fastest rate that held, with that trial's figures.
     """
 
-    def __init__(self, link, display=None, log=None, blocks=TRIAL_BLOCKS):
+    def __init__(self, link, display=None, log=None, blocks=TRIAL_BLOCKS, button=None):
         self.link = link
         self.display = display
         self.log = log or (lambda line: None)
+        self.button = button or (lambda: False)
         self.blocks = blocks
         self.best = {}          # direction name -> period, or None
         self.trials = []        # (direction name, period, bytes sent, bytes bad)
@@ -385,11 +396,26 @@ class Session:
         self.log("%s fastest stable: %s" % (direction.name, text.lower()))
         return period
 
-    def run(self):
-        """Connect, measure both directions, and leave the results up.
+    def wait_start(self, again=False):
+        """Hold until the Stick's button is pressed or Start is down on
+        controller 1. After a run, its results stay up meanwhile."""
+        self.log("button A on the Stick or Start on controller 1 runs the test")
+        self._show(state="DONE. A OR START" if again else "PRESS A OR START")
+        self._draw(STATE_ROW, LEFT, "DONE. PRESS START" if again else "PRESS START", WIDTH)
+        while not self.button():
+            pad = self.link.pad()
+            if pad is not None and pad & proto.PAD_START:
+                break
+            self.link.idle()
+
+    def run(self, again=False):
+        """Connect, wait to be started, measure both directions, and leave
+        the results up. again says the last run's are still on the screens.
         Returns the two periods (RX, TX), None for no stable rate."""
-        self._show(state="WAITING FOR NES")
+        if not again:
+            self._show(state="WAITING FOR NES")
         self.link.connect()
+        self.wait_start(again)
         self.check_port()
         self.paint()
         self._state("TESTING")

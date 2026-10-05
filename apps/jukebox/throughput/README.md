@@ -96,21 +96,26 @@ stick/run.sh              # or: stick/run.sh -p /dev/cu.usbserial-XXXX
 ```
 
 1. Start `build/linktest.nes` on the console, with the hat in controller
-   port 2. The screen says `WAITING FOR THE STICK`.
+   port 2. The screen says `WAITING`.
 2. Run `stick/run.sh` with the Stick on USB. It copies `stick/linktest` to
    `/flash/linktest` and starts it; the log comes back on the terminal.
-3. When it says `DONE`, button A on the Stick runs it again. Ctrl-C stops
+3. When the console says `PRESS START`, press Start on controller 1 or
+   button A on the Stick. Nothing is tested until then.
+4. When it says `DONE`, either button runs it again. Ctrl-C stops
    it, and `mpremote reset` puts the Stick back in the jukebox.
 
 The order does not matter, and either side can be restarted in the middle.
 
-The console's screen has the Stick-to-NES test on its upper half and the
-NES-to-Stick test on its lower. Each half shows the trial that is running.
+The console's screen has the jukebox's header, the name in its big letters
+over what this is and the credit line, then the Stick-to-NES test and under it the
+NES-to-Stick test. Each half shows the trial that is running.
 This is a run on a simulated line with slow edges, partway through the
 second direction:
 
 ```text
-    N-ESP-32 THROUGHPUT TEST
+        N - E S P - 3 2
+         THROUGHPUT TEST
+        RETRO BITS (2026)
 
   TESTING
 
@@ -223,6 +228,7 @@ command with a bad CRC gets no reply, and the Stick sends it again.
 | 3 | rx | rate (an index into that direction's ladder), seed (low, high) | receives a block at that rate; replies with the number of bytes that differ from the seed's pattern; at the tracking receiver's rates the first 8 bytes are `$FF` and are not counted |
 | 4 | tx | rate, seed | sends the seed's pattern as a block at that rate; no reply |
 | 5 | port | none | replies with what its `$4017` reads; the receivers need `$40` |
+| 6 | pad | none | reads controller 1 and, 30 ms later, replies with its buttons (A in bit 7, Start `$10`); the Stick asks while it waits to be started |
 
 A reply of `$FFFF` means the console could not do it (a rate it does not
 have, a seed of 0).
@@ -253,7 +259,7 @@ left waiting by a run that was cut short.
 |---|---|
 | `nes/linktest.s`, `nes/linktest.cfg` | the test ROM: commands, replies, the screen |
 | `tools/gen_rates.py` | writes the ROM's cycle-timed receive and send routines, one pair per rate |
-| `tools/gen_screen.py` | the font (the jukebox's, at ASCII codes) and the opening screen |
+| `tools/gen_screen.py` | the jukebox's font (at ASCII codes), palette and header, and the opening screen |
 | `stick/linktest/rates.py` | the ladder of rates, shared by the ROM's generator and the Stick |
 | `stick/linktest/proto.py` | frames, the CRC, the pattern |
 | `stick/linktest/tester.py` | blocks, the search, and both screens' text; plain Python |

@@ -19,6 +19,8 @@
 ;   tx     send that pattern as a 256-byte block at a rate; no answer
 ;   port   answer with what $4017 reads, which the fastest receive routines
 ;          count on
+;   pad    answer with the buttons held on controller 1, so that Start there
+;          can set the host going
 ;
 ; Nothing may take cycles from the bit-banged routines, so the NMI is never
 ; enabled and there are no interrupts at all. The screen is static and is
@@ -55,6 +57,7 @@ OP_DRAW = 2
 OP_RX   = 3
 OP_TX   = 4
 OP_PORT = 5
+OP_PAD  = 6
 DRAW_MAX = 32                   ; tiles in one draw
 CMD_MAX = DRAW_MAX + 2          ; the longest payload: an address and the tiles
 SETTLE_LOOPS = 42               ; settle's length: 42 * 1286 cycles, 30.2 ms
@@ -85,6 +88,7 @@ cmd_op:   .res 1
 cmd_len:  .res 1
 cmd_crc:  .res 2
 reply:    .res 7
+buttons:  .res 1                ; A B Select Start Up Down Left Right
 
 .include "rates.inc"
 
@@ -92,10 +96,7 @@ reply:    .res 7
 .include "crc16_table.inc"
 
 palette:
-    .byte $0F, $00, $10, $30    ; text: white on black
-    .byte $0F, $0A, $1A, $2A    ; the title: green
-    .byte $0F, $00, $10, $30
-    .byte $0F, $00, $10, $30
+    .incbin "palette.bin"       ; the jukebox's: white text, the logo's blues
 screen_data:
     .incbin "screen.bin"
 
@@ -149,6 +150,8 @@ screen_data:
     beq draw
     cmp #OP_PORT
     beq port
+    cmp #OP_PAD
+    beq pad
     cmp #OP_RX
     beq rx_test
     cmp #OP_TX
@@ -166,7 +169,9 @@ ping:
 draw:
     lda cmd_len
     cmp #2
-    bcc refuse
+    bcs @draw
+    jmp refuse
+@draw:
     jsr draw_text
     lda #0
     tax
@@ -175,6 +180,16 @@ draw:
 
 port:
     lda JOY2
+    ldx #0
+    jsr send_reply
+    jmp main
+
+    ; The read is a low on the line to the host, which its UART may take
+    ; for a byte. The reply waits until that byte would be long over.
+pad:
+    jsr read_pad
+    jsr settle
+    lda buttons
     ldx #0
     jsr send_reply
     jmp main
@@ -308,6 +323,23 @@ refuse:
 @same:
     iny
     bne @byte
+    rts
+.endproc
+
+; Read controller 1 into buttons, as the jukebox does (../nes/ui.inc): OUT0
+; rests at mark, which keeps the controller loading its buttons, so taking
+; it low for the 8 reads is all the strobe there is. That is 94 cycles of
+; low on the line to the host, half a bit at the control rate.
+.proc read_pad
+    lda #0
+    sta JOY1
+.repeat 8
+    lda JOY1
+    lsr a
+    rol buttons
+.endrepeat
+    lda #OUT0_MARK
+    sta JOY1
     rts
 .endproc
 

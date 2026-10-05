@@ -186,13 +186,12 @@ def main():
         print("Link test %s on %s: TX G%d, RX G%d, commands at %d bps"
               % (VERSION, label, tx, rx, baud(CONTROL)))
         link = Link(port, idle=idle)
+        again = False
         while True:
-            Session(link, display=screen, log=print).run()
-            screen.set(state="DONE. A RUNS IT AGAIN")
-            print("done; button A runs it again, Ctrl-C stops")
-            while not M5.BtnA.wasPressed():
-                M5.update()
-                time.sleep_ms(20)
+            # Each run waits for button A or the controller's Start.
+            Session(link, display=screen, log=print, button=M5.BtnA.wasPressed).run(again)
+            again = True
+            print("done; Ctrl-C stops")
     except KeyboardInterrupt:
         print("stopped")
     except Exception as error:

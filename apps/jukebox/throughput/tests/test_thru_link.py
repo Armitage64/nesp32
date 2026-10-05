@@ -1,10 +1,12 @@
 """The host's Link against the test ROM, through the simulated wire."""
 
+import gen_screen
+import gen_ui
 import pytest
 
 from linktest import proto, rates
 from linktest.rates import BLOCK, CONTROL, TO_NES, TO_STICK, baud
-from linktest.tester import FILLER, Link, LinkError
+from linktest.tester import FILLER, STATE_ROW, Link, LinkError
 from thru_sim import Machine, SimPort, Tap, Wire, ms
 
 # The last rate to the console is one it cannot do.
@@ -23,14 +25,51 @@ def console(rom, to_nes_rise=0.0, to_stick_rise=0.0, **port_options):
 def test_the_screen_waits_for_the_stick_until_one_answers(rom):
     machine, _, link = console(rom)
     assert link.ping()
-    assert machine.screen_text(2, 4, 24) == "N-ESP-32 THROUGHPUT TEST"
-    assert machine.screen_text(4, 2, 21) == "WAITING FOR THE STICK"
+    assert bytes(machine.vram[0x2000:0x2400]) == gen_screen.build_screen().nametable()
+    assert machine.screen_text(STATE_ROW, 0, 32).strip() == "WAITING"
+
+
+def test_the_header_is_the_jukeboxs(rom):
+    machine, _, _ = console(rom)
+    assert bytes(machine.vram[0x3F00:0x3F10]) == gen_screen.palette_data()
+    ours, theirs = gen_screen.build_screen(), gen_ui.build_screens()[0]
+
+    def pixels(screen, column, row, columns, rows):
+        """Part of a screen as its tiles' bytes, whatever their numbers."""
+        return [screen.tiles[screen.names[32 * (row + y) + column + x]]
+                for y in range(rows) for x in range(columns)]
+
+    # "ES" is in both names, and the credit line is the same one.
+    assert (pixels(ours, 8 + 2 * gen_screen.LOGO_TEXT.index("ES"), gen_screen.LOGO_ROW, 4, 2)
+            == pixels(theirs, 5 + 2 * gen_ui.LOGO_TEXT.index("ES"), gen_ui.LOGO_ROW, 4, 2))
+    assert (pixels(ours, gen_ui.CREDIT_COLUMN, gen_screen.CREDIT_ROW, gen_ui.CREDIT_TILES, 1)
+            == pixels(theirs, gen_ui.CREDIT_COLUMN, gen_ui.CREDIT_ROW, gen_ui.CREDIT_TILES, 1))
+    # What the ROM is for, under the name, in the credit line's blue: color 2.
+    subtitle = pixels(ours, 0, gen_screen.SUBTITLE_ROW, 32, gen_screen.SUBTITLE_ROWS)
+    assert not any(any(tile[:8]) for tile in subtitle) and any(any(tile) for tile in subtitle)
+    assert gen_screen.SUBTITLE_ROW == gen_screen.LOGO_ROW + 2
+    for row in range(gen_screen.LOGO_LAST_ROW + 1):
+        attribute = ours.attributes[(row // 4) * 8] >> ((row // 2) % 2) * 4
+        assert attribute & 3 == gen_ui.PALETTE_LOGO
+
+
+@pytest.mark.parametrize("to_stick_rise", [0.0, 9.0])
+def test_pad_answers_with_the_buttons_on_controller_1(rom, to_stick_rise):
+    machine, port, link = console(rom, to_stick_rise=to_stick_rise)
+    assert link.pad() == 0
+    for held in (proto.PAD_START, 0x80, 0x01, 0xA5):
+        machine.pad = held
+        assert link.pad() == held
+    assert link.repeats == 0
+    assert link.ping()          # and the low it put on the line did no harm
 
 
 def test_draw_puts_text_on_the_screen(rom):
     machine, _, link = console(rom)
-    assert link.draw(4, 2, "RX RAMP 57735 BAUD")
-    assert machine.screen_text(4, 2, 21) == "RX RAMP 57735 BAUDICK"
+    assert link.draw(STATE_ROW, 2, "RX RAMP")
+    assert machine.screen_text(STATE_ROW, 2, 9) == "RX RAMP  "
+    assert link.draw(STATE_ROW, 2, "TX")       # a draw is only as long as its text
+    assert machine.screen_text(STATE_ROW, 2, 9) == "TX RAMP  "
     assert link.draw(12, 20, "x" * 40)      # cut to what one draw carries
     assert machine.screen_text(12, 20, 12) == "x" * 12
     assert machine.screen_text(13, 0, 21) == "x" * 20 + " "     # 32 tiles, wrapped

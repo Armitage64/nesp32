@@ -173,12 +173,16 @@ class Machine:
         self.vram = bytearray(0x4000)
         self.ppu_address = 0
         self.ppu_latch = None
+        self.pad = 0            # buttons held on controller 1 (proto.PAD_*)
+        self._pad_shift = 0
+        self._strobe = 0
         self.read_log = None    # set to a list to record (cycle, level) reads
         self.write_log = None   # and (cycle, level) writes
         self.memory.subscribe_to_read([PPUSTATUS], self._read_ppustatus)
         self.memory.subscribe_to_write([PPUADDR], self._write_ppuaddr)
         self.memory.subscribe_to_write([PPUDATA], self._write_ppudata)
         self.memory.subscribe_to_read([JOY2], self._read_joy2)
+        self.memory.subscribe_to_read([JOY1], self._read_joy1)
         self.memory.subscribe_to_write([JOY1], self._write_joy1)
         self.mpu = MPU(memory=self.memory)
         self.mpu.pc = self.memory[0xFFFC] | self.memory[0xFFFD] << 8
@@ -212,10 +216,22 @@ class Machine:
             self.read_log.append((cycle, level))
         return 0x40 | (level ^ 1)   # the port's buffer inverts D0
 
+    def _read_joy1(self, address):
+        # While OUT0 is high the controller keeps loading its buttons and
+        # shows the first (A). Low, each read shifts the next one out.
+        if self._strobe:
+            return 0x40 | (self.pad >> 7)
+        bit = self._pad_shift >> 7
+        self._pad_shift = (self._pad_shift << 1 | 1) & 0xFF
+        return 0x40 | bit
+
     def _write_joy1(self, address, value):
         mpu = self.mpu
         if self.memory[mpu.pc - 1] not in STORES_ABS:
             raise AssertionError("$4016 write by opcode $%02X" % self.memory[mpu.pc - 1])
+        if self._strobe and not value & 1:
+            self._pad_shift = self.pad  # what was held as the loading stopped
+        self._strobe = value & 1
         cycle = mpu.processorCycles + 3
         self.tap.write(cycle, value & 1)
         if self.write_log is not None:

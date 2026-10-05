@@ -18,6 +18,9 @@ OP_DRAW = 2                     # payload: PPU address high, low, then tiles
 OP_RX = 3                       # payload: rate, seed low, seed high
 OP_TX = 4                       # the same; answered with the block, no reply
 OP_PORT = 5                     # value: what the console's $4017 reads
+OP_PAD = 6                      # value: the buttons held on controller 1 (PAD_*)
+
+PAD_START = 0x10                # A B Select Start Up Down Left Right, A in bit 7
 
 DRAW_MAX = 32                   # tiles in one draw
 ERROR_VALUE = 0xFFFF            # the console could not do what was asked

@@ -3,7 +3,8 @@ then the whole session against the test ROM on lines with slow edges."""
 
 import pytest
 
-from linktest import rates, tester
+import gen_screen
+from linktest import proto, rates, tester
 from linktest.tester import RX, TX, Link, Session, find_fastest
 from thru_sim import Machine, SimPort, Tap, Wire, ms
 
@@ -52,8 +53,63 @@ def session(rom, to_nes_rise, to_stick_rise):
     machine = Machine(*rom, wire=Wire(to_nes_rise), tap=Tap(to_stick_rise))
     machine.run_until(ms(40))
     display, log = Display(), []
-    run = Session(Link(SimPort(machine)), display=display, log=log.append, blocks=1)
+    run = Session(Link(SimPort(machine)), display=display, log=log.append, blocks=1,
+                  button=lambda: True)
     return machine, run, display, log
+
+
+def state_row(machine):
+    return machine.screen_text(tester.STATE_ROW, tester.LEFT, tester.WIDTH).rstrip()
+
+
+def waiting(rom, presses, start_after=None, again=False):
+    """Connect and wait to be started, with the Stick's button answering as
+    listed and Start going down on the controller after so many looks.
+    Returns (machine, session, display, looks at the button)."""
+    machine = Machine(*rom)
+    machine.run_until(ms(40))
+    display, looks = Display(), []
+
+    def button():
+        assert run.trials == [] and state_row(machine).endswith("PRESS START")
+        assert machine.screen_text(RX.top, tester.LEFT, tester.WIDTH).strip() == ""
+        if len(looks) == start_after:
+            machine.pad = proto.PAD_START | 0x01
+        looks.append(machine.pad)
+        return presses.pop(0)
+
+    run = Session(Link(SimPort(machine)), display=display, button=button)
+    assert run.link.connect()
+    run.wait_start(again)
+    return machine, run, display, looks
+
+
+def test_nothing_runs_until_the_stick_s_button_is_pressed(rom):
+    machine, run, display, looks = waiting(rom, [False] * 5 + [True])
+    assert len(looks) == 6
+    assert state_row(machine) == "PRESS START"
+    assert display.rows["state"] == "PRESS A OR START"
+
+
+def test_start_on_controller_1_starts_it_too(rom):
+    machine, run, display, looks = waiting(rom, [False] * 9, start_after=3)
+    assert looks == [0, 0, 0, proto.PAD_START | 0x01]   # the read after it went down
+
+
+def test_other_buttons_do_not_start_it(rom):
+    machine = Machine(*rom)
+    machine.run_until(ms(40))
+    machine.pad = 0xFF & ~proto.PAD_START
+    presses = [False] * 4 + [True]
+    run = Session(Link(SimPort(machine)), button=lambda: presses.pop(0))
+    run.wait_start()
+    assert presses == []
+
+
+def test_a_second_run_waits_with_the_first_one_s_results_up(rom):
+    machine, run, display, looks = waiting(rom, [False, True], again=True)
+    assert state_row(machine) == "DONE. PRESS START"
+    assert display.rows["state"] == "DONE. A OR START"
 
 
 def half(machine, direction):
@@ -91,7 +147,8 @@ def test_a_session_finds_each_direction_s_limit(rom):
     def row(number):
         return machine.screen_text(number, tester.LEFT, tester.WIDTH).rstrip()
 
-    assert row(tester.TITLE_ROW).strip() == "N-ESP-32 THROUGHPUT TEST"
+    header = 32 * (gen_screen.LOGO_LAST_ROW + 1)                    # is left alone
+    assert bytes(machine.vram[0x2000:0x2000 + header]) == gen_screen.build_screen().nametable()[:header]
     assert row(tester.STATE_ROW) == "DONE"
     assert "BOTH WAYS" not in machine.vram.decode("latin-1")
 

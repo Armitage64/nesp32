@@ -3,7 +3,7 @@
 #   make          build/linktest.nes
 #   make test     the ROM and the Stick's code, on a simulated console
 #
-# The font and the CRC table come from the jukebox's tools in ../tools.
+# The font, the header, the palette and the CRC table come from the jukebox's tools in ../tools.
 
 PYTHON ?= $(if $(wildcard ../.venv/bin/python),../.venv/bin/python,python3)
 BUILD ?= build
@@ -24,7 +24,7 @@ $(BUILD)/crc16_table.inc: ../tools/gen_crc_table.py | $(BUILD)
 	$(PYTHON) ../tools/gen_crc_table.py $@
 
 # gen_screen.py rewrites only the files whose contents changed.
-SCREEN := $(BUILD)/chr.bin $(BUILD)/screen.bin
+SCREEN := $(BUILD)/chr.bin $(BUILD)/screen.bin $(BUILD)/palette.bin
 
 $(BUILD)/screen.stamp: tools/gen_screen.py ../tools/gen_ui.py stick/linktest/tester.py | $(BUILD)
 	$(PYTHON) tools/gen_screen.py $(BUILD)
