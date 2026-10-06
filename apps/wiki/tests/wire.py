@@ -6,17 +6,20 @@ on the cycle the sta makes it (console.py passes both on). This is
 nes-jukebox's line model (throughput/tests/thru_sim.py), at one bit length.
 
 Wire is the Stick's transmitter as D0 sees it; Tap is OUT0 as the Stick's
-UART receives it. Port is the UART that neswiki.server drives.
+UART receives it. Port is the UART that the Stick's code (nesp32's
+host/nesp.py) drives.
 
-link() joins a Console running the link ROM to a Server: the console runs,
-and every SLICE cycles the server is polled, as the Stick's loop would. What
-the server writes goes on the wire `turnaround` after the last byte of the
+link() joins a Console running the link ROM to a Stick: the console runs,
+and every SLICE cycles the Stick is polled, as its link task would be. What
+it writes goes on the wire `turnaround` after the last byte of the
 request reached it.
 """
 
 import bisect
 
-from neswiki.linkrate import CPU_HZ, PERIOD, TO_NES_BITS
+from nesp_proto import NESP_CPU_HZ as CPU_HZ
+from nesp_proto import NESP_PERIOD as PERIOD
+from nesp_proto import NESP_TO_NES_BITS as TO_NES_BITS
 
 MARK, SPACE = 1, 0
 SLICE = 150                     # cycles between polls of the Stick's code

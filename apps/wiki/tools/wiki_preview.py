@@ -6,8 +6,9 @@ desktop.
     tools/wiki_preview.py --file reply.json         a saved API reply
     tools/wiki_preview.py --save reply.json "Famicom"
 
-It fetches with urllib and feeds the reply to neswiki.wikitext in chunks of
---chunk bytes, as the Stick's socket would. Headings are shown in bold.
+It fetches with urllib and feeds the reply to the Stick's extractor and
+wrapper (nesp32's, through stick.py) in chunks of --chunk bytes, as the
+Stick's connection would. Headings are shown in bold.
 """
 
 import argparse
@@ -16,34 +17,52 @@ import sys
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(HERE, "..", "firmware", "stick"))
+sys.path.insert(0, HERE)
 
-from neswiki import wikitext  # noqa: E402
-from neswiki.linkrate import COLUMNS  # noqa: E402
-from neswiki.wrap import HEADING, Article  # noqa: E402
+from stick import COLUMNS, SOURCE, nesp  # noqa: E402
 
 DEFAULT_QUERY = "Nintendo Entertainment System"
-CAPACITY = 256 * 1024 // COLUMNS    # the Stick's buffer: 256 KB of lines
+CAPACITY = 256 * 1024 // COLUMNS    # the Stick's room for an article: 256 KB of lines
+# Wikimedia asks every client to say what it is.
+USER_AGENT = "NESpedia/0.2 (a Wikipedia reader for the NES; wiki_preview.py)"
 
 
 def fetch(query):
     request = urllib.request.Request(
-        "https://%s%s" % (wikitext.HOST, wikitext.api_path(query)),
-        headers={"User-Agent": wikitext.USER_AGENT, "Accept-Encoding": "identity"})
+        nesp.wiki_url(query),
+        headers={"User-Agent": USER_AGENT, "Accept-Encoding": "identity"})
     with urllib.request.urlopen(request, timeout=20) as reply:
         return reply.read()
 
 
-def chunks(body, size):
-    for start in range(0, len(body), size):
-        yield body[start:start + size]
+def lay_out(body, chunk):
+    """(title, lines) of the article in an API reply, or (None, []) if it
+    holds none. A line is COLUMNS tile numbers."""
+    extract = nesp.Extract()
+    wrap = nesp.Wrap(COLUMNS)
+    titled = False
+    taken = 0
+    for start in range(0, len(body), chunk):
+        extract.feed(body[start:start + chunk])
+        if not titled and extract.title is not None:
+            wrap.title(extract.title)
+            titled = True
+        text = extract.text
+        wrap.put(text[taken:])
+        taken = len(text)
+        if extract.done:
+            break
+    if not extract.found:
+        return None, []
+    wrap.close()
+    return extract.title or b"", wrap.lines + [line.ljust(COLUMNS) for line in SOURCE]
 
 
-def show(article, out, color):
-    for index in range(article.count):
-        line = article.line(index)
-        text = bytes(char & 0x7F for char in line).decode("ascii").rstrip()
-        if line[0] & HEADING and color:
+def show(lines, out, color):
+    for index, line in enumerate(lines):
+        text, heading = nesp.text_of(line)
+        text = text.decode("ascii")
+        if heading and color:
             text = "\033[1m%s\033[0m" % text
         out.write("%5d  %s\n" % (index, text))
 
@@ -66,15 +85,16 @@ def main(argv=None):
         with open(args.save, "wb") as handle:
             handle.write(body)
 
-    article = Article(CAPACITY)
-    if not wikitext.load(chunks(body, args.chunk), article):
+    title, lines = lay_out(body, args.chunk)
+    if title is None:
         print("no article found")
         return 1
     if not args.summary:
-        show(article, sys.stdout, sys.stdout.isatty())
+        show(lines, sys.stdout, sys.stdout.isatty())
     print("%s: %d bytes of reply, %d lines%s" % (
-        article.title.decode("ascii"), len(body), article.count,
-        ", cut short" if article.full else ""), file=sys.stderr)
+        title.decode("ascii"), len(body), len(lines),
+        ", more than the Stick has room for" if len(lines) > CAPACITY else ""),
+        file=sys.stderr)
     return 0
 
 

@@ -36,9 +36,9 @@ import sys
 import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(HERE, "..", "firmware", "stick"))
+sys.path.insert(0, HERE)
 
-from neswiki.linkrate import COLUMNS, QUERY_MAX  # noqa: E402
+from stick import COLUMNS, QUERY_MAX  # noqa: E402
 
 SCREEN_COLUMNS = 32
 SCREEN_ROWS = 30

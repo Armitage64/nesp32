@@ -1,5 +1,14 @@
 # NESpedia: a Wikipedia reader for the NES
 
+> **October 2026: the Stick's side has moved to [nesp32](../nesp32).** This
+> plan is the record of how NESpedia was designed and brought up with a
+> MicroPython firmware and a link protocol of its own. The ROM's design
+> below still stands. The firmware it describes (`firmware/stick/`), its
+> protocol and its tests are gone from this tree, though not from its
+> history: the text code was ported to C as nesp32's WIKI service, and the
+> link is nesp32's. See [`README.md`](README.md) and
+> [`docs/PROTOCOL.md`](docs/PROTOCOL.md) for how things are now.
+
 ## Context
 
 `../nes-jukebox` proved the controller-port-2 link between a stock NTSC NES
