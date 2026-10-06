@@ -1,7 +1,16 @@
 # Link throughput test
 
+> **This test has not moved to nesp32.** It is as it was when it ran: its
+> own protocol, and a MicroPython script for a Stick running UIFlow 2.0,
+> which a Stick flashed with nesp32's firmware no longer is (M5Burner puts
+> UIFlow back). Where it speaks of the jukebox's link at 38400 baud and of
+> the jukebox's firmware, it means the ones this repository had until
+> October 2026; the link is now nesp32's, at 85227. nesp32's RAW service
+> has what a version of this test on that firmware would need (runs of the
+> pattern either way at any rate), and writing it is on nesp32's list.
+
 How fast can the controller-port link go on the hardware in front of you?
-The jukebox runs it at 38400 baud both ways. This test finds the fastest
+The jukebox ran it at 38400 baud both ways. This test finds the fastest
 rate that is stable in each direction, for whichever Stick, hat and cable are
 plugged in, so the margin over 38400 is a number.
 
@@ -87,8 +96,11 @@ expect a little more on a Stick.
 
 ## Running it
 
-Needs what the jukebox needs: cc65 to build, and a Stick already set up by
-`../firmware/stick/tools/deploy.sh`.
+Needs cc65 to build, and a Stick running UIFlow 2.0 with its REPL free
+for `mpremote`. The jukebox's MicroPython firmware used to arrange that
+when it was deployed (`firmware/stick/tools/deploy.sh` and `stick_repl.py`,
+in this repository's history: they set UIFlow's `boot_option` to 0);
+nes-radar's tools do the same.
 
 ```sh
 make                      # build/linktest.nes

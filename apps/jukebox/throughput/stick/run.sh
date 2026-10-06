@@ -4,10 +4,10 @@
 #
 #   stick/run.sh [-p serial-port]
 #
-# The Stick must already run the jukebox (../firmware/stick/tools/deploy.sh):
-# that is what sets UIFlow to leave the REPL free for mpremote. This adds
-# /flash/linktest and changes nothing else, so the jukebox is back after
-# `mpremote reset`.
+# The Stick must run UIFlow 2.0 with its REPL free for mpremote (UIFlow's
+# boot_option 0), as the jukebox's MicroPython firmware used to leave it;
+# see ../README.md, "Running it". A Stick with nesp32's firmware on it does
+# not run this. This adds /flash/linktest and changes nothing else.
 #
 # Start build/linktest.nes on the console first, with the hat in controller
 # port 2. Name the port when the FTDI test cable is plugged in as well.

@@ -1,47 +1,32 @@
-"""The link ROM against the Python host over the simulated serial line.
+"""The link ROM against a nesp32 over the simulated serial line.
 
-The music must come out frame-exact whatever the line does: the NES may
-play later than it would have (an underrun holds the notes for a frame), but
-it must never play something different. The link counters say which
-recovery path each fault took.
+The nesp32's end is its own firmware, built for this computer
+(link_harness.py). Whatever the line does, the music must come out
+frame-exact: the NES may play later than it would have (an underrun holds
+the notes for a frame), but it must never play something different.
 """
 
 import glob
-import itertools
 import os
 import random
-import shutil
-import subprocess
 
+import nesp
+import nesp_proto as p
 import pytest
 
 import jbs
 import vgm
 import vgm2jbs
 from link_harness import LinkConsole, ms
-from nes_harness import NTSC_FRAME_CYCLES, expected_frames
-import protocol
-from protocol import Host, OP_DATA, OP_HELLO
-from serial_line import HostToNes, NesToHost
+from linked import (LINK_STOPPED, LINK_STREAMING, LINK_WAITING, damage_requests, drop_random_byte,
+                    ending_track, files, flip_random_bit, frames_of, greet, jbs_file,
+                    played_exactly, playlist_stream, short_track, start, track_stream, wait_for)
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 RIPS = sorted(glob.glob(os.path.join(ROOT, "music", "*.vg[mz]")))
-
-pytestmark = pytest.mark.skipif(
-    not (shutil.which("ca65") and shutil.which("ld65")), reason="cc65 not installed"
-)
-
-
-@pytest.fixture(scope="session")
-def build(tmp_path_factory):
-    build = tmp_path_factory.mktemp("link_system")
-    subprocess.run(["make", "-s", "BUILD=%s" % build, "verify"], cwd=ROOT, check=True)
-    return build
-
-
-@pytest.fixture(scope="session")
-def link_rom(build):
-    return str(build / "jukebox_link.nes"), str(build / "jukebox_link.labels")
+LOOPS = 50                      # times round the demo's loop: longer than any test plays
+CREDIT_MAX = 56                 # nes/serial_link.inc: the most a reply brings
+PREFILL = 768                   # nes/jukebox.s: bytes buffered before the music starts
 
 
 @pytest.fixture(scope="session")
@@ -49,198 +34,190 @@ def demo(build):
     return jbs.JbsFile.from_bytes((build / "demo.jbs").read_bytes())
 
 
-def loop_offset(song):
-    return song.loop_offset if song.loop_frame is not None else None
+@pytest.fixture
+def linked(link_rom, demo):
+    """Make a console on the link ROM with a nesp32 that holds the demo
+    under the name "Demo - Song": linked(**port_options)."""
+    def make(**options):
+        options.setdefault("loops", LOOPS)
+        return LinkConsole(*link_rom, tracks=[jbs_file(demo, "Demo - Song")], **options)
+    return make
 
 
-def played_exactly(machine, song, count):
-    machine.run_until_played(count)
-    expected = itertools.islice(expected_frames(song.stream, loop_offset(song)), count)
-    for index, (got, want) in enumerate(zip(machine.played_frames(), expected)):
-        assert got == want, "frame %d" % index
-    assert machine.byte("stream_error") == 0
+@pytest.fixture(scope="session")
+def demo_stream(demo):
+    return track_stream("Demo - Song", demo, LOOPS)
 
 
-def counters(machine):
-    names = ("link_bursts", "link_aborts", "link_rejects", "link_crc_errors", "underruns")
-    return {name: machine.word(name) for name in names}
+def failed(machine):
+    """Exchanges the console made that brought no good reply."""
+    return machine.word("link_failed")
 
 
-def test_clean_link_plays_frame_exact(link_rom, demo):
-    machine = LinkConsole(*link_rom, host=Host(demo))
-    played_exactly(machine, demo, 600)
-    stats = counters(machine)
-    assert stats["link_aborts"] == stats["link_rejects"] == stats["link_crc_errors"] == 0
-    assert stats["underruns"] == 0
-    assert machine.requests[0][1].op == OP_HELLO
-    assert machine.host.stats["resends"] == 0
+# --- hello, and a link with nothing wrong ----------------------------------------------
+
+def test_the_rom_says_who_it_is_and_what_it_needs(linked):
+    machine = linked()
+    greet(machine)
+    service, op, payload = machine.requests()[0]
+    assert (service, op) == (p.NESP_SVC_SYS, p.NESP_SYS_HELLO)
+    assert payload == bytes((p.NESP_PROTOCOL,)) + b"JUKE" + bytes(
+        (2, 63, p.NESP_SVC_JUKE, p.NESP_SVC_RAW))
+    assert machine.stick.app == (b"JUKE", 2)
+    assert machine.stick.active(p.NESP_SVC_JUKE) and machine.stick.active(p.NESP_SVC_RAW)
+    assert machine.stick.hellos == 1
 
 
-def test_playback_waits_for_the_prefill(link_rom, demo):
-    machine = LinkConsole(*link_rom, host=Host(demo))
-    machine.run(20)
-    assert machine.byte("playing") == 0      # 20 bursts of 24 is under 768
+def test_nothing_plays_until_a_button_says_so(linked):
+    machine = linked()
+    machine.run(200)
+    assert machine.byte("playing") == 0 and machine.played_frames() == []
+    assert machine.byte("link_state") == LINK_STOPPED
+    # The console asks every frame all the same, so the link stays up and
+    # the nesp32 can see that it is there.
+    assert machine.stick.requests >= 195 and failed(machine) == 0
+    assert machine.word("underruns") == 0
+
+
+def test_a_clean_link_plays_frame_exact(linked, demo_stream):
+    machine = start(linked())
+    played_exactly(machine, demo_stream, 600)
+    assert failed(machine) == 0 and machine.word("underruns") == 0
+    assert machine.stick.juke_resent == 0 and machine.stick.repeats == 0
+    assert machine.byte("link_state") == LINK_STREAMING
+
+
+def test_playback_waits_for_the_prefill(linked):
+    machine = start(linked())
+    began = len(machine.frames)
+    machine.run(PREFILL // CREDIT_MAX - 2)
+    assert machine.byte("playing") == 0         # that many replies cannot hold 768 bytes
     machine.run_until_played(1)
-    assert len(machine.frames) < 40
+    assert len(machine.frames) - began < PREFILL // CREDIT_MAX + 6
 
 
-def test_no_host_means_no_playback_and_no_hang(link_rom):
-    machine = LinkConsole(*link_rom)
-    machine.run(30)
-    assert machine.byte("playing") == 0
-    data = [r for _, r in machine.requests if r.op == OP_DATA]
-    assert {r.seq for r in data} == {0}
-    # Each request waits HUNT_TIMEOUT_FRAMES (4) for a marker, then repeats.
-    assert 6 <= len(data) <= 8
-    assert machine.word("link_timeouts") >= len(data) - 1
-    assert machine.word("link_aborts") == 0
+def test_no_nesp32_means_no_playback_and_no_hang(link_rom):
+    machine = LinkConsole(*link_rom, attached=False)
+    machine.run(60)
+    assert machine.byte("playing") == 0 and machine.byte("link_state") == LINK_WAITING
+    # A hello every frame, each given up at the next vblank.
+    hellos = [payload for service, op, payload in machine.requests()
+              if (service, op) == (p.NESP_SVC_SYS, p.NESP_SYS_HELLO)]
+    assert 55 <= len(hellos) <= 60
+    assert len(hellos) - 1 <= failed(machine) <= len(hellos)    # the last is still out
 
 
-@pytest.mark.parametrize("turnaround_ms", [2, 5])
-def test_turnaround_inside_the_budget_never_aborts(link_rom, demo, turnaround_ms):
-    machine = LinkConsole(*link_rom, host=Host(demo), turnaround=lambda: ms(turnaround_ms))
-    played_exactly(machine, demo, 300)
-    assert counters(machine)["link_aborts"] == 0
+@pytest.mark.parametrize("turnaround_ms", [0.05, 1, 3])
+def test_a_reply_inside_the_budget_is_never_missed(linked, demo_stream, turnaround_ms):
+    machine = start(linked(turnaround=ms(turnaround_ms)))
+    played_exactly(machine, demo_stream, 300)
+    assert failed(machine) == 0 and machine.word("underruns") == 0
 
 
-@pytest.mark.parametrize("low_ms, high_ms", [(7, 7), (6, 9), (10, 14)])
-def test_a_host_just_past_the_budget_settles(link_rom, demo, low_ms, high_ms):
-    """A reply this late arrives in the frame after its request. The NES then
-    asked again at once, partway through that frame, and the reply to that
-    ran into the next NMI, so every other burst was lost and request_delay
-    never settled. The request after a late burst now waits for an NMI."""
-    rng = random.Random(5)
-    machine = LinkConsole(*link_rom, host=Host(demo),
-                          turnaround=lambda: ms(rng.uniform(low_ms, high_ms)))
-    played_exactly(machine, demo, 400)
-    stats = machine.host.stats
-    assert stats["resends"] <= 0.05 * stats["bursts"]
-    assert counters(machine)["underruns"] == 0
-
-
-def test_the_nes_reports_its_counters_to_the_host(link_rom, demo):
-    """The console shows nothing, so the host's status line is the only
-    place to see why bursts were asked for again."""
-    rng = random.Random(6)
-    machine = LinkConsole(*link_rom, host=Host(demo), reply_fault=flip_random_bit(rng, 0.2))
-    played_exactly(machine, demo, 400)
-    reported = machine.host.nes
-    assert set(reported) == set(protocol.NES_COUNTERS)
-    assert reported["crc_errors"] + reported["rejects"] + reported["aborts"] > 5
-    for name in ("aborts", "timeouts", "rejects", "crc_errors", "underruns"):
-        # Reports take turns, so each is at most a couple of seconds old.
-        assert 0 <= machine.word(name if name == "underruns" else "link_" + name) - reported[name] <= 30
-
-
-def test_turnaround_budget_is_reported(link_rom, demo):
-    """The longest host turnaround at which a full-credit burst still lands
-    before the next NMI, for PLAN.md's budget."""
+def test_the_time_the_nesp32_has_to_answer_is_reported(linked):
+    """The longest the nesp32 may take for a reply that brings as much as
+    the ROM ever asks for to land before the next vblank; for
+    docs/PROTOCOL.md. Its firmware's slowest on hardware was 0.2 ms."""
     best = 0.0
-    for tenths in range(40, 120, 5):
+    for tenths in range(20, 90, 5):
         turnaround = tenths / 10
-        machine = LinkConsole(*link_rom, host=Host(demo), turnaround=lambda: ms(turnaround))
-        machine.run(80)  # prefill: every burst asks for the full credit
-        if machine.word("link_aborts"):
+        machine = start(linked(turnaround=ms(turnaround)))
+        machine.run(12)                         # the prefill: every reply is a full one
+        if failed(machine):
             break
         best = turnaround
-    print("\nfull-credit bursts land before the NMI with turnaround up to %.1f ms" % best)
-    assert best >= 5.0
+    print("\nfull replies land before the vblank with the nesp32 taking up to %.1f ms" % best)
+    assert best >= 3.0
 
 
-def test_a_late_host_is_cut_off_and_resent(link_rom, demo):
+def test_a_late_reply_is_dropped_and_its_bytes_asked_for_again(linked, demo_stream):
+    """A reply cut off by the vblank is no reply. The next request says
+    where the console still is, and the same bytes come again."""
     rng = random.Random(1)
-    machine = LinkConsole(*link_rom, host=Host(demo), turnaround=lambda: ms(rng.uniform(1, 16)))
-    played_exactly(machine, demo, 400)
-    stats = counters(machine)
-    assert stats["link_aborts"] > 0
-    assert machine.host.stats["resends"] > 0
+    machine = start(linked(turnaround=lambda: ms(rng.uniform(0.2, 12))))
+    played_exactly(machine, demo_stream, 400)
+    assert failed(machine) > 5 and machine.stick.juke_resent > 5
+    assert machine.word("underruns") == 0
 
 
-@pytest.mark.parametrize("turnaround_ms", [8, 12, 16, 20])
-def test_a_steady_slow_host_still_delivers(link_rom, demo, turnaround_ms):
-    # Replies that always land across the NMI would lock up a link that
-    # retried at the same point in the frame. The NES moves its request
-    # later after each miss until the replies fit, and keeps what works.
-    frames = 400
-    machine = LinkConsole(*link_rom, host=Host(demo), turnaround=lambda: ms(turnaround_ms))
-    machine.run(frames)
-    stats = counters(machine)
-    assert stats["underruns"] == 0
-    assert stats["link_bursts"] * 24 / frames >= 5  # the demo needs about 4
-    played = len(machine.played_frames())
-    expected = itertools.islice(expected_frames(demo.stream, loop_offset(demo)), played)
-    assert machine.played_frames() == list(expected)
-
-
-def flip_random_bit(rng, rate):
-    def fault(reply):
-        if rng.random() >= rate:
-            return reply
-        data = bytearray(reply)
-        data[rng.randrange(len(data))] ^= 1 << rng.randrange(8)
-        return bytes(data)
-    return fault
-
-
-def drop_random_byte(rng, rate):
-    def fault(reply):
-        if rng.random() >= rate:
-            return reply
-        index = rng.randrange(len(reply))
-        return reply[:index] + reply[index + 1:]
-    return fault
+def test_a_nesp32_that_always_answers_a_frame_late_is_never_heard(linked):
+    """Nothing here waits past the vblank for a reply, and the firmware
+    never takes a hundredth of this. The console must only not hang, and
+    say that it hears nothing."""
+    machine = linked(turnaround=ms(18))
+    machine.run(60)
+    assert machine.byte("greeted") == 0 and machine.byte("link_state") == LINK_WAITING
+    assert machine.byte("playing") == 0
 
 
 @pytest.mark.parametrize("seed", [2, 6, 7, 9])
-def test_corrupted_bursts_are_rejected_and_resent(link_rom, demo, seed):
-    """Seeds 6, 7 and 9 flip a burst's length byte while the ring is nearly
-    full. The receiver used to store such a burst before checking its length
-    against the credit, and it ran over music that had not played yet."""
+def test_damaged_replies_are_dropped_and_asked_for_again(linked, demo_stream, seed):
+    """Among them are replies whose length byte is the one that is wrong:
+    none may be stored past what was asked for, into music that has not
+    played yet."""
     rng = random.Random(seed)
-    machine = LinkConsole(*link_rom, host=Host(demo), reply_fault=flip_random_bit(rng, 0.2))
-    played_exactly(machine, demo, 500)
-    stats = counters(machine)
-    assert stats["link_crc_errors"] + stats["link_rejects"] + stats["link_aborts"] > 0
-    assert machine.host.stats["resends"] > 0
+    machine = start(linked(to_console=flip_random_bit(rng, 0.2)))
+    played_exactly(machine, demo_stream, 500)
+    assert failed(machine) > 0 and machine.stick.juke_resent > 0
+    assert machine.word("underruns") == 0
 
 
-def test_dropped_burst_bytes_are_recovered(link_rom, demo):
+def test_replies_with_bytes_missing_are_recovered(linked, demo_stream):
     rng = random.Random(3)
-    machine = LinkConsole(*link_rom, host=Host(demo), reply_fault=drop_random_byte(rng, 0.1))
-    played_exactly(machine, demo, 500)
-    assert machine.host.stats["resends"] > 0
+    machine = start(linked(to_console=drop_random_byte(rng, 0.1)))
+    played_exactly(machine, demo_stream, 500)
+    assert machine.stick.juke_resent > 0
 
 
-def test_corrupted_requests_are_ignored_and_repeated(link_rom, demo):
-    rng = random.Random(4)
-
-    def fault(byte):
-        return byte ^ (1 << rng.randrange(8)) if rng.random() < 0.03 else byte
-
-    machine = LinkConsole(*link_rom, host=Host(demo), request_fault=fault)
-    played_exactly(machine, demo, 500)
-    assert machine.decoder.discarded > 0
-    assert machine.word("link_aborts") > 0
+def test_damaged_requests_are_passed_over_and_asked_again(linked, demo_stream):
+    machine = start(linked())
+    damage_requests(machine, random.Random(4), 0.03)
+    played_exactly(machine, demo_stream, 500)
+    assert failed(machine) > 20
+    assert machine.stick.juke_resent == 0       # nothing it sent was lost: it was never asked
 
 
-@pytest.mark.parametrize("to_nes_error, to_host_error", [(0.02, -0.02), (-0.02, 0.02)])
-def test_baud_error_both_ways(link_rom, demo, to_nes_error, to_host_error):
-    machine = LinkConsole(*link_rom, host=Host(demo),
-                          to_nes=HostToNes(clock_error=to_nes_error),
-                          to_host=NesToHost(clock_error=to_host_error))
-    played_exactly(machine, demo, 300)
-    stats = counters(machine)
-    assert stats["link_rejects"] == stats["link_crc_errors"] == 0
+@pytest.mark.parametrize("clock_error", [-0.02, 0.02])
+def test_a_nesp32_whose_clock_is_out(linked, demo_stream, clock_error):
+    machine = start(linked(clock_error=clock_error))
+    played_exactly(machine, demo_stream, 300)
+    assert failed(machine) == 0
 
 
-def test_a_song_without_a_loop_ends_and_the_link_idles(link_rom):
-    frames = [[(0x15, 0x0F)], [(0x00, 0xBF), (0x03, 0x08)]] + [[] for _ in range(10)]
-    encoded = jbs.encode(frames)
-    song = jbs.JbsFile(stream=encoded.data, total_frames=len(frames))
-    machine = LinkConsole(*link_rom, host=Host(song))
-    played_exactly(machine, song, 40)
-    assert machine.byte("ended") == 1
-    assert counters(machine)["link_rejects"] == 0
+def test_the_nesp32_keeps_the_consoles_underruns(linked, demo_stream):
+    """The console has no place to show them. A nesp32 that goes quiet
+    until the ring has run dry is how to make some; the music then goes on
+    from where it stopped."""
+    machine = start(linked())
+    machine.run_until_played(100)
+    machine.port.deaf = True
+    wait_for(machine, lambda: machine.word("underruns") > 20, limit=1000, step=10)
+    machine.port.deaf = False
+    machine.run(30)
+    assert machine.word("underruns") < 60
+    assert machine.stick.juke_underruns == machine.word("underruns")
+    assert machine.stick.shown(1) == "PLAYING, 0 again, %d dry" % machine.word("underruns")
+    played_exactly(machine, demo_stream, 600)
+
+
+# --- playlists ----------------------------------------------------------------------------
+
+def test_a_track_without_a_loop_ends_and_the_link_idles(link_rom):
+    song = ending_track()
+    machine = start(LinkConsole(*link_rom, tracks=files([("Last", song)]), repeat=False))
+    stream = playlist_stream([("Last", song)], end=True)
+    played_exactly(machine, stream, 40)
+    assert machine.byte("ended") == 1 and failed(machine) == 0
+    assert machine.stick.requests > 40          # it goes on asking: Start plays it again
+
+
+def test_one_track_follows_another_and_the_playlist_goes_round(link_rom, demo):
+    tracks = [("Short - One", short_track()), ("Demo - Two", demo)]
+    machine = start(LinkConsole(*link_rom, tracks=files(tracks)))
+    stream = playlist_stream(tracks, loops=2, times=3)
+    once = len(jbs.decode(playlist_stream(tracks, loops=2))[0])    # frames in the playlist
+    played_exactly(machine, stream, 2 * once + 50)
+    assert machine.word("underruns") == 0 and failed(machine) == 0
 
 
 @pytest.mark.skipif(not RIPS, reason="no rips in music/")
@@ -248,162 +225,140 @@ def test_a_song_without_a_loop_ends_and_the_link_idles(link_rom):
 def test_rips_over_the_link(link_rom, path):
     song, _ = vgm2jbs.convert(vgm.load(path))
     rng = random.Random(path)
-    machine = LinkConsole(*link_rom, host=Host(song), turnaround=lambda: ms(rng.uniform(0.5, 4)))
-    played_exactly(machine, song, 400)
-    stats = counters(machine)
-    assert stats["underruns"] == 0
-    assert stats["link_aborts"] == stats["link_rejects"] == stats["link_crc_errors"] == 0
+    machine = start(LinkConsole(*link_rom, tracks=[jbs_file(song, "A Game - A Rip")],
+                                turnaround=lambda: ms(rng.uniform(0.1, 3))))
+    played_exactly(machine, track_stream("A Game - A Rip", song), 400)
+    assert machine.word("underruns") == 0 and failed(machine) == 0
 
 
-class Recording:
-    """A source wrapper that keeps every byte handed to the host."""
-
-    def __init__(self, source):
-        self.source = source
-        self.log = bytearray()
-
-    def take(self, count):
-        data = self.source.take(count)
-        self.log += data
-        return data
-
-    def restart(self):
-        self.source.restart()
-        self.log.clear()
-
-
-def complete_frames(data):
-    """Decode the longest prefix of data that ends on a frame boundary."""
-    end = len(data)
-    while end:
-        try:
-            jbs.frame_units(bytes(data[:end]))
-            return bytes(data[:end])
-        except jbs.StreamError:
-            end -= 1
-    return b""
-
-
-def test_a_playlist_with_skips_plays_through_the_link(link_rom, demo):
-    from playlist import PlaylistSource
-
-    frames = [[(0x15, 0x0F)], [(0x04, 0xBF), (0x07, 0x08)]] + [[(0x04, 0xB0 | n)] for n in range(15)]
-    encoded = jbs.encode(frames, loop_frame=1)
-    short = jbs.JbsFile(stream=encoded.data, total_frames=len(frames), loop_frame=1,
-                        loop_offset=encoded.loop_offset)
-    started = []
-    source = PlaylistSource([("demo", demo), ("short", short)], loops=2,
-                            on_track=lambda index, title: started.append(title))
-    recording = Recording(source)
-    machine = LinkConsole(*link_rom, host=Host(recording))
-    machine.run(150)
-    source.skip(1)                  # mid-song, mid-burst
-    machine.run(250)
-    source.skip(-1)
-    machine.run(250)
-
-    sent = complete_frames(recording.log)
-    played = machine.played_frames()
-    expected = list(itertools.islice(expected_frames(sent, None), len(played)))
-    assert played == expected
-    assert machine.byte("stream_error") == 0
-    # The NES's hello at boot restarts the first track, so it is announced
-    # twice before the skips.
-    assert started == ["demo", "demo", "short", "demo"]
-    assert short.stream[2:] in bytes(recording.log)
-
-
-# -- stop, play and flush ------------------------------------------------------
-
-def frames_from_the_start(song, count):
-    return list(itertools.islice(expected_frames(song.stream, loop_offset(song)), count))
-
-
-def apu_silenced_since(machine, nmis):
-    """True if some NMI in the last `nmis` wrote $4015 = 0 and nothing else."""
-    return any(writes == [(0x15, 0x00)] for writes, _, _ in machine.frames[-nmis:])
-
-
-def test_a_stopped_host_keeps_the_nes_quiet_and_the_link_alive(link_rom, demo):
-    host = Host(demo, stopped=True)
-    machine = LinkConsole(*link_rom, host=host)
-    machine.run(200)
-    assert machine.byte("playing") == 0 and machine.played_frames() == []
-    stats = counters(machine)
-    assert stats["underruns"] == 0 and machine.word("link_timeouts") == 0
-    assert stats["link_bursts"] > 150          # an empty flush burst nearly every frame
-    assert host.stats["resends"] == 0
-
-    host.play()
-    machine.run_until_played(300)
-    assert machine.played_frames()[:300] == frames_from_the_start(demo, 300)
-    assert counters(machine)["underruns"] == 0
-
-
-def test_stop_silences_at_once_and_play_starts_the_song_again(link_rom, demo):
-    host = Host(demo)
-    machine = LinkConsole(*link_rom, host=host)
+def test_a_change_of_track_is_heard_within_a_second(link_rom, demo):
+    tracks = [("Demo - One", demo), ("Short - Two", short_track())]
+    machine = start(LinkConsole(*link_rom, tracks=files(tracks), loops=LOOPS))
     machine.run_until_played(150)
-    host.stop()
-    machine.run(6)
-    played = len(machine.played_frames())
-    assert machine.byte("playing") == 0 and apu_silenced_since(machine, 6)
-    machine.run(120)
-    assert len(machine.played_frames()) == played    # nothing more came out
-    assert counters(machine)["underruns"] == 0 and machine.word("link_timeouts") == 0
-
-    host.play()
-    machine.run_until_played(played + 200)
-    frames = machine.played_frames()
-    assert frames[:played] == frames_from_the_start(demo, played)
-    assert frames[played:played + 200] == frames_from_the_start(demo, 200)
-    assert counters(machine)["underruns"] == 0
-
-
-def test_a_jump_is_heard_within_a_second(link_rom, demo):
-    from playlist import PlaylistSource
-
-    frames = [[(0x15, 0x0F)], [(0x04, 0xBF), (0x07, 0x08)]] + [[(0x04, 0xB0 | n)] for n in range(15)]
-    encoded = jbs.encode(frames, loop_frame=1)
-    short = jbs.JbsFile(stream=encoded.data, total_frames=len(frames), loop_frame=1,
-                        loop_offset=encoded.loop_offset)
-    source = PlaylistSource([("demo", demo), ("short", short)], loops=50)
-    host = Host(source)
-    machine = LinkConsole(*link_rom, host=host)
-    machine.run_until_played(150)
-    source.jump(1)
-    host.flush()
-    machine.run(8)
-    played = len(machine.played_frames())      # where the old track was cut
+    machine.press_button(p.NESP_EVENT_BUTTON_POWER)      # next
+    machine.run(4)
+    played = len(machine.played_frames())               # where the old track was cut
     nmis = len(machine.frames)
     machine.run_until_played(played + 100)
     got = machine.played_frames()
-    assert got[:played] == frames_from_the_start(demo, played)
-    assert got[played:played + 100] == frames_from_the_start(short, 100)
-    # The NES held about 3 s of the old track. The new one needs only the
-    # prefill: 768 bytes, or about 32 frames, then it plays.
+    assert got[:played] == frames_of(track_stream(*tracks[0], LOOPS), played)
+    assert got[played:played + 100] == frames_of(track_stream(*tracks[1], LOOPS), 100)
+    # The NES held seconds of the old track. The new one needs only the
+    # prefill, 768 bytes at 56 a frame, and then it plays.
     silent = next(index for index, (_, underran, playing) in enumerate(machine.frames[nmis:])
                   if playing and not underran)
-    assert silent < 60
-    assert counters(machine)["underruns"] == 0
+    assert silent < 30
+    assert machine.word("underruns") == 0 and machine.stick.juke_index == 1
+
+
+def test_a_pause_holds_the_music_and_the_link_stays_up(linked, demo_stream):
+    machine = start(linked())
+    machine.run_until_played(150)
+    machine.press_button(p.NESP_EVENT_BUTTON_A)
+    machine.run(4)
+    played = len(machine.played_frames())
+    asked = machine.stick.requests
+    machine.run(120)
+    assert len(machine.played_frames()) == played       # nothing more came out
+    assert machine.byte("paused") == 1 and machine.memory[0x4015] == 0
+    assert machine.stick.requests - asked >= 118 and failed(machine) == 0
+    machine.press_button(p.NESP_EVENT_BUTTON_A)
+    played_exactly(machine, demo_stream, played + 200)  # one unbroken song
+    assert machine.word("underruns") == 0
 
 
 @pytest.mark.parametrize("seed", range(4))
-def test_stop_and_play_survive_a_noisy_line(link_rom, demo, seed):
+def test_changes_of_track_survive_a_noisy_line(link_rom, demo, seed):
     rng = random.Random(seed)
-    host = Host(demo, stopped=True)
-    machine = LinkConsole(*link_rom, host=host, reply_fault=flip_random_bit(rng, 0.15),
-                          turnaround=lambda: ms(rng.uniform(0.5, 9)))
+    tracks = [("Demo - One", demo), ("Short - Two", short_track())]
+    streams = [track_stream(*track, LOOPS) for track in tracks]
+    machine = start(LinkConsole(*link_rom, tracks=files(tracks), loops=LOOPS,
+                                to_console=flip_random_bit(rng, 0.15),
+                                turnaround=lambda: ms(rng.uniform(0.1, 9))))
     played = 0
-    for _ in range(4):
-        machine.run(rng.randrange(20, 90))
-        assert len(machine.played_frames()) == played
-        host.play()
-        machine.run_until_played(played + 120)
-        host.stop()
-        machine.run(40)                        # resends may delay the flush
+    for turn in range(5):
+        machine.run_until_played(played + rng.randrange(40, 160))
         got = machine.played_frames()
-        assert machine.byte("playing") == 0
-        assert got[played:] == frames_from_the_start(demo, len(got) - played)
+        assert got[played:] == frames_of(streams[turn % 2], len(got) - played)
+        machine.press_button(p.NESP_EVENT_BUTTON_POWER)
+        # A damaged reply may put the flush off by a frame or two; then
+        # nothing of the old track plays again.
+        wait_for(machine, lambda: machine.byte("playing") == 0, limit=40)
+        got = machine.played_frames()
+        assert got[played:] == frames_of(streams[turn % 2], len(got) - played)
         played = len(got)
     assert machine.byte("stream_error") == 0
+
+
+# --- when one of the two starts again -----------------------------------------------------
+
+def test_a_console_that_is_reset_says_hello_again_and_the_music_stops(linked, demo_stream):
+    machine = start(linked())
+    machine.run_until_played(100)
+    played = len(machine.played_frames())
+    machine.mpu.pc = machine.memory[0xFFFC] | machine.memory[0xFFFD] << 8
+    greet(machine)
+    machine.run(30)
+    assert machine.stick.hellos == 2 and len(machine.played_frames()) == played
+    assert machine.byte("playing") == 0
+    start(machine)
+    machine.run_until_played(played + 100)
+    assert machine.played_frames()[played:played + 100] == frames_of(demo_stream, 100)
+
+
+def test_a_nesp32_switched_off_and_on_is_greeted_again_and_the_ring_dropped(linked, demo_stream):
+    """It has forgotten the hello, and says so to the first thing it is
+    asked. What the console holds is music the new one knows nothing of."""
+    machine = start(linked())
+    machine.run_until_played(100)
+    machine.power_cycle()
+    machine.stick.set_juke(loops=LOOPS)
+    wait_for(machine, lambda: machine.stick.hellos == 1, limit=10)
+    wait_for(machine, lambda: machine.byte("playing") == 0, limit=10)
+    played = len(machine.played_frames())
+    machine.run(60)
+    assert len(machine.played_frames()) == played
+    assert machine.byte("link_state") == LINK_STOPPED
+    start(machine)
+    machine.run_until_played(played + 100)
+    assert machine.played_frames()[played:played + 100] == frames_of(demo_stream, 100)
+    assert machine.byte("stream_error") == 0
+
+
+def test_a_nesp32_switched_off_is_missed_and_found_again(linked, demo_stream):
+    machine = start(linked())
+    machine.run_until_played(50)
+    machine.port.deaf = True
+    machine.run(40)
+    assert machine.byte("link_state") == LINK_WAITING
+    machine.port.deaf = False
+    machine.run(10)
+    assert machine.byte("link_state") == LINK_STREAMING
+    played_exactly(machine, demo_stream, 400)   # and nothing was lost by it
+
+
+def test_firmware_older_than_the_rom_is_told_apart_from_none(linked):
+    """A nesp32 whose firmware has no JUKE answers the hello, and says what
+    it lacks. The screen then says what to do about it."""
+    def old(reply):
+        answer = nesp.parse(reply)
+        if answer.svc == p.NESP_SVC_SYS and len(answer.payload) >= 7:
+            return nesp.reply_frame(p.NESP_SVC_SYS, p.NESP_ST_NO_SERVICE, answer.seq,
+                                    answer.payload[:6] + bytes((1, p.NESP_SVC_JUKE)))
+        return reply
+    machine = linked(to_console=old)
+    machine.run(30)
+    assert machine.byte("greeted") == 0
+    assert machine.byte("link_state") == machine_constant("LINK_OLD")
+
+
+def machine_constant(name):
+    return {"LINK_OLD": 7, "LINK_EMPTY": 8}[name]
+
+
+def test_a_nesp32_with_no_music_says_so(link_rom):
+    machine = LinkConsole(*link_rom)
+    machine.run(30)
+    assert machine.byte("greeted") == 1
+    assert machine.byte("link_state") == machine_constant("LINK_EMPTY")
+    assert machine.byte("playing") == 0

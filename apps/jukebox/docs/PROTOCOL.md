@@ -1,12 +1,20 @@
-# NES Jukebox stream format and link protocol
+# NES Jukebox stream format, files and link
 
-Status: the stream format (part 1) and the file container (part 2) are
-implemented by `tools/jbs.py` and fixed for v1. The link protocol (part 3)
-is implemented by `nes/serial_link.inc` and `host/protocol.py` and verified
-in a cycle-exact simulation. Its timing still needs confirming on hardware
-(phase 3b). Sampled sound (part 4) is implemented by the same two, with
-`tools/pcm.py` for its file and its bytes. It has played on a real NES
-from a StickC Plus2 at one of its six rates.
+Status: the stream format (part 1) and the two file containers (parts 2
+and 4) are implemented by `tools/jbs.py` and `tools/pcm.py` and fixed for
+v1.
+
+The link (part 3) is not the jukebox's own. The link ROM's host is a
+nesp32, and [nesp32's `docs/PROTOCOL.md`](../../nesp32/docs/PROTOCOL.md)
+is the protocol: the line, the frames, the hello, and the JUKE and RAW
+services this ROM uses. Parts 3 and 4 here say only how this ROM uses
+them. `nes/serial_link.inc` is all of it, on nesp32's library for the
+console (`nes/lib/nesp.inc` there). It is tested against nesp32's own code
+on a simulated console, and works with a StickS3 on the MiSTer's NES core.
+
+Before October 2026 the jukebox had a link protocol and a MicroPython
+firmware of its own, at 38400 baud, which played on a real NES. Both are
+in this repository's history.
 
 ## 1. Stream format
 
@@ -65,24 +73,25 @@ no format change.
 | `$02 n text` | track name: *n* characters (0-28) of printable ASCII for the console's screen |
 | `$03 n text` | game name, in the same form, for the line above it |
 | `$04 text` | track length: 5 characters as the screen shows them, `M:SS ` or `MM:SS`, or `-:-- ` for a track that never ends. It also starts the console's clock again from zero |
-| `$05 r` | sound record: sampled sound is due here, at rate *r* (part 4). It silences the APU and ends the frame as `$00` does, and the console then asks the host for the sound. The link ROM only; to the standalone ROM it is invalid |
+| `$05 r` | sound record: sampled sound is due here, at rate *r* (part 4). It silences the APU and ends the frame as `$00` does, and the console then asks the nesp32 for the sound. The link ROM only; to the standalone ROM it is invalid |
 
 Other codes are invalid in v1, and so is a name longer than 28. The three
 with text write nothing to the APU.
 
 They are not part of a track's own stream: the converter never writes
-them, and a `.jbs` file keeps its title in the header. The host puts all
-three ahead of each track as it sends it (`jbs.intro`): game, track, then
-length. They reach the screen as the track's first notes play, however
-much of the previous track the console still had buffered, one line per
-vblank. The converter's titles are "game - track", split at the first
-` - `; a title without one is a track's name with no game. The length is
-the time the playlist will play the track for, loops included. The
-standalone ROM's song gets the same records from `tools/embed_song.py`.
+them, and a `.jbs` file keeps its title in the header. The nesp32 puts all
+three ahead of each track as it sends it (as `jbs.intro` builds them, which
+the tests hold its firmware to): game, track, then length. They reach the
+screen as the track's first notes play, however much of the previous track
+the console still had buffered, one line per vblank. The converter's
+titles are "game - track", split at the first ` - `; a title without one
+is a track's name with no game. The length is the time the playlist will
+play the track for, loops included. The standalone ROM's song gets the
+same records from `tools/embed_song.py`.
 
 The console's clock counts the frames it plays, 60 to the second, from the
 length record on. It therefore shows what is being heard, stops while the
-music is stopped, and needs nothing more from the host.
+music is stopped, and needs nothing more from the nesp32.
 
 ### Guarantees the converter makes
 
@@ -102,7 +111,8 @@ music is stopped, and needs nothing more from the host.
 
 ## 2. File container (`.jbs`)
 
-The host stores and reads this file. It is never sent to the NES.
+The nesp32 stores and reads this file (`tools/deploy.py` puts it there).
+It is never sent to the NES as it is.
 
 | Offset | Size | Field |
 |---|---|---|
@@ -118,246 +128,112 @@ The host stores and reads this file. It is never sent to the NES.
 | 25 | *n* | title, printable ASCII |
 | 25+*n* | | stream |
 
-**Looping.** The host streams bytes up to the stream length, then continues
-from the loop offset. The encoder forgets which register values the console
-holds at the loop frame, so a repeat pass never relies on state from before
-the loop. When the host decides to stop, it sends `$80 $00`.
+**Looping.** The nesp32 sends bytes up to the stream length, then continues
+from the loop offset, twice round in all, and then goes on to the next
+track. The encoder forgets which register values the console holds at the
+loop frame, so a repeat pass never relies on state from before the loop. A
+playlist that ends, ends with `$80 $00`.
 
-## 3. Link protocol v1
+## 3. The link
 
-Same wiring as nes-radar: D0 on controller port 2 for host to NES, OUT0 for
-NES to host.
+Wiring, rate, frames and services are nesp32's; see its
+`docs/PROTOCOL.md`. The line runs at 85227 baud both ways, and every use
+of it is one exchange, a request and its reply, made right after the NMI.
+An exchange that has not ended by the next vblank is dropped there, and
+costs nothing but itself.
 
-- **Host to NES:** 38400 baud, 8 data bits, no parity, **2 stop bits**. The
-  second stop bit is the NES's time to store a byte and start hunting for
-  the next start bit.
-- **NES to host:** 38400 baud, 8N1, bit-banged on OUT0. OUT0 idles at mark.
+### What the ROM sends
 
-The NES paces the link, and the host transmits only in reply to a request.
+One exchange a frame, the first of these that applies:
 
-### Request (NES to host, 4 bytes)
+| When | Request |
+|---|---|
+| Before anything else, and again whenever the nesp32 says a service is not in use | SYS HELLO, as `JUKE` version 2, asking for the JUKE and RAW services and replies of up to 63 bytes |
+| A button on controller 1 was pressed | JUKE BUTTON: Right is next, Left previous, Start or A play or pause. Sent again, unchanged, every frame until it is answered, for up to 30 frames |
+| A sound record has played, and the screen has caught up with it | JUKE SOUND: the ring's epoch, and the record's rate, or `$FF` if this console cannot play it (part 4) |
+| Otherwise, every frame | JUKE STREAM: the ring's epoch, how many of its bytes the ROM has taken, the room in the ring up to 56 bytes, and the low byte of its count of underruns |
 
-```text
-OP, SEQ, ARG, CHECK        CHECK = $A5 ^ OP ^ SEQ ^ ARG
-```
+**The stream is asked for by position.** The reply's bytes go into the
+ring, and the ROM's count goes up by as many. A reply that was lost or
+damaged, or cut off by the vblank, changes nothing: the next frame's
+request says the same position, and the same bytes come. Nothing is ever
+stored from a reply whose CRC was not good, nor more than was asked for.
 
-| OP | Name | SEQ | ARG |
-|---|---|---|---|
-| `$4A` 'J' | data | burst the NES wants | most payload bytes it can take |
-| `$48` 'H' | hello | 0 | 0; the host restarts the track and its sequence |
-| `$42` 'B' | button | 0 | what controller 1 asked for: bit 0 next track, bit 1 previous, bit 2 play or pause; no reply |
-| `$53` 'S' | stats | which counter | the counter's low byte; no reply |
-| `$50` 'P' | sound | burst the NES wants | the rate of the sound record it has played, or `$FF` if it cannot play it (part 4) |
+**A reply from another epoch is a flush.** The ROM drops everything
+buffered and not yet played, silences the APU (`$4015=0`), stops playing
+until the ring has refilled to the 768-byte prefill, and takes the reply's
+bytes as the first of the new epoch. The nesp32 begins a new epoch for
+whatever should be heard at once: another track, play after stop, the
+music after a sound. The first reply after a hello is taken the same way.
 
-The NES sends hello once at boot, after holding OUT0 at mark for about
-1.3 ms so the host's UART leaves break. After that it sends a data request
-right after an NMI whenever at least 8 bytes of the ring are free, asking
-for at most 24, and waits for the burst.
+### What the reply's state does
 
-Every 16th frame a stats request takes the place of the data request. The
-counters take turns, in this order: bursts cut off by an NMI (aborts),
-waits that timed out, rejects (framing, length or sequence), CRC errors,
-the current `request_delay`, underruns, and committed bursts. The console
-has no screen for them, and they are how a host tells *why* bursts are
-being asked for again. A report is a low byte of a count that began when
-the console was switched on, so the hosts add up the steps between reports
-and show totals for their own session.
+| State | The ROM |
+|---|---|
+| STOPPED | `PRESS START`, or the clock flashing if a track's names are on the screen. It goes on asking every frame |
+| PLAYING | plays once 768 bytes are buffered; `LOADING` until then |
+| PLAYING with DRAIN | plays what it has, however little: no more is coming for now |
+| PAUSED | the NMI stops decoding and the APU is silenced, with everything buffered kept. When the state is PLAYING again the channel enables are put back, and the music goes on from the frame it stopped at. Notes that were sounding are not restarted |
+| NO_TRACKS | `NO MUSIC FOUND` |
 
-A button request goes out when a button on controller 1 is pressed, in
-place of that frame's data or stats request: Right is next, Left is
-previous, and Start or A is play or pause. The host answers with what it
-would do for its own buttons. A track change jumps at once and starts
-playing, also from stopped or paused, and reaches the NES as a flush burst
-in reply to its next data request. Play or pause toggles between playing
-and paused (pause bursts, below); from stopped, or after the playlist has
-ended, it plays the current track from its beginning. A button request that is lost on
-the line is a press that did nothing, and is not sent again.
+### What can go wrong, and what the screen says
+
+| What happened | The ROM |
+|---|---|
+| No reply, a damaged one, one for another request, or one cut off by the NMI | stores nothing and asks again next frame |
+| 8 exchanges in a row with no reply | `WAITING FOR LINK`, and goes on asking; what is buffered plays on |
+| The hello is refused: no JUKE or RAW service, or another protocol | `UPDATE NESP32` |
+| A request is refused because the service is not in use: the nesp32 was switched off and on | says hello again; the next reply is a flush, and the music is stopped |
+| The ring runs dry | the notes hold for that frame, and an underrun is counted; the nesp32 keeps the total, for its own screen |
 
 **The controller read is on the line too.** The NES reads controller 1 by
-holding OUT0 low for the 8 reads, and OUT0 is the line to the host. It
+holding OUT0 low for the 8 reads, and OUT0 is the line to the nesp32. It
 rests at mark, which keeps the controller loading its buttons, so there is
-no separate strobe pulse: each read is one low pulse of 94 CPU cycles, two
-bit times at 38400 baud. A UART receives that as the byte `$FE`, once a
-frame, at the start of the NMI. The read comes first in the NMI so that
-the byte is finished (ten bit times) long before the request that follows;
-in the simulation the gap is never under 12 bit times. The host's decoder
-passes over a `$FE` where a request should start without counting it as
-noise.
-
-If a data request's `SEQ` equals the last burst sent, the host sends
-**exactly the same burst** again. If it is one more, the last burst was
-committed and the host moves on. This covers lost requests, lost or late
-bursts and CRC failures without a separate NAK.
-
-Resends must be identical. A slow host can have several copies of one burst
-on the wire, and the NES commits whichever arrives intact first; if the
-copies differed, the host could not know how much was committed. An
-identical copy always fits, because the NES's credit for a repeated
-sequence number never shrinks: nothing was committed, and playback only
-frees space. (The simulation caught an earlier host that re-sliced resends
-by the new credit, and duplicated stream bytes as a result.)
-
-The host decoder scans for a valid 4-byte frame and resyncs one byte at a
-time, so noise on OUT0 costs at most the frame it lands in.
-
-### Burst (host to NES)
-
-```text
-$A5, SEQ, LEN, PAYLOAD[LEN], CRC_HI, CRC_LO
-```
-
-The CRC is CRC-16/CCITT-FALSE (polynomial `$1021`, initial `$FFFF`) over
-`SEQ` through the payload. The NES stores the payload straight into its
-ring as it arrives. It drops a burst whose `LEN` is beyond the credit before
-storing any of it, because that could run past the free space, and after
-the last byte it checks `SEQ` and the CRC. Only then does it commit the
-bytes. Bytes
-before the `$A5` marker are ignored.
-
-Once a track has ended, the host answers with empty bursts (`LEN` 0). The
-NES takes an empty burst as the end of the track and starts playing
-whatever it has, even if that is less than the 768-byte prefill.
-
-### Flush burst (host to NES)
-
-```text
-$5A, SEQ, LEN, PAYLOAD[LEN], CRC_HI, CRC_LO
-```
-
-The same as a burst, with a different marker, and with the CRC taken over
-the marker as well (`$5A`, `SEQ`, `LEN`, payload), so a damaged ordinary
-burst cannot pass for one. When the NES accepts it, it drops everything it
-has buffered and not yet played, silences the APU (`$4015=0`), and stops
-playing until the ring has refilled to the prefill. The burst's payload is
-the first thing in the emptied ring. Sequence numbers and resends work as
-for any burst.
-
-The host uses it for everything that should be heard at once, where the NES
-would otherwise first play out the few seconds it holds:
-
-- **Changing or restarting a track:** the first burst of the new stream is
-  a flush burst. The music starts again after the prefill, about half a
-  second.
-- **Stopped:** the host answers every request with an *empty* flush burst.
-  The NES stays silent and keeps asking every frame, so nothing times out
-  and the host can see that the console is there. Unlike an empty ordinary
-  burst, this does not start playback.
-
-A flush waits for the NES's next request, and the NES asks only when 8
-bytes of its ring are free. In the middle of a long rest in the music that
-can take as long as the rest.
-
-### Pause burst (host to NES)
-
-```text
-$3C, SEQ, 0, CRC_HI, CRC_LO
-```
-
-An empty burst with its own marker, and the CRC taken over the marker as
-for a flush burst. When the NES accepts one it holds the music where it
-is: the NMI stops decoding, the APU is silenced (`$4015=0`), and
-everything buffered is kept. A paused host answers every request with one.
-
-Paused, the NES asks every frame whatever room its ring has, even none, so
-the link stays up and the host has a request to answer when the pause
-ends. The first burst that is not a pause burst ends it: the NES puts the
-channel enables back and decodes on from the frame it stopped at. Notes
-that were sounding are not restarted; each channel comes back with its next
-note.
-
-That first request after a pause can carry a credit of zero, and its
-answer is then an empty ordinary burst. The NES takes that as it always
-does ("the track has ended, play what you have"), which changes nothing
-while it is already playing.
-
-### Waiting, cut-offs and retries
-
-- **Waiting for the marker spans NMIs.** An NMI that arrives while the NES
-  is still waiting for `$A5` plays its frame and returns to the wait, so a
-  reply that comes a frame or two late still gets through.
-- **An NMI in the middle of a burst ends the receive.** Bytes that arrive
-  during the NMI are lost, so the burst could not pass its CRC.
-- **No marker for 4 frames ends the receive** (`HUNT_TIMEOUT_FRAMES`).
-- After either, the NES requests the same `SEQ` again, and **moves its next
-  request later** after the NMI: `request_delay` steps through 0-9 units of
-  about 1.3 ms, three at a time, and keeps a value that works. Without this, a
-  host with a steady reply time that always lands across the NMI would never
-  get a burst through.
-- **After a burst that came a frame late, the next request waits for the
-  next NMI.** Such a burst ends partway through a frame, and a request sent
-  from there would have its reply cut off by the NMI that follows. (Found on
-  the simulation: before this, a host replying in 6-10 ms lost every other
-  burst.)
+no separate strobe pulse: each read is one low pulse of 94 CPU cycles,
+which the nesp32's UART takes for a byte and its decoder passes over as
+noise, once a frame. The read comes first in the NMI, so that the byte is
+long over before the request that follows.
 
 ### Timing
 
-Measured in the cycle-exact simulation (`tests/test_link.py`,
-`tests/test_serial_timing.py`), as the rate while the ring is filling:
+Measured in the cycle-exact simulation (`tests/test_link.py`):
 
-| Host reply time | Result |
-|---|---|
-| up to 5.5 ms | a burst every frame (about 22 bytes per frame), no resends |
-| 7-20 ms, steady to within a few ms | a burst every other frame (about 11 bytes per frame), about 1% resends |
-| random across a whole frame (1-17 ms) | about 10 bytes per frame, about 40% resends |
-| 30-40 ms | about 4 bytes per frame, about 30% resends; still correct, may underrun |
-
-The music needs about 3-5 bytes per frame on average, so a host within
-20 ms is comfortable, and within 5.5 ms is ideal. In every case the music is
-frame-exact: faults can delay it (an underrun holds the notes for a frame),
-never change it.
-
-The first row was 6.5 ms before the console had a screen. Drawing it takes
-about 1 ms of each NMI (the controller read, half of the bars, and working
-out the next frame's bars), and the request cannot go out until the NMI is
-over. If a host needs that millisecond back, lowering `CREDIT_MAX` from 24
-to 20 in `nes/serial_link.inc` shortens every burst by more than it: the
-simulation then runs clean up to 7 ms, with prefill taking 38 frames
-where it took 32.
-
-- **Sampling:** the NES samples within 0.12 bit of each bit's center for
-  every start-bit phase, and receives correctly with host baud error from
-  -4.25% to +6.5%. Its transmit writes land within 0.62 cycles of ideal and
-  decode with 3% error.
-- **Headroom, measured:** the throughput test (`throughput/README.md`) ran
-  a receiver built the way this one is (the same sampling and start-bit
-  hunt, timed for each rate) on a real NES from a StickC Plus2 at rates up
-  to 149148 baud with no errors in its trials, and the wiring itself
-  carried 298296 baud to the console and 223722 from it. 38400 is far
-  inside what the link can do.
-- **USB serial adapters** hold received bytes for a latency timer before
-  passing them to the computer (16 ms by default on FTDI chips). That adds
-  directly to the host's reply time, so set it low where the driver allows
-  it (1 ms).
-  The timer runs free of the requests, so replies start anywhere in a
-  frame, and a burst that takes half a frame to send runs into the next NMI
-  about half the time. Measured with the FTDI cable on a real NES at the
-  default: 50-60% of requests were repeats, and the music still played
-  correctly. `host/jukebox.py` asks the driver for 1 ms when it opens the
-  port (`--latency-ms`; on macOS the driver takes milliseconds in one
-  byte). At 1 ms the same cable ran 625 requests with no repeats and
-  no errors counted by the NES.
+- A STREAM exchange is 11 bytes out and up to 65 back. With a reply that
+  brings all 56 bytes it lands before the next vblank with the nesp32
+  taking **up to 5.5 ms** to answer; nesp32's firmware's slowest on
+  hardware, with another ROM, was 0.2.
+- The 768-byte prefill comes in 14 frames, about a quarter of a second.
+  The music needs 3 to 5 bytes a frame on average, so one reply in ten
+  getting through would keep it fed.
+- Faults can delay the music (an underrun holds the notes for a frame),
+  never change it: with replies damaged, cut short, late or lost, and with
+  requests damaged, every frame that plays is the stream's.
+- The nesp32's clock may be 2% out either way.
 
 ## 4. Sampled sound
 
 A playlist may hold sampled sound: a recording, played through `$4011`, the
 7-bit DAC of the console's sample channel. It does not travel in the stream
-or in bursts. The console writes each byte to `$4011` as it arrives, a byte
+or in frames. The console writes each byte to `$4011` as it arrives, a byte
 a sample, at a baud rate several times the link's, and nothing is stored.
 That takes all of its CPU: for as long as a sound plays the NMI is off, the
 screen stands still, and the controller is not read.
 
-**Status: heard on a real NES at two rates.** A 30-second clip at rate 1
-(10169 samples a second) and at rate 5 (20338), sent by a StickC Plus2,
-sounded right. The other rates have only run in the simulation, as has the
-desktop host's side; the
-receive routines are the throughput test's fast receiver
+On the line a sound is a run of nesp32's RAW service, which JUKE's SOUND
+sets up; nesp32's `docs/PROTOCOL.md` has both.
+
+**Status: the routines played on a real NES at two rates**, a 30-second
+clip at rate 1 (10169 samples a second) and at rate 5 (20338), sent by a
+StickC Plus2 under the MicroPython firmware the jukebox used to have. From
+a nesp32, a clip at rate 5 sounded right on the MiSTer's NES core, and all
+six rates play on the simulated console. The receive routines are the throughput test's fast receiver
 (`throughput/README.md`), which passed on that console at every rate used
 here.
 
 ### Rates
 
 A rate is a whole number of CPU cycles a bit, so the console's bit-banged
-receiver hits every bit. The host sends 8N2 as on the link, 11 bits a
+receiver hits every bit. The nesp32 sends 8N2 as on the link, 11 bits a
 byte, and its UART is the clock: the sample rate is the baud rate over 11.
 
 | Rate | Cycles a bit | Baud | Samples a second | A minute is |
@@ -369,96 +245,90 @@ byte, and its UART is the clock: the sample rate is the baud rate over 11.
 | 4 | 10 | 178977 | 16271 | 976 KB |
 | 5 | 8 | 223722 | 20338 | 1220 KB |
 
+Rate 0 is the link's own rate.
+
 ### The bytes
 
 The receiver keeps the byte in A and folds each read of the port into it
 (shift left, XOR `$4017`), 6 cycles a sample where the link's takes 11. It
 ends up with the byte's bits reversed and inverted, and with the `$40` that
 the port's unused bits read left in from the last two reads. Nothing puts
-that right on the console: the host sends each sample as the byte this
-turns into its level (`pcm.sample_byte`).
+that right on the console: a file holds each sample as the byte this turns
+into its level (`pcm.sample_byte`), and the nesp32 sends the file as it is.
 
 Bit 7 of what the console ends up with says there is more, and `$4011`
 ignores it. The stream ends at the first byte without it, which is also
-written to `$4011`. A host ends a sound with `$FC`, which leaves the DAC at
-0.
+written to `$4011`. The nesp32 ends a sound with `$FC`, which leaves the
+DAC at 0.
 
 A sample comes out a fixed time after its start bit, plus the 0 to 7 cycles
 by which the receiver's hunt for the start bit missed the edge, under 4
-millionths of a second. If the host is late with a byte the DAC holds its
+millionths of a second. If the nesp32 is late with a byte the DAC holds its
 level and the hunt waits: a pause is not an error.
 
 The routines count on the unused bits of `$4017` reading `$40` with the
-line at rest. The console checks before it asks for a sound, and refuses
-if they do not.
+line at rest. The console checks before it asks for a sound, and says it
+cannot play one if they do not.
 
 ### From music to sound and back
 
 ```text
- stream:  ... the track before | names and length | $80 $05 r |   (nothing more)
+ stream:  ... the track before | names and length | $80 $05 r |   (nothing more: DRAIN)
 
- NES                                         host
+ NES                                         nesp32
  plays the sound record: APU silent
  draws the names, and SAMPLED SOUND
- P, SEQ, r, CHECK        ---------------->
-                         <----------------   $C3, SEQ, 1, r, CRC   (go burst)
+ JUKE SOUND: epoch, r    ---------------->
+                         <----------------   GO
  NMI off; waits 150 ms                       listens 100 ms for another request
                                              changes its UART to the sound's rate
-                         <----------------   samples, from 175 ms after the go burst
+                         <----------------   samples, from 175 ms after GO
  writes each to $4011                        ...
                          <----------------   $FC
- waits 30 ms; NMI on                         changes its UART back to 38400
- J, SEQ+1, credit        ---------------->
-                         <----------------   flush burst: the next track
+ waits 30 ms; NMI on                         changes its UART back to 85227
+ JUKE STREAM, old epoch  ---------------->
+                         <----------------   a new epoch: the next track
 ```
 
-- **The sound record** is the sound's place in the stream. The host sends
+- **The sound record** is the sound's place in the stream. The nesp32 sends
   the sound's names and length ahead of it, as for any track, and after it
-  gives the NES nothing more, answering data requests with empty bursts.
-  The NES plays out what it has buffered and comes to the record at the
-  moment the sound should start.
-- **The sound request** (`$50`) takes the place of the data request from
-  then on, every frame, once the lines the record's frame changed are on
-  the screen and the bars of the music before it, which the record brings
-  down, are off it. Its `ARG` is the record's rate. A console that cannot play
-  it (no routine for the rate, or a port that reads otherwise) sends `$FF`.
-- **The go burst** is a burst with marker `$C3`, a payload of one byte, the
-  rate, and the CRC taken over the marker as for a flush burst. When the
-  NES accepts one that matches its request, it turns the NMI off, waits
+  gives nothing more. The NES plays out what it has buffered and comes to
+  the record at the moment the sound should start.
+- **The sound request** takes the place of the stream request from then
+  on, every frame, once the lines the record's frame changed are on the
+  screen and the bars of the music before it, which the record brings
+  down, are off it.
+- **GO** means the samples follow. The NES turns the NMI off, waits
   150 ms, and receives samples until the last.
-- **The host cannot see that the NES took the go burst**, and must not send
+- **The nesp32 cannot see that the NES heard GO**, and must not send
   samples to one that did not. So it listens for 100 ms first. A console
-  that missed the burst asks again, at the latest after its 4-frame
-  timeout, and gets the same burst; one that took it is silent, since
-  even its controller read has stopped. Only then does the host change its
-  UART's rate, and it starts the samples 175 ms after the go burst.
-- **Other answers to a sound request.** A stopped host answers with an
-  empty flush burst and a paused one with a pause burst, as they answer a
-  data request. A host with no sound to give (it was restarted, or the
-  rate was `$FF`) answers with a flush burst that carries on with whatever
-  is next. Any flush burst takes the console's sound away: it asks for
-  data again.
-- **A sound that was called off.** A button request or a hello in the
-  100 ms means the NES is not waiting, and the host drops the sound. If
-  the NES then repeats its sound request, it gets a new answer under the
-  same sequence number, never the go burst again; that is safe because it
-  committed nothing.
+  that missed the reply asks again a frame later and is told GO again,
+  and the 100 ms start again; one that heard it is silent, since even its
+  controller read has stopped. Only then does the nesp32 change its
+  UART's rate, and it starts the samples 175 ms after its last GO.
+- **WAIT** means the music is paused: the NES asks again next frame.
+- **GONE** means there is no sound to play: this console said it could not
+  play it, or the track was changed, or the nesp32 was restarted. The NES
+  asks for the stream again, which by then is in another epoch.
+- **A button on controller 1** while the NES waits for an answer goes out
+  first, as always, and calls the sound off: the NES is evidently not deaf.
 - **After the last sample** the NES waits 30 ms, turns the NMI back on and
-  asks for data with the next sequence number. The host's answer is a
-  flush burst, so the music after a sound starts from a full buffer.
+  asks for the stream. The answer is from a new epoch, so the music after
+  a sound starts from a full buffer.
+- **A button on the nesp32** during a sound ends it with `$FC` at once.
 
 ### A console left in a sound
 
 The receive routines have no timeout: an NMI would take cycles from them,
-and there is nothing else to count with. A console whose host went away in
-the middle of a sound waits for the rest until it is reset, or until a host
-starts up: both hosts send four zero bytes at 38400 baud when they open
-their UART. Those are long lows, which the routines take for last bytes at
-any rate, and which the link at rest passes over as noise.
+and there is nothing else to count with. A console whose nesp32 went away
+in the middle of a sound waits for the rest until it is reset, or until a
+nesp32 starts up: its firmware sends four zero bytes at the link's rate
+when it opens its UART. Those are long lows, which the routines take for
+last bytes at any rate, and which the link at rest passes over as noise.
 
 ### File container (`.pcm`)
 
-The host stores and reads this file. `tools/wav2pcm.py` and
+The nesp32 stores and reads this file. `tools/wav2pcm.py` and
 `tools/mp32pcm.py` write it.
 
 | Offset | Size | Field |

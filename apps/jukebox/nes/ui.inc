@@ -6,7 +6,7 @@
 ; changed, or else half of the bars. ui_update comes after the frame's music
 ; and works out the bars for the next vblank. Nothing is left for the main
 ; loop, so the link's request still goes out at a fixed point after the NMI
-; and nothing here can land in the middle of a burst.
+; and nothing here can land in the middle of an exchange.
 ;
 ; The bars are not a spectrum of the sound, which the console cannot hear.
 ; They are drawn from what the stream writes to the APU: each channel lights
@@ -16,12 +16,12 @@
 ; here too. Sweeps are not followed.
 ;
 ; The controller is read by taking OUT0 low for the 8 reads, and OUT0 is
-; also the serial line to the host. It rests at mark, which keeps the
+; also the serial line to the nesp32. It rests at mark, which keeps the
 ; controller loading its buttons, so no strobe pulse is needed: the read is
-; one low pulse of 94 cycles, about two bits at 38400 baud. The host's UART
-; sees that as the byte $FE, once a frame, and its decoder expects it
-; (docs/PROTOCOL.md). The read comes first in the NMI so that the byte is
-; long over before the main loop sends its request.
+; one low pulse of 94 cycles, some four bits at the link's rate. The
+; nesp32's UART takes that for a byte, once a frame, and its decoder passes
+; over it as noise (docs/PROTOCOL.md). The read comes first in the NMI so
+; that the byte is long over before the main loop sends its request.
 ;
 ; The clock counts the frames the NMI has played since the stream's last
 ; length record, which a host sends ahead of each track, so it shows what

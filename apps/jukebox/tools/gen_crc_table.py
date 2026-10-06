@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Write the CRC-16/CCITT-FALSE lookup tables the NES uses to check bursts.
+"""Write the CRC-16/CCITT-FALSE lookup tables for a ROM that checks frames
+with one. The throughput test's does (throughput/); the jukebox's link is
+nesp32's now, whose library has its own.
 
     tools/gen_crc_table.py build/crc16_table.inc
 

@@ -214,13 +214,6 @@ needs_cc65 = pytest.mark.skipif(
     not (shutil.which("ca65") and shutil.which("ld65")), reason="cc65 not installed")
 
 
-@pytest.fixture(scope="module")
-def build(tmp_path_factory):
-    build = tmp_path_factory.mktemp("pcm_preview")
-    subprocess.run(["make", "-s", "BUILD=%s" % build, "verify"], cwd=ROOT, check=True)
-    return build
-
-
 @needs_cc65
 def test_the_preview_is_what_the_stream_routine_writes(build):
     import pcm_preview

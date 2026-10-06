@@ -4,8 +4,8 @@
 
 This is the only module that touches the hardware: the link UART, whose
 rate changes between a command and a block, the screen and button A. The
-pins are the jukebox's (firmware/stick/nesjuke/board.py), and the same
-/flash/config.json overrides them.
+pins are the hat's on each board (nesp32's firmware/main/board.h has the
+same ones), and /flash/config.json overrides them.
 """
 
 import gc
@@ -25,7 +25,7 @@ CONFIG_PATH = "/flash/config.json"
 LINK_UART_ID = 1
 BUFFER = 1024                   # a block is 256 bytes; both buffers hold one
 
-# M5.BOARD attribute, label, TX pin, RX pin; as in nesjuke/board.py.
+# M5.BOARD attribute, label, TX pin, RX pin.
 BOARDS = {
     "s3": ("M5StickS3", "StickS3", 8, 1),
     "plus2": ("M5StickCPlus2", "StickC Plus2", 26, 36),

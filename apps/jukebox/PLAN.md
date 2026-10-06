@@ -1,5 +1,18 @@
 # NES Jukebox: implementation plan
 
+> **October 2026: the link's far side has moved to [nesp32](../nesp32).**
+> This plan is the record of how the jukebox was designed and brought up
+> with a link protocol of its own at 38400 baud, a MicroPython firmware
+> for the Stick and a desktop streamer, which is the form in which it
+> played on a real NES. The stream format, the player, the screen and the
+> sound routines below still stand. The firmware (`firmware/stick/`), the
+> desktop host (`host/`), the link protocol and their tests are gone from
+> this tree, though not from its history: the playlist was ported to C as
+> nesp32's JUKE service, sampled sound travels as a run of its RAW
+> service, and the link is nesp32's, at 85227 baud. See
+> [`README.md`](README.md) and [`docs/PROTOCOL.md`](docs/PROTOCOL.md) for
+> how things are now.
+
 Stream NES music from `.vgm` files to a stock NTSC NES over the controller-2
 serial link proven in `../nes-radar`, and play it on the console's own APU.
 

@@ -17,7 +17,8 @@ stream ends at the first byte that arrives without it.
 
     "NPCM", version (1), cycles a bit, title length n, 0, title, samples
 
-firmware/stick/nesjuke/sound.py is the Stick's port of what it needs.
+A nesp32 sends a file's samples as they are (its JUKE service, juke.c
+there), and ends them with LAST_BYTE.
 """
 
 from dataclasses import dataclass
@@ -72,9 +73,9 @@ def sample_byte(level, last=False):
 LAST_BYTE = bytes((sample_byte(0, last=True),))     # ends a stream, leaving the DAC at 0
 
 # A console left in the middle of a stream waits for the rest with no
-# timeout. A host sends this at 38400 baud when it starts: long lows, which
-# the stream routines take for last bytes at any rate, and which the link
-# passes over as noise.
+# timeout. A nesp32 sends this at the link's rate when it starts: long
+# lows, which the stream routines take for last bytes at any rate, and
+# which the link passes over as noise.
 FILLER = bytes(4)
 assert all(not raw_byte(byte) & MORE for byte in FILLER)
 

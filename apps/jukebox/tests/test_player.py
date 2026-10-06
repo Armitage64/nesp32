@@ -10,7 +10,6 @@ import itertools
 import os
 import random
 import shutil
-import subprocess
 
 import pytest
 
@@ -42,13 +41,6 @@ def assert_nmi_budget(machine):
 pytestmark = pytest.mark.skipif(
     not (shutil.which("ca65") and shutil.which("ld65")), reason="cc65 not installed"
 )
-
-
-@pytest.fixture(scope="session")
-def rom(tmp_path_factory):
-    build = tmp_path_factory.mktemp("build")
-    subprocess.run(["make", "-s", "BUILD=%s" % build, "verify"], cwd=ROOT, check=True)
-    return str(build / "jukebox.nes"), str(build / "jukebox.labels")
 
 
 def console(rom):

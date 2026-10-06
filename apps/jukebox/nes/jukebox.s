@@ -7,7 +7,7 @@
 ; top up the ring. Two links build from this file:
 ;
 ;   fake_link.inc     copies a song built into PRG ROM (the default)
-;   serial_link.inc   requests bursts over controller port 2 (-D LINK)
+;   serial_link.inc   asks a nesp32 on controller port 2 for it (-D LINK)
 ;
 ; Sharing the ring between the NMI and the main loop:
 ;
@@ -62,10 +62,13 @@ CTRL_GAME  = $03
 CTRL_LENGTH = $04
 CTRL_SOUND = $05                ; the link ROM only
 
-; link_state: what the link last heard, for the screen's status line.
+; link_state: what the link last heard, for the screen's status line. The
+; numbers are places in status_text; 3 to 6 are the player's own (ui.inc).
 LINK_WAITING   = 0              ; no answer from a host
 LINK_STOPPED   = 1              ; the host is stopped
 LINK_STREAMING = 2
+LINK_OLD       = 7              ; the host's firmware is older than this ROM
+LINK_EMPTY     = 8              ; the host has no music
 
 ; Bits of the A that link_button gets: what the controller asked for.
 EVENT_NEXT = $01
@@ -115,7 +118,7 @@ link_done:    .res 1            ; the link has nothing more to give
 flush_pending: .res 1           ; the link asks the NMI to drop what is buffered
 stream_error: .res 1
 link_state:   .res 1            ; LINK_*, set by the link
-paused:       .res 1            ; held: by a pause burst, or the standalone ROM's Start
+paused:       .res 1            ; held: the host says paused, or the standalone ROM's Start
 sound_wanted: .res 1            ; a sound record played: its rate + 1, or SOUND_REFUSED
 underruns:    .res 2
 stage_reg:    .res STAGE_MAX
@@ -350,10 +353,11 @@ retry:
     rti
 .endproc
 
-; The link received a flush burst: drop everything not yet played, silence
-; the APU, and wait for the buffer to fill again. head moves here, in the
-; NMI, because the NMI owns it. flush_head is the tail from before the flush
-; burst's own payload, so that payload is the first thing in the ring.
+; The link has a reply from another epoch of the stream, which is a flush:
+; drop everything not yet played, silence the APU, and wait for the buffer
+; to fill again. head moves here, in the NMI, because the NMI owns it.
+; flush_head is the tail from before that reply's own bytes, so they are
+; the first thing in the ring.
 .proc apply_flush
     lda flush_head
     sta head

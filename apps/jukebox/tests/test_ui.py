@@ -10,9 +10,8 @@ import glob
 import itertools
 import os
 import random
-import shutil
-import subprocess
 
+import nesp_proto as p
 import pytest
 
 import gen_ui
@@ -20,40 +19,17 @@ import jbs
 import vgm
 import vgm2jbs
 from link_harness import LinkConsole, ms
+from linked import (LINK_STOPPED, files, flip_random_bit, frames_of, greet, press, short_track,
+                    start, track_stream, wait_for)
 from nes_harness import (PAD_A, PAD_B, PAD_LEFT, PAD_RIGHT, PAD_START, VBLANK_CYCLES,
                          Console, expected_frames)
-from playlist import PlaylistSource
-from protocol import (BUTTON_NEXT, BUTTON_PLAY, BUTTON_PREVIOUS, OP_BUTTON, OP_DATA,
-                      PAD_READ_BYTE, Host)
-from serial_line import HostToNes, NesToHost, bit_cycles
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 RIPS = sorted(glob.glob(os.path.join(ROOT, "music", "*.vg[mz]")))
 
-pytestmark = pytest.mark.skipif(
-    not (shutil.which("ca65") and shutil.which("ld65")), reason="cc65 not installed"
-)
-
 # Every PPU write must land inside vblank, with room for the NMI being late
 # by an instruction and for the scroll writes that follow.
 PPU_WRITE_BUDGET = VBLANK_CYCLES - 300
-
-
-@pytest.fixture(scope="session")
-def build(tmp_path_factory):
-    build = tmp_path_factory.mktemp("ui")
-    subprocess.run(["make", "-s", "BUILD=%s" % build, "verify"], cwd=ROOT, check=True)
-    return build
-
-
-@pytest.fixture(scope="session")
-def rom(build):
-    return str(build / "jukebox.nes"), str(build / "jukebox.labels")
-
-
-@pytest.fixture(scope="session")
-def link_rom(build):
-    return str(build / "jukebox_link.nes"), str(build / "jukebox_link.labels")
 
 
 @pytest.fixture(scope="session")
@@ -378,46 +354,38 @@ def test_start_pauses_and_resumes_the_standalone_rom(rom):
 
 # -- the controller and the status line, link ROM -------------------------------
 
-def short_track():
-    frames = [[(0x15, 0x0F)], [(0x04, 0xBF), (0x07, 0x08)]] + [[(0x04, 0xB0 | n)] for n in range(15)]
-    encoded = jbs.encode(frames, loop_frame=1)
-    return jbs.JbsFile(stream=encoded.data, total_frames=len(frames), loop_frame=1,
-                       loop_offset=encoded.loop_offset)
+LOOPS = 50
+BUTTON = (p.NESP_SVC_JUKE, p.NESP_JUKE_BUTTON)
+NEXT, PREVIOUS, PLAY = p.NESP_PRESS_NEXT, p.NESP_PRESS_PREVIOUS, p.NESP_PRESS_PLAY
 
 
-def link_machine(link_rom, demo, stopped=False, **kwargs):
-    source = PlaylistSource([("First track", demo), ("Second track", short_track())], loops=50)
-    seen = []
-
-    def watch(byte):
-        seen.append(byte)
-        return byte
-
-    machine = LinkConsole(*link_rom, host=Host(source, stopped=stopped), request_fault=watch,
-                          **kwargs)
-    machine.line_bytes = seen
-    return machine, source
-
-
-def press(machine, buttons, frames=3):
-    machine.pad = buttons
-    machine.run(frames)
-    machine.pad = 0
+def link_machine(link_rom, demo, begin=True, **options):
+    """A console on the link ROM, and a nesp32 with two tracks. Playing,
+    unless begin is False."""
+    tracks = [("First track", demo), ("Second track", short_track())]
+    machine = LinkConsole(*link_rom, tracks=files(tracks), loops=LOOPS, **options)
+    machine.streams = [track_stream(title, track, LOOPS) for title, track in tracks]
+    if begin:
+        start(machine)
+    return machine
 
 
 def button_requests(machine):
-    return [request.arg for _, request in machine.requests if request.op == OP_BUTTON]
+    """What the controller asked for, as the nesp32 heard it: a press that
+    had to be sent again is there again."""
+    return [payload[0] for service, op, payload in machine.requests()
+            if (service, op) == BUTTON]
 
 
 def test_the_status_line_follows_the_link(link_rom, demo):
-    machine = LinkConsole(*link_rom)
+    machine = LinkConsole(*link_rom, attached=False)
     machine.run(12)
     assert status_line(machine) == "WAITING FOR LINK"
 
-    machine, _ = link_machine(link_rom, demo, stopped=True)
+    machine = link_machine(link_rom, demo, begin=False)
     machine.run(12)
     assert status_line(machine) == "PRESS START"
-    machine.host.play()
+    press(machine, PAD_START)
     machine.run(8)
     assert status_line(machine) == "LOADING"
     machine.run_until_played(10)
@@ -426,31 +394,50 @@ def test_the_status_line_follows_the_link(link_rom, demo):
     assert title_line(machine).strip() == "First track"
 
 
-def test_the_controller_read_is_one_expected_byte_a_frame(link_rom, demo):
-    machine, _ = link_machine(link_rom, demo)
+def test_the_status_line_says_what_is_wrong_with_the_nesp32(link_rom):
+    import nesp
+
+    machine = LinkConsole(*link_rom)                # a nesp32 with no files
+    machine.run(12)
+    assert status_line(machine) == "NO MUSIC FOUND"
+
+    def old(reply):                                 # one with no JUKE service
+        answer = nesp.parse(reply)
+        if answer.svc == p.NESP_SVC_SYS:
+            return nesp.reply_frame(p.NESP_SVC_SYS, p.NESP_ST_NO_SERVICE, answer.seq,
+                                    answer.payload[:6] + bytes((1, p.NESP_SVC_JUKE)))
+        return reply
+    machine = LinkConsole(*link_rom, to_console=old)
+    machine.run(12)
+    assert status_line(machine) == "UPDATE NESP32"
+
+
+def test_the_controller_read_is_one_byte_of_noise_a_frame(link_rom, demo):
+    """OUT0 is the line to the nesp32 too, and the read holds it low for
+    two bits: its UART hears a byte, and its decoder passes over it."""
+    machine = link_machine(link_rom, demo)
     machine.run_until_played(300)
     frames = len(machine.frames)
-    pad_reads = machine.line_bytes.count(PAD_READ_BYTE)
-    assert frames - 2 <= pad_reads <= frames + 8     # plus the odd $FE inside a request
-    assert machine.decoder.discarded == 0 and machine.to_host.framing_errors == 0
-    assert machine.host.stats["resends"] == 0 and machine.word("link_aborts") == 0
+    assert frames - 3 <= machine.stick.noise <= frames + 1
+    assert machine.word("link_failed") == 0 and machine.stick.juke_resent == 0
     assert button_requests(machine) == []           # no buttons held, none reported
 
 
 @pytest.mark.parametrize("clock_error", [-0.03, 0.03])
-def test_the_controller_read_survives_host_baud_error(link_rom, demo, clock_error):
-    machine, _ = link_machine(link_rom, demo, to_host=NesToHost(clock_error=clock_error))
+def test_the_controller_read_survives_a_clock_that_is_out(link_rom, demo, clock_error):
+    machine = link_machine(link_rom, demo, clock_error=clock_error)
     machine.run_until_played(200)
-    assert machine.decoder.discarded == 0 and machine.to_host.framing_errors == 0
-    assert machine.line_bytes.count(PAD_READ_BYTE) >= len(machine.frames) - 2
+    assert machine.word("link_failed") == 0
+    assert machine.stick.noise <= len(machine.frames) + 1
 
 
 def test_the_controller_read_is_over_well_before_the_request(link_rom, demo):
-    # OUT0 is low for the 8 reads. The host's UART takes that for a start
+    # OUT0 is low for the 8 reads. The nesp32's UART takes that for a start
     # bit and needs ten bit times from its edge to finish the byte, so the
     # request's own start bit must come later than that.
-    machine, _ = link_machine(link_rom, demo)
+    machine = link_machine(link_rom, demo)
     machine.write_log = []
+    before = len(machine.frames)
     machine.run_until_played(200)
     falls = [cycle for (cycle, level), (_, before) in zip(machine.write_log[1:], machine.write_log)
              if level == 0 and before == 1]
@@ -459,46 +446,44 @@ def test_the_controller_read_is_over_well_before_the_request(link_rom, demo):
         if level == 0 and after == 1:
             lows[cycle] = rise - cycle
     reads = [cycle for cycle in falls if 90 <= lows.get(cycle, 0) <= 98]
-    assert len(reads) >= len(machine.frames) - 2
-    assert {lows[cycle] for cycle in reads} == {94}  # two bits: the host reads $FE
+    assert len(reads) >= len(machine.frames) - before - 2
+    assert {lows[cycle] for cycle in reads} == {94}
     gaps = [min(fall - read for fall in falls if fall > read) for read in reads[:-1]]
-    assert min(gaps) > 12 * bit_cycles()
+    assert min(gaps) > 12 * p.NESP_PERIOD
 
 
 def test_right_and_left_change_the_track_at_once(link_rom, demo):
-    machine, source = link_machine(link_rom, demo)
+    machine = link_machine(link_rom, demo)
     machine.run_until_played(100)
     assert title_line(machine).strip() == "First track"
 
     pressed = len(machine.frames)
     press(machine, PAD_RIGHT)
-    assert button_requests(machine) == [BUTTON_NEXT]
+    assert button_requests(machine) == [NEXT]
     played = len(machine.played_frames())
     machine.run_until_played(played + 60)
-    assert source.index == 1 and title_line(machine).strip() == "Second track"
-    second = short_track()
-    assert machine.played_frames()[played:played + 60] == list(
-        itertools.islice(expected_frames(second.stream, second.loop_offset), 60))
+    assert machine.stick.juke_index == 1 and title_line(machine).strip() == "Second track"
+    assert machine.played_frames()[played:played + 60] == frames_of(machine.streams[1], 60)
     # The NES held seconds of the first track. The press is heard after one
     # prefill: a title, then the new track, well inside a second.
     wait = next(index for index, (_, underran, playing) in enumerate(machine.frames[pressed:])
                 if playing and not underran)
-    assert wait < 60
+    assert wait < 30
 
     press(machine, PAD_LEFT)
     machine.run_until_played(len(machine.played_frames()) + 30)
-    assert button_requests(machine) == [BUTTON_NEXT, BUTTON_PREVIOUS]
-    assert source.index == 0 and title_line(machine).strip() == "First track"
+    assert button_requests(machine) == [NEXT, PREVIOUS]
+    assert machine.stick.juke_index == 0 and title_line(machine).strip() == "First track"
     assert machine.word("underruns") == 0 and machine.byte("stream_error") == 0
 
 
 def test_start_pauses_and_goes_on_from_where_it_was(link_rom, demo):
-    machine, _ = link_machine(link_rom, demo)
-    machine.run_until_played(150)
+    machine = link_machine(link_rom, demo)
+    wait_for(machine, lambda: len(machine.played_frames()) >= 150)
     press(machine, PAD_START, frames=12)            # held: one press
     machine.run(30)
-    assert button_requests(machine) == [BUTTON_PLAY]
-    assert machine.host.paused and machine.byte("paused") == 1
+    assert button_requests(machine) == [PLAY]
+    assert machine.byte("paused") == 1
     assert machine.memory[0x4015] == 0              # silenced
     assert lit_bars(machine) == set()               # the bars fall with the music
     played = len(machine.played_frames())
@@ -512,27 +497,31 @@ def test_start_pauses_and_goes_on_from_where_it_was(link_rom, demo):
     assert set(shown) == {"", "0:02 / 3:33"}
     assert 3 <= sum(a != b for a, b in zip(shown, shown[1:])) <= 4
     assert len(machine.played_frames()) == played
-    # The NES keeps asking, so the link stays up and the host can end it.
-    assert machine.word("link_timeouts") == 0
+    # The NES keeps asking, so the link stays up and the nesp32 can end it.
+    assert machine.word("link_failed") == 0
 
     press(machine, PAD_A)                           # A does the same as Start
     machine.run_until_played(played + 300)
-    assert button_requests(machine) == [BUTTON_PLAY, BUTTON_PLAY]
-    assert not machine.host.paused and machine.byte("paused") == 0
+    assert button_requests(machine) == [PLAY, PLAY]
+    assert machine.byte("paused") == 0
     # Nothing was dropped and nothing started over: one unbroken song.
     frames = machine.played_frames()
-    assert frames == list(itertools.islice(expected_frames(demo.stream, demo.loop_offset),
-                                           len(frames)))
+    assert frames == frames_of(machine.streams[0], len(frames))
     assert machine.memory[0x4015] != 0
     assert machine.word("underruns") == 0 and machine.byte("stream_error") == 0
     machine.run(40)
     assert time_line(machine) > "0:07"              # the clock went on as well
 
 
-def test_start_plays_from_the_beginning_once_stopped(link_rom, demo):
-    machine, _ = link_machine(link_rom, demo)
-    machine.run_until_played(150)
-    machine.host.stop()                             # as the desktop host's s key does
+def test_a_nesp32_that_stops_shows_the_clock_flashing_and_start_plays_again(link_rom, demo):
+    """Stopped with a track on the screen: no words, since the foot of the
+    screen says what Start does. A console that is reset is one way for
+    the music to stop; here the nesp32 was switched off and on."""
+    machine = link_machine(link_rom, demo)
+    wait_for(machine, lambda: len(machine.played_frames()) >= 150)
+    machine.power_cycle()
+    machine.stick.set_juke(loops=LOOPS)
+    wait_for(machine, lambda: machine.byte("playing") == 0, limit=20)
     machine.run(40)
     played = len(machine.played_frames())
     shown = set()
@@ -542,74 +531,80 @@ def test_start_plays_from_the_beginning_once_stopped(link_rom, demo):
     assert shown == {"", "0:02 / 3:33"} and status_line(machine) == ""
     press(machine, PAD_START)
     machine.run_until_played(played + 100)
-    assert machine.played_frames()[played:played + 100] == list(
-        itertools.islice(expected_frames(demo.stream, demo.loop_offset), 100))
+    assert machine.played_frames()[played:played + 100] == frames_of(machine.streams[0], 100)
 
 
 @pytest.mark.parametrize("seed", range(3))
 def test_pauses_survive_a_slow_noisy_link(link_rom, demo, seed):
     rng = random.Random(seed)
-
-    def flip(reply):
-        if rng.random() >= 0.15:
-            return reply
-        data = bytearray(reply)
-        data[rng.randrange(len(data))] ^= 1 << rng.randrange(8)
-        return bytes(data)
-
-    machine, _ = link_machine(link_rom, demo, reply_fault=flip,
-                              turnaround=lambda: ms(rng.uniform(0.5, 9)))
-    machine.run(rng.randrange(5, 60))               # the first lands in the prefill
+    machine = link_machine(link_rom, demo, to_console=flip_random_bit(rng, 0.15),
+                           turnaround=lambda: ms(rng.uniform(0.1, 9)))
+    machine.run(rng.randrange(5, 30))               # the first lands in the prefill
     for _ in range(6):
-        machine.host.paused = True
-        machine.run(rng.randrange(20, 90))
-        assert machine.byte("paused") == 1
+        machine.press_button(p.NESP_EVENT_BUTTON_A)
+        wait_for(machine, lambda: machine.byte("paused") == 1, limit=60)
         played = len(machine.played_frames())
-        machine.run(30)
+        machine.run(rng.randrange(20, 90))
         assert len(machine.played_frames()) == played
-        machine.host.paused = False
+        machine.press_button(p.NESP_EVENT_BUTTON_A)
         machine.run_until_played(played + rng.randrange(40, 200))
     frames = machine.played_frames()
-    assert frames == list(itertools.islice(expected_frames(demo.stream, demo.loop_offset),
-                                           len(frames)))
+    assert frames == frames_of(machine.streams[0], len(frames))
     assert machine.byte("stream_error") == 0
 
 
 def test_start_plays_from_stopped_and_right_plays_the_next_track(link_rom, demo):
-    machine, source = link_machine(link_rom, demo, stopped=True)
+    machine = link_machine(link_rom, demo, begin=False)
+    greet(machine)
     machine.run(20)
     press(machine, PAD_RIGHT)
     machine.run_until_played(40)
-    assert not machine.host.stopped and source.index == 1
+    assert machine.byte("link_state") != LINK_STOPPED and machine.stick.juke_index == 1
     assert title_line(machine).strip() == "Second track"
 
 
 def test_other_buttons_do_nothing(link_rom, demo):
-    machine, _ = link_machine(link_rom, demo)
+    machine = link_machine(link_rom, demo)
     machine.run_until_played(50)
     press(machine, PAD_B | 0x20 | 0x08 | 0x04)      # B, Select, Up, Down
     machine.run(20)
     assert button_requests(machine) == []
 
 
-def test_buttons_get_through_a_slow_noisy_link(link_rom, demo):
+def test_a_press_whose_reply_is_lost_is_sent_again_and_done_once(link_rom, demo):
+    """The console cannot tell a lost request from a lost reply. It sends
+    the same request again, unchanged, and the nesp32, which did hear the
+    first, answers as it did then and changes nothing more."""
+    machine = link_machine(link_rom, demo)
+    machine.run_until_played(60)
+    lost = []
+
+    def lose_two(reply):
+        if machine.answering[:2] == BUTTON and len(lost) < 2:
+            lost.append(reply)
+            return None
+        return reply
+    machine.port.to_console = lose_two
+    press(machine, PAD_RIGHT)
+    machine.run(10)
+    assert len(lost) == 2 and machine.stick.repeats == 2
+    assert machine.stick.juke_index == 1            # one track on, not three
+    assert button_requests(machine) == [NEXT] * 3 and machine.byte("button_sending") == 0
+    machine.run_until_played(len(machine.played_frames()) + 30)
+    assert title_line(machine).strip() == "Second track"
+
+
+def test_every_press_is_done_once_on_a_slow_noisy_link(link_rom, demo):
+    """Whatever is lost, the track is never changed twice by one press,
+    and never not at all."""
     rng = random.Random(11)
-
-    def flip(reply):
-        if rng.random() >= 0.15:
-            return reply
-        data = bytearray(reply)
-        data[rng.randrange(len(data))] ^= 1 << rng.randrange(8)
-        return bytes(data)
-
-    machine, source = link_machine(link_rom, demo, reply_fault=flip,
-                                   turnaround=lambda: ms(rng.uniform(0.5, 9)))
+    machine = link_machine(link_rom, demo, to_console=flip_random_bit(rng, 0.15),
+                           turnaround=lambda: ms(rng.uniform(0.1, 9)))
     machine.run_until_played(100)
     for presses in range(1, 7):
         press(machine, PAD_RIGHT)
         machine.run(rng.randrange(20, 70))
-        assert button_requests(machine) == [BUTTON_NEXT] * presses
-        assert source.index == presses % 2
+        assert machine.stick.juke_index == presses % 2
     machine.run_until_played(len(machine.played_frames()) + 60)
     assert machine.byte("stream_error") == 0
     assert title_line(machine).strip() == "First track"

@@ -9,6 +9,14 @@
 
 PYTHON ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 BUILD ?= build
+# The link ROM's host is a nesp32, a checkout of whose firmware sits beside
+# this one. From it come the link's library for the console and the numbers
+# the two ends share; its link and services are built for this computer,
+# for the tests to run the ROM against.
+NESP32 ?= ../nesp32
+NESP_BUILD ?= $(abspath $(BUILD))/nesp
+export NESP32 NESP_BUILD
+NESP := $(NESP_BUILD)/nesp.stamp
 DEMO := $(BUILD)/demo.jbs
 SONG ?= $(DEMO)
 ROM := $(BUILD)/jukebox.nes
@@ -48,16 +56,26 @@ $(ROM): $(BUILD)/jukebox.o nes/nrom256.cfg
 	ld65 -C nes/nrom256.cfg -o $@ -Ln $(BUILD)/jukebox.labels \
 		--dbgfile $(BUILD)/jukebox.dbg -m $(BUILD)/jukebox.map $<
 
-# The serial link build: same player, bursts over controller port 2.
-$(BUILD)/crc16_table.inc: tools/gen_crc_table.py | $(BUILD)
-	$(PYTHON) tools/gen_crc_table.py $@
+# The serial link build: the same player, its music from a nesp32 on
+# controller port 2, over nesp32's link. nesp32's own Makefile knows what of
+# it is out of date.
+$(NESP): FORCE | $(BUILD)
+	$(MAKE) -s -C $(NESP32) BUILD=$(NESP_BUILD) proto host
+	@test -f $@ || touch $@
+
+NESP_LIB := $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/gen_link.py
+
+$(BUILD)/link.inc: $(NESP_LIB) $(NESP)
+	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $@
 
 # The routines that play sampled sound, one per rate.
 $(BUILD)/pcm_rates.inc: tools/gen_pcm.py tools/pcm.py | $(BUILD)
 	$(PYTHON) tools/gen_pcm.py $@
 
-$(BUILD)/jukebox_link.o: nes/jukebox.s nes/ui.inc nes/serial_link.inc $(UI) $(BUILD)/crc16_table.inc $(BUILD)/pcm_rates.inc
-	ca65 -g -D LINK -I $(BUILD) -I nes --bin-include-dir $(BUILD) -o $@ $<
+$(BUILD)/jukebox_link.o: nes/jukebox.s nes/ui.inc nes/serial_link.inc $(UI) $(NESP_LIB) \
+		$(BUILD)/link.inc $(BUILD)/pcm_rates.inc $(NESP)
+	ca65 -g -D LINK -I $(BUILD) -I $(NESP_BUILD) -I nes -I $(NESP32)/nes/lib \
+		--bin-include-dir $(BUILD) -o $@ $<
 
 $(LINK_ROM): $(BUILD)/jukebox_link.o nes/nrom256.cfg
 	ld65 -C nes/nrom256.cfg -o $@ -Ln $(BUILD)/jukebox_link.labels \

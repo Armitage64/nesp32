@@ -1,187 +1,370 @@
-; Serial link: NES-paced requests and bursts over controller port 2
-; (docs/PROTOCOL.md, part 3).
+; Serial link: a nesp32 on controller port 2 holds the music. The link ROM's
+; host, in place of fake_link.inc.
 ;
-; Wiring is nes-radar's. The host drives D0 (read as bit 0 of $4017, inverted
-; by the port's buffer) and reads OUT0 (bit 0 of $4016 writes). Both
-; directions run at 38400 baud, bit-banged: the host sends 8N2, the NES 8N1.
+; Provides link_init, link_service, link_button and the link_nmi_hook macro.
 ;
-; Right after an NMI, link_service asks for a burst with a 4-byte request and
-; receives it straight into the ring. While it waits for the burst's marker,
-; NMIs play their frames and return to the wait, so a host that answers a
-; frame or two late still gets through. Only two things end a receive early
-; (link_nmi_hook): an NMI landing in the middle of a burst, since the bytes
-; that arrive during the NMI are lost, and HUNT_TIMEOUT_FRAMES of waiting
-; with no marker. Either way the same burst is requested again.
+; The link itself is nesp32's (its nes/lib/nesp.inc and docs/PROTOCOL.md):
+; one firmware on the nesp32 serves every ROM, and this one asks it for the
+; JUKE service, and for RAW, which carries sampled sound. Every use of the
+; link is one exchange: a request goes out, and one reply comes back or does
+; not. The NMI is the timeout: an exchange that has not ended by the next
+; vblank is dropped there and reported as failed.
 ;
-; A host whose reply time is steady but slow would otherwise land every
-; resend across the NMI at the same point in the frame, forever. So after a
-; receive is cut off or times out, the next request waits longer after the NMI, stepping
-; request_delay through 0-9 units of about 1.3 ms, three at a time. A
-; delay that works is kept, so a steady host settles within a few tries and
-; a fast one never moves off zero.
+; Right after an NMI, link_service makes the frame's one exchange. Most
+; frames that is JUKE STREAM: "this is where I have got to in the stream,
+; and I have room for this much more", answered with the bytes from there,
+; which go into the ring. Nothing needs asking twice in any special way: a
+; reply that was lost is the same question again a frame later, with the
+; same position, and the same bytes come.
 ;
-; A press on the controller (ui.inc) goes to the host as a button request,
-; in place of one frame's data request. The host acts on it; what comes back
-; is the stream it then sends, usually starting with a flush burst.
+; The reply says which epoch its bytes belong to. An epoch is a stretch of
+; the stream with no jump in it; a reply from another one than the ring's
+; (another track, stop, the music after a sound) means that what the ring
+; holds is not wanted, and it is dropped before the reply's bytes go in.
 ;
-; Sampled sound (docs/PROTOCOL.md, part 4) takes the link over. When the
-; NMI plays a sound record, link_service asks for the sound in place of
-; data, and the host answers with a go burst. From there the console does
-; nothing but receive: the NMI is off, the screen stands still, and one of
+; A press on the controller (ui.inc) goes out as JUKE BUTTON, in place of
+; one frame's stream request, and is sent again until it is answered. The
+; nesp32 does it once however often it hears it, and what comes of it is
+; the stream it then sends, usually in a new epoch.
+;
+; Sampled sound (docs/PROTOCOL.md, part 4) takes the line over. When the
+; NMI plays a sound record, link_service asks for the sound (JUKE SOUND) in
+; place of the stream. If the answer is GO, the console does nothing but
+; receive from there: the NMI is off, the screen stands still, and one of
 ; the routines in pcm_rates.inc writes each byte to $4011 as it arrives, at
 ; a rate several times the link's own, until a byte marked as the last.
 ; Then the NMI goes back on and the link carries on where it was.
 ;
-; Provides link_init, link_service, link_button and the link_nmi_hook macro.
+; The nesp32 knows this ROM by its hello, which goes out before anything
+; else and again whenever the nesp32 says it has no such service in use: it
+; was switched off and on, and has forgotten the hello.
 
-.include "crc16_table.inc"
-.include "pcm_rates.inc"
-
-OP_DATA   = $4A                 ; 'J'
-OP_HELLO  = $48                 ; 'H'
-OP_STATS  = $53                 ; 'S'
-OP_BUTTON = $42                 ; 'B'
-OP_SOUND  = $50                 ; 'P'
-STATS_EVERY = 16                ; frames between counter reports; a power of 2
-REQUEST_SEED = $A5
-BURST_MARKER = $A5
-FLUSH_MARKER = $5A              ; a burst that first drops what is buffered
-PAUSE_MARKER = $3C              ; an empty burst: hold the music where it is
-SOUND_MARKER = $C3              ; a go burst: sound follows, at the rate it names
-SOUND_REFUSED = $FF             ; a sound request's rate when the console cannot play it
-SOUND_SETTLE = 116              ; units of 1.3 ms before listening for sound: 150 ms,
-                                ; while the host makes sure and changes its rate
-SOUND_REST = 23                 ; and after it, while the host changes back: 30 ms
-CREDIT_MAX = 24                 ; payload bytes per burst; sized in PLAN.md
-CREDIT_MIN = 8                  ; don't bother asking for less
-HUNT_TIMEOUT_FRAMES = 4         ; frames to wait for a marker before asking again
-DELAY_STEPS = 10                ; request_delay runs 0 .. DELAY_STEPS - 1
-DELAY_STRIDE = 3                ; units to move after a burst is cut off
 OUT0_MARK = $01
 
+NESP_RX_MASK = $3F              ; replies of up to 63 bytes
+NESP_TX_MAX  = 9                ; the hello, with its two services
+NESP_CRC_TABLE = 1              ; 35 cycles a byte: a reply is checked and in the
+                                ; ring well inside the frame it arrived in
+.define NESP_APP "JUKE"
+NESP_APP_VERSION = 2
+
+.include "nesp.inc"
+.include "pcm_rates.inc"
+
+.assert NESP_TX_MAX = NESP_HELLO_FIXED + 2, error, "the hello names two services"
+
+; JUKE STREAM's reply (nesp32's docs/PROTOCOL.md): the state of the music,
+; the epoch its bytes belong to, and the bytes.
+STREAM_STATE = nesp_reply
+STREAM_EPOCH = nesp_reply + 1
+STREAM_BYTES = nesp_reply + 2
+STREAM_HEAD  = 2
+; JUKE SOUND's: the state, and whether the sound is coming.
+SOUND_ANSWER = nesp_reply + 1
+
+; The most a reply brings: a frame of 65 bytes is 15015 cycles on the line,
+; and with the request before it and the NMI before that it leaves the nesp32
+; some 4 ms to answer in (docs/PROTOCOL.md, "Timing").
+CREDIT_MAX = 56
+.assert CREDIT_MAX + STREAM_HEAD <= NESP_RX_MASK, error, "a reply must fit its buffer"
+
+BUTTON_TRIES = 30               ; frames a press is sent for before it is given up
+MISSED_MAX = 8                  ; exchanges in a row with no reply: the nesp32 is not there
+
+; wait_unit is 2306 cycles. A run of RAW's is listened for from
+; NESP_RAW_SETTLE_MS after the reply that agreed to it, while the nesp32
+; makes sure and changes its rate, and NESP_RAW_REST_MS pass after its last
+; byte, while it changes back.
+UNIT_CYCLES = 2306
+SOUND_SETTLE = NESP_RAW_SETTLE_MS * (NESP_CPU_HZ / 1000) / UNIT_CYCLES
+SOUND_REST = NESP_RAW_REST_MS * (NESP_CPU_HZ / 1000) / UNIT_CYCLES
+.assert SOUND_SETTLE > 0 && SOUND_SETTLE < 256 && SOUND_REST > 0, error, "waits are counted in X"
+
 .segment "ZEROPAGE"
-link_seq:    .res 1             ; burst the NES wants next
-credit:      .res 1
-rx_data:     .res 1
-rx_marker:   .res 1             ; BURST_MARKER, FLUSH_MARKER or PAUSE_MARKER
-rx_seq:      .res 1
-rx_len:      .res 1
-rx_crc:      .res 2
-tx_data:     .res 1
-request:     .res 4
-crc_hi:      .res 1
-crc_lo:      .res 1
-crc_count:   .res 1
-crc_ptr:     .res 2
+credit:      .res 1             ; bytes of room this frame's request says there are
+rx_count:    .res 1             ; bytes of the stream in the reply
 sound_vector: .res 2            ; the routine for the rate
 
 .segment "BSS"
-req_op:      .res 1             ; the request this frame sends: OP_DATA or OP_SOUND
-req_arg:     .res 1             ; its credit, or its rate
-rx_hunting:  .res 1             ; waiting for a burst's marker
-hunt_frames: .res 1             ; NMIs seen while waiting
-rx_active:   .res 1             ; a burst is arriving; an NMI must abandon it
-rx_sp:       .res 1             ; stack pointer to return to when it does
-rx_missed:   .res 1             ; the last receive was cut off or timed out
-request_delay: .res 1           ; units of about 1.3 ms to wait before asking
-stats_index: .res 1             ; which counter the next report carries
-button_pending: .res 1          ; EVENT_* bits the host has not been told yet
-link_bursts: .res 2             ; committed bursts
-link_aborts: .res 2             ; bursts cut off by an NMI
-link_timeouts: .res 2           ; waits with no marker for HUNT_TIMEOUT_FRAMES
-link_rejects: .res 2            ; framing, length or sequence failures
-link_crc_errors: .res 2
-
-; Anonymous labels only: a named one would end the caller's @-label scope.
-.macro inc16 counter
-    inc counter
-    bne :+
-    inc counter + 1
-:
-.endmacro
-
-; In the NMI, after the frame has played. To end a receive, make the NMI
-; return to rx_abort instead of into it. The stack holds, from the top:
-; Y, X, A (pushed by nmi), then P, PCL, PCH (pushed by the CPU).
-.macro link_nmi_hook
-    .local hunting, abort, done
-    lda rx_active
-    beq hunting
-    inc16 link_aborts
-    jmp abort
-hunting:
-    lda rx_hunting
-    beq done
-    inc hunt_frames
-    lda hunt_frames
-    cmp #HUNT_TIMEOUT_FRAMES
-    bcc done
-    inc16 link_timeouts
-    lda #LINK_WAITING
-    sta link_state
-abort:
-    lda #1
-    sta rx_missed
-    lda #0
-    sta rx_active
-    sta rx_hunting
-    tsx
-    lda #<rx_abort
-    sta $0105,x
-    lda #>rx_abort
-    sta $0106,x
-done:
-.endmacro
+greeted:     .res 1             ; the nesp32 has answered this ROM's hello
+link_epoch:  .res 1             ; the epoch of what the ring holds
+link_pos:    .res 1             ; how many of its bytes have been taken, less a multiple of 256
+link_fresh:  .res 1             ; a hello has been said since the last reply's bytes
+button_pending: .res 1          ; EVENT_* bits not yet sent
+button_sending: .res 1          ; a press is out and unanswered: the frames it has left
+link_missed: .res 1             ; exchanges in a row with no reply, up to MISSED_MAX
+link_failed: .res 2             ; every exchange with none, for a debugger's watch list
 
 .segment "CODE"
 
-; Idle OUT0 at mark, give the host's UART a moment to leave break, and say
-; hello so the host starts the track from the beginning.
+.macro link_nmi_hook
+    nesp_nmi_hook
+.endmacro
+
+; OUT0 rests at mark, which is also what keeps the controller loading its
+; buttons (ui.inc). The hello waits for link_service.
 .proc link_init
     lda #OUT0_MARK
     sta JOY1
-    ldx #0
-@guard:                         ; about 1.3 ms of mark
-    nop
-    nop
-    dex
-    bne @guard
-    lda #OP_HELLO
-    ldx #0
-    ldy #0
-    jmp send_request
+    rts
 .endproc
 
 ; The controller asked for something (EVENT_* bits in A). Called from the
-; NMI; the main loop sends it with its next request.
+; NMI; the main loop sends it with its next exchange.
 .proc link_button
     ora button_pending
     sta button_pending
     rts
 .endproc
+.assert EVENT_NEXT = NESP_PRESS_NEXT, error, "the controller's bits are JUKE's"
+.assert EVENT_PREV = NESP_PRESS_PREVIOUS, error, "the controller's bits are JUKE's"
+.assert EVENT_PLAY = NESP_PRESS_PLAY, error, "the controller's bits are JUKE's"
 
-; Request a burst sized to the free ring space, receive it, and commit it.
+; The frame's exchange. An exchange that the next NMI cut off comes back
+; here with carry set and frame_count moved on, so the main loop serves the
+; new frame at once; one that ended inside its frame, good or not, leaves
+; the next for the next NMI.
 .proc link_service
-    ldy button_pending          ; a button press goes first, in place of this
-    beq @no_button              ; frame's request; the host does not answer it
+    lda greeted
+    bne @greeted
+    jmp say_hello
+@greeted:
+    lda button_sending
+    beq @no_resend
+    jsr nesp_again              ; the same request, byte for byte: done once
+    jmp button_answer           ; however often it is heard
+@no_resend:
+    lda button_pending
+    beq @no_button
+    sta nesp_request
     lda #0
     sta button_pending
-    lda #OP_BUTTON
-    ldx #0
-    jmp send_request
+    lda #BUTTON_TRIES
+    sta button_sending
+    lda #NESP_SVC_JUKE
+    ldx #NESP_JUKE_BUTTON
+    ldy #1
+    jsr nesp_call
+    jmp button_answer
 @no_button:
-    lda frame_count             ; every STATS_EVERY frames, a counter report
-    and #STATS_EVERY - 1        ; takes the place of the data request
-    bne @data
-    jmp send_stats
-@data:
     lda sound_wanted
     beq @music
-    ; A sound record has played. Ask for the sound, once every line the
-    ; record's frame changed is on the screen and the bars are off it: it
-    ; will not be drawn again until the sound is over. The answer may be a flush burst
-    ; instead (a host that was stopped, or changed track), so there is
-    ; credit for one.
+    jmp ask_sound
+@music:
+    jmp ask_stream
+.endproc
+
+; Hello: this is the jukebox, and it needs JUKE and RAW. A nesp32 that
+; lacks either, or speaks another protocol, has older firmware than this
+; ROM, and the screen says so.
+.proc say_hello
+    lda #NESP_SVC_JUKE
+    sta nesp_request + NESP_HELLO_FIXED
+    lda #NESP_SVC_RAW
+    sta nesp_request + NESP_HELLO_FIXED + 1
+    ldy #2
+    jsr nesp_hello
+    bcc @came
+    jmp link_silent
+@came:
+    cmp #NESP_ST_OK
+    bne @old
+    lda #1
+    sta greeted
+    sta link_fresh              ; whatever the ring holds, the nesp32 knows nothing of it
+    lda #0
+    sta link_pos
+    sta button_sending
+    jmp link_heard
+@old:
+    lda #LINK_OLD
+    sta link_state
+    jmp link_heard
+.endproc
+
+; A reply came. The next exchange waits for the next NMI: sent from here,
+; partway through a frame, its reply could run into that NMI.
+.proc link_heard
+    lda #0
+    sta link_missed
+    lda frame_count
+    sta served_frame
+    rts
+.endproc
+
+; None came, or not a good one.
+.proc link_silent
+    inc link_failed
+    bne @counted
+    inc link_failed + 1
+@counted:
+    lda link_missed
+    cmp #MISSED_MAX
+    bcs @gone
+    inc link_missed
+    rts
+@gone:
+    lda #LINK_WAITING
+    sta link_state
+    rts
+.endproc
+
+; The nesp32 answered, and not with OK: it no longer has the service in
+; use. Say hello again.
+.proc link_refused
+    lda #0
+    sta greeted
+    sta button_sending
+    jmp link_heard
+.endproc
+
+.proc button_answer
+    bcs @silent
+    cmp #NESP_ST_OK
+    bne @refused
+    lda #0
+    sta button_sending          ; the stream will say what came of it
+    jmp link_heard
+@refused:
+    jmp link_refused
+@silent:
+    dec button_sending
+    jmp link_silent
+.endproc
+
+; Ask for more of the stream, sized to the room in the ring, and take what
+; comes. It is asked every frame, room or no room: the reply is also how
+; the console hears that the music was stopped, paused or changed.
+.proc ask_stream
+    jsr ring_free
+    bne @use_max
+    lda free
+    cmp #CREDIT_MAX
+    bcc @have_credit
+@use_max:
+    lda #CREDIT_MAX
+@have_credit:
+    sta credit
+    sta nesp_request + 2
+    lda link_epoch
+    sta nesp_request
+    lda link_pos
+    sta nesp_request + 1
+    lda underruns               ; the nesp32 keeps the total, for its own screen
+    sta nesp_request + 3
+    lda #NESP_SVC_JUKE
+    ldx #NESP_JUKE_STREAM
+    ldy #4
+    jsr nesp_call
+    bcc @came
+    jmp link_silent
+@came:
+    cmp #NESP_ST_OK
+    beq @ok
+    jmp link_refused
+@ok:
+    lda nesp_reply_len
+    sec
+    sbc #STREAM_HEAD
+    bcc @bad                    ; not a reply to this at all
+    sta rx_count
+    lda credit                  ; more than was asked for would run past the
+    cmp rx_count                ; free space, into music that has not played
+    bcs @fits
+@bad:
+    jmp link_heard
+@fits:
+    lda STREAM_EPOCH
+    cmp link_epoch
+    bne @flush
+    lda link_fresh
+    beq @same
+@flush:
+    ; Another epoch: the NMI moves head to here, where this reply's bytes
+    ; begin, and stops playback until the ring has refilled. flush_head is
+    ; whole before the flag is set.
+    lda STREAM_EPOCH
+    sta link_epoch
+    lda #0
+    sta link_pos
+    sta link_fresh
+    sta link_done
+    sta sound_wanted            ; a sound that was due went with the rest
+    lda tail
+    sta flush_head
+    lda tail + 1
+    sta flush_head + 1
+    lda #1
+    sta flush_pending
+@same:
+    jsr take_state
+    ldx rx_count
+    beq @copied
+    jsr begin_write
+    ldx #0
+@byte:
+    lda STREAM_BYTES,x
+    ldy #0
+    sta (wptr),y
+    advance_wptr                ; preserves A, X and Y
+    inx
+    cpx rx_count
+    bne @byte
+    jsr commit_tail
+    clc
+    lda link_pos
+    adc rx_count
+    sta link_pos
+@copied:
+    lda STREAM_STATE
+    and #NESP_PLAYER_DRAIN
+    beq @more
+    lda #1                      ; no more is coming for now, so play what there
+    sta link_done               ; is, however little
+@more:
+    jmp link_heard
+.endproc
+
+; What the nesp32 says of the music, from any of JUKE's replies: for the
+; screen's status line, and paused or not. Paused, the NMI stops decoding
+; and the APU is silenced, with everything buffered kept; when it goes on,
+; the channel enables are put back from the screen's copy.
+.proc take_state
+    lda nesp_reply
+    and #NESP_PLAYER_STATE
+    ldx #LINK_STOPPED
+    cmp #NESP_PLAYER_STOPPED
+    beq @state
+    ldx #LINK_EMPTY
+    cmp #NESP_PLAYER_NO_TRACKS
+    beq @state
+    ldx #LINK_STREAMING
+@state:
+    stx link_state
+    cmp #NESP_PLAYER_PAUSED
+    bne @running
+    lda paused
+    bne @done
+    lda #1
+    sta paused
+    lda #0
+    sta APU_STATUS
+    rts
+@running:
+    lda paused
+    beq @done
+    lda apu_shadow + $15
+    sta APU_STATUS
+    lda #0
+    sta paused
+@done:
+    rts
+.endproc
+
+; A sound record has played. Ask for the sound, once every line the
+; record's frame changed is on the screen and the bars are off it: it will
+; not be drawn again until the sound is over.
+.proc ask_sound
     lda text_pending
     bne @idle
     lda ui_status
@@ -194,137 +377,42 @@ done:
     bne @idle
     dex
     bpl @bar
+    lda link_epoch
+    sta nesp_request
     jsr sound_rate
-    sta req_arg
-    lda #OP_SOUND
-    sta req_op
-    lda #CREDIT_MAX
-    sta credit
-    bne @delay
+    sta nesp_request + 1
+    lda #NESP_SVC_JUKE
+    ldx #NESP_JUKE_SOUND
+    ldy #2
+    jsr nesp_call
+    bcc @came
+    jmp link_silent
 @idle:
-    jmp @done
-@music:
-    lda #OP_DATA
-    sta req_op
-    jsr ring_free
-    bne @use_max
-    lda free
-    cmp #CREDIT_MAX
-    bcc @have_credit
-@use_max:
-    lda #CREDIT_MAX
-@have_credit:
-    cmp #CREDIT_MIN
-    bcs @credit
-    ldx paused                  ; paused, keep asking with whatever room there
-    bne @credit                 ; is, even none: the answer says when to go on
-    jmp @done
-@credit:
-    sta credit
-    sta req_arg
-@delay:
-    ldx request_delay
-    beq @ask
-@wait:
-    jsr wait_unit
-    dex
-    bne @wait
-@ask:
-    lda req_op
-    ldx link_seq
-    ldy req_arg
-    jsr send_request
-    jsr rx_burst
-    bcc @received
-    lda rx_missed
-    bne @missed
-    jmp @done
-@missed:
-    lda #0
-    sta rx_missed
-    lda request_delay           ; move the next request later in the frame
-    clc
-    adc #DELAY_STRIDE
-    cmp #DELAY_STEPS
-    bcc @moved
-    sbc #DELAY_STEPS
-@moved:
-    sta request_delay
     rts
-@received:
-    ; A pause burst holds the music: the NMI stops decoding and the APU is
-    ; silenced, with everything buffered kept. Any other burst lets it go
-    ; on, with the channel enables put back from the screen's copy.
-    lda rx_marker
-    cmp #SOUND_MARKER
+@came:
+    cmp #NESP_ST_OK
+    beq @ok
+    jmp link_refused
+@ok:
+    jsr take_state
+    lda SOUND_ANSWER
+    cmp #NESP_SOUND_GO
     bne @not_go
     jsr sound_go
-    jmp @done
+    jmp link_heard
 @not_go:
-    cmp #PAUSE_MARKER
-    bne @not_pause
-    lda paused
-    bne @commit
-    lda #1
-    sta paused
-    lda #0
-    sta APU_STATUS
-    beq @commit
-@not_pause:
-    lda paused
-    beq @running
-    lda apu_shadow + $15
-    sta APU_STATUS
-    lda #0
-    sta paused
-@running:
-    lda rx_marker
-    cmp #FLUSH_MARKER
-    bne @commit
-    lda tail                    ; a flush burst: the NMI moves head to here,
-    sta flush_head              ; the start of this burst's payload, and
-    lda tail + 1                ; stops playback until the ring refills.
-    sta flush_head + 1          ; flush_head is whole before the flag is set.
-    lda #0
-    sta link_done
-    sta sound_wanted            ; a sound that was due went with the rest
-    lda #1
-    sta flush_pending
-@commit:
-    jsr commit_tail
-    inc link_seq
-    inc16 link_bursts
-    ldx #LINK_STREAMING
-    lda rx_len
-    bne @state
-    lda rx_marker               ; an empty flush burst means "stopped": stay
-    cmp #FLUSH_MARKER           ; quiet and keep asking
-    bne @ended
-    ldx #LINK_STOPPED
-@state:
-    stx link_state
-    jmp @done
-@ended:
-    stx link_state
-    lda #1                      ; the host only sends empty bursts once the
-    sta link_done               ; track has ended, so play what we have
-@done:
-    ; A burst that came a frame late ends partway through a frame. Count
-    ; that frame as served, so the next request waits for the next NMI. Sent
-    ; from here, its reply would run into that NMI and be cut off, and a
-    ; slow host would lose every other burst. (A receive that was cut off
-    ; returns above without this: it ends at an NMI, and that frame still
-    ; needs its request.)
-    lda frame_count
-    sta served_frame
-    rts
+    cmp #NESP_SOUND_WAIT        ; paused: ask again
+    beq @heard
+    lda #0                      ; gone: the stream has what comes next, in an
+    sta sound_wanted            ; epoch that is not this one
+@heard:
+    jmp link_heard
 .endproc
 
 ; A = the rate to ask for sound at: the one its record named, or
-; SOUND_REFUSED if this console cannot play it. That is a rate it has no
-; routine for, or a port that does not read as the routines count on (the
-; line is at rest here: the host only sends when asked). A refusal stays
-; refused until the host's flush burst takes it away.
+; NESP_JUKE_SOUND_REFUSED if this console cannot play it. That is a rate it
+; has no routine for, or a port that does not read as the routines count on
+; (the line is at rest here: the nesp32 only sends when asked).
 .proc sound_rate
     ldx sound_wanted
     dex
@@ -336,30 +424,22 @@ done:
     txa
     rts
 @refuse:
-    lda #SOUND_REFUSED
-    sta sound_wanted
+    lda #NESP_JUKE_SOUND_REFUSED
     rts
 .endproc
+.assert PCM_COUNT = NESP_JUKE_SOUND_RATES, error, "a routine for every rate the nesp32 may send at"
 
-; A go burst arrived: play the sound it announces, if it is the one asked
-; for. The host listens for a moment in case this console missed the burst
-; and asks again, then changes its UART's rate and sends the samples; the
-; wait before listening for them covers both. An NMI would take cycles from
-; the receiver, so it is off until the sound is over.
+; The nesp32 has agreed to send the sound. It listens for a moment in case
+; this console did not hear and asks again, then changes its UART's rate
+; and sends the samples; the wait before listening for them covers both. An
+; NMI would take cycles from the receiver, so it is off until the sound is
+; over, and with it the controller's read: the line is silent, which is how
+; the nesp32 knows that the console heard.
 .proc sound_go
-    inc link_seq
-    inc16 link_bursts
     ldx sound_wanted
     dex
     cpx #PCM_COUNT
     bcs @out                    ; none was asked for
-    lda rx_len
-    cmp #1
-    bne @out
-    txa
-    ldy #0
-    cmp (tail),y                ; its payload, the rate, is in the ring uncommitted
-    bne @out
     lda #0
     sta PPUCTRL
     sta APU_STATUS
@@ -391,35 +471,6 @@ done:
     rts
 .endproc
 
-; Tell the host one of the link counters (its low byte), taking them in
-; turn. The console has no screen for them, and they are the only way to
-; tell a cut-off from a timeout from a damaged burst on real hardware.
-.proc send_stats
-    ldx stats_index
-    lda stats_lo,x
-    sta crc_ptr
-    lda stats_hi,x
-    sta crc_ptr + 1
-    ldy #0
-    lda (crc_ptr),y
-    tay
-    lda #OP_STATS
-    jsr send_request
-    ldx stats_index
-    inx
-    cpx #STATS_COUNT
-    bcc @store
-    ldx #0
-@store:
-    stx stats_index
-    rts
-.endproc
-
-.define STATS_TABLE link_aborts, link_timeouts, link_rejects, link_crc_errors, request_delay, underruns, link_bursts
-stats_lo: .lobytes STATS_TABLE
-stats_hi: .hibytes STATS_TABLE
-STATS_COUNT = * - stats_hi
-
 ; About 1.3 ms (2306 cycles). Preserves X.
 .proc wait_unit
     ldy #0
@@ -428,316 +479,5 @@ STATS_COUNT = * - stats_hi
     nop
     dey
     bne @loop
-    rts
-.endproc
-
-; A = op, X = seq, Y = arg. Sends the 4-byte request.
-.proc send_request
-    sta request
-    stx request + 1
-    sty request + 2
-    eor request + 1
-    eor request + 2
-    eor #REQUEST_SEED
-    sta request + 3
-    ldx #0
-@next:
-    lda request,x
-    jsr tx_byte                 ; preserves X
-    inx
-    cpx #4
-    bne @next
-    rts
-.endproc
-
-; Receive one burst into the ring at tail. Carry clear when it arrived intact
-; for the sequence and credit asked for; the caller then commits it.
-;
-; Between bytes there are about 50 cycles before the next start bit can
-; arrive (the host sends 2 stop bits), so the per-byte work below is kept
-; short and page wraps are handled inline.
-.proc rx_burst
-    tsx
-    stx rx_sp
-    jsr begin_write
-    lda #0
-    sta hunt_frames
-    lda #1
-    sta rx_hunting
-marker:
-    jsr rx_byte
-    bcs marker                  ; noise: keep looking
-    cmp #BURST_MARKER
-    beq found
-    cmp #PAUSE_MARKER
-    beq found
-    cmp #SOUND_MARKER
-    beq found
-    cmp #FLUSH_MARKER
-    bne marker
-found:
-    sta rx_marker
-    lda #1                      ; set before clearing rx_hunting, so an NMI
-    sta rx_active               ; in between still ends the receive
-    lda #0
-    sta rx_hunting
-    jsr rx_byte
-    bcs reject
-    sta rx_seq
-    jsr rx_byte
-    bcs reject
-    sta rx_len
-    lda credit                  ; a length beyond the credit is damage, and
-    cmp rx_len                  ; storing it would run past the free space
-    bcc reject                  ; into music that has not played yet
-    ldx rx_len
-    beq crc_bytes
-payload:
-    jsr rx_byte
-    bcs reject
-    ldy #0
-    sta (wptr),y
-    advance_wptr
-    dex
-    bne payload
-crc_bytes:
-    jsr rx_byte
-    bcs reject
-    sta rx_crc
-    jsr rx_byte
-    bcs reject
-    sta rx_crc + 1
-    lda #0
-    sta rx_active               ; everything is in; the NMI may not abort now
-
-    lda rx_seq
-    cmp link_seq
-    bne reject
-    jsr burst_crc
-    lda crc_hi
-    cmp rx_crc
-    bne crc_error
-    lda crc_lo
-    cmp rx_crc + 1
-    bne crc_error
-    clc
-    rts
-crc_error:
-    inc16 link_crc_errors
-    sec
-    rts
-reject:
-    lda #0
-    sta rx_active
-    inc16 link_rejects
-    sec
-    rts
-.endproc
-
-; The NMI returns here when it ends a receive, having counted why. Unwind
-; to rx_burst's caller as a failed receive.
-.proc rx_abort
-    ldx rx_sp
-    txs
-    sec
-    rts
-.endproc
-
-; CRC-16/CCITT-FALSE over SEQ, LEN and the payload now in the ring at tail.
-; A flush or pause burst's CRC covers its marker as well, so a damaged
-; ordinary burst cannot pass for one.
-.proc burst_crc
-    lda #$FF
-    sta crc_hi
-    sta crc_lo
-    lda rx_marker
-    cmp #BURST_MARKER
-    beq @body
-    jsr crc_update
-@body:
-    lda rx_seq
-    jsr crc_update
-    lda rx_len
-    jsr crc_update
-    lda rx_len
-    beq @done
-    sta crc_count
-    lda tail
-    sta crc_ptr
-    lda tail + 1
-    sta crc_ptr + 1
-@byte:
-    ldy #0
-    lda (crc_ptr),y
-    jsr crc_update
-    inc crc_ptr
-    bne @same_page
-    inc crc_ptr + 1
-    lda crc_ptr + 1
-    cmp #RING_END_PAGE
-    bne @same_page
-    lda #>RING
-    sta crc_ptr + 1
-@same_page:
-    dec crc_count
-    bne @byte
-@done:
-    rts
-.endproc
-
-.proc crc_update
-    eor crc_hi
-    tax
-    lda crc_lo
-    eor crc_table_hi,x
-    sta crc_hi
-    lda crc_table_lo,x
-    sta crc_lo
-    rts
-.endproc
-
-; --- cycle-timed routines ----------------------------------------------------
-;
-; A bit at 38400 baud is 46.61 CPU cycles (NTSC, 1.789773 MHz), so bits are
-; spaced 47, 46, 47, ... cycles to stay within half a cycle of ideal. The
-; routines live on their own pages so no branch pays the page-crossing
-; cycle, and tests/test_serial_timing.py measures every read and write they
-; make against the ideal bit centers.
-
-; Burn exactly n cycles (n >= 6) with Y.
-.macro delay n
-    .local loop
-    .if ((n - 1) .mod 5) = 1
-        ldy #(n - 1) / 5 - 1
-        nop
-        nop
-        nop
-    .else
-        ldy #(n - 1) / 5
-        .if ((n - 1) .mod 5) = 2
-            nop
-        .elseif ((n - 1) .mod 5) = 3
-            bit $00
-        .elseif ((n - 1) .mod 5) = 4
-            nop
-            nop
-        .endif
-    .endif
-loop:
-    dey
-    bne loop
-.endmacro
-
-.segment "RXTX"
-
-; Receive one byte. Waits for a start bit, samples the 8 data bits and the
-; stop bit at their centers, and returns the byte in A. Carry set means the
-; stop bit was low (a framing error). Destroys Y.
-;
-; t0 is the cycle on which the hunt's lda read the start bit. The edge fell
-; somewhere in the 9 cycles before it, 4.5 on average, so bit k's center is
-; t0 - 4.5 + 46.61 * (1.5 + k), and each sampling lda starts 3 cycles before
-; its read.
-.proc rx_byte
-::rx_hunt:                      ; tests fast-forward while this sees mark
-    lda JOY2
-    lsr                         ; carry = inverted D0: set while the line is low
-    bcc rx_hunt
-                                ; t0 + 5
-    delay 57                    ; bit 0 lda at t0 + 62
-    lda JOY2
-    lsr
-    ror rx_data
-    delay 36                    ; bit 1 at t0 + 109
-    lda JOY2
-    lsr
-    ror rx_data
-    delay 36                    ; bit 2 at t0 + 156
-    lda JOY2
-    lsr
-    ror rx_data
-    delay 35                    ; bit 3 at t0 + 202
-    lda JOY2
-    lsr
-    ror rx_data
-    delay 36                    ; bit 4 at t0 + 249
-    lda JOY2
-    lsr
-    ror rx_data
-    delay 35                    ; bit 5 at t0 + 295
-    lda JOY2
-    lsr
-    ror rx_data
-    delay 36                    ; bit 6 at t0 + 342
-    lda JOY2
-    lsr
-    ror rx_data
-    delay 36                    ; bit 7 at t0 + 389
-    lda JOY2
-    lsr
-    ror rx_data
-    delay 35                    ; stop bit at t0 + 435
-    lda JOY2
-    lsr                         ; carry set if the stop bit is low
-    lda rx_data
-    eor #$FF                    ; the bits arrived inverted; carry survives
-    rts
-.endproc
-
-.align 256
-
-; Send A as 8N1. OUT0 must be at mark. Each bit is written by the last cycle
-; of a sta, the data bit reaching A without a branch (lsr, then rol into a
-; cleared A), so every bit costs the same. Returns after holding the stop bit
-; for a full bit, so back-to-back calls keep one stop bit between bytes.
-; Destroys A, Y. Preserves X.
-.proc tx_byte
-    sta tx_data
-    lda #0
-    sta JOY1                    ; start bit at W
-    delay 34
-    lsr tx_data
-    lda #0
-    rol a
-    sta JOY1                    ; bit 0 at W + 47
-    delay 33
-    lsr tx_data
-    lda #0
-    rol a
-    sta JOY1                    ; bit 1 at W + 93
-    delay 34
-    lsr tx_data
-    lda #0
-    rol a
-    sta JOY1                    ; bit 2 at W + 140
-    delay 33
-    lsr tx_data
-    lda #0
-    rol a
-    sta JOY1                    ; bit 3 at W + 186
-    delay 34
-    lsr tx_data
-    lda #0
-    rol a
-    sta JOY1                    ; bit 4 at W + 233
-    delay 34
-    lsr tx_data
-    lda #0
-    rol a
-    sta JOY1                    ; bit 5 at W + 280
-    delay 33
-    lsr tx_data
-    lda #0
-    rol a
-    sta JOY1                    ; bit 6 at W + 326
-    delay 34
-    lsr tx_data
-    lda #0
-    rol a
-    sta JOY1                    ; bit 7 at W + 373
-    delay 40
-    lda #OUT0_MARK
-    sta JOY1                    ; stop bit at W + 419
-    delay 47
     rts
 .endproc
