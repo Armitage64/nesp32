@@ -8,8 +8,10 @@ Status: version 1. The frames, the hello, and the services SYS, NET
 (Wi-Fi), DIAG and WIKI are implemented by `firmware/components/` and
 `nes/lib/`, and tested together on a simulated console over a cycle-exact
 line (`tests/`), and have run on a StickS3 with the MiSTer's NES core
-(`firmware/README.md`, "On hardware"). The services marked
-*reserved* have a number and no ops.
+(`firmware/README.md`, "On hardware"). RAW and JUKE are implemented and
+tested the same way, JUKE with nes-jukebox's ROM (its `tests/`), and run
+on the same hardware with that ROM; of RAW, only a run to the console has.
+The services marked *reserved* have a number and no ops.
 
 Every number in this document comes from `proto/nesp.toml`, from which
 `tools/gen_proto.py` writes a C header, a ca65 include and a Python module.
@@ -161,10 +163,10 @@ nothing done on the Stick.
 | `$00` | SYS | hello, status, strings, the time, events | done |
 | `$01` | NET | Wi-Fi setup; sockets later | Wi-Fi done |
 | `$02` | RES | resources by name: fetch, lay out, read as a stream or as numbered records | reserved |
-| `$03` | RAW | a stream at a faster rate with framing off: sampled sound, rate trials | reserved |
+| `$03` | RAW | a run of bytes at a rate of its own with framing off: sampled sound, rate trials | done; sound works on hardware, the rest untried there |
 | `$04` | PEER | a lobby and a lockstep relay of buttons for two consoles | reserved |
 | `$05` | DIAG | the link's counters and test patterns | done |
-| `$10` | JUKE | the jukebox: playlist, stream, flush and pause | reserved |
+| `$10` | JUKE | the jukebox: the playlist as a stream, the buttons, sampled sound | done |
 | `$11` | WIKI | NESpedia: a search, and the article it finds as numbered lines | done |
 | `$12` | RADAR | NES Radar: airport, scenes and identities | reserved |
 | `$80`-`$FF` | | experiments and other people's | |
@@ -189,7 +191,8 @@ Multi-byte numbers are low byte first, except the CRC.
 - INFO's strings: 0 the firmware's version, 1 the board's name, 2 the
   saved network's name, 3 the application of the last hello.
 - Events: 1 button A, 2 button B, 3 the power button. Eight are kept; more
-  are dropped.
+  are dropped. A service in use may take a button for itself, and the
+  console then hears nothing of it: JUKE takes all three.
 
 ### NET `$01`: Wi-Fi
 
@@ -245,6 +248,173 @@ counts stop at 65535.
 
 The reply time is the firmware's own measure, from the last byte of a
 request arriving to its reply being handed to the UART.
+
+### RAW `$03`: the line with framing off
+
+A frame costs seven bytes and a wait for its reply, at one rate. A *run* is
+the other way to use the wire: a stretch of bytes one way, with nothing
+round them, at a rate of its own. Sampled sound is a run to the console of
+a byte a sample; a rate trial is a run of the test pattern, either way.
+
+| `OP` | Name | Request | Reply |
+|---|---|---|---|
+| `$00` | SEND | `PERIOD`, `LEAD`, `SEED[2]`, `COUNT[2]` | status only: a run to the console is agreed |
+| `$01` | LISTEN | `PERIOD`, `SEED[2]`, `COUNT[2]` | status only: a run from the console is agreed |
+| `$02` | RESULT | | `STATE`, `PERIOD`, `COUNT[2]`, `BAD[2]` |
+
+- `PERIOD`: the run's rate, in CPU cycles a bit, 5 or more. The nesp32's
+  UART is set to the nearest baud rate, both ways; a run to the console is
+  8N2 and one from it 8N1, as on the link.
+- A run of SEND's is `LEAD` bytes of `$FF`, for a receiver that needs some
+  to settle on, then `COUNT` bytes of DIAG's pattern from `SEED`. A run of
+  LISTEN's is `COUNT` bytes of the pattern from the console.
+- `STATE`: 0 no run yet, 1 agreed and not begun, 2 under way, 3 done, 4
+  called off before it began. `COUNT` is the bytes sent, or heard; `BAD` is
+  how many of those heard were not the pattern's. Both stop at 65535.
+
+**A run is agreed in frames and then goes by the clock**, in milliseconds
+from the reply that agreed to it:
+
+| | The nesp32 | The console |
+|---|---|---|
+| to 100 | goes on listening at the link's rate | if it heard the reply: silent, not even its controller read. If it did not: asks again |
+| at 100 | changes its UART's rate | |
+| at 150 | | listens for the run, or begins to send it |
+| at 175 | sends its first byte, if the run is its own | |
+| at the end | puts its UART's rate back | waits 30 ms, then asks for whatever is next |
+
+**The nesp32 cannot see that the console heard the reply**, and must not
+change its rate under one that did not. So it listens first. A console that
+missed the reply asks again a frame later, with the same request, and the
+100 ms start again; one that asks for anything else has called the run
+off. Only silence lets the run begin. For that the reply to SEND and to
+LISTEN is never held for a repeat: the same request again is the console
+saying it did not hear.
+
+**A run to the console ends when its last byte has left.** How the console
+knows the end is the run's own business: a count, for the pattern, or a
+byte that says so, for sound. Its receivers have no timeout, so a console
+whose nesp32 lost its power partway through a run waits for the rest. A
+nesp32 that starts sends four zero bytes at the link's rate, long lows
+that a receiver at any rate takes for bytes, and that the link at rest
+passes over as noise.
+
+**A run from the console ends** when `COUNT` bytes have come, or when 20 ms
+pass with none after the first, or after a second with none at all. What
+the nesp32's UART hears in the 20 ms after it changes rate is dropped: an
+ESP32's leaves a byte of junk in its receiver then, which would put every
+byte after it out of place. The console waits its 30 ms after its last
+byte and asks for the RESULT; a nesp32 still listening for bytes that never
+came does not answer until it has given up.
+
+While a run has the line nothing on it is a request, and the nesp32
+answers none.
+
+Another service may have something to send as a run, and agrees to it
+with a reply of its own in place of SEND's: JUKE's SOUND does. The clock
+and the rules are the same, and the hello must have asked for RAW.
+
+### JUKE `$10`: the jukebox
+
+The jukebox's music, as a stream the console asks for by position.
+nes-jukebox's ROM is the console's side, and its `docs/PROTOCOL.md` has
+the stream's records and the two files (`.jbs`, a stream of writes to the
+console's sound chip; `.pcm`, sampled sound). The nesp32 holds the tracks,
+the files of `tracks` in its filing system, in the order of their names,
+and the playlist is one stream: each track's names and length as control
+records, then its bytes, round its loop twice, then the next track's, and
+after the last the first again. The console holds a kilobyte of it in a
+ring and plays a frame of it at every vblank.
+
+| `OP` | Name | Request | Reply |
+|---|---|---|---|
+| `$00` | STREAM | `EPOCH`, `POS`, `ROOM`, `UNDERRUNS` | `STATE`, `EPOCH`, then up to `ROOM` bytes of the stream from `POS` |
+| `$01` | BUTTON | `BUTTONS` | `STATE` |
+| `$02` | SOUND | `EPOCH`, `RATE` | `STATE`, `ANSWER` |
+
+| `STATE` | Name | Meaning |
+|---|---|---|
+| `$00` | STOPPED | nothing plays, and the console should hold nothing. As after every hello |
+| `$01` | PLAYING | |
+| `$02` | PAUSED | held where it is: no bytes come, and the console keeps what it has |
+| `$03` | NO_TRACKS | the nesp32 has no music it can read |
+| `$40` | DRAIN | a flag, with PLAYING: no more is coming for now, so play what you have, however little. The playlist has ended, or a sound is due |
+
+**STREAM is "I have this much, and room for that much more".** `POS` is
+the count of the epoch's bytes the console has taken, less a multiple of
+256, and the reply's bytes are the stream's from there, as many as `ROOM`
+and the reply's length allow. The nesp32 keeps what it sent until a
+request's `POS` has moved past it. So a reply that was lost is sent again
+by the next request, which has the same `POS`; a request that was lost
+changes nothing; and neither needs handling of its own. No reply to
+STREAM is held for a repeat. The stream may be cut anywhere: the console
+plays only whole frames.
+
+**An epoch is a stretch of the stream with no jump in it.** Whatever
+should be heard at once (another track, play after stop, the music after
+a sound) begins a new one: its number is one more, and its positions start
+again from 0. A console that sees a reply from another epoch than the one
+its ring holds drops what the ring holds and takes the reply's bytes as
+the first of the new one. Until it has, its requests still name the old
+epoch, and are answered from the start of the new. A console that has
+just said hello treats the next reply so whatever its epoch.
+
+The console asks every frame, also with no room: the reply is how it
+hears that the music was stopped, paused or changed. `UNDERRUNS` is the
+low byte of its count of frames that found the ring empty; the nesp32
+keeps the total for its own screen, which also shows how many replies it
+had to send again.
+
+A `POS` that claims more than the nesp32 sent means that one of the two
+was switched off and on. The nesp32 begins the track again in a new
+epoch.
+
+**BUTTON is what the console's controller asked for**: bit 0 the next
+track, bit 1 the previous, bit 2 play or pause. Next and previous change
+the track and play it, also from stopped or paused. Play pauses and
+resumes; from stopped, or once the playlist has ended, it plays the
+current track from its beginning. The reply is held for a repeat, as any
+is, so a console that hears no reply sends the request again unchanged
+until it does, and the press is done once. The nesp32's own buttons do the
+same: A is play or pause, B the previous track, the power button the next.
+
+The track the buttons count from is the one being sent, which in the last
+seconds of a track is already the next: the console plays a few seconds
+behind what it has been sent.
+
+**A `.pcm` track is not part of the stream.** Its place there is its names
+and length and then a sound record with its rate, after which the stream
+gives nothing more (DRAIN). The console plays what it has, comes to the
+record, and asks with SOUND in place of STREAM, every frame, until the
+answer is not WAIT.
+
+| `ANSWER` | Name | Meaning |
+|---|---|---|
+| `$00` | WAIT | not now: the music is paused. Ask again |
+| `$01` | GO | the samples follow, as a run of RAW's at the sound's rate |
+| `$02` | GONE | there is no such sound to play: ask for the stream, which is in another epoch by now |
+
+- `RATE` is the record's: 0 to 5, for 21, 16, 14, 12, 10 and 8 CPU cycles
+  a bit, which are 7748 to 20338 samples a second. A console that cannot
+  play it says `$FF`, and is told GONE; so is one whose hello did not ask
+  for RAW. The nesp32 goes on to the next track.
+- `EPOCH` is the console's. A sound asked for from before a jump is GONE,
+  whatever is due in the epoch the nesp32 is in now.
+- After GO the run is RAW's in every way: asked again within 100 ms, the
+  nesp32 says GO again and starts the wait again. A sample is a byte, as
+  its file holds it; the run ends with `$FC`, which the console's routines
+  take for the last and which leaves its DAC at 0.
+- The music after a sound is a new epoch.
+- A button on the nesp32 during a sound ends it at once, with the last
+  byte, and is then done: A stops (a sound cannot be paused, and A again
+  plays it from its start), B and the power button change the track. One
+  pressed in the 100 ms before a sound begins waits for it to begin,
+  since the console may already be deaf.
+
+In nes-jukebox's ROM a STREAM exchange is 11 bytes out and up to 65 back
+(56 of the stream), made right after the NMI. On the simulated console it
+lands with the nesp32 taking up to 5.5 ms; the 768 bytes the ROM wants
+before it plays come in 14 frames.
 
 ### WIKI `$11`: NESpedia
 
@@ -348,7 +518,11 @@ no reply, however damaged, is stored past the buffer.
 - A new application takes a service number, lists its ops in
   `proto/nesp.toml`, and adds a C module with the interface in
   `nesp_core.h`: an id, `activate`, `deactivate` and a `handle` that never
-  waits. Nothing in the frame changes.
+  waits. Nothing in the frame changes. What takes time or goes by the
+  clock is done in the service's `tick`, which is called once a reply has
+  gone and every few milliseconds besides (JUKE reads its files there, and
+  RAW runs its runs); a service that wants the nesp32's buttons takes them
+  with `event`.
 - A new op on a service is a new number. An op is never given a new
   meaning.
 - A reply may grow at its end. A ROM reads the bytes it knows and passes

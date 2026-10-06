@@ -77,6 +77,9 @@ id = 0x02
 [services.RAW]
 id = 0x03
 [services.RAW.ops]
+SEND = 0x00             # a run of the pattern to the console, at a rate of its own
+LISTEN = 0x01           # a run of it from the console, likewise
+RESULT = 0x02           # how the last run went
 
 [services.PEER]
 id = 0x04
@@ -92,6 +95,9 @@ SINK = 0x02             # seed (2), then bytes: how many differ from the pattern
 [services.JUKE]
 id = 0x10
 [services.JUKE.ops]
+STREAM = 0x00           # more of the music, from where the console has got to
+BUTTON = 0x01           # what the console's controller asked for (enum PRESS)
+SOUND = 0x02            # a sound record has played: send its samples (enum SOUND)
 
 [services.WIKI]
 id = 0x11
@@ -138,6 +144,31 @@ STATE = 0x3F            # the state's bits
 MORE = 0x40             # with READY: the article is still arriving
 NO_LINE = 0x80          # on a LINE reply: no such line is held
 
+[enums.RUN]             # RAW: the state of a run
+IDLE = 0                # none yet
+ARMED = 1               # agreed, and the nesp32 is listening in case the console asks again
+RUNNING = 2             # the line is the run's
+DONE = 3
+DROPPED = 4             # called off before it began: the console asked for something
+
+[enums.PLAYER]          # JUKE: the state of the music, and a flag with it
+STOPPED = 0             # nothing plays, and the console holds nothing
+PLAYING = 1
+PAUSED = 2              # held where it is; the console keeps what it has
+NO_TRACKS = 3           # the nesp32 has no music
+STATE = 0x0F            # the state's bits
+DRAIN = 0x40            # no more is coming for now: play what you have
+
+[enums.PRESS]           # JUKE BUTTON: bits, as the jukebox's controller gives them
+NEXT = 0x01
+PREVIOUS = 0x02
+PLAY = 0x04             # play, or pause
+
+[enums.SOUND]           # JUKE SOUND's answer
+WAIT = 0                # not now (paused): ask again
+GO = 1                  # samples follow, as a run of RAW's
+GONE = 2                # there is no such sound to play: ask for the stream
+
 [enums.INFO]            # SYS INFO's strings
 FIRMWARE = 0            # "0.1.0"
 BOARD = 1               # "StickC Plus2"
@@ -164,3 +195,15 @@ EVENT_QUEUE = 8
 WIKI_COLUMNS = 28       # characters in a line of an article
 WIKI_QUERY_MAX = 30     # characters in a search
 WIKI_EARLY = 28         # lines laid out before an article is offered
+# RAW: a run's times, in milliseconds from the reply that agreed to it.
+RAW_LISTEN_MS = 100     # the nesp32 listens this long for the console asking again
+RAW_SETTLE_MS = 150     # the console is listening, or sending, from here
+RAW_START_MS = 175      # the nesp32's first byte
+RAW_REST_MS = 30        # after a run's last byte, before the console asks anything
+RAW_QUIET_MS = 20       # a run from the console is over when this long passes with no byte
+RAW_GIVE_UP_MS = 1000   # or this long with none at all
+RAW_PERIOD_MIN = 5      # the fastest rate a run may ask for, in CPU cycles a bit
+JUKE_TITLE_MAX = 28     # characters in a name on the console's screen
+JUKE_SOUND_RATES = 6    # the rates a sound may have: 21, 16, 14, 12, 10 and 8 cycles a bit
+JUKE_SOUND_REFUSED = 0xFF   # JUKE SOUND's rate from a console that cannot play it
+JUKE_SOUND_LAST = 0xFC  # the byte that ends a sound and leaves the console's DAC at 0

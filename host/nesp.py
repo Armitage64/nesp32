@@ -23,6 +23,10 @@ import nesp_proto as proto  # noqa: E402
 LIBRARY = "libnesp_host.dylib" if sys.platform == "darwin" else "libnesp_host.so"
 
 _u8p = ctypes.POINTER(ctypes.c_uint8)
+# What the firmware asks of the line with framing off (nesp_hal_t's line_*).
+_RATE = ctypes.CFUNCTYPE(None, ctypes.c_uint8)
+_WRITE = ctypes.CFUNCTYPE(ctypes.c_size_t, _u8p, ctypes.c_size_t)
+_IDLE = ctypes.CFUNCTYPE(ctypes.c_bool)
 _lib = None
 
 
@@ -105,6 +109,22 @@ def library():
         for name in ("host_extract_found", "host_extract_done"):
             getattr(lib, name).restype = ctypes.c_bool
             getattr(lib, name).argtypes = [ctypes.c_void_p]
+        lib.host_tick.restype = ctypes.c_bool
+        lib.host_tick.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        lib.host_set_line.argtypes = [ctypes.c_void_p, _RATE, _WRITE, _IDLE]
+        lib.host_track_add.restype = ctypes.c_bool
+        lib.host_track_add.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t]
+        lib.host_track_cut.argtypes = [ctypes.c_void_p, ctypes.c_uint16, ctypes.c_size_t]
+        lib.host_juke_set.argtypes = [ctypes.c_void_p, ctypes.c_uint8, ctypes.c_bool]
+        for name in ("host_track_reads", "host_juke_resent", "host_juke_underruns"):
+            getattr(lib, name).restype = ctypes.c_uint32
+            getattr(lib, name).argtypes = [ctypes.c_void_p]
+        lib.host_shown.restype = ctypes.c_char_p
+        lib.host_shown.argtypes = [ctypes.c_void_p, ctypes.c_uint8]
+        lib.host_juke_index.restype = ctypes.c_uint16
+        lib.host_juke_index.argtypes = [ctypes.c_void_p]
+        lib.host_raw_state.restype = ctypes.c_uint8
+        lib.host_raw_state.argtypes = [ctypes.c_void_p]
         lib.host_checks.argtypes = [ctypes.c_char_p, ctypes.c_size_t, _u8p]
         lib.host_pattern.argtypes = [ctypes.c_uint16, _u8p, ctypes.c_size_t]
         _lib = lib
@@ -173,16 +193,62 @@ def parse(data):
     return Reply(data[1], data[2], data[3], data[5:5 + length])
 
 
+class Line:
+    """The line with framing off, for a nesp32 that has none: it keeps what
+    a run of RAW's did with it.
+
+        period      the UART's rate now, in CPU cycles a bit
+        rates       every rate it was set to, in order
+        sent        the bytes written, as they were
+        room        if not None, the most the UART takes at one write
+        busy        True: not everything written has left yet
+    """
+
+    def __init__(self):
+        self.period = proto.NESP_PERIOD
+        self.rates = []
+        self.sent = bytearray()
+        self.room = None
+        self.busy = False
+
+    def line_rate(self, period):
+        self.period = period
+        self.rates.append(period)
+
+    def line_write(self, data):
+        count = len(data) if self.room is None else min(len(data), self.room)
+        self.sent += data[:count]
+        return count
+
+    def line_idle(self):
+        return not self.busy
+
+
 class Stick:
+    """port, if given, has read() and write(). It may also be the line with
+    framing off (line_rate, line_write, line_idle, as Line has them) and a
+    clock (now_ms); without those the nesp32 has a Line of its own, `line`,
+    and tick() is the caller's to call."""
+
     def __init__(self, port=None):
         self.port = port
         self._lib = library()
         self._host = ctypes.c_void_p(self._lib.host_new())
         self._out = (ctypes.c_uint8 * proto.NESP_FRAME_MAX)()
         self._seq = 0
+        self.line = port if hasattr(port, "line_rate") else Line()
+        line = self.line
+        # Kept, or ctypes lets go of them while the library still calls.
+        self._line = (_RATE(lambda period: line.line_rate(period)),
+                      _WRITE(lambda data, count: line.line_write(bytes(data[:count]))),
+                      _IDLE(lambda: line.line_idle()))
+        self._lib.host_set_line(self._host, *self._line)
 
     def __del__(self):
         if getattr(self, "_host", None):
+            # Its services are stopped as it goes, and one of them may give
+            # the line back: not to a port that is itself being let go of.
+            self._lib.host_set_line(self._host, _RATE(), _WRITE(), _IDLE())
             self._lib.host_free(self._host)
             self._host = None
 
@@ -195,15 +261,21 @@ class Stick:
         return bytes(self._out[:count])
 
     def poll(self):
-        """Answer the console if it has asked. True if a reply went out."""
+        """Answer the console if it has asked, and let the services do what
+        they do between requests, if the port has a clock. True if a reply
+        went out."""
         heard = self.port.read()
-        if not heard:
-            return False
-        reply = self.feed(heard)
-        if not reply:
-            return False
-        self.port.write(reply)
-        return True
+        reply = self.feed(heard) if heard else b""
+        if reply:
+            self.port.write(reply)
+        if hasattr(self.port, "now_ms"):
+            self.tick(self.port.now_ms())
+        return bool(reply)
+
+    def tick(self, now_ms):
+        """What the services do by the clock. True if they want another
+        within a couple of milliseconds."""
+        return self._lib.host_tick(self._host, int(now_ms) & 0xFFFFFFFF)
 
     def ask(self, svc, op, payload=b"", seq=None):
         """One request, as a console with no line would make it. Returns the
@@ -250,7 +322,45 @@ class Stick:
     def scan_finish(self, state=proto.NESP_SCAN_DONE):
         self._lib.host_scan_finish(self._host, state)
 
+    def add_track(self, data):
+        """A file among the nesp32's tracks, after those already there. A
+        service finds it at its next hello."""
+        data = bytes(data)
+        if not self._lib.host_track_add(self._host, data, len(data)):
+            raise ValueError("too many tracks")
+
+    def cut_track(self, index, length):
+        """A track's file has gone bad: it reads as only this long."""
+        self._lib.host_track_cut(self._host, index, length)
+
+    def set_juke(self, loops=2, repeat=True):
+        self._lib.host_juke_set(self._host, loops, repeat)
+
     # --- what happened -------------------------------------------------------------
+
+    @property
+    def track_reads(self):
+        return self._lib.host_track_reads(self._host)
+
+    def shown(self, row):
+        """A line of the nesp32's screen that the application wrote."""
+        return self._lib.host_shown(self._host, row).decode("ascii")
+
+    @property
+    def juke_index(self):
+        return self._lib.host_juke_index(self._host)
+
+    @property
+    def juke_resent(self):
+        return self._lib.host_juke_resent(self._host)
+
+    @property
+    def juke_underruns(self):
+        return self._lib.host_juke_underruns(self._host)
+
+    @property
+    def raw_state(self):
+        return self._lib.host_raw_state(self._host)
 
     @property
     def scan_state(self):

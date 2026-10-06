@@ -93,7 +93,8 @@ def shown(name, value):
             PREFIX + "PERIOD", PREFIX + "TO_NES_BITS", PREFIX + "TO_STICK_BITS",
             PREFIX + "HEADER", PREFIX + "OVERHEAD", PREFIX + "PAYLOAD_MAX",
             PREFIX + "FRAME_MAX", PREFIX + "REPLY_BEFORE_HELLO", PREFIX + "REPLY_MIN", PREFIX + "APP_ID",
-            PREFIX + "PROTOCOL") or name.endswith(("_MAX", "_QUEUE", "_COLUMNS", "_EARLY")):
+            PREFIX + "PROTOCOL") or name.endswith(("_MAX", "_QUEUE", "_COLUMNS", "_EARLY", "_MS",
+                                                   "_MIN", "_RATES")):
         return "%d" % value, "%d" % value
     if value > 0xFF:
         return "0x%04X" % value, "$%04X" % value

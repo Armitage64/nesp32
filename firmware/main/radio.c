@@ -33,6 +33,8 @@
 #include "board.h"
 #include "esp_heap_caps.h"
 #include "fetch.h"
+#include "link.h"
+#include "store.h"
 
 #define JOIN_TRIES 3
 #define RETRY_MS 15000
@@ -60,6 +62,7 @@ static uint8_t scan_count;                  /* under lock */
 static nesp_network_t networks[NESP_SCAN_MAX];  /* under lock */
 static uint8_t battery = 0xFF;
 static char app_id[NESP_APP_ID] = {' ', ' ', ' ', ' '};
+static char shown[2][RADIO_SHOWN_MAX];      /* under lock: the application's lines */
 static uint8_t app_version;
 static QueueHandle_t orders;
 static nesp_hal_t hal;
@@ -198,6 +201,18 @@ static void hal_app(void *ctx, const char *id, uint8_t version)
 /* Memory for something big. From the PSRAM if the board has it; a piece
  * small enough not to starve Wi-Fi and TLS may come from the chip's own. */
 #define INTERNAL_MOST (64 * 1024)
+
+static void hal_show(void *ctx, uint8_t row, const char *text)
+{
+    (void)ctx;
+    if (row >= 2) {
+        return;
+    }
+    portENTER_CRITICAL(&lock);
+    strncpy(shown[row], text, RADIO_SHOWN_MAX - 1);
+    shown[row][RADIO_SHOWN_MAX - 1] = 0;
+    portEXIT_CRITICAL(&lock);
+}
 
 static void *hal_alloc(void *ctx, size_t bytes)
 {
@@ -501,6 +516,13 @@ const nesp_hal_t *radio_hal(void)
     hal.release = hal_release;
     hal.lock = hal_lock;
     hal.unlock = hal_unlock;
+    hal.line_rate = link_line_rate;
+    hal.line_write = link_line_write;
+    hal.line_idle = link_line_idle;
+    hal.tracks = store_tracks;
+    hal.track_size = store_track_size;
+    hal.track_read = store_track_read;
+    hal.show = hal_show;
     return &hal;
 }
 
@@ -519,5 +541,12 @@ void radio_app(char *id, uint8_t *version)
     portENTER_CRITICAL(&lock);
     memcpy(id, app_id, NESP_APP_ID);
     *version = app_version;
+    portEXIT_CRITICAL(&lock);
+}
+
+void radio_shown(uint8_t row, char *out)
+{
+    portENTER_CRITICAL(&lock);
+    memcpy(out, shown[row & 1], RADIO_SHOWN_MAX);
     portEXIT_CRITICAL(&lock);
 }

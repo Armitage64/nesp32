@@ -11,14 +11,20 @@ UART receives it. Port is the UART that host/nesp.py's Stick drives.
 link() joins a Console to a Stick: the console runs, and every SLICE cycles
 the Stick is polled, as its link task would be. What the Stick writes goes
 on the wire `turnaround` after the last byte of the request reached it.
+
+The Port is also the line with framing off, for a run of RAW's: the UART's
+rate can be changed, and bytes written with nothing round them go out from
+a buffer of TX_BUFFER bytes at whatever the rate then is.
 """
 
 import bisect
+import math
 
 from nesp_proto import NESP_CPU_HZ, NESP_PERIOD, NESP_TO_NES_BITS
 
 MARK, SPACE = 1, 0
 SLICE = 150                     # cycles between polls of the Stick's code
+TX_BUFFER = 256                 # bytes the UART holds of a run before it takes no more
 
 
 def ms(value):
@@ -122,7 +128,13 @@ class Port:
         self.tap = Tap()
         self.turnaround = turnaround
         self.to_console = to_console
-        self.bit = NESP_PERIOD / (1.0 + clock_error)
+        self.clock = 1.0 + clock_error
+        self.bit = NESP_PERIOD / self.clock
+        self.rate_bit = self.bit    # the UART's bit as its rate now is
+        self.period = NESP_PERIOD
+        self.rates = []             # (cycle, period) of every change of rate
+        self.runs = []              # [cycle its first byte starts, period, bytes] of each run
+        self.in_run = False         # bytes have been written since the rate was last set
         self.search_from = 0.0
         self.heard_at = 0.0
         self.received = []      # every run of bytes the UART took, for the tests
@@ -130,7 +142,8 @@ class Port:
         self.deaf = False       # True: the Stick is off, and reads nothing
 
     def read(self):
-        data, self.search_from = self.tap.decode(self.search_from, self.console.now, self.bit)
+        data, self.search_from = self.tap.decode(self.search_from, self.console.now,
+                                                 self.rate_bit)
         if not data or self.deaf:
             return None
         self.heard_at = data[-1][1]
@@ -148,6 +161,35 @@ class Port:
         at = max(self.heard_at + delay, self.console.now)
         self.sent.append((at, data))
         self.wire.send(data, at, self.bit)
+
+    # --- the line with framing off, and the clock (host/nesp.py's Stick) ---------
+
+    def now_ms(self):
+        return self.console.now * 1000.0 / NESP_CPU_HZ
+
+    def line_rate(self, period):
+        now = self.console.now
+        self.period = period
+        self.rate_bit = period / self.clock
+        self.rates.append((now, period))
+        self.search_from = now      # what the receiver held is dropped
+        self.in_run = False
+
+    def line_write(self, data):
+        now = self.console.now
+        byte = self.rate_bit * NESP_TO_NES_BITS
+        waiting = math.ceil(max(0.0, self.wire.busy_until - now) / byte)
+        count = min(len(data), max(0, TX_BUFFER - waiting))
+        if count:
+            if not self.in_run:     # a run's rate may be the link's own
+                self.in_run = True
+                self.runs.append([max(now, self.wire.busy_until), self.period, bytearray()])
+            self.runs[-1][2] += data[:count]
+            self.wire.send(data[:count], now, self.rate_bit)
+        return count
+
+    def line_idle(self):
+        return self.wire.busy_until <= self.console.now
 
 
 def link(console, stick_factory, **port_options):

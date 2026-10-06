@@ -7,7 +7,8 @@
  * The console is always the one that asks. Bytes from it go to
  * nesp_link_feed, which finds the requests in them and returns the one
  * reply to send, if any. A request goes to the service it names; a service
- * answers from what it holds and never waits for anything.
+ * answers from what it holds and never waits for anything. What a service
+ * has to do between requests it does when the port calls nesp_link_tick.
  */
 #ifndef NESP_CORE_H
 #define NESP_CORE_H
@@ -53,6 +54,14 @@ typedef struct {
     void (*activate)(void *ctx);
     void (*deactivate)(void *ctx);
     void (*handle)(void *ctx, const nesp_request_t *request, nesp_reply_t *reply);
+    /* Either may be NULL, and neither is called unless the service is
+     * active. tick is where a service does what takes time or goes by the
+     * clock: it is called after every reply has gone and every few
+     * milliseconds besides, and returns true to be called again soon. event
+     * is something that happened on the nesp32 (NESP_EVENT_*); true means
+     * the service has dealt with it, and the console is not told. */
+    bool (*tick)(void *ctx, uint32_t now_ms);
+    bool (*event)(void *ctx, uint8_t code, uint8_t arg);
     void *ctx;
     bool always;            /* active without being asked for: SYS */
 } nesp_service_t;
@@ -104,6 +113,14 @@ size_t nesp_link_feed(nesp_link_t *link, const uint8_t *data, size_t len, uint8_
  * missing, which must hold count bytes. Returns how many. */
 uint8_t nesp_link_hello(nesp_link_t *link, const uint8_t *ids, uint8_t count,
                         uint8_t reply_max, uint8_t *missing);
+
+/* Give every active service its tick. now_ms is any clock in milliseconds;
+ * it may wrap. True if one of them wants another within a couple of
+ * milliseconds. */
+bool nesp_link_tick(nesp_link_t *link, uint32_t now_ms);
+
+/* Something happened on the nesp32. True if an active service took it. */
+bool nesp_link_event(nesp_link_t *link, uint8_t code, uint8_t arg);
 
 bool nesp_link_active(const nesp_link_t *link, uint8_t id);
 void nesp_link_set_attention(nesp_link_t *link, bool attention);

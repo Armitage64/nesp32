@@ -6,9 +6,10 @@ needs (`../docs/PROTOCOL.md`).
 
 **Status: working on a StickS3**, on the MiSTer's NES core through a SNAC
 adapter ("On hardware", below). A real NES, a run of any length, and the
-StickC Plus2 build have not been tried.
+StickC Plus2 build have not been tried. The jukebox runs on the same
+Stick and core ("The jukebox", below).
 
-With ESP-IDF 5.5.5 the image is about 1.15 MB of the 2 MB slot, with no
+With ESP-IDF 5.5.5 the image is about 1.19 MB of the 2 MB slot, with no
 warnings from this project's code.
 
 Each board has its own build directory, since the two have different chips:
@@ -25,14 +26,15 @@ idf.py -B build-esp32s3 -D SDKCONFIG=build-esp32s3/sdkconfig -D IDF_TARGET=esp32
 Flashing replaces whatever is on the Stick, UIFlow included; M5Burner
 brings UIFlow back.
 
-M5Unified is fetched by the component manager on the first build
-(`main/idf_component.yml`).
+M5Unified and LittleFS (`joltwallet/littlefs`) are fetched by the
+component manager on the first build (`main/idf_component.yml`).
 
 | Path | Purpose |
 |---|---|
 | `components/nesp_core` | frames, the CRC, the services' registry, who is asked what. No hardware; also built for the tests |
-| `components/nesp_services` | SYS, NET (Wi-Fi), DIAG and WIKI, the text code, and `nesp_hal_t`, what they ask of the hardware |
-| `main/link.c` | the UART and the one task that answers the console, on a core of its own |
+| `components/nesp_services` | SYS, NET (Wi-Fi), DIAG, WIKI, RAW and JUKE, the text code, and `nesp_hal_t`, what they ask of the hardware |
+| `main/link.c` | the UART and the one task that answers the console, on a core of its own; the UART with framing off, for RAW |
+| `main/store.c` | the files: LittleFS in the `storage` partition, and the jukebox's tracks in it |
 | `main/radio.c` | Wi-Fi, its worker task, and the hardware as the services see it |
 | `main/fetch.c` | one HTTPS GET at a time, in a task of its own, handed to a service as it arrives |
 | `main/main.cpp` | M5Unified: the screen, the buttons, the battery, power off |
@@ -51,6 +53,10 @@ has to begin within a few milliseconds of the request, every time.
   task in `radio.c`, and a fetch one left for the task in `fetch.c`, which
   makes the TLS connection and reads the reply on the other core. What the
   services read is kept under a spinlock, held for a few instructions.
+- What takes time and is the link task's own to do is done after the
+  reply has gone: the services' `tick`. The jukebox reads its files there,
+  a few dozen bytes at a time, when the console cannot ask again before
+  its next vblank; a run of RAW's is fed from there every 2 ms.
 - Nothing is logged between a request and its reply. Every ten seconds the
   main task logs the link's counters, what the link and fetch tasks have
   ever had left of their stacks, and the free memory.
@@ -109,10 +115,59 @@ SNAC adapter's (nes-radar's README has what differed before); more than a
 few minutes; how long the Stick's replies took while it was making a TLS
 connection, which the log's report every ten seconds would say.
 
+## The jukebox
+
+On the same StickS3 and MiSTer, with nes-jukebox's link ROM and tracks put
+there by `tools/put_files.py`:
+
+| | |
+|---|---|
+| Tracks written over USB are found and played | yes |
+| Music: three tracks, changed from the controller and from the Stick, and following one another | sounded right |
+| Sampled sound, at 20338 samples a second (223722 baud) | sounded right; it ended by itself, and the next track followed |
+| A button on the Stick during a sound | ends it and changes the track |
+| Requests | about 15000, none answered twice; the console's buffer never ran dry |
+| The Stick's time to reply | about 70 microseconds, 474 for the slowest |
+| The link task's stack | 9124 bytes of 12288 never used |
+
+So the file reads do not land on the way to a reply, and the UART's change
+of rate and back works with the driver installed. Not tried: the five
+slower rates of sound, a long run, and RAW's runs of the test pattern.
+
+The steps it was brought up by, for another board or after a change, each
+isolating one thing:
+
+1. **The files.** Flash this firmware; its log should say `store: 0
+   tracks` (the first start formats the partition, which takes a few
+   seconds). Then `tools/put_files.py` with a directory of tracks, from
+   the top of the tree (nes-jukebox's `tools/deploy.py` makes one and calls
+   it). The log should then count them. If it says 0, or the partition is
+   formatted again at every start, the image is not one this firmware's
+   LittleFS mounts.
+2. **Music.** nes-jukebox's `build/jukebox_link.nes` on the console. The
+   nesp32's screen should say `NES: JUKE v2`, the track, and `STOPPED`; the
+   console's, `PRESS START`. Start, or the nesp32's button A, plays. On
+   the nesp32's screen `again` counts replies it had to send twice and
+   `dry` frames the console had nothing to play: both should stay at 0,
+   and the reply times where the setup ROM's link test had them. The file
+   reads are what is new here: a slowest reply of more than a millisecond
+   or two would be one of them landing where it should not.
+3. **Sound.** A playlist with a `.pcm` track. The nesp32's screen says
+   `SOUND` while it plays. What this leans on: `uart_set_baudrate` to the
+   sound's rate and back with the driver installed, the transmit buffer's
+   free size as the pump reads it (`link_line_write`), and
+   `uart_wait_tx_done` as the sign that the last sample has left
+   (`link_line_idle`). A sound that drags is the pump not keeping up; one
+   after which the console says `WAITING FOR LINK` is the rate not having
+   gone back.
+4. **The buttons**, the nesp32's and the controller's, during music and
+   during a sound.
+
 ## Not done
 
 - A real NES, a long run, and the StickC Plus2.
 - Leaving UIFlow: a Stick that ships with UIFlow has to be flashed once
   over USB. M5Burner brings UIFlow back.
 - Updates over Wi-Fi. The partitions are laid out for them.
-- The `storage` partition is not mounted yet; the jukebox will want it.
+- A way to put files on a nesp32 without a cable. `tools/put_files.py`
+  writes the whole `storage` partition over USB.

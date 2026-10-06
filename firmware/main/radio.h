@@ -23,6 +23,11 @@ void radio_set_battery(uint8_t percent);
 void radio_wifi(nesp_wifi_t *out);
 void radio_app(char *id, uint8_t *version);
 
+/* One of the two lines of the screen that a service may fill (nesp_hal_t's
+ * show), into out, which holds RADIO_SHOWN_MAX bytes. Empty: it has not. */
+#define RADIO_SHOWN_MAX 40          /* a line of the screen, as main.cpp keeps one */
+void radio_shown(uint8_t row, char *out);
+
 #ifdef __cplusplus
 }
 #endif

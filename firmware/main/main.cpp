@@ -8,9 +8,10 @@
 // Nothing is chosen here. The ROM on the console says what it is and which
 // services it needs (docs/PROTOCOL.md, "Hello"), and the screen shows it.
 //
-//   A (front)        told to the console, for a ROM that wants it
-//   B (side)         the same; held for 2 s, power off
-//   power, tapped    the same
+//   A (front)        told to the service in use that wants it (the jukebox's:
+//                    play or pause), or else to the console
+//   B (side)         the same (previous track); held for 2 s, power off
+//   power, tapped    the same (next track)
 #include <M5Unified.h>
 
 #include <cstdio>
@@ -27,6 +28,7 @@
 #include "fetch.h"
 #include "link.h"
 #include "radio.h"
+#include "store.h"
 
 namespace {
 
@@ -77,15 +79,25 @@ void draw()
     std::snprintf(text, sizeof(text), "Wi-Fi: %s",
                   wifi.state < 5 ? WIFI_STATES[wifi.state] : "?");
     line(2, text);
-    std::snprintf(text, sizeof(text), "%.*s", (int)wifi.name_len, wifi.name);
-    line(3, text);
-    if (wifi.state == NESP_WIFI_JOINED) {
-        std::snprintf(text, sizeof(text), "%u.%u.%u.%u", wifi.address[0], wifi.address[1],
-                      wifi.address[2], wifi.address[3]);
+    // The network's name and the nesp32's address, unless the service in use
+    // has something of its own to say there (the jukebox: its track).
+    char said[2][RADIO_SHOWN_MAX];
+    radio_shown(0, said[0]);
+    radio_shown(1, said[1]);
+    if (console && (said[0][0] != 0 || said[1][0] != 0)) {
+        line(3, said[0]);
+        line(4, said[1]);
     } else {
-        text[0] = 0;
+        std::snprintf(text, sizeof(text), "%.*s", (int)wifi.name_len, wifi.name);
+        line(3, text);
+        if (wifi.state == NESP_WIFI_JOINED) {
+            std::snprintf(text, sizeof(text), "%u.%u.%u.%u", wifi.address[0], wifi.address[1],
+                          wifi.address[2], wifi.address[3]);
+        } else {
+            text[0] = 0;
+        }
+        line(4, text);
     }
-    line(4, text);
     std::snprintf(text, sizeof(text), "%lu req, %lu again", (unsigned long)stats.requests,
                   (unsigned long)stats.repeats);
     line(5, text);
@@ -106,7 +118,11 @@ extern "C" void app_main(void)
     M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
     M5.Display.fillScreen(TFT_BLACK);
 
-    // The UART first, before anything slow, so that TX rests at mark.
+    // The UART first, before anything slow, so that TX rests at mark. The
+    // files next: a ROM that asks for them is not answered until they are
+    // there to be listed.
+    link_open();
+    store_start();
     link_start(radio_hal());
     radio_start();
     ESP_LOGI(TAG, "nesp32 %s on a %s", NESP_FIRMWARE_TEXT, BOARD_NAME);

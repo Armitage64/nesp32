@@ -1,3 +1,4 @@
 dependencies:
   idf: ">=5.1"
   m5stack/m5unified: "*"
+  joltwallet/littlefs: "^1.14"

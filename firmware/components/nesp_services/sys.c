@@ -169,6 +169,9 @@ void nesp_sys_service(nesp_service_t *service, nesp_sys_t *sys, nesp_link_t *lin
 void nesp_stick_event(nesp_stick_t *stick, uint8_t code, uint8_t arg)
 {
     nesp_sys_t *sys = &stick->sys;
+    if (nesp_link_event(&stick->link, code, arg)) {
+        return;                     /* a service in use had a use for it */
+    }
     if (sys->event_count == NESP_EVENT_QUEUE) {
         return;
     }
@@ -179,6 +182,20 @@ void nesp_stick_event(nesp_stick_t *stick, uint8_t code, uint8_t arg)
     nesp_link_set_attention(sys->link, true);
 }
 
+size_t nesp_stick_feed(nesp_stick_t *stick, const uint8_t *data, size_t len, uint8_t *out)
+{
+    if (nesp_raw_owns_line(&stick->raw)) {
+        nesp_raw_heard(&stick->raw, data, len);
+        return 0;
+    }
+    return nesp_link_feed(&stick->link, data, len, out);
+}
+
+bool nesp_stick_tick(nesp_stick_t *stick, uint32_t now_ms)
+{
+    return nesp_link_tick(&stick->link, now_ms);
+}
+
 void nesp_stick_init(nesp_stick_t *stick, const nesp_hal_t *hal)
 {
     nesp_link_init(&stick->link);
@@ -186,6 +203,10 @@ void nesp_stick_init(nesp_stick_t *stick, const nesp_hal_t *hal)
     nesp_net_service(&stick->services[1], &stick->net, hal);
     nesp_diag_service(&stick->services[2], &stick->diag, &stick->link);
     nesp_wiki_service(&stick->services[3], &stick->wiki, hal);
+    /* RAW before JUKE: a run that ends frees the line before the jukebox
+     * is asked what comes next. */
+    nesp_raw_service(&stick->services[4], &stick->raw, &stick->link, hal);
+    nesp_juke_service(&stick->services[5], &stick->juke, &stick->link, &stick->raw, hal);
     for (size_t index = 0; index < sizeof(stick->services) / sizeof(stick->services[0]);
          index++) {
         nesp_link_register(&stick->link, &stick->services[index]);

@@ -15,6 +15,9 @@
 
 #include "nesp_services.h"
 
+#define HOST_TRACKS_MAX 64
+#define HOST_SHOWN_MAX 96
+
 typedef struct {
     nesp_stick_t stick;
     nesp_hal_t hal;
@@ -45,6 +48,19 @@ typedef struct {
     size_t alloc_most;              /* set by the caller: no more than this at once; 0 for any */
     uint32_t allocated;             /* blocks handed out and not given back */
     int locked;
+    /* The line with framing off: the caller's, if it gave one. */
+    void (*line_rate)(uint8_t period);
+    size_t (*line_write)(const uint8_t *data, size_t len);
+    bool (*line_idle)(void);
+    /* The nesp32's files, and how often they were read. */
+    uint16_t track_count;
+    struct {
+        uint8_t *data;
+        size_t len;
+    } tracks[HOST_TRACKS_MAX];
+    uint32_t track_reads;
+    bool answering;                 /* in a feed: a file read now would hold up the reply */
+    char shown[2][HOST_SHOWN_MAX];  /* the application's lines of the screen */
 } host_t;
 
 static uint8_t hal_board(void *ctx)
@@ -194,6 +210,65 @@ static void hal_unlock(void *ctx)
     host->locked = 0;
 }
 
+static void hal_line_rate(void *ctx, uint8_t period)
+{
+    host_t *host = ctx;
+    if (host->line_rate != NULL) {
+        host->line_rate(period);
+    }
+}
+
+static size_t hal_line_write(void *ctx, const uint8_t *data, size_t len)
+{
+    host_t *host = ctx;
+    return host->line_write != NULL ? host->line_write(data, len) : len;
+}
+
+static bool hal_line_idle(void *ctx)
+{
+    host_t *host = ctx;
+    return host->line_idle == NULL || host->line_idle();
+}
+
+static uint16_t hal_tracks(void *ctx)
+{
+    return ((host_t *)ctx)->track_count;
+}
+
+static uint32_t hal_track_size(void *ctx, uint16_t track)
+{
+    host_t *host = ctx;
+    return track < host->track_count ? (uint32_t)host->tracks[track].len : 0;
+}
+
+/* A nesp32 reads its flash here, which takes a while: a service that did so
+ * on the way to a reply would be late with it, and that is caught. */
+static size_t hal_track_read(void *ctx, uint16_t track, uint32_t offset, uint8_t *out,
+                             size_t len)
+{
+    host_t *host = ctx;
+    if (host->answering) {
+        abort();
+    }
+    host->track_reads++;
+    if (track >= host->track_count || offset >= host->tracks[track].len) {
+        return 0;
+    }
+    if (len > host->tracks[track].len - offset) {
+        len = host->tracks[track].len - offset;
+    }
+    memcpy(out, host->tracks[track].data + offset, len);
+    return len;
+}
+
+static void hal_show(void *ctx, uint8_t row, const char *text)
+{
+    host_t *host = ctx;
+    if (row < 2) {
+        snprintf(host->shown[row], sizeof(host->shown[row]), "%s", text);
+    }
+}
+
 host_t *host_new(void)
 {
     host_t *host = calloc(1, sizeof(*host));
@@ -218,6 +293,13 @@ host_t *host_new(void)
     host->hal.release = hal_release;
     host->hal.lock = hal_lock;
     host->hal.unlock = hal_unlock;
+    host->hal.line_rate = hal_line_rate;
+    host->hal.line_write = hal_line_write;
+    host->hal.line_idle = hal_line_idle;
+    host->hal.tracks = hal_tracks;
+    host->hal.track_size = hal_track_size;
+    host->hal.track_read = hal_track_read;
+    host->hal.show = hal_show;
     host->battery = 0xFF;
     nesp_stick_init(&host->stick, &host->hal);
     return host;
@@ -228,13 +310,25 @@ void host_free(host_t *host)
     /* As a Stick switched off: whatever its services hold goes with it. */
     uint8_t none[1];
     nesp_link_hello(&host->stick.link, none, 0, NESP_REPLY_MIN, none);
+    for (uint16_t index = 0; index < host->track_count; index++) {
+        free(host->tracks[index].data);
+    }
     free(host);
 }
 
 /* out must hold NESP_FRAME_MAX bytes. */
 size_t host_feed(host_t *host, const uint8_t *data, size_t len, uint8_t *out)
 {
-    return nesp_link_feed(&host->stick.link, data, len, out);
+    host->answering = true;
+    size_t sent = nesp_stick_feed(&host->stick, data, len, out);
+    host->answering = false;
+    return sent;
+}
+
+/* The clock, in milliseconds: what the services do between requests. */
+bool host_tick(host_t *host, uint32_t now_ms)
+{
+    return nesp_stick_tick(&host->stick, now_ms);
 }
 
 void host_event(host_t *host, uint8_t code, uint8_t arg)
@@ -301,7 +395,52 @@ void host_scan_finish(host_t *host, uint8_t state)
     host->scan_state = state;
 }
 
+void host_set_line(host_t *host, void (*rate)(uint8_t), size_t (*write)(const uint8_t *, size_t),
+                   bool (*idle)(void))
+{
+    host->line_rate = rate;
+    host->line_write = write;
+    host->line_idle = idle;
+}
+
+/* A file on the nesp32, after the ones already there. Asked for by a
+ * service only at its next hello. */
+bool host_track_add(host_t *host, const uint8_t *data, size_t len)
+{
+    if (host->track_count == HOST_TRACKS_MAX) {
+        return false;
+    }
+    uint8_t *copy = malloc(len != 0 ? len : 1);
+    memcpy(copy, data, len);
+    host->tracks[host->track_count].data = copy;
+    host->tracks[host->track_count].len = len;
+    host->track_count++;
+    return true;
+}
+
+/* A file that has gone bad since it was listed: it reads as this much. */
+void host_track_cut(host_t *host, uint16_t track, size_t len)
+{
+    if (track < host->track_count && len < host->tracks[track].len) {
+        host->tracks[track].len = len;
+    }
+}
+
+/* What a nesp32 would have in a file of settings, if it had one. */
+void host_juke_set(host_t *host, uint8_t loops, bool repeat)
+{
+    host->stick.juke.loops = loops;
+    host->stick.juke.repeat = repeat;
+}
+
 /* --- what happened ---------------------------------------------------------- */
+
+uint32_t host_track_reads(const host_t *host) { return host->track_reads; }
+const char *host_shown(const host_t *host, uint8_t row) { return host->shown[row & 1]; }
+uint16_t host_juke_index(const host_t *host) { return host->stick.juke.index; }
+uint32_t host_juke_resent(const host_t *host) { return host->stick.juke.resent; }
+uint32_t host_juke_underruns(const host_t *host) { return host->stick.juke.underruns; }
+uint8_t host_raw_state(const host_t *host) { return host->stick.raw.state; }
 
 uint8_t host_scan_state(const host_t *host) { return host->scan_state; }
 uint32_t host_scans(const host_t *host) { return host->scans; }

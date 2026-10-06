@@ -82,6 +82,31 @@ bool nesp_link_active(const nesp_link_t *link, uint8_t id)
     return false;
 }
 
+bool nesp_link_tick(nesp_link_t *link, uint32_t now_ms)
+{
+    bool soon = false;
+    for (uint8_t index = 0; index < link->count; index++) {
+        const nesp_service_t *service = link->slots[index].service;
+        if (link->slots[index].active && service->tick != NULL
+            && service->tick(service->ctx, now_ms)) {
+            soon = true;
+        }
+    }
+    return soon;
+}
+
+bool nesp_link_event(nesp_link_t *link, uint8_t code, uint8_t arg)
+{
+    for (uint8_t index = 0; index < link->count; index++) {
+        const nesp_service_t *service = link->slots[index].service;
+        if (link->slots[index].active && service->event != NULL
+            && service->event(service->ctx, code, arg)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void nesp_link_set_attention(nesp_link_t *link, bool attention)
 {
     link->attention = attention;
