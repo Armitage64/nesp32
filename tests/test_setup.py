@@ -44,7 +44,7 @@ def test_with_no_stick_it_says_so(console):
     c.run(60)
     s = Setup(c, None, None)
     assert s.heading == "STATUS"
-    assert s.values() == dict.fromkeys(layout.STATUS_LABELS, "-") | {"STICK": "NOT FOUND"}
+    assert s.values() == dict.fromkeys(layout.STATUS_LABELS, "-") | {"NESP32": "NOT FOUND"}
     c.press(PAD_A)
     c.press(PAD_B)
     c.run(10)
@@ -54,7 +54,10 @@ def test_with_no_stick_it_says_so(console):
 def test_the_header_is_the_name_and_what_this_is(console):
     c = console()
     c.run(3)
-    assert c.line(layout.TITLE_ROW) == layout.TITLE_TEXT
+    assert c.line(layout.TITLE_ROW) == layout.TITLE_TEXT == "SETUP"
+    # The credit line is a picture, in a font smaller than a tile.
+    credit = c.text(layout.CREDIT_ROW, layout.CREDIT_COLUMN, layout.CREDIT_TILES)
+    assert credit.count("^") >= 8 and c.line(layout.CREDIT_ROW) == credit.strip()
     # The name is 2 x 2 tiles a letter, of tiles that are not characters.
     column = (32 - 2 * len(layout.LOGO_TEXT)) // 2
     for row in (layout.LOGO_ROW, layout.LOGO_ROW + 1):
@@ -67,7 +70,7 @@ def test_a_stick_is_greeted_and_shown(setup):
     s.stick.set_battery(83)
     s.settle(80)
     assert s.values() == {
-        "STICK": "CONNECTED", "FIRMWARE": "0.1.0", "BOARD": "Computer", "WI-FI": "JOINED",
+        "NESP32": "CONNECTED", "FIRMWARE": "0.1.0", "BOARD": "Computer", "WI-FI": "JOINED",
         "NETWORK": "Home Network", "ADDRESS": "192.168.1.77", "SIGNAL": "-61 DBM",
         "BATTERY": "83%"}
     assert s.stick.app == (b"SETP", 1)
@@ -79,7 +82,7 @@ def test_a_stick_with_no_network_and_no_battery_gauge(setup):
     s = setup()
     s.settle(80)
     assert s.values() == {
-        "STICK": "CONNECTED", "FIRMWARE": "0.1.0", "BOARD": "Computer", "WI-FI": "NOT SET UP",
+        "NESP32": "CONNECTED", "FIRMWARE": "0.1.0", "BOARD": "Computer", "WI-FI": "NOT SET UP",
         "NETWORK": "-", "ADDRESS": "-", "SIGNAL": "-", "BATTERY": "-"}
 
 
@@ -101,10 +104,10 @@ def test_a_stick_that_is_unplugged_is_missed_and_one_plugged_in_is_found(setup):
     s.settle(80)
     s.port.deaf = True
     s.settle(200)
-    assert s.values() == dict.fromkeys(layout.STATUS_LABELS, "-") | {"STICK": "NOT FOUND"}
+    assert s.values() == dict.fromkeys(layout.STATUS_LABELS, "-") | {"NESP32": "NOT FOUND"}
     s.port.deaf = False
     s.settle(200)
-    assert s.value("STICK") == "CONNECTED" and s.value("NETWORK") == "Home Network"
+    assert s.value("NESP32") == "CONNECTED" and s.value("NETWORK") == "Home Network"
     assert s.stick.hellos == 2
 
 
@@ -120,7 +123,7 @@ def test_a_stick_from_another_protocol_is_not_used(console):
     stick, port = link(c, Stick, to_console=older)
     s = Setup(c, stick, port)
     c.run(120)
-    assert s.value("STICK") == "NEEDS AN UPDATE" and s.value("FIRMWARE") == "-"
+    assert s.value("NESP32") == "NEEDS AN UPDATE" and s.value("FIRMWARE") == "-"
     c.press(PAD_A)
     c.run(10)
     assert s.state == STATE_STATUS
@@ -206,7 +209,7 @@ def test_a_scan_the_stick_never_finishes_is_given_up(setup):
     s.press(PAD_A)
     s.wait_for(STATE_SCAN)
     s.c.run(8 * 150 + 30)
-    assert s.state == STATE_STATUS and s.message == "NO ANSWER FROM THE STICK"
+    assert s.state == STATE_STATUS and s.message == "NO ANSWER FROM THE NESP32"
 
 
 def test_a_scan_that_fails_is_started_again(setup):
@@ -395,7 +398,7 @@ def test_a_join_the_stick_never_ends_is_given_up(setup):
     s.choose(2)
     s.wait_for(STATE_JOINING)
     s.c.run(16 * 170 + 40)
-    assert s.state == STATE_FAILED and s.message == "NO ANSWER FROM THE STICK"
+    assert s.state == STATE_FAILED and s.message == "NO ANSWER FROM THE NESP32"
 
 
 def test_a_password_gets_through_a_line_that_loses_and_damages_replies(setup):
@@ -486,7 +489,7 @@ def test_a_stick_switched_off_and_on_takes_the_console_back_to_its_hello(setup):
     s.wait_for(STATE_STATUS, 200)
     s.c.run_until(lambda: fresh.hellos == 1, 200)
     s.settle(80)
-    assert s.value("STICK") == "CONNECTED" and fresh.active(p.NESP_SVC_NET)
+    assert s.value("NESP32") == "CONNECTED" and fresh.active(p.NESP_SVC_NET)
 
 
 def test_the_password_is_not_asked_for_and_never_comes_back(setup):

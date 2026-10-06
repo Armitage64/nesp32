@@ -234,7 +234,7 @@ def test_without_wifi_nothing_is_fetched(stick):
 def test_a_fetch_that_cannot_be_started(reader):
     reader.stick.refuse_fetches()
     state, _, message = reader.search(b"x")
-    assert state == ERROR and message.strip() == b"THE STICK IS BUSY"
+    assert state == ERROR and message.strip() == b"THE NESP32 IS BUSY"
 
 
 def test_an_article_too_long_for_the_room_says_where_it_was_cut(stick):
@@ -262,7 +262,7 @@ def test_with_no_room_at_all_it_says_so(stick):
     stick.alloc_most(1024)
     reader = Reader(stick)
     state, _, message = reader.search(b"x")
-    assert state == ERROR and message.strip() == b"THE STICK IS OUT OF MEMORY"
+    assert state == ERROR and message.strip() == b"THE NESP32 IS OUT OF MEMORY"
     assert stick.fetches == 0 and stick.allocated == 0
 
 

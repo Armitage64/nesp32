@@ -42,7 +42,7 @@ test_screen:
     label BODY_ROW + 1, LEFT, "GOOD"
     label BODY_ROW + 2, LEFT, "NO REPLY"
     label BODY_ROW + 3, LEFT, "WRONG"
-    text  BODY_ROW + 5, LEFT, "THE STICK'S TIME TO REPLY"
+    text  BODY_ROW + 5, LEFT, "THE NESP32'S TIME TO REPLY"
     label BODY_ROW + 6, LEFT, "LAST"
     label BODY_ROW + 7, LEFT, "SLOWEST"
     text  HELP_ROW, LEFT, "B:BACK"

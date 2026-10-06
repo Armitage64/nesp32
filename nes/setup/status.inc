@@ -35,7 +35,7 @@ STICK_BATTERY = stick_status + 6
 .segment "RODATA"
 status_screen:
     text  HEADING_ROW, LEFT, "STATUS"
-    label BODY_ROW + LINE_STICK, LEFT, "STICK"
+    label BODY_ROW + LINE_STICK, LEFT, "NESP32"
     label BODY_ROW + LINE_FIRMWARE, LEFT, "FIRMWARE"
     label BODY_ROW + LINE_BOARD, LEFT, "BOARD"
     label BODY_ROW + LINE_WIFI, LEFT, "WI-FI"

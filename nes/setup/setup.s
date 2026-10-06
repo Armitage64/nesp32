@@ -179,7 +179,7 @@ screens_hi:
     .hibytes send_frame - 1, joining_frame - 1, failed_frame - 1, test_frame - 1
 
 empty_text:    .byte 0
-no_answer_text: .byte "NO ANSWER FROM THE STICK", 0
+no_answer_text: .byte "NO ANSWER FROM THE NESP32", 0
 
 .segment "CODE"
 

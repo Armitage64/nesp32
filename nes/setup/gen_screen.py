@@ -9,7 +9,7 @@
 
 The header is in the style of nes-jukebox's and nes-wiki's (tools/gen_ui.py,
 tools/gen_screen.py there): the name in letters of 2 x 2 tiles, three blues
-with a shadow. The 5 x 7 font is theirs, with nes-wiki's small letters.
+with a shadow, and their credit line in a 3 x 5 font. The 5 x 7 font is theirs, with nes-wiki's small letters.
 
 Tiles:
 
@@ -36,8 +36,12 @@ SCREEN_ROWS = 30
 
 LOGO_ROW = 2
 LOGO_TEXT = "NESP32"                # letters 2 x 2 tiles, centered
-TITLE_ROW = 5
-TITLE_TEXT = "STICK SETUP"
+CREDIT_ROW = 5                      # under the name, as on the other ROMs
+TITLE_ROW = 7
+TITLE_TEXT = "SETUP"
+CREDIT_TEXT = "RETRO BITS (2026)"   # in the small font
+CREDIT_COLUMN, CREDIT_TILES = 11, 10
+CREDIT_COLOR = 2                    # of the logo's palette: its middle blue
 HEADER_ROWS = 8                     # rows 0 to 7; the logo's palette covers them
 
 LEFT = 2                            # the first column anything is written in
@@ -49,7 +53,7 @@ HELP_ROW = 27                       # which buttons do what
 
 # The status screen: a label and a value on every line.
 VALUE_COLUMN = 12
-STATUS_LABELS = ("STICK", "FIRMWARE", "BOARD", "WI-FI", "NETWORK", "ADDRESS", "SIGNAL",
+STATUS_LABELS = ("NESP32", "FIRMWARE", "BOARD", "WI-FI", "NETWORK", "ADDRESS", "SIGNAL",
                  "BATTERY")
 VALUE_WIDTH = LEFT + WIDTH - VALUE_COLUMN
 
@@ -79,7 +83,7 @@ SPACE_COLUMN = (SCREEN_COLUMNS - len(SPACE_TEXT)) // 2
 CURSOR_CHAR = "_"
 
 # The link test: a label and a number on every line.
-TEST_LABELS = ("REQUESTS", "GOOD", "NO REPLY", "WRONG", "", "STICK'S REPLY TIME",
+TEST_LABELS = ("REQUESTS", "GOOD", "NO REPLY", "WRONG", "", "NESP32'S REPLY TIME",
                "LAST", "SLOWEST")
 TEST_VALUE_COLUMN = 14
 
@@ -169,6 +173,28 @@ def bars_picture(level):
         for y in range(6 - 2 * bar, 8):
             rows[y][2 * bar] = "#"
     return tuple("".join(row) for row in rows)
+
+
+# A 3 x 5 font for the credit line, one row per digit, bit 2 leftmost. Only
+# the characters that line uses. nes-jukebox's (tools/gen_ui.py there).
+SMALL_FONT = {
+    " ": "00000", "R": "65655", "E": "74647", "T": "72222", "O": "75557",
+    "B": "65656", "I": "72227", "S": "34216", "(": "12221", ")": "42224",
+    "2": "61247", "0": "75557", "6": "34757",
+}
+
+
+def small_text(text, width, color):
+    """Text in the small font, centered in a strip `width` pixels wide and
+    one tile high."""
+    pixels = [[0] * width for _ in range(8)]
+    left = (width - (4 * len(text) - 1)) // 2
+    for index, char in enumerate(text):
+        for y, row in enumerate(SMALL_FONT[char]):
+            for x in range(3):
+                if int(row) >> (2 - x) & 1:
+                    pixels[1 + y][left + 4 * index + x] = color
+    return pixels
 
 
 def glyph(char):
@@ -277,6 +303,8 @@ def build_screen():
     for index, char in enumerate(LOGO_TEXT):
         screen.picture(column + 2 * index, LOGO_ROW, big_letter(char))
     screen.centered(TITLE_ROW, TITLE_TEXT)
+    screen.picture(CREDIT_COLUMN, CREDIT_ROW,
+                   small_text(CREDIT_TEXT, 8 * CREDIT_TILES, CREDIT_COLOR))
     for name, rows in PICTURES.items():
         screen.named[name] = screen.add(tile_bytes(picture_tile(rows)))
     for level in range(1, 5):

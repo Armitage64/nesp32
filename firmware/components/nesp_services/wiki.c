@@ -242,8 +242,8 @@ static void begin(nesp_wiki_t *wiki)
         || nesp_wiki_url(wiki->query, wiki->query_len, url, sizeof(url)) == 0
         || !wiki->hal->fetch(wiki->hal->ctx, url, AGENT, id, &wiki->sink)) {
         lock(wiki);
-        set_message(wiki, wiki->lines == NULL ? "THE STICK IS OUT OF MEMORY"
-                                              : "THE STICK IS BUSY");
+        set_message(wiki, wiki->lines == NULL ? "THE NESP32 IS OUT OF MEMORY"
+                                              : "THE NESP32 IS BUSY");
         wiki->state = NESP_ARTICLE_ERROR;
         unlock(wiki);
     }

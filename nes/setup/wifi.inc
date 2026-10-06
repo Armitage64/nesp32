@@ -75,9 +75,9 @@ list_hi:
 looking_text:   .byte "LOOKING FOR NETWORKS...", 0
 other_text:     .byte "OTHER NETWORK...", 0
 kind_text:      .byte "CANNOT JOIN THAT KIND", 0
-sending_text:   .byte "TELLING THE STICK...", 0
+sending_text:   .byte "TELLING THE NESP32...", 0
 joining_text:   .byte "JOINING...", 0
-refused_text:   .byte "THE STICK REFUSED IT", 0
+refused_text:   .byte "THE NESP32 REFUSED IT", 0
 password_text:  .byte "WRONG PASSWORD", 0
 no_network_text: .byte "NETWORK NOT FOUND", 0
 no_join_text:   .byte "COULD NOT JOIN", 0

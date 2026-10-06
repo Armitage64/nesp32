@@ -107,7 +107,7 @@ static void fetch(const order_t *order, uint32_t began)
     };
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (client == NULL) {
-        failed(order, began, "THE STICK IS OUT OF MEMORY");
+        failed(order, began, "THE NESP32 IS OUT OF MEMORY");
         return;
     }
     /* Not compressed: the body is read as it comes. */
