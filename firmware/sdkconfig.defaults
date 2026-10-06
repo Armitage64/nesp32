@@ -1,0 +1,32 @@
+# The link task sleeps on the UART's queue and must wake within a fraction
+# of a millisecond; a 1 kHz tick keeps every other wait short too.
+CONFIG_FREERTOS_HZ=1000
+# The UART's interrupt handler stays in RAM, so that a flash write (saving a
+# network) cannot hold up a byte.
+CONFIG_UART_ISR_IN_IRAM=y
+# Wi-Fi on core 0; the link task has core 1 to itself (main/link.c).
+CONFIG_ESP_WIFI_TASK_PINNED_TO_CORE_0=y
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# Built for speed, not size: the 80 KB that building for size saves was
+# judged not worth what it might cost.
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+# Size, where it costs no speed.
+CONFIG_NEWLIB_NANO_FORMAT=y
+# What a Stick never does: be an access point, join an enterprise network
+# (NET's scan marks those as not joinable), or use IPv6.
+CONFIG_ESP_WIFI_SOFTAP_SUPPORT=n
+CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT=n
+CONFIG_ESP_WIFI_ENABLE_WPA3_OWE_STA=n
+CONFIG_ESP_WIFI_MBO_SUPPORT=n
+CONFIG_ESP_WIFI_WAPI_PSK=n
+CONFIG_LWIP_IPV6=n
+# Left as they are until the firmware has been through its bring-up, since
+# they are what a crash is read from; together they are worth about 95 KB:
+#   CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT=y
+#   CONFIG_ESP_ERR_TO_NAME_LOOKUP=n
+#   CONFIG_ESP_SYSTEM_PANIC_SILENT_REBOOT=y

@@ -1,0 +1,150 @@
+# The numbers both ends of the link must agree on (docs/PROTOCOL.md).
+#
+# tools/gen_proto.py writes them out for each side: a C header for the
+# Stick's firmware, a ca65 include for the console, and a Python module for
+# the tools and the tests. Nothing else may restate one of them.
+#
+# Every name gets the prefix NESP_. A service's id is NESP_SVC_<service>,
+# an op NESP_<service>_<op>, a status NESP_ST_<name>, and an enum's value
+# NESP_<enum>_<name>.
+
+[link]
+PROTOCOL = 1            # what a hello says it speaks
+CPU_HZ = 1789773        # NTSC: 21.477272 MHz / 12
+# A rate is a whole number of CPU cycles a bit, so the console's bit-banged
+# routines hit every bit exactly. 21 is 85227 baud: nes-wiki and nes-drmario
+# ran at it on hardware, and nes-jukebox's throughput test passed it both
+# ways with rates to spare.
+PERIOD = 21
+TO_NES_BITS = 11        # the Stick sends 8N2
+TO_STICK_BITS = 10      # the console sends 8N1
+REQUEST_MARKER = 0x4E   # 'N'
+REPLY_MARKER = 0xA5
+HEADER = 5              # marker, service, op or status, sequence, length
+OVERHEAD = 7            # the header and the CRC's two bytes
+PAYLOAD_MAX = 127       # of any frame; bit 7 of a length is always 0
+REPLY_BEFORE_HELLO = 32 # the longest reply payload until a hello says more
+REPLY_MIN = 16          # and the least a hello may ask for
+# The check is CRC-16/CCITT-FALSE, as on nes-radar's, nes-jukebox's and
+# nes-wiki's links: no reflection, no final XOR, high byte first. Its check
+# value for "123456789" is 0x29B1.
+CRC_POLY = 0x1021
+CRC_INIT = 0xFFFF
+APP_ID = 4              # characters in a hello's application id
+
+# A reply's status. 0 is good. Bit 7 marks an error, and bit 6 may be set on
+# any reply: the Stick has an event waiting (SYS EVENT).
+[status]
+OK = 0x00
+ATTENTION = 0x40
+ERROR = 0x80
+NO_SERVICE = 0x80       # this firmware has no such service
+NO_OP = 0x81            # the service has no such op
+BAD_ARG = 0x82          # the payload is not what the op takes
+BUSY = 0x83             # not now: ask again
+INACTIVE = 0x84         # the service was not asked for in a hello
+NO_WIFI = 0x85
+NOT_FOUND = 0x86
+FAILED = 0x87
+VERSION = 0x88          # the hello speaks a protocol this firmware does not
+
+[services.SYS]
+id = 0x00
+[services.SYS.ops]
+HELLO = 0x00            # who the ROM is and what it needs
+STATUS = 0x01           # Wi-Fi, address, battery
+ECHO = 0x02             # the payload, back
+INFO = 0x03             # a string by number (enum INFO)
+TIME = 0x04             # the time of day, if the Stick knows it
+EVENT = 0x05            # the oldest event waiting
+
+[services.NET]
+id = 0x01
+[services.NET.ops]
+WIFI_STATUS = 0x00
+SCAN_START = 0x01
+SCAN_STATUS = 0x02
+SCAN_RESULT = 0x03      # one network, by its place in the list
+SET_NAME = 0x04         # a piece of the network's name: offset, then bytes
+SET_PASSWORD = 0x05     # a piece of the password, likewise
+JOIN = 0x06             # the lengths of both, as a check, and go
+FORGET = 0x07
+
+[services.RES]
+id = 0x02
+[services.RES.ops]
+
+[services.RAW]
+id = 0x03
+[services.RAW.ops]
+
+[services.PEER]
+id = 0x04
+[services.PEER.ops]
+
+[services.DIAG]
+id = 0x05
+[services.DIAG.ops]
+STATS = 0x00            # the Stick's counters for this link
+PATTERN = 0x01          # seed (2), count: that many bytes of the pattern
+SINK = 0x02             # seed (2), then bytes: how many differ from the pattern
+
+[services.JUKE]
+id = 0x10
+[services.JUKE.ops]
+
+[services.WIKI]
+id = 0x11
+[services.WIKI.ops]
+
+[services.RADAR]
+id = 0x12
+[services.RADAR.ops]
+
+[enums.WIFI]            # the state of the Stick's Wi-Fi
+NONE = 0                # no network has been set up
+IDLE = 1                # one is saved, and the Stick is not on it
+JOINING = 2
+JOINED = 3
+FAILED = 4              # the last join did not work (enum WHY)
+
+[enums.WHY]             # why a join failed
+NONE = 0
+PASSWORD = 1            # the network refused the password
+NO_NETWORK = 2          # no network of that name was found
+OTHER = 3
+
+[enums.SCAN]
+IDLE = 0
+RUNNING = 1
+DONE = 2
+FAILED = 3
+
+[enums.AUTH]            # a scanned network's security
+OPEN = 0
+PASSWORD = 1
+OTHER = 2               # something this firmware cannot join (enterprise)
+
+[enums.INFO]            # SYS INFO's strings
+FIRMWARE = 0            # "0.1.0"
+BOARD = 1               # "StickC Plus2"
+NETWORK = 2             # the name of the saved network
+APP = 3                 # the application id of the last hello
+
+[enums.BOARD]
+UNKNOWN = 0
+PLUS2 = 1
+S3 = 2
+HOST = 3                # a computer standing in for a Stick
+
+[enums.EVENT]
+NONE = 0
+BUTTON_A = 1
+BUTTON_B = 2
+BUTTON_POWER = 3
+
+[sizes]
+NAME_MAX = 32           # a network's name
+PASSWORD_MAX = 63       # WPA2's longest passphrase
+SCAN_MAX = 20           # networks a scan keeps, strongest first
+EVENT_QUEUE = 8

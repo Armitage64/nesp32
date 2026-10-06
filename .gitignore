@@ -1,0 +1,18 @@
+# Build output
+build/
+*.nes
+*.o
+*.dbg
+*.map
+firmware/build-*/
+firmware/sdkconfig
+firmware/sdkconfig.old
+firmware/managed_components/
+firmware/dependencies.lock
+
+# Python and macOS scratch
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+.venv/

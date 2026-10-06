@@ -1,0 +1,4 @@
+pytest
+py65
+pyserial
+tomli; python_version < "3.11"

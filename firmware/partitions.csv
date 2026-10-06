@@ -1,0 +1,10 @@
+# 8 MB of flash. Two slots for the firmware from the start, so that updates
+# over Wi-Fi can come later without repartitioning Sticks already in use,
+# and the rest for files (the jukebox's music).
+# Name,   Type, SubType, Offset,   Size
+nvs,      data, nvs,     0x9000,   0x6000
+otadata,  data, ota,     0xf000,   0x2000
+phy_init, data, phy,     0x11000,  0x1000
+ota_0,    app,  ota_0,   0x20000,  0x200000
+ota_1,    app,  ota_1,   0x220000, 0x200000
+storage,  data, littlefs, 0x420000, 0x3E0000
