@@ -348,7 +348,7 @@ def test_a_stick_that_lost_the_article_sends_the_console_back_to_search(linked):
     c.run(10, pad=PAD_DOWN)
     c.run(10, pad=0)
     assert c.byte("state") == STATE_SEARCH
-    assert status(c) == "THE STICK LOST THE ARTICLE"
+    assert status(c) == "THE NESP32 LOST THE ARTICLE"
     assert c.frames[-1].split is None
 
 
@@ -413,7 +413,7 @@ def test_a_stick_with_no_wifi_says_so(linked):
     run_until(c, STATE_LOADING)
     run_until(c, STATE_SEARCH)
     c.run(4)
-    assert status(c) == "THE STICK HAS NO WI-FI" and host.searches == []
+    assert status(c) == "THE NESP32 HAS NO WI-FI" and host.searches == []
 
 
 def test_no_stick_at_all_gives_up_after_half_a_minute(link_console):
@@ -424,7 +424,7 @@ def test_no_stick_at_all_gives_up_after_half_a_minute(link_console):
     assert c.byte("state") == STATE_LOADING and status(c) == "SEARCHING..."
     c.run(200)
     assert c.byte("state") == STATE_SEARCH
-    assert status(c) == "NO ANSWER FROM THE STICK"
+    assert status(c) == "NO ANSWER FROM THE NESP32"
 
 
 def test_a_stick_too_busy_to_answer_for_a_while_is_waited_for(linked):

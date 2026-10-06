@@ -30,12 +30,12 @@ going, so the same request is both "search for this" and "how is it going".
 | What happened | The ROM |
 |---|---|
 | No reply, a damaged one, one for another request, or one cut off by the NMI | draws nothing and asks again in a later frame |
-| No reply to 225 polls of a search, 30 seconds | `NO ANSWER FROM THE STICK` |
-| The hello is refused: no WIKI service, or another protocol | `THE STICK NEEDS AN UPDATE` |
-| The Stick is not on a network | `THE STICK HAS NO WI-FI` |
+| No reply to 225 polls of a search, 30 seconds | `NO ANSWER FROM THE NESP32` |
+| The hello is refused: no WIKI service, or another protocol | `THE NESP32 NEEDS AN UPDATE` |
+| The Stick is not on a network | `THE NESP32 HAS NO WI-FI` |
 | The search found no article | `NO ARTICLE FOUND` |
 | The fetch failed | the Stick's own words: `THE SITE DID NOT ANSWER`, `THE SITE SAID 429`, `THE CONNECTION DROPPED` |
-| A line is refused because the service is not in use: the Stick was switched off and on | back to the search screen, with `THE STICK LOST THE ARTICLE`; the next search says hello again |
+| A line is refused because the service is not in use: the Stick was switched off and on | back to the search screen, with `THE NESP32 LOST THE ARTICLE`; the next search says hello again |
 
 A row is only ever drawn from a reply whose CRC was good and whose line
 number is the one asked for, and the screen only scrolls onto rows that

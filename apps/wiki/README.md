@@ -98,9 +98,9 @@ The hat is nes-radar's two-transistor level shifter
 ([its README](../nes-radar/firmware/stick_s3/README.md) has the circuit),
 wired for the board: on a StickS3, TX on slot 5 (G8) and RX on slot 4 (G1).
 
-If a search says `NO ANSWER FROM THE STICK`, the Stick is not there, or is
-running something else. `THE STICK NEEDS AN UPDATE` means its firmware is
-older than this ROM. `THE STICK HAS NO WI-FI` means the setup ROM has not
+If a search says `NO ANSWER FROM THE NESP32`, the Stick is not there, or is
+running something else. `THE NESP32 NEEDS AN UPDATE` means its firmware is
+older than this ROM. `THE NESP32 HAS NO WI-FI` means the setup ROM has not
 been run, or the network is out of reach.
 
 ## How it works

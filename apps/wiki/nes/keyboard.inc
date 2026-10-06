@@ -58,13 +58,13 @@ STATUS_LOADING = * - status_texts
 STATUS_NOT_FOUND = * - status_texts
     status_text "NO ARTICLE FOUND"
 STATUS_NO_WIFI = * - status_texts
-    status_text "THE STICK HAS NO WI-FI"
+    status_text "THE NESP32 HAS NO WI-FI"
 STATUS_NO_ANSWER = * - status_texts
-    status_text "NO ANSWER FROM THE STICK"
+    status_text "NO ANSWER FROM THE NESP32"
 STATUS_FAILED = * - status_texts
     status_text "THE SEARCH FAILED"
 STATUS_LOST = * - status_texts
-    status_text "THE STICK LOST THE ARTICLE"
+    status_text "THE NESP32 LOST THE ARTICLE"
 STATUS_HOST = $FF               ; the text is in status_buf
 .assert * - status_texts < 256, error, "too many status texts"
 

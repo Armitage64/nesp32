@@ -49,7 +49,7 @@ greeted:    .res 1              ; the Stick has answered this ROM's hello
 
 .segment "RODATA"
 old_stick_text:                 ; COLUMNS wide, as the Stick's own messages are
-    .byte " THE STICK NEEDS AN UPDATE  "
+    .byte " THE NESP32 NEEDS AN UPDATE "
 .assert * - old_stick_text = COLUMNS, error, "a message is a line wide"
 
 .segment "CODE"
