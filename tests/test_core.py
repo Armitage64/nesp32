@@ -156,8 +156,8 @@ def test_hello_names_the_services_this_firmware_lacks(stick):
 
 
 def test_a_service_not_built_yet_is_reported_missing(stick):
-    assert stick.hello(services=[p.NESP_SVC_WIKI]).payload[6:] == bytes((1, p.NESP_SVC_WIKI))
-    assert stick.ask(p.NESP_SVC_WIKI, 0).status == p.NESP_ST_NO_SERVICE
+    assert stick.hello(services=[p.NESP_SVC_RADAR]).payload[6:] == bytes((1, p.NESP_SVC_RADAR))
+    assert stick.ask(p.NESP_SVC_RADAR, 0).status == p.NESP_ST_NO_SERVICE
 
 
 def test_hello_from_another_protocol_is_told_so(stick):

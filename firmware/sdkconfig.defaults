@@ -30,3 +30,9 @@ CONFIG_LWIP_IPV6=n
 #   CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT=y
 #   CONFIG_ESP_ERR_TO_NAME_LOOKUP=n
 #   CONFIG_ESP_SYSTEM_PANIC_SILENT_REBOOT=y
+
+# The PSRAM both boards have, for what is too big for the chip's own memory
+# (an article is a quarter of a megabyte). A board whose PSRAM does not
+# answer still starts, and the services make do with less.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_IGNORE_NOTFOUND=y

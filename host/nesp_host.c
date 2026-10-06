@@ -9,6 +9,7 @@
  * RUNNING until the caller says it is done, and a join stays JOINING until
  * the caller says how it went, so a test says exactly when.
  */
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -32,6 +33,18 @@ typedef struct {
     char app[NESP_APP_ID];
     uint8_t app_version;
     uint32_t hellos;
+    /* The last fetch asked for, and where its reply goes. */
+    char url[512];
+    char agent[128];
+    uint32_t fetch_id;
+    const nesp_sink_t *sink;
+    bool fetching;
+    bool fetch_refused;             /* set by the caller: the next fetch cannot start */
+    uint32_t fetches;
+    uint32_t fetch_stops;
+    size_t alloc_most;              /* set by the caller: no more than this at once; 0 for any */
+    uint32_t allocated;             /* blocks handed out and not given back */
+    int locked;
 } host_t;
 
 static uint8_t hal_board(void *ctx)
@@ -121,6 +134,66 @@ static void hal_app(void *ctx, const char *id, uint8_t version)
     host->hellos++;
 }
 
+static bool hal_fetch(void *ctx, const char *url, const char *agent, uint32_t id,
+                      const nesp_sink_t *sink)
+{
+    host_t *host = ctx;
+    if (host->fetch_refused) {
+        return false;
+    }
+    snprintf(host->url, sizeof(host->url), "%s", url);
+    snprintf(host->agent, sizeof(host->agent), "%s", agent);
+    host->fetch_id = id;
+    host->sink = sink;
+    host->fetching = true;
+    host->fetches++;
+    return true;
+}
+
+static void hal_fetch_stop(void *ctx)
+{
+    host_t *host = ctx;
+    host->fetching = false;
+    host->fetch_stops++;
+}
+
+static void *hal_alloc(void *ctx, size_t bytes)
+{
+    host_t *host = ctx;
+    if (host->alloc_most != 0 && bytes > host->alloc_most) {
+        return NULL;
+    }
+    host->allocated++;
+    return malloc(bytes);
+}
+
+static void hal_release(void *ctx, void *memory)
+{
+    host_t *host = ctx;
+    host->allocated--;
+    free(memory);
+}
+
+/* One task here, so there is nothing to keep out; but a lock taken twice,
+ * or left taken, would hang a Stick, and that is caught. */
+static void hal_lock(void *ctx)
+{
+    host_t *host = ctx;
+    if (host->locked != 0) {
+        abort();
+    }
+    host->locked = 1;
+}
+
+static void hal_unlock(void *ctx)
+{
+    host_t *host = ctx;
+    if (host->locked != 1) {
+        abort();
+    }
+    host->locked = 0;
+}
+
 host_t *host_new(void)
 {
     host_t *host = calloc(1, sizeof(*host));
@@ -139,6 +212,12 @@ host_t *host_new(void)
     host->hal.join = hal_join;
     host->hal.forget = hal_forget;
     host->hal.app = hal_app;
+    host->hal.fetch = hal_fetch;
+    host->hal.fetch_stop = hal_fetch_stop;
+    host->hal.alloc = hal_alloc;
+    host->hal.release = hal_release;
+    host->hal.lock = hal_lock;
+    host->hal.unlock = hal_unlock;
     host->battery = 0xFF;
     nesp_stick_init(&host->stick, &host->hal);
     return host;
@@ -146,6 +225,9 @@ host_t *host_new(void)
 
 void host_free(host_t *host)
 {
+    /* As a Stick switched off: whatever its services hold goes with it. */
+    uint8_t none[1];
+    nesp_link_hello(&host->stick.link, none, 0, NESP_REPLY_MIN, none);
     free(host);
 }
 
@@ -273,3 +355,162 @@ void host_pattern(uint16_t seed, uint8_t *out, size_t count)
 {
     nesp_pattern(seed, out, count);
 }
+
+/* --- fetches: the caller is the Internet ------------------------------------- */
+
+uint32_t host_fetches(const host_t *host) { return host->fetches; }
+uint32_t host_fetch_stops(const host_t *host) { return host->fetch_stops; }
+uint32_t host_fetch_id(const host_t *host) { return host->fetch_id; }
+bool host_fetching(const host_t *host) { return host->fetching; }
+const char *host_fetch_url(const host_t *host) { return host->url; }
+const char *host_fetch_agent(const host_t *host) { return host->agent; }
+uint32_t host_allocated(const host_t *host) { return host->allocated; }
+void host_set_fetch_refused(host_t *host, bool refused) { host->fetch_refused = refused; }
+void host_set_alloc_most(host_t *host, size_t bytes) { host->alloc_most = bytes; }
+
+/* More of the reply to the fetch with this id, which need not be the last
+ * one asked for: a fetch that was replaced may still have bytes on their
+ * way. Returns what the sink said: whether it wants more. */
+bool host_fetch_body(host_t *host, uint32_t id, const uint8_t *data, size_t len)
+{
+    return host->sink != NULL && host->sink->body(host->sink->ctx, id, data, len);
+}
+
+void host_fetch_done(host_t *host, uint32_t id, bool ok, const char *why)
+{
+    if (host->sink != NULL) {
+        host->sink->done(host->sink->ctx, id, ok, why);
+    }
+    if (id == host->fetch_id) {
+        host->fetching = false;
+    }
+}
+
+/* --- the text code, without a Stick round it ---------------------------------- */
+
+int host_to_ascii(uint32_t code, char *out)
+{
+    return nesp_to_ascii(code, out);
+}
+
+size_t host_wiki_url(const uint8_t *query, size_t len, char *out, size_t max)
+{
+    return nesp_wiki_url(query, len, out, max);
+}
+
+/* A wrapper, and the lines it has laid out: each the width, padded with
+ * spaces, a heading's characters with NESP_HEADING set. */
+typedef struct {
+    nesp_wrap_t wrap;
+    uint8_t width;
+    size_t count;
+    size_t room;
+    uint8_t *lines;
+} host_wrap_t;
+
+static bool wrap_add(void *ctx, const uint8_t *text, size_t len, uint8_t flags)
+{
+    host_wrap_t *out = ctx;
+    if (out->count == out->room) {
+        out->room = out->room != 0 ? 2 * out->room : 64;
+        out->lines = realloc(out->lines, out->room * out->width);
+    }
+    uint8_t *line = out->lines + out->count * out->width;
+    for (size_t index = 0; index < out->width; index++) {
+        line[index] = index < len ? (uint8_t)(text[index] | flags) : ' ';
+    }
+    out->count++;
+    return true;
+}
+
+host_wrap_t *host_wrap_new(uint8_t width)
+{
+    host_wrap_t *out = calloc(1, sizeof(*out));
+    out->width = width;
+    nesp_wrap_init(&out->wrap, width, wrap_add, out);
+    return out;
+}
+
+void host_wrap_free(host_wrap_t *out)
+{
+    free(out->lines);
+    free(out);
+}
+
+void host_wrap_title(host_wrap_t *out, const uint8_t *text, size_t len)
+{
+    nesp_wrap_title(&out->wrap, text, len);
+}
+
+void host_wrap_put(host_wrap_t *out, const uint8_t *data, size_t len)
+{
+    nesp_wrap_put(&out->wrap, data, len);
+}
+
+void host_wrap_close(host_wrap_t *out)
+{
+    nesp_wrap_close(&out->wrap);
+}
+
+size_t host_wrap_count(const host_wrap_t *out) { return out->count; }
+size_t host_wrap_held(const host_wrap_t *out) { return out->wrap.len; }
+const uint8_t *host_wrap_lines(const host_wrap_t *out) { return out->lines; }
+
+/* An extractor, and what it has found. */
+typedef struct {
+    nesp_extract_t extract;
+    int titles;
+    size_t title_len;
+    uint8_t title[NESP_TITLE_MAX];
+    size_t text_len;
+    size_t text_room;
+    uint8_t *text;
+} host_extract_t;
+
+static void extract_title(void *ctx, const uint8_t *text, size_t len)
+{
+    host_extract_t *out = ctx;
+    out->titles++;
+    out->title_len = len;
+    memcpy(out->title, text, len);
+}
+
+static void extract_text(void *ctx, const uint8_t *data, size_t len)
+{
+    host_extract_t *out = ctx;
+    if (out->text_len + len > out->text_room) {
+        out->text_room = 2 * (out->text_len + len) + 256;
+        out->text = realloc(out->text, out->text_room);
+    }
+    memcpy(out->text + out->text_len, data, len);
+    out->text_len += len;
+}
+
+host_extract_t *host_extract_new(void)
+{
+    host_extract_t *out = calloc(1, sizeof(*out));
+    nesp_extract_init(&out->extract, extract_title, extract_text, out);
+    return out;
+}
+
+void host_extract_free(host_extract_t *out)
+{
+    free(out->text);
+    free(out);
+}
+
+void host_extract_feed(host_extract_t *out, const uint8_t *data, size_t len)
+{
+    nesp_extract_feed(&out->extract, data, len);
+}
+
+int host_extract_titles(const host_extract_t *out) { return out->titles; }
+size_t host_extract_title(const host_extract_t *out, uint8_t *to)
+{
+    memcpy(to, out->title, out->title_len);
+    return out->title_len;
+}
+size_t host_extract_text_len(const host_extract_t *out) { return out->text_len; }
+const uint8_t *host_extract_text(const host_extract_t *out) { return out->text; }
+bool host_extract_found(const host_extract_t *out) { return out->extract.found; }
+bool host_extract_done(const host_extract_t *out) { return out->extract.done; }

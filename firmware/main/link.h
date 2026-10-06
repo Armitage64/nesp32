@@ -28,6 +28,9 @@ void link_event(uint8_t code, uint8_t arg);
 
 void link_stats(link_stats_t *out);
 
+/* The least the link task's stack has ever had free, in bytes. */
+uint32_t link_stack_left(void);
+
 #ifdef __cplusplus
 }
 #endif

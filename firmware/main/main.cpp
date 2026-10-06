@@ -21,7 +21,10 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "esp_heap_caps.h"
+
 #include "board.h"
+#include "fetch.h"
 #include "link.h"
 #include "radio.h"
 
@@ -31,6 +34,7 @@ const char *TAG = "nesp32";
 const uint32_t POWER_OFF_HOLD_MS = 2000;
 const uint32_t SCREEN_MS = 500;
 const uint32_t BATTERY_MS = 10000;
+const uint32_t REPORT_MS = 10000;
 const uint32_t CONSOLE_GONE_MS = 2000;  // no request for this long: not there
 const int ROWS = 7;
 const char *const WIFI_STATES[] = {"not set up", "not joined", "joining", "joined", "failed"};
@@ -109,6 +113,7 @@ extern "C" void app_main(void)
 
     uint32_t screen_at = 0;
     uint32_t battery_at = 0;
+    uint32_t report_at = 0;
     for (;;) {
         M5.update();
         if (M5.BtnA.wasPressed()) {
@@ -130,6 +135,21 @@ extern "C" void app_main(void)
             battery_at = now | 1;
             int level = M5.Power.getBatteryLevel();
             radio_set_battery(level >= 0 && level <= 100 ? (uint8_t)level : 0xFF);
+        }
+        if (now - report_at >= REPORT_MS) {
+            // For whoever is watching the log: what the two busy tasks
+            // have left of their stacks, and what memory there is.
+            report_at = now;
+            link_stats_t stats;
+            link_stats(&stats);
+            ESP_LOGI(TAG, "%lu requests, %lu again, %lu noise; reply %lu us, slowest %lu; "
+                     "stack left: link %lu, fetch %lu; free: %u internal, %u PSRAM",
+                     (unsigned long)stats.requests, (unsigned long)stats.repeats,
+                     (unsigned long)stats.noise, (unsigned long)stats.turnaround_us,
+                     (unsigned long)stats.turnaround_max_us,
+                     (unsigned long)link_stack_left(), (unsigned long)fetch_stack_left(),
+                     (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                     (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
         }
         if (now - screen_at >= SCREEN_MS) {
             screen_at = now;

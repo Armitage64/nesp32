@@ -31,6 +31,8 @@
 #include "nvs_flash.h"
 
 #include "board.h"
+#include "esp_heap_caps.h"
+#include "fetch.h"
 
 #define JOIN_TRIES 3
 #define RETRY_MS 15000
@@ -191,6 +193,44 @@ static void hal_app(void *ctx, const char *id, uint8_t version)
     memcpy(app_id, id, NESP_APP_ID);
     app_version = version;
     portEXIT_CRITICAL(&lock);
+}
+
+/* Memory for something big. From the PSRAM if the board has it; a piece
+ * small enough not to starve Wi-Fi and TLS may come from the chip's own. */
+#define INTERNAL_MOST (64 * 1024)
+
+static void *hal_alloc(void *ctx, size_t bytes)
+{
+    (void)ctx;
+    void *memory = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM);
+    if (memory == NULL && bytes <= INTERNAL_MOST) {
+        memory = heap_caps_malloc(bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    }
+    /* Nothing is logged here: this is the link's task, between a request
+     * and its reply. main.cpp's report says what memory is left. */
+    return memory;
+}
+
+static void hal_release(void *ctx, void *memory)
+{
+    (void)ctx;
+    heap_caps_free(memory);
+}
+
+/* What a service's handler, in the link's task, and its sink, in the
+ * fetch's, both touch. */
+static portMUX_TYPE service_lock = portMUX_INITIALIZER_UNLOCKED;
+
+static void hal_lock(void *ctx)
+{
+    (void)ctx;
+    portENTER_CRITICAL(&service_lock);
+}
+
+static void hal_unlock(void *ctx)
+{
+    (void)ctx;
+    portEXIT_CRITICAL(&service_lock);
 }
 
 /* --- Wi-Fi's events ---------------------------------------------------------- */
@@ -434,6 +474,7 @@ void radio_start(void)
     esp_sntp_config_t sntp = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
     esp_netif_sntp_init(&sntp);
     xTaskCreate(worker, "radio", WORKER_STACK, NULL, WORKER_PRIORITY, NULL);
+    fetch_start();
     ESP_LOGI(TAG, "Wi-Fi started; %s", want_joined ? "joining the saved network"
                                                     : "no network saved");
 }
@@ -454,6 +495,12 @@ const nesp_hal_t *radio_hal(void)
     hal.join = hal_join;
     hal.forget = hal_forget;
     hal.app = hal_app;
+    hal.fetch = fetch_begin;
+    hal.fetch_stop = fetch_stop;
+    hal.alloc = hal_alloc;
+    hal.release = hal_release;
+    hal.lock = hal_lock;
+    hal.unlock = hal_unlock;
     return &hal;
 }
 

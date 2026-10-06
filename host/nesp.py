@@ -60,6 +60,51 @@ def library():
         lib.host_active.argtypes = [ctypes.c_void_p, ctypes.c_uint8]
         lib.host_counter.restype = ctypes.c_uint32
         lib.host_counter.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        for name in ("host_fetches", "host_fetch_stops", "host_fetch_id", "host_allocated"):
+            getattr(lib, name).restype = ctypes.c_uint32
+            getattr(lib, name).argtypes = [ctypes.c_void_p]
+        lib.host_fetching.restype = ctypes.c_bool
+        lib.host_fetching.argtypes = [ctypes.c_void_p]
+        for name in ("host_fetch_url", "host_fetch_agent"):
+            getattr(lib, name).restype = ctypes.c_char_p
+            getattr(lib, name).argtypes = [ctypes.c_void_p]
+        lib.host_set_fetch_refused.argtypes = [ctypes.c_void_p, ctypes.c_bool]
+        lib.host_set_alloc_most.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+        lib.host_fetch_body.restype = ctypes.c_bool
+        lib.host_fetch_body.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_char_p,
+                                        ctypes.c_size_t]
+        lib.host_fetch_done.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_bool,
+                                        ctypes.c_char_p]
+        lib.host_to_ascii.restype = ctypes.c_int
+        lib.host_to_ascii.argtypes = [ctypes.c_uint32, ctypes.c_char_p]
+        lib.host_wiki_url.restype = ctypes.c_size_t
+        lib.host_wiki_url.argtypes = [ctypes.c_char_p, ctypes.c_size_t, ctypes.c_char_p,
+                                      ctypes.c_size_t]
+        lib.host_wrap_new.restype = ctypes.c_void_p
+        lib.host_wrap_new.argtypes = [ctypes.c_uint8]
+        lib.host_wrap_free.argtypes = [ctypes.c_void_p]
+        for name in ("host_wrap_title", "host_wrap_put"):
+            getattr(lib, name).argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t]
+        lib.host_wrap_close.argtypes = [ctypes.c_void_p]
+        for name in ("host_wrap_count", "host_wrap_held"):
+            getattr(lib, name).restype = ctypes.c_size_t
+            getattr(lib, name).argtypes = [ctypes.c_void_p]
+        lib.host_wrap_lines.restype = ctypes.c_void_p
+        lib.host_wrap_lines.argtypes = [ctypes.c_void_p]
+        lib.host_extract_new.restype = ctypes.c_void_p
+        lib.host_extract_free.argtypes = [ctypes.c_void_p]
+        lib.host_extract_feed.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t]
+        lib.host_extract_titles.restype = ctypes.c_int
+        lib.host_extract_titles.argtypes = [ctypes.c_void_p]
+        lib.host_extract_title.restype = ctypes.c_size_t
+        lib.host_extract_title.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        lib.host_extract_text_len.restype = ctypes.c_size_t
+        lib.host_extract_text_len.argtypes = [ctypes.c_void_p]
+        lib.host_extract_text.restype = ctypes.c_void_p
+        lib.host_extract_text.argtypes = [ctypes.c_void_p]
+        for name in ("host_extract_found", "host_extract_done"):
+            getattr(lib, name).restype = ctypes.c_bool
+            getattr(lib, name).argtypes = [ctypes.c_void_p]
         lib.host_checks.argtypes = [ctypes.c_char_p, ctypes.c_size_t, _u8p]
         lib.host_pattern.argtypes = [ctypes.c_uint16, _u8p, ctypes.c_size_t]
         _lib = lib
@@ -252,6 +297,56 @@ class Stick:
     def active(self, service):
         return self._lib.host_active(self._host, service)
 
+    # --- fetches: the caller is the Internet ----------------------------------------
+
+    @property
+    def fetches(self):
+        return self._lib.host_fetches(self._host)
+
+    @property
+    def fetch_stops(self):
+        return self._lib.host_fetch_stops(self._host)
+
+    @property
+    def fetch_id(self):
+        """The id of the last fetch asked for."""
+        return self._lib.host_fetch_id(self._host)
+
+    @property
+    def fetching(self):
+        return self._lib.host_fetching(self._host)
+
+    @property
+    def fetch_url(self):
+        return self._lib.host_fetch_url(self._host).decode("ascii")
+
+    @property
+    def fetch_agent(self):
+        return self._lib.host_fetch_agent(self._host).decode("ascii")
+
+    @property
+    def allocated(self):
+        """Big blocks of memory the services hold."""
+        return self._lib.host_allocated(self._host)
+
+    def refuse_fetches(self, refused=True):
+        self._lib.host_set_fetch_refused(self._host, refused)
+
+    def alloc_most(self, size):
+        """The most memory a service can have in one piece; 0 for any."""
+        self._lib.host_set_alloc_most(self._host, size)
+
+    def fetch_body(self, data, fetch=None):
+        """More of a fetch's reply: the last fetch's, or the one with this
+        id. Returns whether more is wanted."""
+        data = bytes(data)
+        return self._lib.host_fetch_body(self._host, self.fetch_id if fetch is None else fetch,
+                                         data, len(data))
+
+    def fetch_done(self, ok=True, why=b"", fetch=None):
+        self._lib.host_fetch_done(self._host, self.fetch_id if fetch is None else fetch,
+                                  ok, why)
+
     @property
     def requests(self):
         return self._lib.host_counter(self._host, 0)
@@ -281,3 +376,114 @@ def pattern(seed, count):
     out = (ctypes.c_uint8 * count)()
     library().host_pattern(seed, out, count)
     return bytes(out)
+
+
+# --- the text code, without a Stick round it ----------------------------------------
+
+HEADING = 0x80                  # set on every character of a heading line
+
+
+def to_ascii(code):
+    """A Unicode character as ASCII bytes, maybe none; None if there is
+    nothing like it."""
+    out = ctypes.create_string_buffer(4)
+    count = library().host_to_ascii(code, out)
+    return None if count < 0 else out.raw[:count]
+
+
+def wiki_url(query):
+    """The address a search is fetched from."""
+    query = query.encode("utf-8") if isinstance(query, str) else bytes(query)
+    out = ctypes.create_string_buffer(512)
+    length = library().host_wiki_url(query, len(query), out, len(out))
+    return out.raw[:length].decode("ascii")
+
+
+class Wrap:
+    """The firmware's wrapper: plain text in, lines of `width` out."""
+
+    def __init__(self, width=proto.NESP_WIKI_COLUMNS):
+        self.width = width
+        self._lib = library()
+        self._wrap = ctypes.c_void_p(self._lib.host_wrap_new(width))
+
+    def __del__(self):
+        if getattr(self, "_wrap", None):
+            self._lib.host_wrap_free(self._wrap)
+            self._wrap = None
+
+    def title(self, text):
+        self._lib.host_wrap_title(self._wrap, bytes(text), len(text))
+
+    def put(self, data):
+        self._lib.host_wrap_put(self._wrap, bytes(data), len(data))
+
+    def close(self):
+        self._lib.host_wrap_close(self._wrap)
+
+    @property
+    def held(self):
+        """Bytes of a paragraph waiting for its end."""
+        return self._lib.host_wrap_held(self._wrap)
+
+    @property
+    def lines(self):
+        """The lines laid out so far, each `width` bytes: tile numbers."""
+        count = self._lib.host_wrap_count(self._wrap)
+        if not count:
+            return []
+        data = ctypes.string_at(self._lib.host_wrap_lines(self._wrap), count * self.width)
+        return [data[start:start + self.width] for start in range(0, len(data), self.width)]
+
+
+def text_of(line):
+    """A line's (text, is a heading), having checked that it is all one or
+    all the other."""
+    heading = bool(line[0] & HEADING) if line.strip() else False
+    text = bytes(char & 0x7F for char in line).rstrip()
+    if any(bool(char & HEADING) != heading for char in line[:len(text)]):
+        raise AssertionError("a line that is part heading: %r" % line)
+    return text, heading
+
+
+class Extract:
+    """The firmware's extractor: an API reply in, title and text out."""
+
+    def __init__(self):
+        self._lib = library()
+        self._extract = ctypes.c_void_p(self._lib.host_extract_new())
+
+    def __del__(self):
+        if getattr(self, "_extract", None):
+            self._lib.host_extract_free(self._extract)
+            self._extract = None
+
+    def feed(self, data):
+        self._lib.host_extract_feed(self._extract, bytes(data), len(data))
+
+    @property
+    def title(self):
+        """The page's title, or None if none has been seen."""
+        count = self._lib.host_extract_titles(self._extract)
+        if count > 1:
+            raise AssertionError("the title was given %d times" % count)
+        if not count:
+            return None
+        out = ctypes.create_string_buffer(256)
+        length = self._lib.host_extract_title(self._extract, out)
+        return out.raw[:length]
+
+    @property
+    def text(self):
+        length = self._lib.host_extract_text_len(self._extract)
+        if not length:
+            return b""
+        return ctypes.string_at(self._lib.host_extract_text(self._extract), length)
+
+    @property
+    def found(self):
+        return self._lib.host_extract_found(self._extract)
+
+    @property
+    def done(self):
+        return self._lib.host_extract_done(self._extract)

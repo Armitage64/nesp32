@@ -6,10 +6,11 @@ two consoles playing one game. A ROM says which services it needs and the
 Stick provides them; nothing is chosen on the Stick, and nothing about a
 Stick is ever set up from a computer.
 
-It replaces the separate firmware and link protocol that each of
+It is replacing the separate firmware and link protocol that each of
 [nes-radar](../nes-radar), [nes-jukebox](../nes-jukebox),
 [nes-wiki](../nes-wiki) and [nes-drmario](../nes-drmario) has, on the hat
-and the wiring they share.
+and the wiring they share. NESpedia has moved to it; the others have not
+yet.
 
 ![The status screen](docs/setup-status.png) ![Choosing a network](docs/setup-list.png)
 ![Typing a password](docs/setup-password.png) ![The link test](docs/setup-test.png)
@@ -32,10 +33,12 @@ not been tried.
 | The setup ROM (`nes/setup/`): status, Wi-Fi from the controller, link test | done; tested on a simulated console against the C code over a cycle-exact line |
 | The Stick's firmware (`firmware/main/`): UART, Wi-Fi, screen | working on a StickS3 with the MiSTer; builds for the StickC Plus2, not run on one |
 | A computer in place of a Stick (`host/serial_host.py`) | written, not run on a cable |
-| Services for the jukebox, NESpedia, netplay and the radar | numbers reserved; not started |
+| WIKI, NESpedia's service: an HTTPS fetch, the text laid out in lines | working on a StickS3 with the NESpedia ROM ([nes-wiki](../nes-wiki)) |
+| Services for the jukebox, netplay and the radar | numbers reserved; not started |
 
-Next is the first application service: fetching from the Internet, and
-NESpedia moved onto it.
+NESpedia runs on it: a search typed on the console is fetched over HTTPS
+and read, with the link answering throughout. Next is the second
+application.
 
 ## Building
 
@@ -91,8 +94,8 @@ password goes to the Stick and is never sent back.
 | `proto/nesp.toml`, `tools/gen_proto.py` | the numbers both ends share, and the C, ca65 and Python files written from them |
 | `docs/PROTOCOL.md` | the protocol |
 | `firmware/components/nesp_core` | frames, CRC, services' registry |
-| `firmware/components/nesp_services` | SYS, NET, DIAG |
-| `firmware/main` | the Stick: UART and link task, Wi-Fi, screen and buttons |
+| `firmware/components/nesp_services` | SYS, NET, DIAG, WIKI, and the text code WIKI lays articles out with |
+| `firmware/main` | the Stick: UART and link task, Wi-Fi, HTTPS fetches, screen and buttons |
 | `nes/lib/nesp.inc`, `nes/lib/gen_link.py` | the console's library, and its cycle-timed serial routines |
 | `nes/setup/` | the setup ROM |
 | `host/nesp_host.c`, `host/nesp.py` | the firmware's code as a library for this computer, with a stand-in for the hardware |
@@ -111,6 +114,8 @@ make test
 - `test_link.py`: the ROM and the C code over the line: how soon and how
   late the Stick may answer, damaged and lost frames, a Stick switched off
   and on.
+- `test_text.py`, `test_wiki.py`: an API reply to ASCII to lines of 28, and
+  the WIKI service with the test in place of the Internet.
 - `test_setup.py`: every screen of the setup ROM worked with the
   controller, to a network joined with a password of every character.
 
@@ -119,7 +124,10 @@ The ROM tests need cc65 and skip without it.
 ## Not done
 
 - A real NES, a long run, and the StickC Plus2.
-- The services the four applications need, and their ROMs moved to them.
+- The services the jukebox, netplay and the radar need, and their ROMs
+  moved to them. NESpedia's is done.
+- A fetch that drops partway is not made again; what came is read, if it
+  was a screenful.
 - Updates over Wi-Fi, and a way to put music on a Stick without a cable.
 - PAL consoles.
 - A licence. A line-by-line comparison found no code of nes-radar's

@@ -5,7 +5,7 @@ application at once: one frame format, a set of numbered services, and a
 hello by which a ROM says which of them it needs.
 
 Status: version 1. The frames, the hello, and the services SYS, NET
-(Wi-Fi) and DIAG are implemented by `firmware/components/` and
+(Wi-Fi), DIAG and WIKI are implemented by `firmware/components/` and
 `nes/lib/`, and tested together on a simulated console over a cycle-exact
 line (`tests/`), and have run on a StickS3 with the MiSTer's NES core
 (`firmware/README.md`, "On hardware"). The services marked
@@ -165,7 +165,7 @@ nothing done on the Stick.
 | `$04` | PEER | a lobby and a lockstep relay of buttons for two consoles | reserved |
 | `$05` | DIAG | the link's counters and test patterns | done |
 | `$10` | JUKE | the jukebox: playlist, stream, flush and pause | reserved |
-| `$11` | WIKI | NESpedia: search, and the article as records | reserved |
+| `$11` | WIKI | NESpedia: a search, and the article it finds as numbered lines | done |
 | `$12` | RADAR | NES Radar: airport, scenes and identities | reserved |
 | `$80`-`$FF` | | experiments and other people's | |
 
@@ -245,6 +245,60 @@ counts stop at 65535.
 
 The reply time is the firmware's own measure, from the last byte of a
 request arriving to its reply being handed to the UART.
+
+### WIKI `$11`: NESpedia
+
+An article from Wikipedia, laid out by the Stick in lines of exactly 28
+characters, which the console asks for by number. The console never holds
+the article: it has 2 KB of memory.
+
+| `OP` | Name | Request | Reply |
+|---|---|---|---|
+| `$00` | SEARCH | `ID`, then the words: 1 to 30 characters | `STATE`, `ID`, `TOTAL[2]`, and with an error 28 characters for the screen |
+| `$01` | LINE | `NUMBER[2]` | `STATE`, `NUMBER[2]`, `TOTAL[2]`, `TEXT[28]`; with no such line, bit 7 of `STATE` is set and there is no `TEXT` |
+
+| `STATE` | Name | Meaning |
+|---|---|---|
+| `$00` | IDLE | no article, and nothing being fetched |
+| `$01` | NO_WIFI | the Stick is not on a network |
+| `$02` | FETCHING | a search is under way |
+| `$03` | READY | an article is held; `TOTAL` is its number of lines. With bit 6 (`$43`), more of it is still arriving |
+| `$04` | NOT_FOUND | the last search found no article |
+| `$05` | ERROR | the last search failed; the reply says how |
+
+**SEARCH is both "search for this" and "how is it going".** The console
+gives each search an id, one more than the last, and sends the same request
+again every few frames until the search has ended one way or another. The
+Stick starts fetching when the id or the words differ from the search it
+has, and otherwise only answers with its state. So a lost request or a lost
+reply needs no handling of its own, and an old article is never taken for
+the answer to a new search. Neither op's reply is held for a repeat: the
+same request again is a new question.
+
+**An article is offered while it is still arriving.** Once its first 28
+lines are laid out, the Stick answers READY with bit 6 set, and `TOTAL` is
+the lines so far. The console starts reading, and takes the new `TOTAL`
+from every reply. Lines already laid out never change.
+
+`TEXT` is tile numbers, ready for the screen: ASCII, padded with spaces. On
+a heading line every character has bit 7 set, which a ROM shows as the same
+glyph in a second colour. What is not ASCII becomes the nearest thing that
+is (accents to their letters, typographic quotes and dashes to plain ones),
+and a run of characters with no likeness becomes one `?`.
+
+The article's memory is the service's while it is in use: a quarter of a
+megabyte where the board has it, about 9000 lines. An article too long for
+it ends with a line that says it was cut. Every article ends with two lines
+naming Wikipedia and its licence. A hello drops the article, so a console
+that is reset fetches again.
+
+The reply to a search that failed carries a line of words for the screen:
+`THE SITE DID NOT ANSWER`, `THE SITE SAID 429`, `THE CONNECTION DROPPED`.
+A reply that stops partway is still READY if a screenful of it had come.
+
+In NESpedia, a line's exchange is 9 bytes out and 40 back, made after the
+header's split, about 10600 cycles into the frame. On the simulated console
+it lands with the Stick taking up to 4.25 ms.
 
 ## 6. Timing
 

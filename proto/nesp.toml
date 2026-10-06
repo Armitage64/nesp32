@@ -96,6 +96,8 @@ id = 0x10
 [services.WIKI]
 id = 0x11
 [services.WIKI.ops]
+SEARCH = 0x00           # an id, then the words: start on it, or say how it is going
+LINE = 0x01             # a line of the article, by its number
 
 [services.RADAR]
 id = 0x12
@@ -125,6 +127,17 @@ OPEN = 0
 PASSWORD = 1
 OTHER = 2               # something this firmware cannot join (enterprise)
 
+[enums.ARTICLE]         # WIKI: the state of a search, and two flags with it
+IDLE = 0                # no article, and nothing being fetched
+NO_WIFI = 1
+FETCHING = 2
+READY = 3               # an article is held
+NOT_FOUND = 4           # the last search found no article
+ERROR = 5               # the last search failed; the reply says how
+STATE = 0x3F            # the state's bits
+MORE = 0x40             # with READY: the article is still arriving
+NO_LINE = 0x80          # on a LINE reply: no such line is held
+
 [enums.INFO]            # SYS INFO's strings
 FIRMWARE = 0            # "0.1.0"
 BOARD = 1               # "StickC Plus2"
@@ -148,3 +161,6 @@ NAME_MAX = 32           # a network's name
 PASSWORD_MAX = 63       # WPA2's longest passphrase
 SCAN_MAX = 20           # networks a scan keeps, strongest first
 EVENT_QUEUE = 8
+WIKI_COLUMNS = 28       # characters in a line of an article
+WIKI_QUERY_MAX = 30     # characters in a search
+WIKI_EARLY = 28         # lines laid out before an article is offered

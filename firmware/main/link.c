@@ -28,7 +28,9 @@
 #define LINK_UART UART_NUM_1
 #define LINK_CORE 1                 /* Wi-Fi has core 0 (sdkconfig.defaults) */
 #define LINK_PRIORITY (configMAX_PRIORITIES - 2)
-#define LINK_STACK 4096
+/* A hello runs every service's start from here, and a search builds an
+ * address on it: 4096 was enough for the setup ROM and not for NESpedia. */
+#define LINK_STACK 8192
 /* The ESP32's UART driver refuses a transmit buffer that is not larger than
  * its 128-byte FIFO (nes-drmario found this on a Plus2). */
 #define RX_BUFFER 1024
@@ -42,6 +44,7 @@
 static const char *TAG = "link";
 
 static nesp_stick_t stick;
+static TaskHandle_t link_handle;
 static QueueHandle_t uart_events;
 static QueueHandle_t stick_events;
 static portMUX_TYPE stats_lock = portMUX_INITIALIZER_UNLOCKED;
@@ -140,7 +143,8 @@ void link_start(const nesp_hal_t *hal)
 
     stick_events = xQueueCreate(EVENT_QUEUE, 2);
     nesp_stick_init(&stick, hal);
-    xTaskCreatePinnedToCore(link_task, "link", LINK_STACK, NULL, LINK_PRIORITY, NULL, LINK_CORE);
+    xTaskCreatePinnedToCore(link_task, "link", LINK_STACK, NULL, LINK_PRIORITY, &link_handle,
+                            LINK_CORE);
     ESP_LOGI(TAG, "%s: TX G%d, RX G%d, %d baud", BOARD_NAME, BOARD_LINK_TX, BOARD_LINK_RX,
              NESP_BAUD);
 }
@@ -158,4 +162,9 @@ void link_stats(link_stats_t *out)
     portENTER_CRITICAL(&stats_lock);
     *out = shared_stats;
     portEXIT_CRITICAL(&stats_lock);
+}
+
+uint32_t link_stack_left(void)
+{
+    return link_handle != NULL ? (uint32_t)uxTaskGetStackHighWaterMark(link_handle) : 0;
 }

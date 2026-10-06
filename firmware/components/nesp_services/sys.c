@@ -185,6 +185,7 @@ void nesp_stick_init(nesp_stick_t *stick, const nesp_hal_t *hal)
     nesp_sys_service(&stick->services[0], &stick->sys, &stick->link, hal);
     nesp_net_service(&stick->services[1], &stick->net, hal);
     nesp_diag_service(&stick->services[2], &stick->diag, &stick->link);
+    nesp_wiki_service(&stick->services[3], &stick->wiki, hal);
     for (size_t index = 0; index < sizeof(stick->services) / sizeof(stick->services[0]);
          index++) {
         nesp_link_register(&stick->link, &stick->services[index]);

@@ -8,7 +8,7 @@ needs (`../docs/PROTOCOL.md`).
 adapter ("On hardware", below). A real NES, a run of any length, and the
 StickC Plus2 build have not been tried.
 
-With ESP-IDF 5.5.5 the image is about 0.9 MB of the 2 MB slot, with no
+With ESP-IDF 5.5.5 the image is about 1.15 MB of the 2 MB slot, with no
 warnings from this project's code.
 
 Each board has its own build directory, since the two have different chips:
@@ -31,9 +31,10 @@ M5Unified is fetched by the component manager on the first build
 | Path | Purpose |
 |---|---|
 | `components/nesp_core` | frames, the CRC, the services' registry, who is asked what. No hardware; also built for the tests |
-| `components/nesp_services` | SYS, NET (Wi-Fi) and DIAG, and `nesp_hal_t`, what they ask of the hardware |
+| `components/nesp_services` | SYS, NET (Wi-Fi), DIAG and WIKI, the text code, and `nesp_hal_t`, what they ask of the hardware |
 | `main/link.c` | the UART and the one task that answers the console, on a core of its own |
 | `main/radio.c` | Wi-Fi, its worker task, and the hardware as the services see it |
+| `main/fetch.c` | one HTTPS GET at a time, in a task of its own, handed to a service as it arrives |
 | `main/main.cpp` | M5Unified: the screen, the buttons, the battery, power off |
 | `main/board.h` | the link's pins on each board |
 | `partitions.csv` | two slots for the firmware, and the rest for files |
@@ -47,8 +48,12 @@ has to begin within a few milliseconds of the request, every time.
   the UART driver's queue, with the receive interrupt set to fire on every
   byte, and wakes when a request's last byte is in.
 - Services never wait. A scan or a join is an order left for the worker
-  task in `radio.c`; what the services read is a snapshot kept under a
-  spinlock.
+  task in `radio.c`, and a fetch one left for the task in `fetch.c`, which
+  makes the TLS connection and reads the reply on the other core. What the
+  services read is kept under a spinlock, held for a few instructions.
+- Nothing is logged between a request and its reply. Every ten seconds the
+  main task logs the link's counters, what the link and fetch tasks have
+  ever had left of their stacks, and the free memory.
 - A reply goes out no sooner than 50 microseconds after the request, which
   is how long the console takes to turn from sending to listening.
 - The time from the last byte to the reply is measured for every request,
@@ -94,10 +99,15 @@ worst that the MicroPython firmware of nes-jukebox measured on a Plus2, an
 application has about 3.5 ms more of every frame for its reply, which at
 this rate is some 27 bytes.
 
-What this run does not show: a real NES, whose port is electrically not the
+NESpedia's ROM (`../nes-wiki`) has since run on the same Stick and
+adapter: a search is fetched from Wikipedia over HTTPS, with the server's
+certificate checked, and the article read from the 8 MB of PSRAM the board
+reports. No figures were taken from that run.
+
+What these runs do not show: a real NES, whose port is electrically not the
 SNAC adapter's (nes-radar's README has what differed before); more than a
-couple of minutes; replies while the Stick is busy with a TLS handshake,
-which nothing asks of it yet.
+few minutes; how long the Stick's replies took while it was making a TLS
+connection, which the log's report every ten seconds would say.
 
 ## Not done
 

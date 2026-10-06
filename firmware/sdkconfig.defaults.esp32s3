@@ -1,0 +1,2 @@
+# The StickS3's ESP32-S3-PICO-1-N8R8: 8 MB of octal PSRAM.
+CONFIG_SPIRAM_MODE_OCT=y
