@@ -7,9 +7,11 @@
     header.bin    the top HEADER_ROWS rows of the screen, which never change
     screen.inc    layout constants and tables for nes/setup/*.s
 
-The header is in the style of nes-jukebox's and nes-wiki's (tools/gen_ui.py,
-tools/gen_screen.py there): the name in letters of 2 x 2 tiles, three blues
-with a shadow, and their credit line in a 3 x 5 font. The 5 x 7 font is theirs, with nes-wiki's small letters.
+The header is the throughput test's (throughput/tools/gen_screen.py in
+nes-jukebox), to the pixel but for the word under the name: the name in
+letters of 2 x 2 tiles, three blues with a shadow; what this ROM is, in the
+5 x 7 font and the credit line's blue; and the credit line in a 3 x 5 font.
+The 5 x 7 font is nes-jukebox's, with nes-wiki's small letters.
 
 Tiles:
 
@@ -36,9 +38,10 @@ SCREEN_ROWS = 30
 
 LOGO_ROW = 2
 LOGO_TEXT = "NESP32"                # letters 2 x 2 tiles, centered
-CREDIT_ROW = 5                      # under the name, as on the other ROMs
-TITLE_ROW = 7
+TITLE_ROW, TITLE_ROWS = 4, 2        # right under the name, in the 5 x 7 font
+TITLE_TOP = 4                       # pixels down those rows that its letters start
 TITLE_TEXT = "SETUP"
+CREDIT_ROW = 6                      # under that, as on the other ROMs
 CREDIT_TEXT = "RETRO BITS (2026)"   # in the small font
 CREDIT_COLUMN, CREDIT_TILES = 11, 10
 CREDIT_COLOR = 2                    # of the logo's palette: its middle blue
@@ -197,6 +200,20 @@ def small_text(text, width, color):
     return pixels
 
 
+def font_text(text, width, color):
+    """Text in the 5 x 7 font and one color, centered to the pixel in a
+    strip `width` pixels wide and TITLE_ROWS tiles high. Text set in whole
+    tiles can be half a tile off the name's middle."""
+    pixels = [[0] * width for _ in range(8 * TITLE_ROWS)]
+    left = (width - (8 * len(text) - 3)) // 2
+    for index, char in enumerate(text):
+        for y, row in enumerate(glyph(char)):
+            for x, on in enumerate(row):
+                if on:
+                    pixels[TITLE_TOP + y][left + 8 * index + x] = color
+    return pixels
+
+
 def glyph(char):
     """A character as 7 rows of 5 pixels (0 or 1)."""
     rows = [int(value, 16) for value in FONT.get(char, FONT["?"]).split()]
@@ -278,11 +295,6 @@ class Screen:
     def put(self, column, row, tile):
         self.names[row * SCREEN_COLUMNS + column] = tile
 
-    def centered(self, row, text):
-        column = (SCREEN_COLUMNS - len(text)) // 2
-        for offset, char in enumerate(text):
-            self.put(column + offset, row, ord(char))
-
     def picture(self, column, row, pixels):
         for dy, tiles in enumerate(cut_tiles(pixels)):
             for dx, tile in enumerate(tiles):
@@ -302,7 +314,7 @@ def build_screen():
     column = (SCREEN_COLUMNS - 2 * len(LOGO_TEXT)) // 2
     for index, char in enumerate(LOGO_TEXT):
         screen.picture(column + 2 * index, LOGO_ROW, big_letter(char))
-    screen.centered(TITLE_ROW, TITLE_TEXT)
+    screen.picture(0, TITLE_ROW, font_text(TITLE_TEXT, 8 * SCREEN_COLUMNS, CREDIT_COLOR))
     screen.picture(CREDIT_COLUMN, CREDIT_ROW,
                    small_text(CREDIT_TEXT, 8 * CREDIT_TILES, CREDIT_COLOR))
     for name, rows in PICTURES.items():

@@ -54,7 +54,16 @@ def test_with_no_stick_it_says_so(console):
 def test_the_header_is_the_name_and_what_this_is(console):
     c = console()
     c.run(3)
-    assert c.line(layout.TITLE_ROW) == layout.TITLE_TEXT == "SETUP"
+    header = layout.build_screen()
+    count = 32 * layout.HEADER_ROWS
+    assert bytes(c.vram[0x2000:0x2000 + count]) == bytes(header.names[:count])
+    # What this is, right under the name: a picture, set to the pixel, in
+    # the credit line's blue and not the text's white.
+    assert layout.TITLE_TEXT == "SETUP" and layout.TITLE_ROW == layout.LOGO_ROW + 2
+    title = [header.tiles[tile] for row in range(layout.TITLE_ROW, layout.CREDIT_ROW)
+             for tile in header.names[32 * row:32 * row + 32]]
+    assert any(any(tile) for tile in title) and not any(any(tile[:8]) for tile in title)
+    assert layout.CREDIT_ROW == layout.TITLE_ROW + layout.TITLE_ROWS
     # The credit line is a picture, in a font smaller than a tile.
     credit = c.text(layout.CREDIT_ROW, layout.CREDIT_COLUMN, layout.CREDIT_TILES)
     assert credit.count("^") >= 8 and c.line(layout.CREDIT_ROW) == credit.strip()
