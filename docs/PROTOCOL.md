@@ -10,7 +10,9 @@ Status: version 1. The frames, the hello, and the services SYS, NET
 line (`tests/`), and have run on a StickS3 with the MiSTer's NES core
 (`firmware/README.md`, "On hardware"). RAW and JUKE are implemented and
 tested the same way, JUKE with nes-jukebox's ROM (its `tests/`), and run
-on the same hardware with that ROM; of RAW, only a run to the console has.
+on the same hardware with that ROM. RAW's runs of the pattern, both ways,
+are tested with nes-jukebox's throughput test ROM (its
+`throughput/tests/`), and have run on that hardware with it.
 The services marked *reserved* have a number and no ops.
 
 Every number in this document comes from `proto/nesp.toml`, from which
@@ -163,7 +165,7 @@ nothing done on the Stick.
 | `$00` | SYS | hello, status, strings, the time, events | done |
 | `$01` | NET | Wi-Fi setup; sockets later | Wi-Fi done |
 | `$02` | RES | resources by name: fetch, lay out, read as a stream or as numbered records | reserved |
-| `$03` | RAW | a run of bytes at a rate of its own with framing off: sampled sound, rate trials | done; sound works on hardware, the rest untried there |
+| `$03` | RAW | a run of bytes at a rate of its own with framing off: sampled sound, rate trials | done |
 | `$04` | PEER | a lobby and a lockstep relay of buttons for two consoles | reserved |
 | `$05` | DIAG | the link's counters and test patterns | done |
 | `$10` | JUKE | the jukebox: the playlist as a stream, the buttons, sampled sound | done |
@@ -303,7 +305,10 @@ passes over as noise.
 pass with none after the first, or after a second with none at all. What
 the nesp32's UART hears in the 20 ms after it changes rate is dropped: an
 ESP32's leaves a byte of junk in its receiver then, which would put every
-byte after it out of place. The console waits its 30 ms after its last
+byte after it out of place. The run's bytes are 8N1 with nothing between
+them, so the nesp32's UART is set for one stop bit while it listens, and
+for the two it sends with otherwise: a StickS3's receiver set for two
+waits for both. The console waits its 30 ms after its last
 byte and asks for the RESULT; a nesp32 still listening for bytes that never
 came does not answer until it has given up.
 
@@ -313,6 +318,13 @@ answers none.
 Another service may have something to send as a run, and agrees to it
 with a reply of its own in place of SEND's: JUKE's SOUND does. The clock
 and the rules are the same, and the hello must have asked for RAW.
+
+nes-jukebox's throughput test (`throughput/` there) is the ROM that asks
+for runs of the pattern: a block of 256 bytes a run, at each rate of a
+ladder in turn, and RESULT after every one. Its fast receiver waits for
+each start bit, and at a rate that is failing may pass over two bytes for
+one, so the runs it asks for are twice as long as the block it checks;
+its other receiver goes by the clock, and asks for a `LEAD` of 8.
 
 ### JUKE `$10`: the jukebox
 

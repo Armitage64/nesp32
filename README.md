@@ -10,7 +10,8 @@ It is replacing the separate firmware and link protocol that each of
 [nes-radar](../nes-radar), [nes-jukebox](../nes-jukebox),
 [nes-wiki](../nes-wiki) and [nes-drmario](../nes-drmario) has, on the hat
 and the wiring they share. NESpedia has moved to it, and the jukebox's ROM
-has too, and plays on the same hardware; the others have not yet.
+has too, and plays on the same hardware. The jukebox's throughput test has
+moved and runs there too. The others have not yet.
 
 ![The status screen](docs/setup-status.png) ![Choosing a network](docs/setup-list.png)
 ![Typing a password](docs/setup-password.png) ![The link test](docs/setup-test.png)
@@ -34,7 +35,7 @@ not been tried.
 | The Stick's firmware (`firmware/main/`): UART, Wi-Fi, screen | working on a StickS3 with the MiSTer; builds for the StickC Plus2, not run on one |
 | A computer in place of a Stick (`host/serial_host.py`) | written, not run on a cable |
 | WIKI, NESpedia's service: an HTTPS fetch, the text laid out in lines | working on a StickS3 with the NESpedia ROM ([nes-wiki](../nes-wiki)) |
-| RAW: a run of bytes with framing off, at a rate of its own, either way | a run to the console works on a StickS3 with the MiSTer, as the jukebox's sampled sound. A run of the pattern, and one from the console, are tested on a computer and on a simulated line only |
+| RAW: a run of bytes with framing off, at a rate of its own, either way | working on a StickS3 with the MiSTer: a run to the console as the jukebox's sampled sound, and runs of the pattern both ways with the throughput test's ROM ([nes-jukebox](../nes-jukebox/throughput)), to 298296 baud to the console and 223722 from it |
 | JUKE, the jukebox's service: the playlist as a stream, the buttons, sampled sound through RAW | working on a StickS3 with the jukebox's ROM ([nes-jukebox](../nes-jukebox)) on the MiSTer; tested with that ROM on a simulated console |
 | The nesp32's files: the jukebox's tracks, in LittleFS (`firmware/main/store.c`, `tools/put_files.py`) | working on a StickS3: tracks written over USB are found and played |
 | Services for netplay and the radar | numbers reserved; not started |
@@ -156,20 +157,14 @@ The ROM tests need cc65 and skip without it.
 ## Not done
 
 - A real NES, a long run, and the StickC Plus2.
-- RAW's runs of the test pattern, and any run from the console, on
-  hardware. Only the jukebox's sound has used RAW there.
 - The services netplay and the radar need, and their ROMs moved to them.
   NESpedia's and the jukebox's are done.
 - A fetch that drops partway is not made again; what came is read, if it
   was a screenful.
 - Updates over Wi-Fi, and a way to put music on a Stick without a cable.
-- The throughput test's ladder of faster rates. RAW now has what it wants
-  of the nesp32: runs of the pattern either way at any rate, and their
-  results. Its ROM (in nes-jukebox, with a script for a Stick running
-  MicroPython) has still to be moved to it.
 - One cartridge for all of it: setup, the Wikipedia reader, the media
-  player and the throughput test in a single ROM, chosen from a menu. To be
-  done once each of them runs on this firmware. Four programs are more than
+  player and the throughput test in a single ROM, chosen from a menu. Each
+  of them now runs on this firmware. Four programs are more than
   the 32 KB of the mapper they use now, so it means a mapper with banks.
 - PAL consoles.
 - A licence. A line-by-line comparison found no code of nes-radar's
