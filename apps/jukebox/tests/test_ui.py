@@ -123,7 +123,7 @@ def test_every_character_of_a_title_has_a_tile():
 def test_the_embedded_song_shows_its_title_and_status(rom):
     machine = Console(*rom)
     machine.run_until_played(30)
-    assert game_line(machine).strip() == "NES Jukebox"
+    assert game_line(machine).strip() == "NESP32 Jukebox"
     assert title_line(machine).strip() == "Demo Arpeggio"
     assert time_line(machine) == "0:00 / -:--"       # it loops: no length to show
     assert status_line(machine) == ""

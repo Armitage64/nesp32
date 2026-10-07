@@ -68,7 +68,7 @@ def demo_song():
         total_frames=len(frames),
         loop_frame=1,
         loop_offset=encoded.loop_offset,
-        title="NES Jukebox - Demo Arpeggio",
+        title="NESP32 Jukebox - Demo Arpeggio",
     )
 
 

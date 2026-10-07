@@ -30,7 +30,7 @@ NAMETABLE = 0x2000
 # --- layout, in tiles ---------------------------------------------------------
 
 LOGO_ROW = 3
-LOGO_TEXT = "NES JUKEBOX"           # letters 2 x 2 tiles, centered
+LOGO_TEXT = "NESP32 JUKEBOX"           # letters 2 x 2 tiles, centered
 CREDIT_ROW = 6
 CREDIT_TEXT = "RETRO BITS (2026)"   # in the small font, under the logo
 CREDIT_COLUMN, CREDIT_TILES = 11, 10  # the tiles it is drawn across
