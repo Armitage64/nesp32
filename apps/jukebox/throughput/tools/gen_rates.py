@@ -1,37 +1,25 @@
 #!/usr/bin/env python3
-"""Write the console's cycle-timed serial routines, one set per rate.
+"""Write the console's cycle-timed block routines, one per rate, and the
+tables the test ROM climbs the ladders by.
 
-    tools/gen_rates.py build/rates.inc
+    tools/gen_rates.py nesp-build build/rates.inc
 
-For every period in stick/linktest/rates.py's two ladders this writes a
-routine that receives a 256-byte block, or one that sends one, with every
-read of $4017 and every write of $4016 on its exact cycle. It also writes
-rx/tx routines for single bytes at the control rate, and tables of the block
-routines' addresses. Each routine starts on its own page and must end on it, so no
-branch pays the page-crossing cycle; tests/test_thru_rates.py measures all
-of them on py65.
+The first argument is where nesp32's tools/gen_proto.py put nesp_proto.py:
+a run's times are the RAW service's.
 
-Receiving. t0 is the cycle on which the hunt's lda read the start bit. The
-loop reads every 9 cycles, so the edge fell 0-9 cycles before t0, 4.5 on
-average, and data bit k's center is t0 - 4.5 + (1.5 + k) * period.
+For every period in tools/rates.py's two ladders this writes a routine that
+receives a 256-byte block, or one that sends one, with every read of $4017
+and every write of $4016 on its exact cycle. Each routine starts on its own
+page and must end on it, so no branch pays the page-crossing cycle;
+tests/test_thru_rates.py measures all of them on py65. Frames, at the
+link's own rate, are nesp32's library's business (its nes/lib/gen_link.py).
 
-The hunt for the next byte must not start before the last data bit is over,
-or a 0 there is taken for a start bit, nor after the next start bit has
-fallen. Storing a byte and looping takes 21 cycles from the last sample to
-the hunt's first read. At 13 cycles a bit that already lands in the second
-stop bit; slower rates pad it out to where the two stop bits meet. To keep
-it to 21, a block's last sample shifts the finished byte into A instead of
-back into memory.
+The tables have a row for each rate to the console and then one for each
+rate from it: the period, what to ask the nesp32 to send, how long to wait
+after the block before asking how it went, the block routine, and the
+rate's figures as text for the screen.
 
-A sample is lda, lsr, ror: 11 cycles. At 12 cycles a bit the pad would be
-one cycle, which no instruction takes, so there the ror uses its absolute
-form, a cycle slower.
-
-A block routine keeps its hunt loop below the code for a byte and jumps up
-to it, because at some rates a byte's code is longer than a branch reaches.
-
-Blocks to the console use two receivers of their own; the plain routine
-above is only for the control rate's single bytes.
+Receiving. Blocks to the console use two receivers of their own.
 
 The fast receiver, for every rate down to 8 cycles a bit. Its hunt is
 cpy $4017 / beq with Y holding what the port reads at a start bit, 6 cycles
@@ -47,7 +35,7 @@ bit's edge should be (cpx, with X holding what the port reads at a start
 bit). If the line is already low it is late or on time, and takes 4 cycles
 to its first sample; if still high it is early, and takes 6. So a byte is
 a cycle shorter or longer than it should be, the edge stays within a cycle
-or two of the look, and the Stick's clock may differ by a cycle a byte.
+or two of the look, and the nesp32's clock may differ by a cycle a byte.
 At 6 cycles a bit nothing in its loop is padding. The first byte is found
 by a hunt, up to 6 cycles out, which the block's preamble of $FF bytes
 (one clean edge each) gives it time to work off.
@@ -56,7 +44,7 @@ Sending. A holds the byte and shifts right after each write, so a bit costs
 sta + lsr, 6 cycles, and the rest is padding. Bits 1 and 2 of A reach OUT1
 and OUT2 as well, which go nowhere but the expansion port. Looping to the
 next byte takes 11 cycles, so below 11 cycles a bit the stop bit is longer
-than the data bits (rates.to_stick_stop). At 6 cycles a bit there is no room
+than the data bits (rates.from_nes_stop). At 6 cycles a bit there is no room
 in the start bit to load the byte, so it is loaded first and Y, holding 0,
 writes the start bit.
 """
@@ -65,17 +53,12 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(HERE, "..", "stick"))
+sys.path.insert(0, HERE)
 
-from linktest import rates  # noqa: E402
+import rates  # noqa: E402
 
-HUNT_TO_CODE = 5        # from the hunt's read to the next instruction
-JUMP = 3                # a block's jmp from its hunt loop to the byte's code
 READ_AT = 3             # lda abs reads on its 4th cycle
-SAMPLE = 11             # lda abs, lsr, ror zp
-MEAN_EDGE = 4.5         # cycles from the start edge to the hunt's read
-BLOCK_TAIL = 21         # from a block's last sample to its next hunt read
-BYTE_TAIL = 18          # from a single byte's last sample to the end of its rts
+FRAME_CYCLES = 29780.5  # from one vblank to the next
 
 
 # Ways to pass time: (cycles, bytes, lines). pha / pla puts A back, and none
@@ -109,25 +92,6 @@ def _pad(cycles, memo):
                             ["    ldy #%d" % loops, ":   dey", "    bne :-"] + tail[1]))
         memo[cycles] = min(choices, key=lambda choice: choice[0])
     return memo[cycles]
-
-
-def first_sample_delay(period):
-    return int(1.5 * period - MEAN_EDGE - HUNT_TO_CODE - READ_AT)
-
-
-def receiver(name, period):
-    """The control rate's receive routine: one byte, sampled the plain way."""
-    lines = ["", ".align 256", "; %d cycles a bit, %d baud" % (period, rates.baud(period)),
-             "%s:" % name, "@hunt:", "    lda JOY2", "    lsr a", "    bcc @hunt"]
-    for bit in range(8):
-        lines += delay(first_sample_delay(period) if bit == 0 else period - SAMPLE)
-        lines += ["    lda JOY2", "    lsr a", "    ror rx_data"]
-    # It returns a bit after its last sample, in the first stop bit, and
-    # leaves the caller the rest of the two to come back.
-    lines += delay(period - BYTE_TAIL)
-    lines += ["    lda rx_data", "    eor #$FF        ; the port inverts D0", "    rts",
-              one_page(name)]
-    return lines
 
 
 FAST_HUNT_TO_CODE = 6   # from the fast hunt's read to the byte's code
@@ -217,7 +181,7 @@ def roomy_receiver(name, period):
 
 
 def fast_sender(name, period):
-    stop = rates.to_stick_stop(period)
+    stop = rates.from_nes_stop(period)
     lines = ["", ".align 256", "; %d cycles a bit, the byte loaded ahead" % period,
              "%s:" % name, "    ldx #0", "    ldy #0", "@byte:", "    lda tx_buf,x",
              "    sty JOY1        ; start bit"]
@@ -228,33 +192,24 @@ def fast_sender(name, period):
         lines += delay(period - 6)
     lines.append("    sta JOY1        ; stop bit")
     # inx, bne, the lda and the sty that starts the next byte take 13.
-    lines += delay(stop - rates.FAST_TO_STICK_STOP_MIN)
+    lines += delay(stop - rates.FAST_FROM_NES_STOP_MIN)
     lines += ["    inx", "    bne @byte", "    rts", one_page(name)]
     return lines
 
 
-def sender(name, period, block):
-    lines = ["", ".align 256", "; %d cycles a bit" % period, "%s:" % name]
-    if block:
-        lines += ["    ldx #0", "@byte:", "    lda #0", "    sta JOY1        ; start bit",
-                  "    lda tx_buf,x"]
-        lines += delay(period - 8)
-    else:
-        lines += ["    sta tx_data", "    lda #0", "    sta JOY1        ; start bit",
-                  "    lda tx_data"]
-        lines += delay(period - 7)
+def sender(name, period):
+    lines = ["", ".align 256", "; %d cycles a bit" % period, "%s:" % name,
+             "    ldx #0", "@byte:", "    lda #0", "    sta JOY1        ; start bit",
+             "    lda tx_buf,x"]
+    lines += delay(period - 8)
     for bit in range(8):
         lines += ["    sta JOY1        ; bit %d" % bit,
                   "    lsr a" if bit < 7 else "    lda #OUT0_MARK"]
         lines += delay(period - 6)
     lines.append("    sta JOY1        ; stop bit")
-    if block:
-        # inx, bne, lda #0 and the sta that starts the next byte take 11.
-        lines += delay(rates.to_stick_stop(period) - rates.TO_STICK_STOP_MIN)
-        lines += ["    inx", "    bne @byte"]
-    else:
-        lines += delay(period)
-    lines += ["    rts", one_page(name)]
+    # inx, bne, lda #0 and the sta that starts the next byte take 11.
+    lines += delay(rates.from_nes_stop(period) - rates.FROM_NES_STOP_MIN)
+    lines += ["    inx", "    bne @byte", "    rts", one_page(name)]
     return lines
 
 
@@ -262,48 +217,117 @@ def one_page(name):
     return '    .assert >(%s) = >(* - 1), error, "%s crosses a page"' % (name, name)
 
 
-def table(name, prefix, part, count):
-    labels = ", ".join("%s%s_%d" % (part, prefix, index) for index in range(count))
-    return ["%s: .byte %s" % (name, labels)]
+def byte_table(name, values, comment):
+    lines = [("%s:%s; %s" % (name, " " * max(1, 23 - len(name)), comment)).rstrip(" ;")]
+    for row in range(0, len(values), 16):
+        lines.append("    .byte " + ", ".join("%d" % value for value in values[row:row + 16]))
+    return lines
 
 
-def include():
-    tracked = [index for index, period in enumerate(rates.TO_NES)
-               if rates.tracked_receive(period)]
-    assert tracked == list(range(tracked[0], len(rates.TO_NES)))    # one compare finds them
+def rest_frames(cycles, proto):
+    """Frames to let pass after a block before asking the nesp32 how the
+    run went: what is left of the run by then, at most; the couple of
+    milliseconds it takes the nesp32 to see that its last byte has left;
+    and the rest RAW asks for. Waiting n frames from somewhere in one is
+    only sure to be n - 1."""
+    cycles += (2 + proto.NESP_RAW_REST_MS) * proto.NESP_CPU_HZ / 1000.0
+    return int(-(-cycles // FRAME_CYCLES)) + 1
+
+
+def to_nes_rest(period, proto):
+    """The console has its block when the receiver comes back, and the run
+    may go on: by a block if all went well, and by more if the line was
+    low throughout and each byte took the receiver only its samples' time,
+    9.5 bits. The run began as late after the console started listening as
+    the nesp32's first byte is due."""
+    lead, count = rates.to_nes_run(period)
+    left = (lead + count) * rates.to_nes_byte(period) - rates.BLOCK * 9.5 * period
+    late = (proto.NESP_RAW_START_MS - proto.NESP_RAW_SETTLE_MS) * proto.NESP_CPU_HZ / 1000.0
+    return rest_frames(late + left, proto)
+
+
+TEXTS = (("TEXT_SPEED", "%d BPS", 10), ("TEXT_CPU", "%d%%", 4), ("TEXT_FASTEST", "%d BYTES/S", 13))
+
+
+def text_record(figures):
+    """A rate's figures as the screen shows them: each a text that ends
+    with a 0, at its place in the record."""
+    record = b""
+    for (_, form, width), figure in zip(TEXTS, figures):
+        text = (form % figure).encode()
+        assert len(text) <= width
+        record += text.ljust(width + 1, b"\0")
+    return record
+
+
+def include(proto):
+    assert proto.NESP_CPU_HZ == rates.CPU_HZ and proto.NESP_TO_NES_BITS == rates.TO_NES_BITS
+    assert min(rates.TO_NES) >= proto.NESP_RAW_PERIOD_MIN
+    to_nes, from_nes = rates.TO_NES, rates.FROM_NES
+    tracked = [index for index, period in enumerate(to_nes) if rates.tracked_receive(period)]
+    assert tracked == list(range(tracked[0], len(to_nes)))      # one compare finds them
     lines = ["; Generated by tools/gen_rates.py. Do not edit.", "",
-             "RX_COUNT = %d" % len(rates.TO_NES), "TX_COUNT = %d" % len(rates.TO_STICK),
-             "RX_TRACK_FIRST = %d   ; rates from here use the tracking receiver" % tracked[0],
-             "PREAMBLE = %d          ; bytes of a block it settles on" % rates.PREAMBLE,
-             "PORT_START = $%02X     ; what JOY2 reads at a start bit" % (rates.PORT_IDLE | 1),
-             "", '.segment "RATES"']
-    lines += receiver("ctl_rx_byte", rates.CONTROL)
-    lines += sender("ctl_tx_byte", rates.CONTROL, block=False)
-    for index, period in enumerate(rates.TO_NES):
+             "RX_COUNT = %d          ; rates to the console" % len(to_nes),
+             "TX_COUNT = %d          ; rates from it; their rows come after the others'"
+             % len(from_nes),
+             "BLOCK = %d" % rates.BLOCK,
+             "PREAMBLE = %d           ; bytes of a block the tracking receiver settles on"
+             % rates.PREAMBLE,
+             "PORT_IDLE = $%02X       ; what JOY2 reads with the line at rest" % rates.PORT_IDLE,
+             "PORT_START = $%02X      ; and at a start bit" % (rates.PORT_IDLE | 1)]
+    offset = 0
+    for name, _, width in TEXTS:
+        lines.append("%s = %d" % (name, offset))
+        offset += width + 1
+    lines += ["", '.segment "RATES"']
+    for index, period in enumerate(to_nes):
         name = "rx_block_%d" % index
         lines += (tracked_receiver(name, period) if rates.tracked_receive(period)
                   else roomy_receiver(name, period) if rates.roomy(period)
                   else fast_receiver(name, period))
-    for index, period in enumerate(rates.TO_STICK):
+    for index, period in enumerate(from_nes):
         name = "tx_block_%d" % index
         lines += (fast_sender(name, period) if rates.fast_send(period)
-                  else sender(name, period, block=True))
+                  else sender(name, period))
     lines += ["", '.segment "RODATA"']
     decode = [0] * 256
     for byte in range(256):
         decode[rates.raw_byte(byte)] = byte
-    lines.append("rx_decode:              ; the byte for what the fast receiver stored")
+    lines.append("rx_decode:              ; the byte for what the receivers stored")
     for row in range(0, 256, 16):
         lines.append("    .byte " + ", ".join("$%02X" % value for value in decode[row:row + 16]))
-    for prefix, count in (("rx_block", len(rates.TO_NES)), ("tx_block", len(rates.TO_STICK))):
-        lines += table(prefix + "_lo", prefix, "<", count)
-        lines += table(prefix + "_hi", prefix, ">", count)
+
+    runs = [rates.to_nes_run(period) for period in to_nes]
+    lines += [""]
+    lines += byte_table("rate_period", list(to_nes) + list(from_nes), "CPU cycles a bit")
+    lines += byte_table("rate_lead", [lead for lead, _ in runs],
+                        "to the console only: bytes of $FF first, which are not checked")
+    lines += byte_table("rate_count_lo", [count & 0xFF for _, count in runs],
+                        "and bytes of the pattern after them")
+    lines += byte_table("rate_count_hi", [count >> 8 for _, count in runs], "")
+    lines += byte_table("rate_rest", [to_nes_rest(period, proto) for period in to_nes]
+                        + [rest_frames(0, proto)] * len(from_nes),
+                        "frames after a block before asking how it went")
+    blocks = (["rx_block_%d" % index for index in range(len(to_nes))]
+              + ["tx_block_%d" % index for index in range(len(from_nes))])
+    lines += ["block_lo: .lobytes " + ", ".join(blocks),
+              "block_hi: .hibytes " + ", ".join(blocks)]
+    records = ([text_record(rates.to_nes_figures(period)) for period in to_nes]
+               + [text_record(rates.from_nes_figures(period)) for period in from_nes])
+    names = ["rate_text_%d" % index for index in range(len(records))]
+    lines += ["rate_text_lo: .lobytes " + ", ".join(names),
+              "rate_text_hi: .hibytes " + ", ".join(names)]
+    for name, record in zip(names, records):
+        lines.append("%s: .byte %s" % (name, ", ".join("$%02X" % byte for byte in record)))
     return "\n".join(lines) + "\n"
 
 
 def main(argv):
-    with open(argv[1], "w") as handle:
-        handle.write(include())
+    sys.path.insert(0, os.path.abspath(argv[1]))
+    import nesp_proto
+
+    with open(argv[2], "w") as handle:
+        handle.write(include(nesp_proto))
     return 0
 
 

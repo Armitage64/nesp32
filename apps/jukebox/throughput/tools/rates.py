@@ -1,19 +1,19 @@
 """The ladders of line rates the test climbs, one for each direction.
 
 A rate is a whole number of NES CPU cycles per bit, so the console's
-bit-banged routines hit every bit exactly and need no rounding. The Stick's
-UART takes any baud rate, and is set to the nearest whole one. 47 cycles is
-38080 baud, within 1% of the jukebox's 38400.
+bit-banged routines hit every bit exactly and need no rounding. The
+nesp32's UART takes any baud rate, and is set to the nearest whole one
+(nesp32's RAW service, which a rate is asked of as its cycles a bit). 21
+cycles is 85227 baud, the link's own rate.
 
 Each ladder ends where its routines do.
 
-To the console there are two receivers, and neither is the jukebox's (which
-takes 11 cycles to sample a bit and hunts for the start bit every 9; an
-earlier build ran it up to 12 cycles a bit). Both keep the byte in A and
-fold each read of the port into it, 6 cycles a sample, which they can do
-because they count on what the unused bits of $4017 read as (PORT_IDLE).
-Both leave each byte scrambled in a known way, which the console undoes
-after the block (raw_byte).
+To the console there are two receivers, and neither is the link's (which
+takes 11 cycles to sample a bit and hunts for the start bit every 9). Both
+keep the byte in A and fold each read of the port into it, 6 cycles a
+sample, which they can do because they count on what the unused bits of
+$4017 read as (PORT_IDLE). Both leave each byte scrambled in a known way,
+which the console undoes after the block (raw_byte).
 
 Down to 8 cycles a bit the fast receiver hunts for each start bit, looking
 every 6 or 7 cycles. At 8 that hunt is nearly a bit long, so at 7 and 6
@@ -32,21 +32,19 @@ next byte during the start bit and needs 11 cycles between bytes, so under
 before the start bit and needs 13. Periods of 9 and 7 would need a pad of
 one cycle.
 
-Commands, replies and the screen's text always travel at CONTROL, whatever
-rate is being tested.
-
-tools/gen_rates.py builds the console's routines from these ladders, so the
-two sides cannot disagree.
+tools/gen_rates.py builds the console's routines and its tables from these
+ladders, and the tests read them from here.
 """
+
+import os
 
 CPU_HZ = 1789773                # NTSC: 21.477272 MHz / 12
 SHARED = (186, 93, 62, 47, 39, 34, 28, 25, 21, 19, 17, 16, 14, 13)
 TO_NES = SHARED + (12, 11, 10, 9, 8, 7, 6, 5)
-TO_STICK = SHARED + (12, 11, 10, 8, 6)
-CONTROL = 186                   # cycles a bit for commands and replies
+FROM_NES = SHARED + (12, 11, 10, 8, 6)
 BLOCK = 256                     # bytes in one test block
 PREAMBLE = 8                    # of those, $FF for the tracking receiver to settle on
-TO_NES_BITS = 11                # the Stick sends 8N2
+TO_NES_BITS = 11                # the nesp32 sends 8N2
 
 # Port 2 as an instruction with $4017 as its operand reads it: bit 0 is D0
 # inverted, so 0 at mark; D1 to D4 are pulled up and inverted, so 0 with
@@ -67,9 +65,12 @@ FASTEST_SAMPLE = 6              # asl, eor
 ROOMY_TO_NES_WORK = 12 + 4 + 7 * 6 + 11
 FAST_TO_NES_WORK = 9 + 4 + 7 * 6 + 9
 TRACKED_TO_NES_WORK = 4 + 5 + 4 + 7 * 6 + 11
-TO_STICK_WORK = 10 + 8 * 6 + 4 + 5
-TO_STICK_STOP_MIN = 11
-FAST_TO_STICK_STOP_MIN = 13
+FROM_NES_WORK = 10 + 8 * 6 + 4 + 5
+FROM_NES_STOP_MIN = 11
+FAST_FROM_NES_STOP_MIN = 13
+# The console sends 8N1. THRU_STOP_BITS=2 in the environment of a build
+# makes its stop bit two bits long, to find out whether a UART minds one.
+FROM_NES_STOP_BITS = int(os.environ.get("THRU_STOP_BITS", "1"))
 
 
 def baud(period):
@@ -121,10 +122,10 @@ def raw_byte(byte):
     return reverse ^ 0xFF ^ (PORT_IDLE | (PORT_IDLE << 1) & 0xFF)
 
 
-def to_stick_stop(period):
+def from_nes_stop(period):
     """Cycles of the stop bit the console sends."""
-    least = FAST_TO_STICK_STOP_MIN if fast_send(period) else TO_STICK_STOP_MIN
-    stop = max(period, least)
+    least = FAST_FROM_NES_STOP_MIN if fast_send(period) else FROM_NES_STOP_MIN
+    stop = max(FROM_NES_STOP_BITS * period, least)
     return stop + 1 if stop - least == 1 else stop
 
 
@@ -133,8 +134,8 @@ def to_nes_byte(period):
     return TO_NES_BITS * period
 
 
-def to_stick_byte(period):
-    return 9 * period + to_stick_stop(period)
+def from_nes_byte(period):
+    return 9 * period + from_nes_stop(period)
 
 
 def to_nes_work(period):
@@ -143,5 +144,46 @@ def to_nes_work(period):
     return ROOMY_TO_NES_WORK if roomy(period) else FAST_TO_NES_WORK
 
 
-def to_stick_work(period):
-    return TO_STICK_WORK - (2 if fast_send(period) else 0)
+def from_nes_work(period):
+    return FROM_NES_WORK - (2 if fast_send(period) else 0)
+
+
+def to_nes_run(period):
+    """What the console asks the nesp32 to send for one block: (bytes of
+    $FF first, bytes of the pattern after them).
+
+    The receivers have no timeout. The tracking one needs none: it goes by
+    the clock, and has its block whatever the line did. The fast one waits
+    for every start bit, and where a rate is failing it can lose its place
+    and take two bytes of the line for one of its own. It never takes more:
+    a byte is some 10 bits to it and 11 on the line, so it is done inside
+    the byte after the one it began in, and the next low it sees is at the
+    latest the start bit after that. So its run is two blocks long. It
+    checks the first and lets the rest go by.
+    """
+    if tracked_receive(period):
+        return PREAMBLE, BLOCK - PREAMBLE
+    return 0, 2 * BLOCK
+
+
+def bytes_per_second(byte_cycles):
+    """Payload rate with bytes sent back to back."""
+    return CPU_HZ // byte_cycles
+
+
+def cpu_percent(work, byte_cycles):
+    """The share of the console's CPU a routine needs during a block. The
+    rest is padding between bits; at 100% the rate could go no higher
+    whatever the wire did."""
+    return (100 * work + byte_cycles // 2) // byte_cycles
+
+
+def to_nes_figures(period):
+    """(baud, CPU percent, bytes a second) of a rate to the console."""
+    total = to_nes_byte(period)
+    return baud(period), cpu_percent(to_nes_work(period), total), bytes_per_second(total)
+
+
+def from_nes_figures(period):
+    total = from_nes_byte(period)
+    return baud(period), cpu_percent(from_nes_work(period), total), bytes_per_second(total)

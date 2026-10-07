@@ -9,9 +9,12 @@
 > desktop host (`host/`), the link protocol and their tests are gone from
 > this tree, though not from its history: the playlist was ported to C as
 > nesp32's JUKE service, sampled sound travels as a run of its RAW
-> service, and the link is nesp32's, at 85227 baud. See
-> [`README.md`](README.md) and [`docs/PROTOCOL.md`](docs/PROTOCOL.md) for
-> how things are now.
+> service, and the link is nesp32's, at 85227 baud. The throughput test
+> has moved the same way: its ROM runs the test itself through RAW, and
+> its script for the Stick, the protocol the two spoke and
+> `tools/gen_crc_table.py` are gone with the rest. See
+> [`README.md`](README.md), [`docs/PROTOCOL.md`](docs/PROTOCOL.md) and
+> [`throughput/README.md`](throughput/README.md) for how things are now.
 
 Stream NES music from `.vgm` files to a stock NTSC NES over the controller-2
 serial link proven in `../nes-radar`, and play it on the console's own APU.

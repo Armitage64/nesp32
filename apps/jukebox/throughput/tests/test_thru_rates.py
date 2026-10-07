@@ -8,15 +8,16 @@ against the hunt loop, and baud error.
 
 import pytest
 
-from linktest import proto
-from linktest import rates
-from linktest.rates import BLOCK, CONTROL, TO_NES, TO_STICK
-from thru_sim import HUNT_CYCLES, SPACE, Machine, Tap, Wire
+import nesp
+import rates
+from rates import BLOCK, FROM_NES, TO_NES
+from thru_sim import Machine, SlowWire
+from wire import SPACE
 
 # The last rate to the console is one it cannot do; it has its own test.
 RX_RATES = [r for r in range(len(TO_NES)) if not rates.beyond_cpu(TO_NES[r])]
-TX_RATES = range(len(TO_STICK))
-PHASES = (0, 2.5, 4.5, 7, 8.5)  # cycles into a pass of the 9-cycle hunt
+TX_RATES = range(len(FROM_NES))
+PHASES = (0, 2.5, 4.5, 7, 8.5)  # cycles the start bit falls after a round number
 RX_BUF = 0x0400
 TX_BUF = 0x0500
 START = 500
@@ -24,13 +25,13 @@ START = 500
 
 def receive_block(rom, rate, phase=0.0, clock_error=0.0):
     """Returns (machine, the block sent, the block as the routine left it:
-    scrambled, until the ROM decodes it)."""
-    wire = Wire()
+    scrambled, until the ROM decodes it). The block is the first of what a
+    nesp32 is asked to send for one."""
+    wire = SlowWire()
     machine = Machine(*rom, wire=wire)
     machine.read_log = []
-    data = proto.pattern(0x1D0C + rate, BLOCK)
-    if rates.tracked_receive(TO_NES[rate]):
-        data = b"\xff" * rates.PREAMBLE + data[rates.PREAMBLE:]
+    lead, count = rates.to_nes_run(TO_NES[rate])
+    data = (b"\xff" * lead + nesp.pattern(0x1D0C + rate, count))[:BLOCK]
     wire.send(data, START + phase, TO_NES[rate] / (1.0 + clock_error))
     machine.call("rx_block_%d" % rate)
     stored = bytes(rates.raw_byte(byte) for byte in data)
@@ -155,7 +156,7 @@ def test_receive_tolerance_is_reported(rom):
 def send_block(rom, rate):
     machine = Machine(*rom)
     machine.tap.write(0, 1)     # OUT0 already at mark, as reset leaves it
-    data = proto.pattern(0x2B0D + rate, BLOCK)
+    data = nesp.pattern(0x2B0D + rate, BLOCK)
     for offset, byte in enumerate(data):
         machine.memory[TX_BUF + offset] = byte
     machine.write_log = []
@@ -166,21 +167,21 @@ def send_block(rom, rate):
 @pytest.mark.parametrize("rate", TX_RATES)
 def test_a_block_is_sent_with_every_bit_on_its_cycle(rom, rate):
     machine, data = send_block(rom, rate)
-    period = TO_STICK[rate]
+    period = FROM_NES[rate]
     writes = machine.write_log
     assert len(writes) == 10 * BLOCK
     first = writes[0][0]
     for index, (cycle, level) in enumerate(writes):
         byte, bit = divmod(index, 10)
         expected = 0 if bit == 0 else 1 if bit == 9 else (data[byte] >> (bit - 1)) & 1
-        at = byte * rates.to_stick_byte(period) + bit * period
+        at = byte * rates.from_nes_byte(period) + bit * period
         assert (cycle - first, level) == (at, expected), "write %d" % index
 
 
 def test_the_stop_bit_is_never_shorter_than_a_data_bit():
-    for period in TO_STICK:
-        assert period <= rates.to_stick_stop(period) <= max(period, 13)
-        assert rates.to_stick_byte(period) == 10 * period or period < 13
+    for period in FROM_NES:
+        assert period <= rates.from_nes_stop(period) <= max(period, 13)
+        assert rates.from_nes_byte(period) == 10 * period or period < 13
 
 
 def test_the_receivers_share_of_the_cpu_is_what_rates_says(rom):
@@ -196,7 +197,8 @@ def test_the_receivers_share_of_the_cpu_is_what_rates_says(rom):
     # 6 cycles a bit: check 4, branch and nop or jump 5 on average, 8
     # samples 46, store and loop 11. Nothing else is in the loop.
     assert rates.to_nes_work(6) == rates.to_nes_byte(6) == 4 + 5 + 46 + 11
-    assert body(6).count(0xEA) == 1 and body(6).count(0x24) == 0    # the one nop is a way out
+    # The one nop is a way out, and there is no bit $00.
+    assert body(6).count(0xEA) == 1 and body(6).count(b"\x24\x00") == 0
     # 8 cycles a bit: 7 pads of 2 between samples, and the hunt idles the rest.
     assert body(8).count(0xEA) == 7 + 1
     assert rates.to_nes_byte(8) - rates.to_nes_work(8) - 7 * 2 == 10
@@ -210,28 +212,35 @@ def test_the_receivers_share_of_the_cpu_is_what_rates_says(rom):
 @pytest.mark.parametrize("clock_error", [-0.02, 0.0, 0.02])
 def test_a_uart_receives_the_sent_block(rom, rate, clock_error):
     machine, data = send_block(rom, rate)
-    bit = TO_STICK[rate] / (1.0 + clock_error)
+    bit = FROM_NES[rate] / (1.0 + clock_error)
     received, _ = machine.tap.decode(0, machine.now + 100 * bit, bit)
-    assert bytes(received) == data
+    assert bytes(byte for byte, _ in received) == data
 
 
-@pytest.mark.parametrize("byte", (0x00, 0xFF, 0x55, 0xAA, 0xC5, 0x01, 0x80))
-def test_the_control_rate_byte_routines(rom, byte):
-    period = CONTROL
-    for phase in PHASES:
-        wire = Wire()
-        machine = Machine(*rom, wire=wire)
-        wire.send([byte], START + phase, period)
-        assert machine.call("ctl_rx_byte", x=0x5A).a == byte
-        assert machine.mpu.x == 0x5A    # recv_command counts in X
+def test_the_cpu_share_rises_with_the_rate():
+    # All the way up each ladder, with no drop where one routine hands over
+    # to the next, and past 100% only at the rate that is there to fail.
+    received = {period: rates.to_nes_figures(period) for period in TO_NES}
+    sent = {period: rates.from_nes_figures(period) for period in FROM_NES}
+    for figures in (received, sent):
+        shares = [cpu for _, cpu, _ in figures.values()]
+        assert shares == sorted(shares)
+    assert [received[period][1] for period in (186, 47, 13, 12, 8, 7, 6, 5)] == [
+        3, 13, 48, 48, 73, 86, 100, 120]
+    assert [sent[period][1] for period in (186, 47, 13, 8, 6)] == [4, 14, 52, 81, 97]
+    assert received[13][2] == 12515 and sent[13][2] == 13767
+    # Under 11 cycles a bit the console's stop bit is longer than the rest.
+    assert sent[8][2] == rates.CPU_HZ // (9 * 8 + 11)
+    assert sent[6][2] == rates.CPU_HZ // (9 * 6 + 13)
 
-    machine = Machine(*rom)
-    machine.tap.write(0, 1)
-    machine.write_log = []
-    mpu = machine.call("ctl_tx_byte", a=byte, x=0x5A)
-    writes = machine.write_log
-    levels = [0] + [(byte >> k) & 1 for k in range(8)] + [1]
-    assert [(cycle - writes[0][0], level) for cycle, level in writes] == [
-        (k * period, level) for k, level in enumerate(levels)]
-    assert mpu.x == 0x5A                # send_reply counts in X
-    assert mpu.processorCycles - writes[-1][0] >= period    # a whole stop bit
+
+def test_a_run_to_the_console_is_long_enough_for_its_receiver():
+    # The tracking receiver goes by the clock, and is sent a block: its
+    # preamble and the pattern. The fast one may pass over two bytes for
+    # one, and is sent two blocks.
+    for period in TO_NES:
+        lead, count = rates.to_nes_run(period)
+        if rates.tracked_receive(period):
+            assert (lead, lead + count) == (rates.PREAMBLE, BLOCK)
+        else:
+            assert (lead, count) == (0, 2 * BLOCK)
