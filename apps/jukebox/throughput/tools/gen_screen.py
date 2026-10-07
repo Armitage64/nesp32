@@ -6,9 +6,9 @@ where on that screen the ROM writes.
     tools/gen_screen.py build --preview screen.png
 
 The tiles are the jukebox's (../tools/gen_ui.py): its 5 x 7 font with each
-character at its ASCII code, its palettes, and its header, a name in the
-big letters over the credit line, with what this ROM is for between the two
-in the credit line's blue. The font has capitals only.
+character at its ASCII code, its palettes, and its header, the name in the
+big letters over the credit line, with what this ROM is between the two in
+the credit line's blue. The font has capitals only.
 
 Under the header is a line for what the test is doing, and a half of the
 screen for each direction: its title, and a row for each of ROWS. screen.bin
@@ -25,14 +25,12 @@ sys.path.insert(0, os.path.join(HERE, "..", "..", "tools"))
 
 import gen_ui  # noqa: E402
 
-LOGO_ROW = 2
-LOGO_TEXT = "NESP32"              # letters 2 x 2 tiles, centered
-SUBTITLE_ROW, SUBTITLE_ROWS = 4, 2  # right under the logo, in the 5 x 7 font
-SUBTITLE_TOP = 4                    # pixels down those rows that its letters start
+# The header is the jukebox's but for the word under the name.
+LOGO_ROW, LOGO_TEXT = gen_ui.LOGO_ROW, gen_ui.LOGO_TEXT
+SUBTITLE_ROW, SUBTITLE_ROWS = gen_ui.SUBTITLE_ROW, gen_ui.SUBTITLE_ROWS
 SUBTITLE = "THROUGHPUT TEST"
-CREDIT_ROW = 6                      # the jukebox's credit line
-LOGO_LAST_ROW = 7                   # the logo's palette covers rows 0 to here
-LOGO_BLUE = 2                       # that palette's middle blue: the credit's
+CREDIT_ROW = gen_ui.CREDIT_ROW
+LOGO_LAST_ROW = gen_ui.LOGO_LAST_ROW
 
 # Text is 28 columns wide from LEFT. A direction has a title row and, under
 # it, a row for each of ROWS: its name, and a value of up to so many tiles.
@@ -47,31 +45,10 @@ HALVES = (("NESP32 TO NES", 11), ("NES TO NESP32", 20))     # title, its row
 LAST_ROW = 27                       # rows 28 and 29 are overscan
 
 
-def font_text(text, width, color):
-    """Text in the 5 x 7 font and one color, centered to the pixel in a
-    strip `width` pixels wide and SUBTITLE_ROWS tiles high. Text set in
-    whole tiles can be half a tile off the logo's middle."""
-    pixels = [[0] * width for _ in range(8 * SUBTITLE_ROWS)]
-    left = (width - (8 * len(text) - 3)) // 2
-    for index, char in enumerate(text):
-        for y, row in enumerate(gen_ui.glyph(char)):
-            for x, on in enumerate(row):
-                if on:
-                    pixels[SUBTITLE_TOP + y][left + 8 * index + x] = color
-    return pixels
-
-
 def build_screen():
     screen = gen_ui.Screen()
     screen.names[:] = b" " * len(screen.names)  # the ROM writes text over text
-    column = (gen_ui.SCREEN_COLUMNS - 2 * len(LOGO_TEXT)) // 2
-    for index, char in enumerate(LOGO_TEXT):
-        if char != " ":
-            screen.picture(column + 2 * index, LOGO_ROW, gen_ui.big_letter(char))
-    screen.picture(0, SUBTITLE_ROW, font_text(SUBTITLE, 8 * gen_ui.SCREEN_COLUMNS, LOGO_BLUE))
-    screen.picture(gen_ui.CREDIT_COLUMN, CREDIT_ROW,
-                   gen_ui.small_text(gen_ui.CREDIT_TEXT, 8 * gen_ui.CREDIT_TILES, LOGO_BLUE))
-    screen.palette_rows(0, LOGO_LAST_ROW, gen_ui.PALETTE_LOGO)
+    gen_ui.header(screen, SUBTITLE)
     screen.text(LEFT, STATE_ROW, WAITING)
     for title, top in HALVES:
         screen.text(LEFT, top, title)

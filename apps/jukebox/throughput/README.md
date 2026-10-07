@@ -119,7 +119,7 @@ running. This is a test on a simulated line with slow edges, partway
 through the second direction:
 
 ```text
-        N - E S P - 3 2
+          N E S P 3 2
          THROUGHPUT TEST
         RETRO BITS (2026)
 

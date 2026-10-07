@@ -29,12 +29,19 @@ NAMETABLE = 0x2000
 
 # --- layout, in tiles ---------------------------------------------------------
 
-LOGO_ROW = 3
-LOGO_TEXT = "NESP32 JUKEBOX"           # letters 2 x 2 tiles, centered
+# The header, which the throughput test's ROM has too (throughput/) and
+# nesp32's setup ROM has to the pixel: the name, what this ROM is, and the
+# credit line.
+LOGO_ROW = 2
+LOGO_TEXT = "NESP32"                # letters 2 x 2 tiles, centered
+SUBTITLE_ROW, SUBTITLE_ROWS = 4, 2  # right under the logo, in the 5 x 7 font
+SUBTITLE_TOP = 4                    # pixels down those rows that its letters start
+SUBTITLE = "JUKEBOX"
 CREDIT_ROW = 6
-CREDIT_TEXT = "RETRO BITS (2026)"   # in the small font, under the logo
+CREDIT_TEXT = "RETRO BITS (2026)"   # in the small font, under that
 CREDIT_COLUMN, CREDIT_TILES = 11, 10  # the tiles it is drawn across
 LOGO_LAST_ROW = 7                   # the logo's palette covers rows 0 to here
+LOGO_BLUE = 2                       # that palette's middle blue: the subtitle's and the credit's
 GAME_COLUMN, GAME_ROW = 2, 9        # the game the track came from
 TITLE_COLUMN, TITLE_ROW = 2, 11    # the track's name
 TITLE_MAX = 28                      # jbs.TITLE_MAX: the widest name
@@ -144,6 +151,20 @@ def small_text(text, width, color):
             for x in range(3):
                 if int(row) >> (2 - x) & 1:
                     pixels[1 + y][left + 4 * index + x] = color
+    return pixels
+
+
+def font_text(text, width, color):
+    """Text in the 5 x 7 font and one color, centered to the pixel in a
+    strip `width` pixels wide and SUBTITLE_ROWS tiles high. Text set in
+    whole tiles can be half a tile off the logo's middle."""
+    pixels = [[0] * width for _ in range(8 * SUBTITLE_ROWS)]
+    left = (width - (8 * len(text) - 3)) // 2
+    for index, char in enumerate(text):
+        for y, row in enumerate(glyph(char)):
+            for x, on in enumerate(row):
+                if on:
+                    pixels[SUBTITLE_TOP + y][left + 8 * index + x] = color
     return pixels
 
 
@@ -279,16 +300,23 @@ class Screen:
         return bytes(self.names) + bytes(self.attributes)
 
 
-def build_screens():
-    """Return (link screen, standalone screen); they share one tile set."""
-    screen = Screen()
+def header(screen, subtitle):
+    """Put the header on a screen: the name in the big letters, what the
+    ROM is under it, and the credit line, in the logo's palette."""
     column = (SCREEN_COLUMNS - 2 * len(LOGO_TEXT)) // 2
     for index, char in enumerate(LOGO_TEXT):
         if char != " ":
             screen.picture(column + 2 * index, LOGO_ROW, big_letter(char))
-    # Color 2 of the logo's palette: its middle blue.
-    screen.picture(CREDIT_COLUMN, CREDIT_ROW, small_text(CREDIT_TEXT, 8 * CREDIT_TILES, 2))
+    screen.picture(0, SUBTITLE_ROW, font_text(subtitle, 8 * SCREEN_COLUMNS, LOGO_BLUE))
+    screen.picture(CREDIT_COLUMN, CREDIT_ROW,
+                   small_text(CREDIT_TEXT, 8 * CREDIT_TILES, LOGO_BLUE))
     screen.palette_rows(0, LOGO_LAST_ROW, PALETTE_LOGO)
+
+
+def build_screens():
+    """Return (link screen, standalone screen); they share one tile set."""
+    screen = Screen()
+    header(screen, SUBTITLE)
     for band, palette in enumerate(BAR_BAND_PALETTES):
         screen.palette_rows(BAR_ROW + 2 * band, BAR_ROW + 2 * band + 1, palette)
     for column in range(BAR_COLUMN, BAR_COLUMN + BAR_COUNT):
