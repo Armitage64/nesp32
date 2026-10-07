@@ -132,7 +132,15 @@ there by `tools/put_files.py`:
 
 So the file reads do not land on the way to a reply, and the UART's change
 of rate and back works with the driver installed. Not tried: the five
-slower rates of sound, a long run, and RAW's runs of the test pattern.
+slower rates of sound, and a long run.
+
+RAW's runs of the test pattern have since run there, with nes-jukebox's
+throughput test ROM: 298296 baud to the console, the last rate its CPU can
+do, and 223722 from it. The first try heard 194 of every 256 bytes from
+the console, at any rate. The UART's stop bits are one setting for both
+ways, two for what the console is sent, and the StickS3's receiver then
+waits for two, where a run from the console has one and nothing after it.
+The UART is now set for one while such a run is heard (`link_line_hear`).
 
 The steps it was brought up by, for another board or after a change, each
 isolating one thing:

@@ -28,11 +28,12 @@ void link_open(void);
 /* Start answering the console. */
 void link_start(const nesp_hal_t *hal);
 
-/* nesp_hal_t's line_rate, line_write and line_idle: the UART with framing
- * off, for a run of RAW's. From the link task only. */
+/* nesp_hal_t's line_rate, line_write, line_idle and line_hear: the UART
+ * with framing off, for a run of RAW's. From the link task only. */
 void link_line_rate(void *ctx, uint8_t period);
 size_t link_line_write(void *ctx, const uint8_t *data, size_t len);
 bool link_line_idle(void *ctx);
+void link_line_hear(void *ctx, bool hearing);
 
 /* Tell the console of something (NESP_EVENT_*). From any task. */
 void link_event(uint8_t code, uint8_t arg);

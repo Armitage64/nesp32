@@ -155,9 +155,18 @@ void nesp_raw_heard(nesp_raw_t *raw, const uint8_t *data, size_t len)
     raw->stamp = true;              /* tick notes when */
 }
 
+/* The UART as a run from the console wants it, or as the link does. */
+static void hear(nesp_raw_t *raw, bool hearing)
+{
+    if (raw->from_console && raw->hal->line_hear != NULL) {
+        raw->hal->line_hear(raw->hal->ctx, hearing);
+    }
+}
+
 /* The run is over: the line is the link's again. */
 static void finish(nesp_raw_t *raw)
 {
+    hear(raw, false);
     raw->hal->line_rate(raw->hal->ctx, NESP_PERIOD);
     raw->phase = IDLE;
     raw->state = NESP_RUN_DONE;
@@ -216,6 +225,7 @@ static bool tick(void *ctx, uint32_t now)
             return false;
         }
         if (now - raw->armed_at >= NESP_RAW_LISTEN_MS) {
+            hear(raw, true);
             raw->hal->line_rate(raw->hal->ctx, raw->period);
             raw->changed_at = raw->heard_at = now;
             raw->stamp = false;
@@ -320,6 +330,7 @@ static void deactivate(void *ctx)
 {
     nesp_raw_t *raw = ctx;
     if (nesp_raw_owns_line(raw)) {
+        hear(raw, false);
         raw->hal->line_rate(raw->hal->ctx, NESP_PERIOD);
     }
     raw->phase = IDLE;

@@ -92,6 +92,11 @@ typedef struct {
     size_t (*line_write)(void *ctx, const uint8_t *data, size_t len);
     /* True once everything written has left the UART. */
     bool (*line_idle)(void *ctx);
+    /* May be NULL. A run from the console is about to come (true), or is
+     * over (false). Its bytes are 8N1 with nothing between them, and a UART
+     * set for the two stop bits the nesp32 sends with may want both of
+     * what it hears too: the StickS3's lost a quarter of such a run. */
+    void (*line_hear)(void *ctx, bool hearing);
     /* The nesp32's own files: the jukebox's tracks, in the order of their
      * names. Flash is slow, and a read may take a millisecond or two. */
     uint16_t (*tracks)(void *ctx);

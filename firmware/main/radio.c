@@ -519,6 +519,7 @@ const nesp_hal_t *radio_hal(void)
     hal.line_rate = link_line_rate;
     hal.line_write = link_line_write;
     hal.line_idle = link_line_idle;
+    hal.line_hear = link_line_hear;
     hal.tracks = store_tracks;
     hal.track_size = store_track_size;
     hal.track_read = store_track_read;

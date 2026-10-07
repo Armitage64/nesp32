@@ -232,6 +232,19 @@ void link_line_rate(void *ctx, uint8_t period)
     xQueueReset(uart_events);
 }
 
+/* The UART's stop bits are one setting for both ways. The console needs
+ * two of what it is sent, and sends one itself: between the bytes of a
+ * request it is slow enough that the UART finds a second anyway, and in a
+ * run it is not. On a StickS3 the receiver waits for the second, and loses
+ * its place in the byte that begins there: 194 of a run's 256 bytes came,
+ * at 9622 baud as at 85227. Nothing is sent while a run from the console
+ * is heard, so for that long the setting is one. */
+void link_line_hear(void *ctx, bool hearing)
+{
+    (void)ctx;
+    uart_set_stop_bits(LINK_UART, hearing ? UART_STOP_BITS_1 : UART_STOP_BITS_2);
+}
+
 size_t link_line_write(void *ctx, const uint8_t *data, size_t len)
 {
     size_t room = 0;
