@@ -25,6 +25,7 @@ sys.path.insert(0, BUILD)
 sys.path.insert(0, os.path.join(ROOT, "host"))
 sys.path.insert(0, os.path.join(ROOT, "nes", "lib"))
 sys.path.insert(0, os.path.join(ROOT, "nes", "setup"))
+sys.path.insert(0, os.path.join(ROOT, "nes", "cart"))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, HERE)
 
@@ -37,6 +38,28 @@ def build():
     subprocess.run(["make", "-s", "BUILD=%s" % BUILD, "verify", "timeout-rom"], cwd=ROOT,
                    check=True)
     return BUILD
+
+
+@pytest.fixture(scope="session")
+def cart_build(build):
+    """The build directory, with the cartridge in it. The other programs on
+    it are built from their checkouts beside this one."""
+    for name in ("nes-jukebox", "nes-wiki", "nes-drmario"):
+        if not os.path.isdir(os.path.join(ROOT, "..", name)):
+            pytest.skip("%s is not beside this checkout" % name)
+    subprocess.run(["make", "-s", "BUILD=%s" % BUILD, "verify-cart"], cwd=ROOT, check=True)
+    return BUILD
+
+
+@pytest.fixture
+def cart(cart_build):
+    """Make a Console on the cartridge, with the menu's labels."""
+    from console import Console
+
+    def make(**kwargs):
+        return Console(os.path.join(cart_build, "nesp32.nes"),
+                       os.path.join(cart_build, "cart", "menu.labels"), **kwargs)
+    return make
 
 
 @pytest.fixture

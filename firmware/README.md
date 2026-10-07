@@ -5,8 +5,11 @@ ESP-IDF 5.x and M5Unified, for an M5StickC Plus2 (`esp32`) or an M5StickS3
 needs (`../docs/PROTOCOL.md`).
 
 **Status: working on a StickS3**, on the MiSTer's NES core through a SNAC
-adapter ("On hardware", below). A real NES, a run of any length, and the
-StickC Plus2 build have not been tried. The jukebox runs on the same
+adapter ("On hardware", below). It works on a StickC Plus2 as well, and
+both boards on a real NES: the cartridge (`../README.md`), its menu and
+all five programs, has been run on each board with each console. No
+figures were taken from those runs, and none has been of any length. The
+jukebox runs on the same
 Stick and core ("The jukebox", below). PEER, for two consoles playing one
 game, has played a network game of nes-drmario's netplay ROM ("Two
 consoles", below).
@@ -115,9 +118,10 @@ adapter: a search is fetched from Wikipedia over HTTPS, with the server's
 certificate checked, and the article read from the 8 MB of PSRAM the board
 reports. No figures were taken from that run.
 
-What these runs do not show: a real NES, whose port is electrically not the
-SNAC adapter's (nes-radar's README has what differed before); more than a
-few minutes; how long the Stick's replies took while it was making a TLS
+What these runs do not show: figures from a real NES, whose port is
+electrically not the SNAC adapter's (nes-radar's README has what differed
+before), though the cartridge has since worked on one; more than a few
+minutes; how long the Stick's replies took while it was making a TLS
 connection, which the log's report every ten seconds would say.
 
 ## The jukebox
@@ -211,7 +215,7 @@ bytes once a millisecond.
 
 ## Not done
 
-- A real NES, a long run, and the StickC Plus2.
+- A long run, and figures from a real NES and from the StickC Plus2.
 - Figures from PEER on hardware (above).
 - Leaving UIFlow: a Stick that ships with UIFlow has to be flashed once
   over USB. M5Burner brings UIFlow back.

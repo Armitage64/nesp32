@@ -9,6 +9,10 @@ py65 is a plain 6502. This adds:
   as a shift register loaded from `pad`.
 - Controller port 2 as the link's line (wire.py): what a read of $4017
   sees on the cycle it looks, and where the writes to OUT0 go.
+- The cartridge's MMC1, if the ROM's header says it has one: the banks of
+  PRG and CHR its registers ask for, beginning as the chip does with the
+  last 16 KB at $C000. A write at $8000 or above goes to it and changes
+  nothing in the program. Reset does not reach it.
 
 It is nes-wiki's (tests/console.py), less the split screen that ROM has
 and this one does not.
@@ -26,8 +30,15 @@ FRAME_CYCLES = 29780.5
 VBLANK_CYCLES = 20 * 341 / 3    # 2273: an NMI's PPU writes must be over by then
 PRG_START = 0x8000
 PRG_SIZE = 0x8000
+BANK_SIZE = 0x4000              # of PRG, as a mapper counts it
 INES_HEADER = 16
 CHR_SIZE = 0x2000
+CHR_PAGE = 0x1000               # of CHR, as the MMC1 counts it
+MAPPER_MMC1 = 1
+MMC1_RESET = 0x80               # a write with this bit set, to any register
+MMC1_LAST_FIXED = 0x0C          # control: the last bank at $C000, as at power-on
+MMC1_CHR_PAGES = 0x10           # control: two pages of CHR, not one of 8 KB
+RESET_VECTOR = 0xFFFC
 
 PPUCTRL, PPUMASK, PPUSTATUS, OAMADDR = 0x2000, 0x2001, 0x2002, 0x2003
 PPUSCROLL, PPUADDR, PPUDATA = 0x2005, 0x2006, 0x2007
@@ -78,11 +89,20 @@ class Console:
         with open(rom_path, "rb") as handle:
             rom = handle.read()
         self.labels = load_labels(labels_path)
-        self.prg = bytes(rom[INES_HEADER:INES_HEADER + PRG_SIZE])
-        self.chr = bytes(rom[INES_HEADER + PRG_SIZE:INES_HEADER + PRG_SIZE + CHR_SIZE])
+        chr_start = INES_HEADER + rom[4] * BANK_SIZE
+        self.rom_prg = bytes(rom[INES_HEADER:chr_start])
+        self.rom_chr = bytes(rom[chr_start:chr_start + rom[5] * CHR_SIZE])
+        self.mmc1 = rom[6] >> 4 == MAPPER_MMC1
+        self.mapper = [MMC1_LAST_FIXED, 0, 0, 0]    # control, CHR 0, CHR 1, PRG
+        self._mapper_shift = self._mapper_count = 0
+        self.mapper_writes = []     # (the instruction's address, the register's, the value)
+        # What the tests ask of the setup ROM and the menu, and not of the
+        # other programs on the cartridge: the controller ports through
+        # lda and sta, the PPU written to only when it may be, an NMI on.
+        self.strict = True
         self.memory = ObservableMemory()
-        for offset, byte in enumerate(self.prg):
-            self.memory[PRG_START + offset] = byte
+        self.prg = self.chr = None  # the 32 KB and the 8 KB that are mapped
+        self._map()
         self.nmi_delay = nmi_delay  # holds every NMI back, to try other phases
         self.vram = bytearray(0x4000)
         self.oam = bytearray(256)
@@ -116,12 +136,72 @@ class Console:
         memory.subscribe_to_read([JOY1], self._read_joy1)
         memory.subscribe_to_write([JOY1], self._write_joy1)
         memory.subscribe_to_read([JOY2], self._read_joy2)
+        if self.mmc1:
+            memory.subscribe_to_write(range(PRG_START, 0x10000), self._write_mapper)
         self.mpu = MPU(memory=memory)
-        self.mpu.pc = memory[0xFFFC] | memory[0xFFFD] << 8
+        self.mpu.pc = memory[RESET_VECTOR] | memory[RESET_VECTOR + 1] << 8
 
     @property
     def now(self):
         return self.mpu.processorCycles
+
+    def reset(self):
+        """The reset button: the program at $C000 starts again from its
+        vector, with the picture and the NMI off. A mapper keeps what it
+        held."""
+        mpu = self.mpu
+        self.ctrl = self.mask = 0
+        self.in_nmi = False
+        mpu.p |= mpu.INTERRUPT
+        mpu.sp = (mpu.sp - 3) & 0xFF
+        mpu.pc = self.memory[RESET_VECTOR] | self.memory[RESET_VECTOR + 1] << 8
+
+    # --- the mapper ------------------------------------------------------------
+
+    def _map(self):
+        """Put the banks the mapper asks for where the CPU and the picture
+        find them. `home` says the last bank is at $C000, which is where
+        the labels are from."""
+        if self.mmc1:
+            control, chr0, chr1, bank = self.mapper
+            banks = len(self.rom_prg) // BANK_SIZE
+            bank &= 0x0F
+            mode = control >> 2 & 3
+            if mode < 2:                # 32 KB at a time
+                low = bank & ~1
+                high = low + 1
+            elif mode == 2:             # the first bank at $8000
+                low, high = 0, bank
+            else:                       # the last bank at $C000
+                low, high = bank, banks - 1
+            pages = (chr0, chr1) if control & MMC1_CHR_PAGES else (chr0 & ~1, chr0 | 1)
+            count = len(self.rom_chr) // CHR_PAGE
+            self.chr = b"".join(self.rom_chr[page % count * CHR_PAGE:][:CHR_PAGE]
+                                for page in pages)
+            self.home = high % banks == banks - 1
+            prg = b"".join(self.rom_prg[each % banks * BANK_SIZE:][:BANK_SIZE]
+                           for each in (low, high))
+        else:
+            self.chr = self.rom_chr[:CHR_SIZE]
+            self.home = True
+            prg = self.rom_prg[:PRG_SIZE]
+        if prg != self.prg:
+            self.prg = prg
+            self.memory.write(PRG_START, prg)
+
+    def _write_mapper(self, address, value):
+        self.mapper_writes.append((self.mpu.pc - 1, address, value))
+        if value & MMC1_RESET:
+            self._mapper_shift = self._mapper_count = 0
+            self.mapper[0] |= MMC1_LAST_FIXED
+        else:
+            self._mapper_shift |= (value & 1) << self._mapper_count
+            self._mapper_count += 1
+            if self._mapper_count == 5:
+                self.mapper[address >> 13 & 3] = self._mapper_shift
+                self._mapper_shift = self._mapper_count = 0
+        self._map()
+        return self.prg[address - PRG_START]    # the program is not written to
 
     # --- PPU registers ---------------------------------------------------------
 
@@ -158,7 +238,7 @@ class Console:
     def _write_data(self, address, value):
         if self.in_nmi:
             self.frame.last_write = self.now + 3 - self.frame.start
-        elif self.mask & RENDERING:
+        elif self.strict and self.mask & RENDERING:
             raise AssertionError("PPUDATA written outside the NMI with rendering on")
         self.vram[self._mirror(self.v)] = value
         self.v = (self.v + (32 if self.ctrl & 0x04 else 1)) & 0x7FFF
@@ -205,7 +285,7 @@ class Console:
         # Port 2 with nothing but the link on it: bit 0 is D0 inverted, and
         # the rest is what the bus last held, the $40 of the address.
         mpu = self.mpu
-        if self.memory[mpu.pc - 1] not in READS_ABS:
+        if self.strict and self.memory[mpu.pc - 1] not in READS_ABS:
             raise AssertionError("$4017 read by opcode $%02X" % self.memory[mpu.pc - 1])
         cycle = mpu.processorCycles + 3
         level = self.joy2_level(cycle) if self.joy2_level is not None else 1
@@ -215,7 +295,7 @@ class Console:
 
     def _write_joy1(self, address, value):
         mpu = self.mpu
-        if self.memory[mpu.pc - 1] not in STORES_ABS:
+        if self.strict and self.memory[mpu.pc - 1] not in STORES_ABS:
             raise AssertionError("$4016 written by opcode $%02X" % self.memory[mpu.pc - 1])
         if self.joy1_writes is not None:
             self.joy1_writes.append((self.now + 3, value & 1))
@@ -263,7 +343,7 @@ class Console:
                     nmi_off_since = None
                 elif nmi_off_since is None:
                     nmi_off_since = len(self.frames)
-                elif len(self.frames) - nmi_off_since > STALL_FRAMES:
+                elif self.strict and len(self.frames) - nmi_off_since > STALL_FRAMES:
                     raise AssertionError("the ROM ran %d frames with the NMI off"
                                          % STALL_FRAMES)
                 continue
@@ -330,7 +410,7 @@ class Console:
         """Jump over a loop that only passes time. True if it did."""
         mpu = self.mpu
         pc = mpu.pc
-        if (pc == self.labels.get("main_wait")
+        if (self.home and pc == self.labels.get("main_wait")
                 and self.byte("frame_count") == self.byte("served_frame")
                 and self.ctrl & PPUCTRL_NMI):
             mpu.processorCycles = max(mpu.processorCycles, int(self.next_vblank) + 1)

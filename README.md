@@ -25,9 +25,10 @@ MiSTer's NES core, through a SNAC adapter. It found the Stick, joined a
 Wi-Fi network from the controller, and the Stick joined it again by itself
 after a power cycle. The link test ran 6000 requests with every one good,
 and the Stick's slowest reply was 215 microseconds
-([`firmware/README.md`](firmware/README.md), "On hardware"). On a real NES
-the setup ROM has not been tried; Dr. Mario's netplay ROM has played a
-full game with a real NES among its consoles.
+([`firmware/README.md`](firmware/README.md), "On hardware"). **The
+cartridge works on hardware too:** its menu and all five programs, on a
+real NES and on the MiSTer, with a StickC Plus2 and with a StickS3. No
+figures were taken from those runs.
 
 | Part | State |
 |---|---|
@@ -35,13 +36,14 @@ full game with a real NES among its consoles.
 | The link and services in C (`firmware/components/`) | done; tested on a computer |
 | The console's library (`nes/lib/`) | done; every read and write timed on py65 |
 | The setup ROM (`nes/setup/`): status, Wi-Fi from the controller, link test | done; tested on a simulated console against the C code over a cycle-exact line |
-| The Stick's firmware (`firmware/main/`): UART, Wi-Fi, screen | working on a StickS3 with the MiSTer; builds for the StickC Plus2, not run on one |
+| The Stick's firmware (`firmware/main/`): UART, Wi-Fi, screen | working on a StickS3 and on a StickC Plus2, with the MiSTer and with a real NES |
 | A computer in place of a Stick (`host/serial_host.py`) | written, not run on a cable |
 | WIKI, NESpedia's service: an HTTPS fetch, the text laid out in lines | working on a StickS3 with the NESpedia ROM ([nes-wiki](../nes-wiki)) |
 | RAW: a run of bytes with framing off, at a rate of its own, either way | working on a StickS3 with the MiSTer: a run to the console as the jukebox's sampled sound, and runs of the pattern both ways with the throughput test's ROM ([nes-jukebox](../nes-jukebox/throughput)), to 298296 baud to the console and 223722 from it |
 | JUKE, the jukebox's service: the playlist as a stream, the buttons, sampled sound through RAW | working on a StickS3 with the jukebox's ROM ([nes-jukebox](../nes-jukebox)) on the MiSTer; tested with that ROM on a simulated console |
 | The nesp32's files: the jukebox's tracks, in LittleFS (`firmware/main/store.c`, `tools/put_files.py`) | working on a StickS3: tracks written over USB are found and played |
 | PEER, for two consoles playing one game: a lobby, and a lockstep relay of buttons between two nesp32s over TCP (`firmware/main/conn.c`) | tested with nes-drmario's netplay ROM ([nes-drmario](../nes-drmario)) on two simulated consoles, the game the same on both; the firmware builds for both boards with it. On hardware a full network game has been played with that ROM, a real NES among the consoles; no figures were taken |
+| One cartridge (`nes/cart/`): the five programs and a menu, on an MMC1 | working on a real NES and on the MiSTer, with a StickC Plus2 and with a StickS3: the menu and every program. Tested on a simulated console: each program starts from the menu, and reset is the menu again |
 | A service for the radar | a number reserved; not started |
 
 NESpedia runs on it: a search typed on the console is fetched over HTTPS
@@ -63,6 +65,33 @@ tools/preview.py docs    # the pictures above, from the ROM itself
 
 `build/setup.nes` is NROM-256 (mapper 0). The Stick's firmware is built
 with ESP-IDF, from `firmware/`.
+
+## The cartridge
+
+![The cartridge's menu](docs/cart-menu.png)
+
+```sh
+make cart       # build/nesp32.nes
+```
+
+One ROM with the jukebox, NESpedia, Dr. Mario's netplay, the throughput
+test and setup, and a menu that is up at power-on: Up and Down, and A or
+Start to run a program. Reset is the menu again. It wants checkouts of
+[nes-jukebox](../nes-jukebox), [nes-wiki](../nes-wiki) and
+[nes-drmario](../nes-drmario) beside this one, and builds each program with
+its own Makefile, into `build/cart/`.
+
+It is an MMC1 (mapper 1) with 256 KB of PRG and 128 KB of CHR ROM and no
+memory, the mapper Dr. Mario has already. Set to 32 KB of PRG and 8 KB of
+CHR, an MMC1 is an NROM to a program that never writes to it, so the four
+NROM programs are on it as they were built, their serial routines on the
+pages they were timed on. `nes/cart/gen_cart.py` has where everything is
+and the few bytes that are not as built: six in each program's padding and
+its reset vector, which make reset the menu.
+
+The menu is in the last bank, which is the one an MMC1 has at `$C000` when
+the power comes on. Emulators do that, and most of the chips; one that did
+not would not start this cartridge.
 
 ## Music for the jukebox
 
@@ -129,6 +158,7 @@ password goes to the Stick and is never sent back.
 | `tools/put_files.py` | puts the jukebox's tracks on a nesp32, over USB |
 | `nes/lib/nesp.inc`, `nes/lib/gen_link.py` | the console's library, and its cycle-timed serial routines |
 | `nes/setup/` | the setup ROM |
+| `nes/cart/` | the cartridge: its menu, and the tool that puts the five programs on it |
 | `host/nesp_host.c`, `host/nesp.py` | the firmware's code as a library for this computer, with a stand-in for the hardware |
 | `host/serial_host.py` | that, on a USB serial cable in place of a Stick |
 | `host/peer_net.py` | for it, PEER's connection to another nesp32 on this computer's sockets, and an opponent who never presses a button |
@@ -161,12 +191,16 @@ make test
 - `test_put_files.py`: the image of the tracks that goes over USB.
 - `test_setup.py`: every screen of the setup ROM worked with the
   controller, to a network joined with a password of every character.
+- `test_cart.py`: the cartridge on a console with its mapper: every
+  program on it as built, started from the menu, and left by reset. It
+  skips without the other programs' checkouts.
 
 The ROM tests need cc65 and skip without it.
 
 ## Not done
 
-- A real NES, a long run, and the StickC Plus2.
+- A long run, and figures from a real NES and from the StickC Plus2: both
+  work, with the cartridge, and nothing was measured.
 - Figures from PEER on hardware. A full network game of nes-drmario's
   netplay ROM has been played; what the nesp32s' screens counted was not
   recorded. nes-drmario's README has what could shorten the delay between
@@ -176,10 +210,6 @@ The ROM tests need cc65 and skip without it.
 - A fetch that drops partway is not made again; what came is read, if it
   was a screenful.
 - Updates over Wi-Fi, and a way to put music on a Stick without a cable.
-- One cartridge for all of it: setup, the Wikipedia reader, the media
-  player and the throughput test in a single ROM, chosen from a menu. Each
-  of them now runs on this firmware. Four programs are more than
-  the 32 KB of the mapper they use now, so it means a mapper with banks.
 - PAL consoles.
 - A licence. A line-by-line comparison found no code of nes-radar's
   (GPL-3.0) here beyond idioms; the rest descends from nes-jukebox, nes-wiki

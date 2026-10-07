@@ -309,12 +309,14 @@ class Screen:
         return bytes(data)
 
 
-def build_screen():
+def build_screen(title=TITLE_TEXT):
+    """The tiles and the header, with a word under the name: this ROM's, or
+    the cartridge menu's (nes/cart/gen_cart.py)."""
     screen = Screen()
     column = (SCREEN_COLUMNS - 2 * len(LOGO_TEXT)) // 2
     for index, char in enumerate(LOGO_TEXT):
         screen.picture(column + 2 * index, LOGO_ROW, big_letter(char))
-    screen.picture(0, TITLE_ROW, font_text(TITLE_TEXT, 8 * SCREEN_COLUMNS, CREDIT_COLOR))
+    screen.picture(0, TITLE_ROW, font_text(title, 8 * SCREEN_COLUMNS, CREDIT_COLOR))
     screen.picture(CREDIT_COLUMN, CREDIT_ROW,
                    small_text(CREDIT_TEXT, 8 * CREDIT_TILES, CREDIT_COLOR))
     for name, rows in PICTURES.items():

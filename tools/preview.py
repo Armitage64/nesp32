@@ -6,7 +6,7 @@
 Runs build/setup.nes on the tests' simulated console against the firmware's
 own link and services (build/libnesp_host), works it with the controller,
 and writes what the nametable and the sprites hold at each stop as a PNG.
-Needs `make` first.
+Needs `make` first. After `make cart` there is the cartridge's menu too.
 """
 
 import os
@@ -87,6 +87,12 @@ def main(argv):
     setup.wait_for(STATE_TEST)
     console.run(700)
     save("setup-test", console)
+
+    cart = os.path.join(BUILD, "nesp32.nes")
+    if os.path.exists(cart):
+        console = Console(cart, os.path.join(BUILD, "cart", "menu.labels"))
+        console.run(10)
+        save("cart-menu", console)
     return 0
 
 
