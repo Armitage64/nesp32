@@ -1,6 +1,9 @@
 """The netplay ROM's menu, in its own bank: what it shows, what it tells the
-Stick, and that HOST GAME on one console and JOIN GAME on the other end in
+nesp32, and that HOST GAME on one console and JOIN GAME on the other end in
 one game on both."""
+
+import nesp
+import nesp_proto as p
 
 from console import PAD_A, PAD_B, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_START, PAD_UP
 from drive import (
@@ -13,8 +16,7 @@ from drive import (
     screen_text,
     to_title,
 )
-from drnet.linkrate import STATE_HOSTING, STATE_IDLE
-from netplay import Table
+from netplay import APP, Table
 from test_lockstep import to_game
 
 MENU_BANK = 2                   # the MMC1's PRG register with the menu in place
@@ -37,7 +39,7 @@ def open_menu(table, side):
     assert "NETWORK GAME" in screen_text(console)
 
 
-def test_local_game_with_no_stick(net_console):
+def test_local_game_with_no_nesp32(net_console):
     """Nothing on port 2 answers. The menu says so, and LOCAL GAME goes on
     to the game's options for two players."""
     nes = net_console()
@@ -48,8 +50,8 @@ def test_local_game_with_no_stick(net_console):
     nes.run(10 * STATUS_POLL, pads=(0, 0))
     assert nes.mapper[3] == MENU_BANK
     assert screen_row(nes, 9).strip() == "> HOST GAME"
-    assert screen_row(nes, OWN_ROW).strip() == "NO STICK"
-    # HOST GAME does nothing without a Stick.
+    assert screen_row(nes, OWN_ROW).strip() == "NO NESP32"
+    # HOST GAME does nothing without a nesp32.
     nes.run(3, pads=(PAD_A, 0))
     nes.run(10, pads=(0, 0))
     assert "WAITING" not in screen_text(nes)
@@ -66,14 +68,68 @@ def test_local_game_with_no_stick(net_console):
     assert nes.byte("net_mode") == 0
 
 
-def test_the_menu_shows_the_sticks_address(net_console):
+def test_the_menu_says_hello_and_shows_the_nesp32s_address(net_console):
     table = Table(net_console)
     table.boot()
+    assert table.sticks[0].hellos == 0      # the game itself says nothing
     open_menu(table, 0)
-    assert screen_row(table.consoles[0], OWN_ROW).strip() == "192.168.001.023"
+    console, stick = table.consoles[0], table.sticks[0]
+    assert screen_row(console, 18).strip() == "THIS NESP32 IS AT"
+    assert screen_row(console, OWN_ROW).strip() == "192.168.001.023"
+    assert stick.app == (APP, 1) and stick.active(p.NESP_SVC_PEER)
+    assert stick.hellos == 1
+    # It goes on asking, and nothing is asked twice or missed.
+    table.run(4 * STATUS_POLL)
+    assert stick.hellos == 1 and stick.repeats == 0
+    assert console.byte("menu_misses") == 0
 
 
-def test_a_stick_with_no_wifi(net_console):
+def test_a_nesp32_whose_firmware_has_no_peer(net_console):
+    """An older firmware answers the hello: it lacks the service asked for.
+    The menu says what to do about it, and offers the local game only."""
+    def old(data):
+        reply = nesp.parse(data)
+        if reply.svc != p.NESP_SVC_SYS:
+            return data
+        return nesp.reply_frame(reply.svc, p.NESP_ST_NO_SERVICE, reply.seq,
+                                reply.payload[:6] + bytes((1, p.NESP_SVC_PEER)))
+    table = Table(net_console, port_options=({"to_console": old}, {}))
+    table.boot()
+    open_menu(table, 0)
+    console = table.consoles[0]
+    assert screen_row(console, OWN_ROW).strip() == "UPDATE NESP32"
+    tap(table, 0, PAD_A)
+    assert "WAITING" not in screen_text(console)
+
+
+def test_local_game_leaves_the_games_memory_alone(net_console):
+    """The menu and the link keep theirs where the game keeps none: with a
+    nesp32 answering throughout, both players' options are as they were."""
+    table = Table(net_console)
+    table.boot()
+    console = table.consoles[0]
+    players = bytes(console.ram[0x300:0x330]), bytes(console.ram[0x380:0x3B0])
+    open_menu(table, 0)
+    table.run(4 * STATUS_POLL)
+    for _ in range(2):
+        tap(table, 0, PAD_DOWN)
+    tap(table, 0, PAD_A, rest=30)
+    assert console.mapper[3] == 0
+    assert console.ram[PLAYERS] == 2
+    assert (bytes(console.ram[0x300:0x330]), bytes(console.ram[0x380:0x3B0])) == players
+
+
+def test_both_banks_keep_the_links_memory_in_the_same_place(banks):
+    game, menu = banks
+    shared = [name for name in game if name.startswith(("nesp_", "net_")) and name in menu
+              and game[name] < 0x800]
+    assert {"nesp_seq", "nesp_rx", "nesp_tx", "nesp_ptr", "net_pending"} <= set(shared)
+    assert all(game[name] == menu[name] for name in shared)
+    # And the code that runs while the bank changes under it.
+    assert game["net_far"] == menu["net_far"]
+
+
+def test_a_nesp32_with_no_wifi(net_console):
     table = Table(net_console, addresses=(None, None))
     table.boot()
     open_menu(table, 0)
@@ -90,14 +146,28 @@ def test_host_and_back(net_console):
     console = table.consoles[0]
     assert "WAITING FOR PLAYER 2" in screen_text(console)
     assert screen_row(console, HOST_ROW).strip() == "192.168.001.023"
-    assert table.nets[0].state == STATE_HOSTING
+    assert table.sticks[0].lobby == p.NESP_LOBBY_HOSTING
+    assert table.sticks[0].shown(1) == "at 192.168.1.23"
     tap(table, 0, PAD_B, rest=2 * STATUS_POLL)
     assert "HOST GAME" in screen_text(console)
-    assert table.nets[0].state == STATE_IDLE
+    assert table.sticks[0].lobby == p.NESP_LOBBY_IDLE
+
+
+def test_a_nesp32_switched_off_and_on_while_it_hosts(net_console):
+    """It knows of no hello, and says so. The menu says hello again and has
+    it wait again."""
+    table = Table(net_console)
+    table.boot()
+    open_menu(table, 0)
+    tap(table, 0, PAD_A, rest=2 * STATUS_POLL)
+    stick = table.restart(0)
+    table.run(3 * STATUS_POLL)
+    assert stick.hellos == 1 and stick.lobby == p.NESP_LOBBY_HOSTING
+    assert "WAITING FOR PLAYER 2" in screen_text(table.consoles[0])
 
 
 def edit_last_octet_to_23(table, side):
-    """The address starts as this Stick's own, 192.168.001.042."""
+    """The address starts as this nesp32's own, 192.168.001.042."""
     console = table.consoles[side]
     assert screen_row(console, DIGITS_ROW).strip() == "192.168.001.042"
     for _ in range(10):
@@ -147,15 +217,23 @@ def test_host_and_join_start_one_game(net_console):
     to_game(table)
     table.play(200, moves(seed=3))
     assert table.same_game() > 200
-    # The second Stick remembers where it joined, for next time.
-    assert table.nets[1].last == bytes((192, 168, 1, 23))
+    # The second nesp32 keeps where it joined, for next time.
+    assert table.sticks[1].last == bytes((192, 168, 1, 23))
+
+
+def test_the_address_last_joined_is_offered_next_time(net_console):
+    table = Table(net_console)
+    table.sticks[1].last = bytes((10, 0, 200, 7))
+    table.boot()
+    open_join(table, 1)
+    assert screen_row(table.consoles[1], DIGITS_ROW).strip() == "010.000.200.007"
 
 
 def test_the_title_comes_back_after_a_session_is_lost(net_console):
     table = Table(net_console)
     table.start()
     table.run(60)
-    table.nets[1].close()
+    table.lan.cut()
     table.run(200)
     console = table.consoles[0]
     assert console.byte("net_mode") == 0

@@ -1,17 +1,20 @@
-# Dr. Mario netplay link protocol
+# Dr. Mario netplay: how two games are kept the same
 
-How two consoles play one two-player game, each with a Stick on controller
-port 2 and the Sticks joined over a network. The wiring is nes-jukebox's:
-the Stick drives D0 (bit 0 of `$4017`, inverted by the port's buffer) and
-reads OUT0 (bit 0 of `$4016` writes), which rests at mark.
+How two consoles play one two-player game, each with a nesp32 on controller
+port 2 and the nesp32s joined over a network.
 
-The numbers both ends share are in `firmware/stick/drnet/linkrate.py`.
+The link, the firmware and the frames are nesp32's
+([`../nesp32`](../../nesp32), a checkout of which sits beside this one), and
+its [`docs/PROTOCOL.md`](../../nesp32/docs/PROTOCOL.md) has them: the line,
+the hello, and the PEER service this ROM asks for, with its lobby, its
+exchange of buttons and what the two nesp32s say to each other. This is the
+game's side: what a tick is, and what the ROM does with what PEER gives it.
 
-Status: implemented by `net/*.inc`, `net/menu.s`, `firmware/stick/drnet`
-and `host/`, and tested on two simulated consoles with the Sticks' own code
-between them. On hardware, two consoles on one Wi-Fi network have played a
-full game, one with a StickC Plus2 and one with a computer on the USB
-serial cable.
+Status: implemented by `net/*.inc` and `net/menu.s`, and tested on two
+simulated consoles with nesp32's own link and services between them
+(`tests/`). On hardware a full network game has been played with it; the README
+has what is known of that, and what was learned from the prototype before
+it, which had a MicroPython firmware and a protocol of its own.
 
 ## The idea
 
@@ -28,112 +31,96 @@ An NMI in a session is one of three things:
 
 | | When | What runs |
 |---|---|---|
-| a tick | the main loop was waiting, and the buttons are here | the game's whole handler, then an exchange with the Stick |
-| a stall | the main loop was waiting, but the other console's buttons are not here | the exchange only; the picture and the music stand still |
-| a lag | the main loop was still at work | nothing |
+| a tick | the main loop was waiting, and the buttons are here | the game's whole handler, then an exchange with the nesp32 |
+| a stall | the main loop was waiting, but the other console's buttons are not here | the exchange only; the picture stands still |
+| a lag | the main loop was still at work | nothing of the game |
 
 So the game's memory depends on how many ticks there have been and on
-nothing else: not on when the frames fell, how long the Stick took to
+nothing else: not on when the frames fell, how long the nesp32 took to
 answer, or which exchanges failed.
 
-## The line
+## The music
 
-| | |
-|---|---|
-| Rate | 21 NES CPU cycles a bit, 85227 baud, both ways |
-| Console to Stick | 8N1 |
-| Stick to console | 8N2: the second stop bit is the console's time to store a byte |
-| Frames | 8 bytes, always, both ways |
-| Check | the last two bytes: a running sum of the first six, and a running sum of that |
+The music is the one thing that keeps the frames' time and not the ticks'.
+The game runs its sound engine from its main loop, once a pass, which in a
+session is once a tick: every stall and every lag then held the music back
+by a frame, and on real consoles over Wi-Fi it was heard to speed up and
+slow down. So in a session the engine is run from the NMI instead, once in
+every frame, whichever of the three the frame is.
 
-The console is in charge. It sends a request at the end of an NMI, and the
-Stick answers at once with one reply. The console waits about 5.6 ms for
-the reply to begin and then gives up; a reply that is late, cut short or
-fails its check is dropped whole, and what it carried is asked for again
-in the next frame.
+That is safe because the engine keeps to itself. Its memory is `$00E0` to
+`$00EF` and `$067E` to `$06FF`, and the game only leaves it orders there:
+a sound to make, the music to play. One thing comes back: the engine
+counts the music's beat, and the viruses in the one-player game's
+magnifier dance to it. A session is a two-player game and has no
+magnifier. So the two consoles' sound engines are not at the same place at
+the same tick, and nothing of the game can tell; the tests leave the
+engine's memory out of what they compare, and hold the rest to be equal.
+
+## The link
+
+The ROM has nesp32's library for the console (`nes/lib/nesp.inc` there) in
+each of its two banks, at the same places in memory. Every exchange is made
+inside an NMI, where nothing can interrupt the library's cycle-timed serial
+routines, so the library is built with the receiver that gives up by
+counting: the console waits about 5.6 ms for a reply to begin. A reply that
+is late, cut short or fails its CRC is dropped whole, and what it carried
+is asked for again in the next frame.
 
 The console reads its controller with OUT0 low for the 8 reads, which the
-Stick's UART takes for a byte or a framing error. The Stick looks for a
-request's first byte and good check bytes, and passes over anything else a
-byte at a time.
+nesp32's UART takes for a byte or a framing error, and its decoder passes
+over.
 
-## A session's frames
+## The menu
+
+On the title, **2 PLAYER GAME** goes to the menu, in the second bank. The
+menu says the hello, as `DRMA`, asking for PEER, and from then on asks a
+few times a second how the nesp32 stands (PEER's STATUS) and tells it what
+the player chose (HOST, JOIN, LEAVE, LAST). It sends an order again until
+it is answered, and acts on a state only once the order that should lead to
+it has been.
+
+| The menu shows | When |
+|---|---|
+| the nesp32's address | it is on a network |
+| `NO WIFI` | it is on none: nesp32's setup ROM joins one |
+| `NO NESP32` | 8 requests in a row had no answer |
+| `UPDATE NESP32` | its firmware answered the hello and has no PEER |
+
+A nesp32 that was switched off and on answers that the service is not in
+use. The menu says the hello again, and gives again the order the screen
+is waiting on.
+
+When the nesp32 says it is connected, as player 1 or as player 2, the
+console leaves the menu and starts a session: both consoles begin again
+from the state of one just switched on, at the options of a two-player
+game. They need not start at the same moment, since neither takes a tick
+without the other's buttons.
+
+## A session
+
+Every NMI that is not a lag ends with one exchange, PEER's TICKS:
 
 ```text
-request   $47, FIRST, COUNT, BUTTONS, BUTTONS, WANTED, check, check
-reply     $5A, NEXT,  FROM,  COUNT | PEER, BUTTONS, BUTTONS, check, check
+request   FIRST, WANTED, BUTTONS[0 to 2]
+reply     NEXT,  FROM,   LOST, BUTTONS[0 to 2]
 ```
 
-Ticks are named by their low 8 bits. Neither side is ever more than 8
-ticks from what the other holds, so that is enough.
+The request carries this console's buttons from the first tick the nesp32
+has not said it holds, two ticks of them at most, and names the tick of
+the other console's that it needs next. The reply says which of this
+console's the nesp32 now holds, and carries up to two ticks of the
+other's. A frame carries two ticks where a frame makes one, so either side
+catches up after a failed exchange.
 
-| Field | Meaning |
-|---|---|
-| `FIRST`, `COUNT` | the request carries this console's buttons for `COUNT` ticks (0 to 2) from tick `FIRST`: the oldest the Stick has not said it holds |
-| `WANTED` | the tick of the other console's buttons that this one needs next |
-| `NEXT` | the first of this console's ticks the Stick does not hold. The console sends from there next time |
-| `FROM`, `COUNT` | the reply carries the other console's buttons for `COUNT` ticks (0 to 2) from tick `FROM`, which is `WANTED` |
-| `PEER` | `$10` in the high nibble: the other console is gone, and nothing more of its buttons is held |
-
-A frame carries two ticks where a frame makes one, so either side catches
-up after a failed exchange. A request that is repeated carries buttons the
-Stick has already taken; it takes only those it has not seen. A reply for
-a tick other than the one wanted, or that says the Stick holds more ticks
-than were ever read, is ignored.
+PEER counts each console's stream of buttons from 0. The console counts
+its ticks from -`INPUT_DELAY`, so that the buttons read in a session's
+first frame are those of tick 0.
 
 The console keeps 8 ticks of buttons each way. It stalls rather than read
-its controller for a tick whose place is still held by one the Stick has
-not taken.
-
-## The menu's frames
-
-Before a session the console's menu asks and tells the Stick with control
-frames, a few a second:
-
-```text
-request   $43, COMMAND, A, A, A, A, check, check
-reply     $A5, STATE,   B, B, B, B, check, check
-```
-
-| `COMMAND` | | The Stick |
-|---|---|---|
-| 0 | status | only answers |
-| 1 | host | listens for the other Stick |
-| 2 | join | connects to the Stick at address `A` |
-| 3 | cancel | drops whatever connection it has or is making |
-| 4 | last | answers with the address it last joined in `B` (zeros if none) |
-
-In every other reply `B` is the Stick's own IPv4 address.
-
-| `STATE` | |
-|---|---|
-| 0 | not on a network |
-| 1 | idle |
-| 2 | hosting: waiting for the other Stick |
-| 3 | connecting |
-| 4 | connected, and this console is player 1 |
-| 5 | connected, and this console is player 2 |
-| 6 | the last join failed, or the connection was lost |
-
-A command that is already what the Stick is doing changes nothing, so the
-console sends a command again until it is answered. It acts on a state
-only once the command that should lead to it has been answered. With no
-answer to 8 requests in a row it shows that there is no Stick.
-
-When the state is 4 or 5 the console leaves the menu and starts a session:
-both consoles begin again from the state of one just switched on, at tick
-0, at the options of a two-player game. They need not start at the same
-moment, since neither takes a tick without the other's buttons.
-
-## Between the Sticks
-
-TCP, to port 6502 on the Stick that hosts. Each side sends `DRM1` and
-reads the other's before it calls the connection good. Then:
-
-
-One byte a tick each way, in order, starting with the buttons for tick
-`INPUT_DELAY`. A byte's place in the stream is its tick, so the stream
-must be reliable and ordered.
+its controller for a tick whose place is still held by one the nesp32 has
+not taken. A reply for a tick other than the one wanted, or that says the
+nesp32 holds more ticks than were ever read, is ignored.
 
 ## The cartridge
 
@@ -142,24 +129,42 @@ mapper (MMC1): the game in the first 32 KB and the menu in the second,
 switched whole. The code that runs while the bank changes under it, the
 start of the reset code and `net_far`, is the same bytes at the same
 addresses in both banks. The menu has its own NMI handler and its own
-copy of the serial routines. A flashcart or an emulator runs it; it does
+copy of the link's library. A flashcart or an emulator runs it; it does
 not fit the original board.
+
+In the game's bank the session's code takes space the game does not use:
+the padding before `$FD00`, the sample data at `$FD00` (the game never
+plays a sample), and the padding after the reset code. The library's two
+serial routines share the first page of the samples', and the rest of the
+library follows them; about 120 bytes of the bank are left.
+
+The library's memory is 16 bytes of zero page at `$00B0` and its two
+buffers at `$0330`, the session's is at `$0742`, and the menu's at `$03B0`:
+all of it where the game keeps nothing.
 
 ## Ending
 
 The console leaves a session, and starts again from its title as if reset,
-when a reply says the other console is gone, or after 240 NMIs in a row
-that were not ticks (4 seconds).
+when a reply says the other console is gone, when the nesp32 answers that
+it knows of no hello (it was switched off and on), or after 240 NMIs in a
+row that were not ticks (4 seconds).
 
 ## Timing
 
 Measured on the simulated consoles (`tests/test_lockstep.py`):
 
-- An exchange is 1680 cycles out, the Stick's turnaround, and 1848 back.
-  With a Stick that answers in 1 ms a tick's NMI is about 8100 cycles of a
-  frame's 29780, and the busiest frame of a game still ends before the
-  next NMI.
+- An exchange is 9 to 11 bytes out, 210 cycles each, the nesp32's
+  turnaround, and 10 to 12 bytes back, 231 cycles each, with the CRC of
+  each worked out besides. With a nesp32 that answers in 0.2 ms, a tick's
+  NMI is about 8500 cycles of a frame's 29780, and the busiest frame of a
+  game still ends before the next NMI, at about 27400. (On hardware its
+  firmware has answered other ROMs in about 0.07 ms, and in 0.5 at the
+  slowest.)
+- A nesp32 that takes longer makes the NMI longer, and more frames lags:
+  every frame was a tick with it taking up to 1 ms, and about 97 in 100
+  with it taking 5 ms. A reply that has not begun 5.6 ms after the request
+  is not heard at all.
 - With the network taking 10 ms each way nearly every frame is a tick. At
-  40 ms about three in four are, and at 90 ms about half: `INPUT_DELAY` is
+  40 ms about three in four are, and at 90 ms under half: `INPUT_DELAY` is
   fixed at 3 ticks, 50 ms, and has to cover the network, the wait for the
-  other console's next frame and both Sticks.
+  other console's next frame and both nesp32s.

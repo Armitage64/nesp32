@@ -55,7 +55,10 @@ def test_the_netplay_rom_is_the_same_game_with_no_session(net_console):
     nes = net_console()
     writes = []
     nes.on_joy1 = lambda cycle, level: writes.append(level)
+    nes.count_calls("loc_D470")         # the sound engine
     first = play(nes, seed=1, menu=True)
+    # Once a frame, as the original runs it; the menu has no music.
+    assert 0.9 * len(nes.frames) < nes.calls_of("loc_D470") <= len(nes.frames)
     assert first == play(net_console(), seed=1, menu=True)
     assert first[-1] != play(net_console(), seed=2, menu=True)[-1]
     assert writes[-1] == 1

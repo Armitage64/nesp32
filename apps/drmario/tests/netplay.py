@@ -1,13 +1,15 @@
-"""Two consoles on the netplay ROM, each with a Stick, and a network between
-the Sticks.
+"""Two consoles on the netplay ROM, each with a nesp32, and a network between
+the nesp32s.
 
-The Sticks are drnet.stick's own code on a simulated serial line (wire.py)
-and a simulated network: Lan is the network, and each Stick's FakeNet is
-its place on it, with an address.
+The nesp32s are the firmware's own link and services, built for this
+computer (nesp32's host/nesp.py), each on a simulated serial line
+(wire.py). What the firmware asks of its hardware for a connection to
+another nesp32 is answered here: Lan is the network, on which a call is
+answered and bytes cross, each after a delay.
 
 The consoles have a clock each (console.py) and the table has one more,
 which the network's delay is counted on. A slice at a time, each console is
-run up to the table's clock and its Stick's code is polled.
+run up to the table's clock and its nesp32 is polled.
 
 What a test asks of a game is that it is the same on both consoles. They do
 not take a tick at the same moment, so the states are compared tick by
@@ -17,24 +19,23 @@ before each tick.
 
 import hashlib
 
+import nesp_proto as p
 from console import FRAME_CYCLES
 from drive import BOOT_FRAMES
-from drnet.linkrate import (
-    STATE_CONNECTING,
-    STATE_FAILED,
-    STATE_GUEST,
-    STATE_HOST,
-    STATE_HOSTING,
-    STATE_IDLE,
-    STATE_NO_WIFI,
-)
-from drnet.stick import Stick
+from nesp import CONN_ANSWERED, CONN_CALLED, CONN_CALLING, CONN_FAILED, CONN_LISTENING
+from nesp import CONN_LOST, CONN_UP, Stick
 from wire import SLICE, link, ms
 
+APP = b"DRMA"
+PEER = p.NESP_SVC_PEER
+PLAYERS_STATES = (p.NESP_LOBBY_HOST, p.NESP_LOBBY_GUEST)
 NET_MODE, NET_TICK, NET_WAITING = "net_mode", "net_tick", "net_waiting"
-# Memory that is not the game's: the stack page, the link's scratch and
-# buffers, and the session's own numbers, which differ by design.
-NOT_GAME = ((0x100, 0x200), (0x6A, 0x70), (0x330, 0x340), (0x742, 0x75B))
+# Memory that is not the game's: the stack page, the link library's zero
+# page and buffers, and the session's own numbers, which differ by design.
+# And the sound engine's, with the orders the game leaves it: in a session
+# the music keeps the frames' time, which is each console's own.
+NOT_GAME = ((0x100, 0x200), (0x6F, 0x70), (0xB0, 0xC0), (0x330, 0x380), (0x742, 0x75B),
+            (0xE0, 0xF0), (0x67E, 0x700))
 
 
 def game_state(console):
@@ -44,115 +45,86 @@ def game_state(console):
     return hashlib.sha1(ram).hexdigest()
 
 
-class End:
-    """One end of a connection: what it sends reaches the other end the
-    Lan's delay later, in order."""
-
-    def __init__(self, lan):
-        self.lan = lan
-        self.other = None
-        self.arriving = []      # (cycle, data)
-        self.last_due = 0.0
-        self.lost = False
-        self.sent = 0
-
-    def drop(self):
-        """The connection is gone, with whatever was on its way."""
-        self.lost = True
-        self.arriving.clear()
-
-    def send(self, data):
-        other = self.other
-        if other.lost:
-            return
-        # A stream: nothing overtakes what was sent before it.
-        due = max(self.lan.table.now + self.lan.latency(), other.last_due)
-        other.last_due = due
-        other.arriving.append((due, bytes(data)))
-        self.sent += len(data)
-
-    def recv(self):
-        now = self.lan.table.now
-        out = b""
-        while self.arriving and self.arriving[0][0] <= now:
-            out += self.arriving.pop(0)[1]
-        return out
-
-
 class Lan:
-    """The network the Sticks are on. `delay` is how long anything takes to
-    cross it, in cycles: a number or a function returning one."""
+    """The network the two nesp32s are on. `delay` is how long anything
+    takes to cross it, in cycles: a number or a function returning one."""
 
     def __init__(self, table, delay):
         self.table = table
         self.delay = delay
-        self.nets = []
+        self.sticks = []
+        self.addresses = []
+        self.calls = []             # each one's calls, as last seen
+        self.answer_at = []
+        self.arriving = []          # for each: (cycle, data) on their way to it
+        self.last_due = []
+        self.up = False
+
+    def add(self, stick, address):
+        self.sticks.append(stick)
+        self.addresses.append(bytes(address) if address else None)
+        self.calls.append(stick.calls)
+        self.answer_at.append(None)
+        self.arriving.append([])
+        self.last_due.append(0.0)
 
     def latency(self):
         return self.delay() if callable(self.delay) else self.delay
 
-    def listening_at(self, address):
-        for net in self.nets:
-            if net.address == address and net.state == STATE_HOSTING:
-                return net
-        return None
-
-
-class FakeNet:
-    """A Stick's network, as drnet.stick asks for it."""
-
-    def __init__(self, lan, address):
-        self.lan = lan
-        self.address = bytes(address) if address else None
-        self.state = STATE_IDLE if address else STATE_NO_WIFI
-        self.last = None
-        self.target = None
-        self.peer = None
-        self._answer_at = None
-        lan.nets.append(self)
-
-    def listen(self):
-        if self.address:
-            self.state = STATE_HOSTING
-
-    def connect(self, target):
-        if not self.address:
-            return
-        self.target = bytes(target)
-        self.state = STATE_CONNECTING
-        self._answer_at = self.lan.table.now + 2 * self.lan.latency()
-
-    def close(self):
-        if self.peer is not None:
-            self.peer.drop()
-            self.peer.other.lost = True
-        self.peer = None
-        self._answer_at = None
-        self.state = STATE_IDLE if self.address else STATE_NO_WIFI
+    def cut(self):
+        """The connection is gone, with whatever was on its way."""
+        for side, stick in enumerate(self.sticks):
+            if stick.conn in CONN_UP:
+                stick.conn = CONN_LOST
+            self.arriving[side].clear()
+        self.up = False
 
     def poll(self):
-        if self.state != STATE_CONNECTING or self.lan.table.now < self._answer_at:
+        now = self.table.now
+        for side, stick in enumerate(self.sticks):
+            if stick.conn != CONN_CALLING:
+                continue
+            if stick.calls != self.calls[side]:     # a new call: there and back
+                self.calls[side] = stick.calls
+                self.answer_at[side] = now + 2 * self.latency()
+            elif now >= self.answer_at[side]:
+                self._answer(side)
+        if not self.up:
             return
-        host = self.lan.listening_at(self.target)
-        if host is None:
-            self.state = STATE_FAILED
+        if any(stick.conn not in CONN_UP for stick in self.sticks):
+            self.cut()              # one of them hung up
             return
-        self.peer, host.peer = End(self.lan), End(self.lan)
-        self.peer.other, host.peer.other = host.peer, self.peer
-        self.state, host.state = STATE_GUEST, STATE_HOST
-        self.last = self.target
+        for side, stick in enumerate(self.sticks):
+            other = 1 - side
+            data = stick.conn_take()
+            if data:
+                # A stream: nothing overtakes what was sent before it.
+                due = max(now + self.latency(), self.last_due[other])
+                self.last_due[other] = due
+                self.arriving[other].append((due, data))
+            arriving = self.arriving[side]
+            while arriving and arriving[0][0] <= now:
+                stick.conn_give(arriving.pop(0)[1])
+
+    def _answer(self, side):
+        caller, other = self.sticks[side], self.sticks[1 - side]
+        if (other.conn == CONN_LISTENING and self.addresses[1 - side] is not None
+                and caller.conn_target == self.addresses[1 - side]):
+            caller.conn, other.conn = CONN_CALLED, CONN_ANSWERED
+            self.up = True
+        else:
+            caller.conn = CONN_FAILED
 
 
 ADDRESSES = ((192, 168, 1, 23), (192, 168, 1, 42))
 
 
 class Table:
-    def __init__(self, make_console, delay=ms(10), drift=0.0, turnaround=ms(1.0),
+    def __init__(self, make_console, delay=ms(10), drift=0.0, turnaround=ms(0.2),
                  port_options=None, addresses=ADDRESSES):
         self.now = 0.0
         self.consoles = (make_console(), make_console(frame_cycles=FRAME_CYCLES * (1 + drift)))
         self.lan = Lan(self, delay)
-        self.nets = [FakeNet(self.lan, address) for address in addresses]
         self.sticks = []
         self.ports = []
         self.traces = ({}, {})
@@ -160,17 +132,27 @@ class Table:
         for side, console in enumerate(self.consoles):
             options = dict(turnaround=turnaround)
             options.update(port_options[side])
-            net = self.nets[side]
-            stick, port = link(console, lambda port, net=net: Stick(port, net), **options)
+            stick, port = link(console, Stick, **options)
             console.host = None         # the table polls, on its own clock
+            if addresses[side]:
+                stick.set_wifi(p.NESP_WIFI_JOINED, rssi=-50, address=addresses[side])
+            self.lan.add(stick, addresses[side])
             self.sticks.append(stick)
             self.ports.append(port)
             console.on_vblank = lambda console, side=side: self._before_nmi(side, console)
         self.offsets = [0.0, 0.0]
 
-    @property
-    def sessions(self):
-        return [stick.session for stick in self.sticks]
+    def restart(self, side):
+        """A console's nesp32 is switched off and on: it is on the network
+        again, and knows of no hello."""
+        stick = Stick(self.ports[side])
+        address = self.lan.addresses[side]
+        if address:
+            stick.set_wifi(p.NESP_WIFI_JOINED, rssi=-50, address=address)
+        self.lan.cut()
+        self.lan.sticks[side] = self.sticks[side] = stick
+        self.lan.calls[side] = stick.calls
+        return stick
 
     def boot(self, apart=0.3):
         """Both consoles to the title. The second gets there `apart` of a
@@ -180,13 +162,19 @@ class Table:
 
     def start(self, apart=0.3):
         """Both consoles to the title, then straight into a session with no
-        menu: the Sticks connect, and the first console is player 1."""
+        menu: the nesp32s are told what the menu would tell them, and the
+        first console is player 1."""
         self.boot(apart)
-        self.nets[0].listen()
-        self.nets[1].connect(self.nets[0].address)
-        while self.nets[1].state == STATE_CONNECTING:
+        host, guest = self.sticks
+        for stick in self.sticks:
+            assert stick.hello(app=APP, services=[PEER]).ok
+        assert host.ask(PEER, p.NESP_PEER_HOST).ok
+        assert guest.ask(PEER, p.NESP_PEER_JOIN, self.lan.addresses[0]).ok
+        for _ in range(120):
+            if (host.lobby, guest.lobby) == PLAYERS_STATES:
+                break
             self.run(1)
-        assert self.nets[1].state == STATE_GUEST
+        assert (host.lobby, guest.lobby) == PLAYERS_STATES
         for side, console in enumerate(self.consoles):
             mpu = console.mpu
             mpu.a = side
@@ -198,11 +186,12 @@ class Table:
             self.traces[side].setdefault(self.ticks(side), game_state(console))
 
     def ticks(self, side):
-        """Ticks a console has taken, past the 8 bits it keeps."""
+        """Ticks a console has taken, past the 8 bits it keeps. It counts
+        them from -INPUT_DELAY."""
         console = self.consoles[side]
         if not console.byte(NET_MODE):
             return getattr(console, "_ticks", 0)
-        low = console.byte(NET_TICK)
+        low = (console.byte(NET_TICK) + console.labels["INPUT_DELAY"]) & 0xFF
         seen = getattr(console, "_ticks", 0)
         seen += (low - seen) & 0xFF
         console._ticks = seen
@@ -218,6 +207,7 @@ class Table:
                 console.run_until(self.now + self.offsets[side], pads=(pads[side], 0))
                 self.ticks(side)
                 self.sticks[side].poll()
+            self.lan.poll()
 
     def play(self, frames, moves):
         """Run with a new pair of buttons from `moves` every frame."""

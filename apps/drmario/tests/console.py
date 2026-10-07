@@ -169,6 +169,7 @@ class Console:
         self.host = None            # called every host_every cycles
         self.host_every = 0
         self._host_at = 0
+        self.calls = {}             # address: times the program has come to it (count_calls)
         self.bus.map(self.mapper[0], self.mapper[3])
         self.mpu = MPU(memory=self.bus)
         self.mpu.pc = self.bus[0xFFFC] | self.bus[0xFFFD] << 8
@@ -275,6 +276,14 @@ class Console:
     def tiles(self, address, length):
         return bytes(self.vram[address:address + length])
 
+    def count_calls(self, name):
+        """Count from now how often the program comes to a label: read it
+        back with calls_of."""
+        self.calls[self.labels[name]] = 0
+
+    def calls_of(self, name):
+        return self.calls[self.labels[name]]
+
     def state(self):
         """A digest of everything the game's logic keeps: all of RAM but the
         stack page, whose dead bytes depend on where an NMI landed."""
@@ -308,6 +317,8 @@ class Console:
                 self._host_at = mpu.processorCycles + self.host_every
                 self.host()
             pc = mpu.pc
+            if pc in self.calls:
+                self.calls[pc] += 1
             if pc >= PRG_START:
                 opcode = bus[pc]
                 if (opcode == WAIT_NMI[0] and not self.in_nmi

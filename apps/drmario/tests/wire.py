@@ -1,32 +1,38 @@
-"""The serial line between a console on py65 and the Stick's own code.
+"""The serial line between the console on py65 and the nesp32's own code.
 
 Time is in NES CPU cycles. Every $4017 read returns the line's level on the
-cycle the lda samples it, and every $4016 write reaches the Stick's receiver
-on the cycle the sta makes it (console.py passes both on). This is
-nes-wiki's line model (tests/wire.py), which has it from nes-jukebox.
+cycle the lda samples it, and every $4016 write reaches the nesp32's
+receiver on the cycle the sta makes it (console.py passes both on). This is
+nesp32's line model (its tests/wire.py), which has it from nes-jukebox.
 
-Wire is the Stick's transmitter as D0 sees it; Tap is OUT0 as the Stick's
-UART receives it. Port is the UART that drnet.stick drives.
+Wire is the nesp32's transmitter as D0 sees it; Tap is OUT0 as the nesp32's
+UART receives it. Port is the UART that host/nesp.py's Stick drives.
 
-link() joins a Console running the netplay ROM to a Stick: every SLICE
-cycles the Stick is polled, as the Stick's loop would. What it writes
-goes on the wire `turnaround` after the last byte of the request reached it.
+link() joins a Console on the netplay ROM to a nesp32: every SLICE cycles
+the nesp32 is polled, as its link task would be. What it writes goes on the
+wire `turnaround` after the last byte of the request reached it.
+
+The Port is also the line with framing off, for a run of RAW's: the UART's
+rate can be changed, and bytes written with nothing round them go out from
+a buffer of TX_BUFFER bytes at whatever the rate then is.
 """
 
 import bisect
+import math
 
-from drnet.linkrate import CPU_HZ, PERIOD, TO_NES_BITS
+from nesp_proto import NESP_CPU_HZ, NESP_PERIOD, NESP_TO_NES_BITS
 
 MARK, SPACE = 1, 0
-SLICE = 150                     # cycles between polls of the Stick's code
+SLICE = 150                     # cycles between polls of the nesp32's code
+TX_BUFFER = 256                 # bytes the UART holds of a run before it takes no more
 
 
 def ms(value):
-    return value * CPU_HZ / 1000.0
+    return value * NESP_CPU_HZ / 1000.0
 
 
 class Wire:
-    """Stick to console."""
+    """nesp32 to console."""
 
     def __init__(self):
         self.starts = []
@@ -34,7 +40,7 @@ class Wire:
         self.bytes = []
         self.busy_until = 0.0
 
-    def send(self, data, at, bit=PERIOD, frame_bits=TO_NES_BITS):
+    def send(self, data, at, bit=NESP_PERIOD, frame_bits=NESP_TO_NES_BITS):
         """Queue bytes back to back from cycle `at`. Returns when they end."""
         start = max(at, self.busy_until)
         for byte in data:
@@ -66,7 +72,7 @@ class Wire:
 
 
 class Tap:
-    """Console to Stick."""
+    """Console to nesp32."""
 
     def __init__(self):
         self.times = [float("-inf")]
@@ -80,7 +86,7 @@ class Tap:
     def level(self, cycle):
         return self.levels[bisect.bisect_right(self.times, cycle) - 1]
 
-    def decode(self, search_from, until, bit=PERIOD):
+    def decode(self, search_from, until, bit=NESP_PERIOD):
         """Bytes a UART with this bit length receives between two cycles, as
         (byte, the cycle its stop bit was sampled). Returns them and where
         to search from next."""
@@ -107,33 +113,38 @@ class Tap:
 
 
 class Port:
-    """The Stick's UART on the simulated line.
+    """The nesp32's UART on the simulated line.
 
     turnaround: cycles from a request's last byte to the reply's first, a
     number or a function returning one. to_console, if given, sees every
     reply and returns what really goes on the wire (or None for nothing),
-    to stage lost and damaged bytes. clock_error runs the Stick's baud
+    to stage lost and damaged bytes. clock_error runs the nesp32's baud
     clock fast (+) or slow (-).
     """
 
-    def __init__(self, console, turnaround=ms(1.0), to_console=None, clock_error=0.0):
+    def __init__(self, console, turnaround=ms(0.2), to_console=None, clock_error=0.0):
         self.console = console
         self.wire = Wire()
         self.tap = Tap()
         self.turnaround = turnaround
         self.to_console = to_console
-        self.bit = PERIOD / (1.0 + clock_error)
+        self.clock = 1.0 + clock_error
+        self.bit = NESP_PERIOD / self.clock
+        self.rate_bit = self.bit    # the UART's bit as its rate now is
+        self.period = NESP_PERIOD
+        self.rates = []             # (cycle, period) of every change of rate
+        self.runs = []              # [cycle its first byte starts, period, bytes] of each run
+        self.in_run = False         # bytes have been written since the rate was last set
         self.search_from = 0.0
         self.heard_at = 0.0
-        self.received = []      # every byte the UART took, for the tests
+        self.received = []      # every run of bytes the UART took, for the tests
         self.sent = []          # (cycle, data) of every reply
-        self.deaf = False       # True: the Stick is busy and reads nothing
+        self.deaf = False       # True: the nesp32 is off, and reads nothing
 
     def read(self):
-        if self.deaf:
-            return None
-        data, self.search_from = self.tap.decode(self.search_from, self.console.now, self.bit)
-        if not data:
+        data, self.search_from = self.tap.decode(self.search_from, self.console.now,
+                                                 self.rate_bit)
+        if not data or self.deaf:
             return None
         self.heard_at = data[-1][1]
         out = bytes(byte for byte, _ in data)
@@ -151,15 +162,44 @@ class Port:
         self.sent.append((at, data))
         self.wire.send(data, at, self.bit)
 
+    # --- the line with framing off, and the clock (host/nesp.py's Stick) ---------
 
-def link(console, session_factory, **port_options):
-    """Join a Console on the netplay ROM to a Stick made by
-    session_factory(port). Returns (stick, port)."""
+    def now_ms(self):
+        return self.console.now * 1000.0 / NESP_CPU_HZ
+
+    def line_rate(self, period):
+        now = self.console.now
+        self.period = period
+        self.rate_bit = period / self.clock
+        self.rates.append((now, period))
+        self.search_from = now      # what the receiver held is dropped
+        self.in_run = False
+
+    def line_write(self, data):
+        now = self.console.now
+        byte = self.rate_bit * NESP_TO_NES_BITS
+        waiting = math.ceil(max(0.0, self.wire.busy_until - now) / byte)
+        count = min(len(data), max(0, TX_BUFFER - waiting))
+        if count:
+            if not self.in_run:     # a run's rate may be the link's own
+                self.in_run = True
+                self.runs.append([max(now, self.wire.busy_until), self.period, bytearray()])
+            self.runs[-1][2] += data[:count]
+            self.wire.send(data[:count], now, self.rate_bit)
+        return count
+
+    def line_idle(self):
+        return self.wire.busy_until <= self.console.now
+
+
+def link(console, stick_factory, **port_options):
+    """Join a Console to a nesp32 made by stick_factory(port). Returns
+    (stick, port)."""
     port = Port(console, **port_options)
-    session = session_factory(port)
+    stick = stick_factory(port)
     console.joy2_level = port.wire.level
     console.joy2_quiet_until = port.wire.quiet_until
     console.on_joy1 = port.tap.write
-    console.host = session.poll
+    console.host = stick.poll
     console.host_every = SLICE
-    return session, port
+    return stick, port

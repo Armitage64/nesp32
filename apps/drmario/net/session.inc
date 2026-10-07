@@ -18,9 +18,8 @@ net_reset:
 
 
 ; Start a session, as player 1 (A = 00) or player 2 (A = 01); the menu
-; comes in at net_start_session_y with that in Y. Both
-; consoles begin from the state of one switched on for the first time, at
-; tick 0. Does not return: the game starts again from its title.
+; comes in at net_start_session_y with that in Y. Both consoles begin from the state of one switched on for the first time, at
+; the first tick. Does not return: the game starts again from its title.
 net_start_session:
     TAY
 net_start_session_y:
@@ -44,8 +43,8 @@ net_start_session_y:
     STY net_role
     LDA #$01
     STA net_mode
-    ; The first INPUT_DELAY ticks have no buttons, on both consoles.
-    LDA #INPUT_DELAY
-    STA net_acked
-    STA net_have
+    ; The first INPUT_DELAY ticks have no buttons, on both consoles: the
+    ; buttons read in them are those of ticks 0 on.
+    LDA #<-INPUT_DELAY
+    STA net_tick
     JMP loc_8000_reset_init

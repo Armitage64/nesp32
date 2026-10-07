@@ -1,25 +1,33 @@
 ; Netplay: the menu, in a bank of its own (the game's is full).
 ;
-; The title's "2 PLAYER GAME" comes here (net_menu, exchange.inc) with the
-; NMI off. This bank has its own NMI handler and draws its own screens:
+; The title's "2 PLAYER GAME" comes here (net_menu, net.inc) with the NMI
+; off. This bank has its own NMI handler and draws its own screens:
 ;
-;   HOST GAME     the Stick waits for the other to connect. The screen
-;                 shows the address player 2 has to enter.
-;   JOIN GAME     an address to edit, and the Stick connects to it
+;   HOST GAME     the nesp32 waits for the other to call. The screen shows
+;                 the address player 2 has to enter.
+;   JOIN GAME     an address to edit, and the nesp32 calls it
 ;   LOCAL GAME    back to the game, for two controllers on this console
 ;
-; When the Sticks are connected it starts a session in the game's bank
-; (net_go, with the role in Y), and does not come back. The Stick is asked
-; and told with control frames (docs/PROTOCOL.md), one exchange an NMI at
-; most, as a session's are.
+; When the nesp32s are connected it starts a session in the game's bank
+; (net_go, with the role in Y), and does not come back.
+;
+; The nesp32 is spoken to through nesp32's library for the console, of
+; which this bank has its own copy: a hello as DRMA that asks for the PEER
+; service, and then that service's lobby (nesp32's docs/PROTOCOL.md), one
+; exchange an NMI at most, as a session's are. The hello is said again to a
+; nesp32 that was switched off and on.
 ;
 ; Nothing here may change the game's memory: LOCAL GAME goes on with it.
 ; The menu keeps its own in addresses the game leaves free.
 
-MENU_BANK = 1
-
-.include "link.inc"             ; generated: constants and serial routines
+.include "net/common.inc"
 .include "net/ram.inc"
+
+; The link's library, before the font below is in force: its hello carries
+; the name as it is written here.
+.define NESP_APP "DRMA"
+NESP_APP_VERSION = 1
+.include "nesp.inc"
 
 ; The font, in the CHR page the game's options screen uses. By number: a
 ; character constant is itself put through the map made so far.
@@ -48,14 +56,17 @@ BTN_B     = $40
 BTN_A     = $80
 
 IP_TILES    = 15                ; 192.168.001.023
-STATE_NONE  = $FF               ; no Stick answers
-MISSES      = 8                 ; requests in a row unanswered before that
+; What the nesp32 says of itself is one of NESP_LOBBY_*. The menu's own:
+STATE_NONE  = $FF               ; no nesp32 answers
+STATE_OLD   = $FE               ; one answers, and its firmware has no PEER
+MISSES      = 8                 ; requests in a row unanswered before STATE_NONE
+HELLO       = $FF               ; in menu_sent: the last request was the hello
 
 ; The menu's memory.
-menu_ptr        = net_check_lo  ; 2 bytes of zero page, while the NMI is off
+menu_ptr        = nesp_ptr      ; 2 bytes of zero page, while the NMI is off
 menu_tmp        = net_temp      ; the NMI leaves this one alone
-menu_line       = $0340         ; 32: tiles for the NMI to draw
-menu_vars       = $0360
+menu_line       = $03B0         ; 16: tiles for the NMI to draw
+menu_vars       = $03C0
 menu_draw_len   = menu_vars + 0 ; how many of menu_line, 00 none
 menu_draw_hi    = menu_vars + 1
 menu_draw_lo    = menu_vars + 2
@@ -68,25 +79,30 @@ menu_mode       = menu_vars + 8
 menu_cursor     = menu_vars + 9 ; 0-2 on the first screen
 menu_shown      = menu_vars + 10    ; where its mark is drawn, FF nowhere
 menu_pos        = menu_vars + 11    ; 0-11: the digit being edited
-menu_want       = menu_vars + 12    ; a command to send, 00 none
-menu_sent       = menu_vars + 13    ; the command of the last request
-menu_done       = menu_vars + 14    ; 01 the last command has been answered
+menu_want       = menu_vars + 12    ; an op of PEER's to send, 00 none
+menu_sent       = menu_vars + 13    ; the op of the last request, or HELLO
+menu_done       = menu_vars + 14    ; 01 the last op wanted has been answered
 menu_misses     = menu_vars + 15
-menu_state      = menu_vars + 16    ; the Stick's, from its last reply
+menu_state      = menu_vars + 16    ; the nesp32's, from its last reply
 menu_dirty      = menu_vars + 17    ; what is to be drawn
 menu_status     = menu_vars + 18    ; which of status_texts, on the join screen
 menu_filled     = menu_vars + 19    ; 01 the address to join has been set
 menu_octets     = menu_vars + 20    ; 4: an address, as it crosses the link
 menu_digits     = menu_vars + 24    ; 12: the address to join
-menu_own        = menu_vars + 36    ; 12: this Stick's
-MENU_VARS       = 48
+menu_own        = menu_vars + 36    ; 12: this nesp32's
+menu_linked     = menu_vars + 48    ; 01 the nesp32 has answered a hello
+menu_len        = menu_vars + 49    ; the payload's length, of the request to go out
+MENU_VARS       = 50
+
+.assert IP_TILES + 1 <= menu_vars - menu_line, error
+.assert menu_vars + MENU_VARS <= $0400, error
 
 MODE_MAIN    = 0
 MODE_HOSTING = 1
 MODE_EDIT    = 2
 MODE_JOINING = 3
 
-DIRTY_OWN    = $01              ; this Stick's address, or why there is none
+DIRTY_OWN    = $01              ; this nesp32's address, or why there is none
 DIRTY_DIGITS = $02
 DIRTY_MARK   = $04
 DIRTY_STATUS = $08
@@ -99,7 +115,7 @@ DIRTY_CURSOR = $10
 
 
 
-.segment "CODE"
+.segment "MENU"
 
 menu_entry:
     .assert * = MENU_ENTRY, error, "the game comes in at MENU_ENTRY"
@@ -121,10 +137,8 @@ menu_entry:
     BPL @clear
     STA net_pending
     STA net_result
-    LDA #STATE_NONE
-    STA menu_state
-    LDA #CMD_CANCEL             ; whatever the Stick was doing is over
-    STA menu_want
+    LDA #STATE_NONE             ; and no hello yet: whatever the nesp32
+    STA menu_state              ; was doing ends with that
     LDA #$3F
     STA $2006
     LDA #$00
@@ -185,21 +199,21 @@ mode_main:
     LDA menu_cursor
     CMP #$02
     BEQ leave_local
-    ; The other two need a Stick that is on a network.
+    ; The other two need a nesp32 that is on a network.
     LDX menu_state
-    BEQ @loop                   ; STATE_NO_WIFI
-    INX
-    BEQ @loop                   ; STATE_NONE
+    BEQ @loop                   ; NESP_LOBBY_NO_WIFI
+    CPX #STATE_OLD
+    BCS @loop                   ; or STATE_NONE
     CMP #$00
     BNE @join
-    LDA #CMD_HOST
+    LDA #NESP_PEER_HOST
     JSR command
     JSR show_hosting
     JMP menu_loop
 @join:
     LDA menu_filled
     BNE @edit
-    LDA #CMD_LAST
+    LDA #NESP_PEER_LAST
     JSR command
 @edit:
     JSR show_join
@@ -244,7 +258,7 @@ mode_hosting:
     LDA menu_press
     AND #BTN_B
     BEQ @state
-    LDA #CMD_CANCEL
+    LDA #NESP_PEER_LEAVE
     JSR command
     JSR show_main
     JMP menu_loop
@@ -252,7 +266,7 @@ mode_hosting:
     LDA menu_done
     BEQ @loop
     LDA menu_state
-    CMP #STATE_HOST
+    CMP #NESP_LOBBY_HOST
     BNE @loop
     LDY #$00
     JMP leave_session
@@ -316,8 +330,7 @@ mode_edit:
     LDA menu_press
     AND #BTN_A | BTN_START
     BEQ @loop
-    JSR digits_to_octets
-    LDA #CMD_JOIN
+    LDA #NESP_PEER_JOIN
     JSR command
     LDA #MODE_JOINING
     STA menu_mode
@@ -338,7 +351,7 @@ mode_joining:
     LDA menu_press
     AND #BTN_B
     BEQ @state
-    LDA #CMD_CANCEL
+    LDA #NESP_PEER_LEAVE
     JSR command
     LDA #STATUS_NONE
     BEQ @edit
@@ -346,9 +359,9 @@ mode_joining:
     LDA menu_done
     BEQ @loop
     LDA menu_state
-    CMP #STATE_CONNECTING
+    CMP #NESP_LOBBY_CONNECTING
     BEQ @loop
-    CMP #STATE_GUEST
+    CMP #NESP_LOBBY_GUEST
     BNE @failed
     LDY #$01
     JMP leave_session
@@ -370,10 +383,10 @@ set_status:
 
 
 
-; --- the Stick -----------------------------------------------------------------------
+; --- the nesp32 ------------------------------------------------------------------------
 
-; Send command A, in place of the next request for the Stick's state, and
-; again until it is answered.
+; Send op A of PEER's, in place of the next question about the nesp32's
+; state, and again until it is answered.
 command:
     STA menu_want
     LDA #$00
@@ -387,23 +400,35 @@ menu_link:
     BNE @result
     JMP @send
 @result:
-    BMI @missed
-    LDA net_reply
-    CMP #REPLY_CONTROL
-    BNE @missed
+    BPL @came
+    JMP @missed
+@came:
+    LDA menu_sent
+    CMP #HELLO
+    BNE @reply
+    JSR hello_answered
+    JMP @clear
+@reply:
+    LDA nesp_status
+    BEQ @good
+    ; Not in use: the nesp32 was switched off and on, and knows of no hello.
+    LDA #$00
+    STA menu_linked
+    BEQ @missed
+@good:
     LDA #$00
     STA menu_misses
     LDX #$03
 @address:
-    LDA net_reply + 2,X
+    LDA nesp_reply + 1,X
     STA menu_octets,X
     DEX
     BPL @address
     LDA menu_sent
-    CMP #CMD_LAST
+    CMP #NESP_PEER_LAST
     BNE @state
     ; The address last joined, to start the edit from. With none, this
-    ; Stick's own: the other is most likely on the same network.
+    ; nesp32's own: the other is most likely on the same network.
     LDA menu_octets
     ORA menu_octets + 1
     ORA menu_octets + 2
@@ -427,7 +452,7 @@ menu_link:
     STA menu_dirty
     BNE @answered
 @state:
-    LDA net_reply + 1
+    LDA nesp_reply
     STA menu_state
     LDX #12
     JSR octets_to_digits
@@ -435,7 +460,7 @@ menu_link:
     ORA #DIRTY_OWN
     STA menu_dirty
 @answered:
-    ; Is that the answer to the command the screen is waiting on?
+    ; Is that the answer to the op the screen is waiting on?
     LDA menu_sent
     BEQ @clear
     LDA menu_want
@@ -444,7 +469,9 @@ menu_link:
     STA menu_done
     BNE @clear
 @missed:
-    LDA menu_sent               ; a command is sent again
+    LDA menu_sent               ; an op is sent again; a hello is anyway
+    BEQ @count
+    CMP #HELLO
     BEQ @count
     LDA menu_want
     BNE @count
@@ -456,54 +483,124 @@ menu_link:
     CMP #MISSES
     BCC @clear
     DEC menu_misses
-    LDA menu_state
-    CMP #STATE_NONE
-    BEQ @clear
+    LDA #$00                    ; whatever answers next is asked who it is
+    STA menu_linked
     LDA #STATE_NONE
-    STA menu_state
-    LDA menu_dirty
-    ORA #DIRTY_OWN
-    STA menu_dirty
+    JSR set_state
 @clear:
     LDA #$00
     STA net_result
 @send:
     LDA net_pending
     BNE @RTS
-    ; A request every fourth frame at most: with no Stick each one is a
-    ; third of a frame spent waiting, and a command is sent until answered.
+    ; A request every fourth frame at most: with no nesp32 each one is a
+    ; third of a frame spent waiting, and an op is sent until answered.
     LDA menu_count
     AND #$03
     BNE @RTS
+    LDA menu_linked
+    BNE @linked
+    LDA #HELLO
+    STA menu_sent
+    BNE @go
+@linked:
     LDA menu_want
     BNE @request
     LDA menu_count
     AND #$0F
     BNE @RTS
-    ; A = 00, CMD_STATUS
+    ; A = 00, NESP_PEER_STATUS
 @request:
     STA menu_sent
-    STA net_request + 1
-    CMP #CMD_JOIN
-    BNE @marker
+    LDY #$00
+    CMP #NESP_PEER_JOIN
+    BNE @length
     JSR digits_to_octets
-@marker:
-    LDA #REQUEST_CONTROL
-    STA net_request
     LDX #$03
 @payload:
     LDA menu_octets,X
-    STA net_request + 2,X
+    STA nesp_request,X
     DEX
     BPL @payload
+    LDY #$04
+@length:
+    STY menu_len
     LDA #$00
     STA menu_want
+@go:
     LDA #$01
     STA net_pending
 @RTS:
     RTS
 
-.assert CMD_STATUS = 0, error, "menu_link takes CMD_STATUS for no command"
+.assert NESP_PEER_STATUS = 0, error, "menu_link takes NESP_PEER_STATUS for no op"
+
+; The hello has been answered. With any status but OK the firmware has no
+; PEER, or speaks another protocol.
+hello_answered:
+    LDA nesp_status
+    BEQ @linked
+    LDA #STATE_OLD
+    BNE set_state
+@linked:
+    LDA #$01
+    STA menu_linked
+    LDA #$00
+    STA menu_misses
+    LDA #$0F                    ; the first question follows at once
+    STA menu_count
+    ; A nesp32 that was switched off and on has forgotten what it was told.
+    LDA menu_want
+    BNE @RTS
+    LDA menu_mode
+    CMP #MODE_HOSTING
+    BNE @joining
+    LDA #NESP_PEER_HOST
+    BNE @again
+@joining:
+    CMP #MODE_JOINING
+    BNE @RTS
+    LDA #NESP_PEER_JOIN
+@again:
+    JMP command
+@RTS:
+    RTS
+
+; The nesp32's state is A, if that is news.
+set_state:
+    CMP menu_state
+    BEQ @RTS
+    STA menu_state
+    LDA menu_dirty
+    ORA #DIRTY_OWN
+    STA menu_dirty
+@RTS:
+    RTS
+
+; The request menu_link made, and its reply: from the NMI, as every
+; exchange is.
+menu_exchange:
+    LDX menu_sent
+    CPX #HELLO
+    BNE @op
+    LDA #NESP_SVC_PEER
+    STA nesp_request + NESP_HELLO_FIXED
+    LDY #$01
+    JSR nesp_hello
+    JMP @result
+@op:
+    LDY menu_len
+    LDA #NESP_SVC_PEER
+    JSR nesp_call
+@result:
+    LDA #$00
+    STA net_pending
+    LDA #$01
+    BCC @store
+    LDA #$FF
+@store:
+    STA net_result
+    RTS
 
 
 
@@ -615,19 +712,20 @@ draw_own:
     CMP #MODE_MAIN
     BNE draw_RTS
 draw_own_row:
-    LDX menu_state
-    INX
-    BEQ draw_none
-    DEX
-    BEQ draw_no_wifi
+    LDA menu_state
+    LDX #STATUS_NO_WIFI
+    CMP #NESP_LOBBY_NO_WIFI
+    BEQ draw_why
+    LDX #STATUS_NO_NESP32
+    CMP #STATE_NONE
+    BEQ draw_why
+    LDX #STATUS_OLD
+    CMP #STATE_OLD
+    BEQ draw_why
     LDX #12
     JSR digits_to_line
     JMP draw_own_at
-draw_no_wifi:
-    LDX #STATUS_NO_WIFI
-    .byte $2C                   ; bit abs: skips the ldx
-draw_none:
-    LDX #STATUS_NO_STICK
+draw_why:
     JSR text_to_line
 draw_own_at:
     LDA menu_mode
@@ -795,8 +893,10 @@ STATUS_CONNECTING = * - status_texts
     .byte "CONNECTING     "
 STATUS_FAILED = * - status_texts
     .byte "COULD NOT JOIN "
-STATUS_NO_STICK = * - status_texts
-    .byte "NO STICK       "
+STATUS_NO_NESP32 = * - status_texts
+    .byte "NO NESP32      "
+STATUS_OLD = * - status_texts
+    .byte "UPDATE NESP32  "
 STATUS_NO_WIFI = * - status_texts
     .byte "NO WIFI        "
 
@@ -897,7 +997,7 @@ screen_main:
     text 9, 11, "HOST GAME"
     text 11, 11, "JOIN GAME"
     text 13, 11, "LOCAL GAME"
-    text 18, 8, "THIS STICK IS AT"
+    text 18, 7, "THIS NESP32 IS AT"
     .byte 0
 
 screen_hosting:
@@ -978,14 +1078,7 @@ menu_nmi:
     STX $4016
     LDA net_pending
     BEQ @done
-    JSR net_exchange
-    LDA #$00
-    STA net_pending
-    LDA #$01
-    BCC @result
-    LDA #$FF
-@result:
-    STA net_result
+    JSR menu_exchange
 @done:
     LDA #$01
     STA menu_frame
@@ -996,12 +1089,6 @@ menu_nmi:
     PLA
 menu_irq:
     RTI
-
-
-
-.segment "SERIAL"
-    net_serial
-.include "net/exchange.inc"
 
 
 
