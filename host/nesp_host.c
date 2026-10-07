@@ -17,6 +17,7 @@
 
 #define HOST_TRACKS_MAX 64
 #define HOST_SHOWN_MAX 96
+#define HOST_CONN_MAX 256
 
 typedef struct {
     nesp_stick_t stick;
@@ -61,6 +62,23 @@ typedef struct {
     uint32_t track_reads;
     bool answering;                 /* in a feed: a file read now would hold up the reply */
     char shown[2][HOST_SHOWN_MAX];  /* the application's lines of the screen */
+    /* The connection to another nesp32. The caller is the network: it says
+     * when a call is answered, takes what was sent and gives what comes. */
+    uint8_t conn;                   /* NESP_CONN_* */
+    uint16_t conn_port;
+    uint8_t conn_target[4];
+    bool conn_refused;              /* set by the caller: it cannot listen or call */
+    size_t conn_room;               /* set by the caller: the most taken at one send; 0 for any */
+    uint8_t conn_out[HOST_CONN_MAX];
+    size_t conn_out_len;
+    uint8_t conn_in[HOST_CONN_MAX];
+    size_t conn_in_len;
+    uint32_t listens;
+    uint32_t calls;
+    uint32_t closes;
+    bool have_last;
+    uint8_t last[4];
+    uint32_t keeps;
 } host_t;
 
 static uint8_t hal_board(void *ctx)
@@ -269,6 +287,91 @@ static void hal_show(void *ctx, uint8_t row, const char *text)
     }
 }
 
+static uint8_t hal_peer_state(void *ctx)
+{
+    return ((host_t *)ctx)->conn;
+}
+
+static bool conn_begin(host_t *host, uint8_t state, uint16_t port)
+{
+    if (host->conn_refused) {
+        return false;
+    }
+    host->conn = state;
+    host->conn_port = port;
+    host->conn_out_len = host->conn_in_len = 0;
+    return true;
+}
+
+static bool hal_peer_listen(void *ctx, uint16_t port)
+{
+    host_t *host = ctx;
+    host->listens++;
+    return conn_begin(host, NESP_CONN_LISTENING, port);
+}
+
+static bool hal_peer_call(void *ctx, const uint8_t *address, uint16_t port)
+{
+    host_t *host = ctx;
+    host->calls++;
+    memcpy(host->conn_target, address, 4);
+    return conn_begin(host, NESP_CONN_CALLING, port);
+}
+
+static void hal_peer_close(void *ctx)
+{
+    host_t *host = ctx;
+    host->closes++;
+    host->conn = NESP_CONN_NONE;
+    host->conn_out_len = host->conn_in_len = 0;
+}
+
+static size_t hal_peer_send(void *ctx, const uint8_t *data, size_t len)
+{
+    host_t *host = ctx;
+    if (host->conn != NESP_CONN_ANSWERED && host->conn != NESP_CONN_CALLED) {
+        return 0;
+    }
+    if (host->conn_room != 0 && len > host->conn_room) {
+        len = host->conn_room;
+    }
+    if (len > HOST_CONN_MAX - host->conn_out_len) {
+        len = HOST_CONN_MAX - host->conn_out_len;
+    }
+    memcpy(host->conn_out + host->conn_out_len, data, len);
+    host->conn_out_len += len;
+    return len;
+}
+
+static size_t hal_peer_recv(void *ctx, uint8_t *out, size_t max)
+{
+    host_t *host = ctx;
+    if (max > host->conn_in_len) {
+        max = host->conn_in_len;
+    }
+    memcpy(out, host->conn_in, max);
+    host->conn_in_len -= max;
+    memmove(host->conn_in, host->conn_in + max, host->conn_in_len);
+    return max;
+}
+
+static bool hal_peer_last(void *ctx, uint8_t *address)
+{
+    host_t *host = ctx;
+    if (host->have_last) {
+        memcpy(address, host->last, 4);
+    }
+    return host->have_last;
+}
+
+static void hal_peer_keep(void *ctx, const uint8_t *address)
+{
+    host_t *host = ctx;
+    host->have_last = true;
+    memcpy(host->last, address, 4);
+    host->keeps++;
+}
+
 host_t *host_new(void)
 {
     host_t *host = calloc(1, sizeof(*host));
@@ -300,6 +403,14 @@ host_t *host_new(void)
     host->hal.track_size = hal_track_size;
     host->hal.track_read = hal_track_read;
     host->hal.show = hal_show;
+    host->hal.peer_state = hal_peer_state;
+    host->hal.peer_listen = hal_peer_listen;
+    host->hal.peer_call = hal_peer_call;
+    host->hal.peer_close = hal_peer_close;
+    host->hal.peer_send = hal_peer_send;
+    host->hal.peer_recv = hal_peer_recv;
+    host->hal.peer_last = hal_peer_last;
+    host->hal.peer_keep = hal_peer_keep;
     host->battery = 0xFF;
     nesp_stick_init(&host->stick, &host->hal);
     return host;
@@ -432,6 +543,61 @@ void host_juke_set(host_t *host, uint8_t loops, bool repeat)
     host->stick.juke.loops = loops;
     host->stick.juke.repeat = repeat;
 }
+
+/* --- the connection to another nesp32: the caller is the network -------------- */
+
+uint8_t host_conn(const host_t *host) { return host->conn; }
+uint16_t host_conn_port(const host_t *host) { return host->conn_port; }
+void host_conn_target(const host_t *host, uint8_t *out) { memcpy(out, host->conn_target, 4); }
+void host_conn_set(host_t *host, uint8_t state) { host->conn = state; }
+void host_conn_refuse(host_t *host, bool refused) { host->conn_refused = refused; }
+void host_conn_room(host_t *host, size_t bytes) { host->conn_room = bytes; }
+uint32_t host_listens(const host_t *host) { return host->listens; }
+uint32_t host_calls(const host_t *host) { return host->calls; }
+uint32_t host_closes(const host_t *host) { return host->closes; }
+uint32_t host_keeps(const host_t *host) { return host->keeps; }
+
+/* What the nesp32 has sent to the other, and not yet been taken. */
+size_t host_conn_take(host_t *host, uint8_t *out, size_t max)
+{
+    if (max > host->conn_out_len) {
+        max = host->conn_out_len;
+    }
+    memcpy(out, host->conn_out, max);
+    host->conn_out_len -= max;
+    memmove(host->conn_out, host->conn_out + max, host->conn_out_len);
+    return max;
+}
+
+/* Bytes from the other nesp32. Returns how many there was room for. */
+size_t host_conn_give(host_t *host, const uint8_t *data, size_t len)
+{
+    if (len > HOST_CONN_MAX - host->conn_in_len) {
+        len = HOST_CONN_MAX - host->conn_in_len;
+    }
+    memcpy(host->conn_in + host->conn_in_len, data, len);
+    host->conn_in_len += len;
+    return len;
+}
+
+/* The address a nesp32 has kept from before it was switched on, if any. */
+void host_set_last(host_t *host, const uint8_t *address)
+{
+    host->have_last = address != NULL;
+    if (address != NULL) {
+        memcpy(host->last, address, 4);
+    }
+}
+
+bool host_last(const host_t *host, uint8_t *out)
+{
+    memcpy(out, host->last, 4);
+    return host->have_last;
+}
+
+uint32_t host_peer_requests(const host_t *host) { return host->stick.peer.requests; }
+uint32_t host_peer_repeats(const host_t *host) { return host->stick.peer.repeats; }
+uint8_t host_peer_lobby(const host_t *host) { return host->stick.peer.lobby; }
 
 /* --- what happened ---------------------------------------------------------- */
 

@@ -12,7 +12,10 @@ line (`tests/`), and have run on a StickS3 with the MiSTer's NES core
 tested the same way, JUKE with nes-jukebox's ROM (its `tests/`), and run
 on the same hardware with that ROM. RAW's runs of the pattern, both ways,
 are tested with nes-jukebox's throughput test ROM (its
-`throughput/tests/`), and have run on that hardware with it.
+`throughput/tests/`), and have run on that hardware with it. PEER is
+implemented and tested the same way, with nes-drmario's netplay ROM on two
+simulated consoles (its `tests/`), and a network game has been played with
+that ROM on hardware.
 The services marked *reserved* have a number and no ops.
 
 Every number in this document comes from `proto/nesp.toml`, from which
@@ -166,7 +169,7 @@ nothing done on the Stick.
 | `$01` | NET | Wi-Fi setup; sockets later | Wi-Fi done |
 | `$02` | RES | resources by name: fetch, lay out, read as a stream or as numbered records | reserved |
 | `$03` | RAW | a run of bytes at a rate of its own with framing off: sampled sound, rate trials | done |
-| `$04` | PEER | a lobby and a lockstep relay of buttons for two consoles | reserved |
+| `$04` | PEER | a lobby and a lockstep relay of buttons for two consoles | done |
 | `$05` | DIAG | the link's counters and test patterns | done |
 | `$10` | JUKE | the jukebox: the playlist as a stream, the buttons, sampled sound | done |
 | `$11` | WIKI | NESpedia: a search, and the article it finds as numbered lines | done |
@@ -234,6 +237,108 @@ and by any hello.
 
 **The password goes one way only.** No op of any service sends it back
 (`tests/test_core.py` asks all of them).
+
+### PEER `$04`: two consoles, one game
+
+Two consoles play one two-player game, each with a nesp32, and the nesp32s
+joined over the network. Both consoles run the whole game, and only buttons
+cross: a byte for each *tick* of the game, each way. A console takes a tick
+only when it holds both players' buttons for it, so the two games see the
+same buttons at the same tick and stay the same game. nes-drmario's netplay
+ROM is the console's side, and its `docs/PROTOCOL.md` has what a tick is
+there and how the games are kept the same.
+
+The service is a lobby, in which one nesp32 waits and the other calls it,
+and then a relay. It does not know what a button is, and keeps no time.
+
+| `OP` | Name | Request | Reply |
+|---|---|---|---|
+| `$00` | STATUS | | `STATE`, `ADDRESS[4]` |
+| `$01` | HOST | | the same: wait for the other nesp32 to call |
+| `$02` | JOIN | `ADDRESS[4]` | the same: call the nesp32 at that address |
+| `$03` | LEAVE | | the same: drop whatever connection there is, or is being made |
+| `$04` | LAST | | `STATE`, and in `ADDRESS` the address last joined (zeros if none) |
+| `$05` | TICKS | `FIRST`, `WANTED`, `BUTTONS` ... | `NEXT`, `FROM`, `LOST`, `BUTTONS` ... |
+
+In every reply but LAST's, `ADDRESS` is the nesp32's own IPv4 address.
+
+| `STATE` | Name | |
+|---|---|---|
+| 0 | NO_WIFI | not on a network |
+| 1 | IDLE | |
+| 2 | HOSTING | waiting for the other nesp32 |
+| 3 | CONNECTING | calling it |
+| 4 | HOST | connected, and this console is player 1 |
+| 5 | GUEST | connected, and this console is player 2 |
+| 6 | FAILED | the last call was not answered, or the connection was lost |
+
+**An order that is already what the nesp32 is doing changes nothing**, so
+the console sends one again until it is answered, and acts on a state only
+once the order that should lead to it has been. Likewise buttons the nesp32
+has already taken are passed over. So every op can be asked again with
+nothing done twice, and no reply of PEER's is held for a repeat: the same
+request again is a new question.
+
+**The one that was called is player 1.** The one that called keeps the
+address, over power-off, for LAST to offer the next time.
+
+**A hello ends a game**, as it ends everything: a console that is reset is
+in none, and its nesp32 hangs up.
+
+#### A session
+
+```text
+request   FIRST, WANTED, BUTTONS[0 to 2]
+reply     NEXT,  FROM,   LOST, BUTTONS[0 to 2]
+```
+
+Ticks are counted from 0 when the connection is made, and named by their
+low 8 bits. Neither side is ever more than a few ticks from what the other
+holds, so that is enough.
+
+| Field | Meaning |
+|---|---|
+| `FIRST` | the request carries this console's buttons for the ticks from `FIRST`, as many as it has bytes after `WANTED`: the oldest the nesp32 has not said it holds |
+| `WANTED` | the tick of the other console's buttons that this one needs next. It has all before it |
+| `NEXT` | the first of this console's ticks the nesp32 does not hold. The console sends from there next time |
+| `FROM` | the reply carries the other console's buttons for the ticks from `FROM`, which is `WANTED`, as many as it has bytes after `LOST` |
+| `LOST` | not 0: the other console is gone, and nothing more of its buttons is held. Also the answer when there is no session at all |
+
+A frame carries two ticks where a frame of the game makes one, so either
+side catches up after a failed exchange. The nesp32 takes fewer of the
+console's than it was sent when it has no room for more, and `NEXT` says
+so. What the other console sent before it went is still handed over, and
+only then is `LOST` set.
+
+#### Between the nesp32s
+
+TCP, to port 6502 on the nesp32 that hosts. Each says what it is before
+either calls it a game:
+
+```text
+'N', 'E', 'S', 'P', 1, APP[4], APP_VERSION
+```
+
+the application and its version being its console's, from the hello. One
+that hears anything else within two seconds, or nothing, hangs up: so
+something else that finds the port is not taken for a console, and neither
+is another game, or another version of this one. A nesp32 that hosts goes
+on waiting for the right caller; one that called says FAILED.
+
+Then one byte a tick each way, in order: a byte's place in the stream is
+its tick, so the stream must be reliable and ordered. On one network that
+needs nothing more. Across the Internet the hosting side has to forward the
+port to its nesp32, and player 2 enters the host's public address.
+
+The nesp32's own screen shows the address player 2 has to enter while it
+hosts, and in a session which player its console is, with the count of
+requests and of those that brought it nothing new: frames in which the game
+stood still, or an exchange that failed.
+
+In nes-drmario's ROM an exchange is made inside the NMI, 9 to 11 bytes out
+and 10 to 12 back, with the receiver that gives up by counting (section
+7). The input delay is 3 ticks, which on the simulated consoles is a local
+network's: with 10 ms between the nesp32s nearly every frame is a tick.
 
 ### DIAG `$05`
 
@@ -520,6 +625,13 @@ There are two receivers, for the two places an exchange can be made:
 | What ends a wait | the NMI: its handler ends with `nesp_nmi_hook`, which returns to the exchange's caller with carry set | a count: `NESP_TIMEOUT` passes of 1.86 ms |
 | Start-bit hunt | 9 cycles a look | 13 cycles a look |
 | From | nes-jukebox and nes-wiki | nes-drmario |
+
+A ROM whose every exchange is made inside its NMI defines `NESP_NMI_ONLY`,
+and has no `nesp_nmi_hook` and nothing kept for one. One in two banks has a
+copy of the library in each, at the same places in memory, and the bank
+that never says hello defines `NESP_NO_HELLO`. With `--pack` the two serial
+routines share a page, for a ROM with one to spare and no more.
+nes-drmario's netplay ROM is all three.
 
 A reply's length is not known until its fifth byte. The receiver works out
 where the frame ends as that byte arrives, cut to `NESP_RX_MASK`, so that

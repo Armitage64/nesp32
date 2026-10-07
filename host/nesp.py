@@ -125,6 +125,26 @@ def library():
         lib.host_juke_index.argtypes = [ctypes.c_void_p]
         lib.host_raw_state.restype = ctypes.c_uint8
         lib.host_raw_state.argtypes = [ctypes.c_void_p]
+        for name in ("host_conn", "host_peer_lobby"):
+            getattr(lib, name).restype = ctypes.c_uint8
+            getattr(lib, name).argtypes = [ctypes.c_void_p]
+        lib.host_conn_port.restype = ctypes.c_uint16
+        lib.host_conn_port.argtypes = [ctypes.c_void_p]
+        lib.host_conn_target.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        lib.host_conn_set.argtypes = [ctypes.c_void_p, ctypes.c_uint8]
+        lib.host_conn_refuse.argtypes = [ctypes.c_void_p, ctypes.c_bool]
+        lib.host_conn_room.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+        for name in ("host_listens", "host_calls", "host_closes", "host_keeps",
+                     "host_peer_requests", "host_peer_repeats"):
+            getattr(lib, name).restype = ctypes.c_uint32
+            getattr(lib, name).argtypes = [ctypes.c_void_p]
+        lib.host_conn_take.restype = ctypes.c_size_t
+        lib.host_conn_take.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t]
+        lib.host_conn_give.restype = ctypes.c_size_t
+        lib.host_conn_give.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t]
+        lib.host_set_last.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        lib.host_last.restype = ctypes.c_bool
+        lib.host_last.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
         lib.host_checks.argtypes = [ctypes.c_char_p, ctypes.c_size_t, _u8p]
         lib.host_pattern.argtypes = [ctypes.c_uint16, _u8p, ctypes.c_size_t]
         _lib = lib
@@ -191,6 +211,12 @@ def parse(data):
     if checks(data[1:-2]) != data[-2:]:
         raise ValueError("a reply with bad check bytes: %r" % data)
     return Reply(data[1], data[2], data[3], data[5:5 + length])
+
+
+# How a nesp32's connection to another stands (nesp_services.h's NESP_CONN_*).
+(CONN_NONE, CONN_LISTENING, CONN_CALLING, CONN_ANSWERED, CONN_CALLED, CONN_FAILED,
+ CONN_LOST) = range(7)
+CONN_UP = (CONN_ANSWERED, CONN_CALLED)
 
 
 class Line:
@@ -335,6 +361,86 @@ class Stick:
 
     def set_juke(self, loops=2, repeat=True):
         self._lib.host_juke_set(self._host, loops, repeat)
+
+    # --- the connection to another nesp32: the caller is the network ----------------
+
+    @property
+    def conn(self):
+        """How the connection stands: one of CONN_*."""
+        return self._lib.host_conn(self._host)
+
+    @conn.setter
+    def conn(self, state):
+        self._lib.host_conn_set(self._host, state)
+
+    @property
+    def conn_target(self):
+        """The address the nesp32 last called."""
+        buffer = ctypes.create_string_buffer(4)
+        self._lib.host_conn_target(self._host, buffer)
+        return buffer.raw
+
+    @property
+    def conn_port(self):
+        return self._lib.host_conn_port(self._host)
+
+    def conn_take(self):
+        """What the nesp32 has sent to the other since the last call."""
+        buffer = ctypes.create_string_buffer(256)
+        count = self._lib.host_conn_take(self._host, buffer, len(buffer))
+        return buffer.raw[:count]
+
+    def conn_give(self, data):
+        """Bytes from the other nesp32. Returns how many there was room for."""
+        data = bytes(data)
+        return self._lib.host_conn_give(self._host, data, len(data))
+
+    def refuse_conns(self, refused=True):
+        self._lib.host_conn_refuse(self._host, refused)
+
+    def conn_room(self, size):
+        """The most the connection takes at one send; 0 for any."""
+        self._lib.host_conn_room(self._host, size)
+
+    @property
+    def last(self):
+        """The address the nesp32 keeps as the last it joined, or None."""
+        buffer = ctypes.create_string_buffer(4)
+        return buffer.raw if self._lib.host_last(self._host, buffer) else None
+
+    @last.setter
+    def last(self, address):
+        self._lib.host_set_last(self._host, None if address is None else bytes(address))
+
+    @property
+    def listens(self):
+        return self._lib.host_listens(self._host)
+
+    @property
+    def calls(self):
+        return self._lib.host_calls(self._host)
+
+    @property
+    def closes(self):
+        return self._lib.host_closes(self._host)
+
+    @property
+    def keeps(self):
+        return self._lib.host_keeps(self._host)
+
+    @property
+    def peer_requests(self):
+        """PEER: TICKS requests in this session, and how many of them
+        brought nothing new."""
+        return self._lib.host_peer_requests(self._host)
+
+    @property
+    def peer_repeats(self):
+        return self._lib.host_peer_repeats(self._host)
+
+    @property
+    def lobby(self):
+        return self._lib.host_peer_lobby(self._host)
 
     # --- what happened -------------------------------------------------------------
 

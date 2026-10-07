@@ -25,6 +25,7 @@
 #include "esp_heap_caps.h"
 
 #include "board.h"
+#include "conn.h"
 #include "fetch.h"
 #include "link.h"
 #include "radio.h"
@@ -159,11 +160,12 @@ extern "C" void app_main(void)
             link_stats_t stats;
             link_stats(&stats);
             ESP_LOGI(TAG, "%lu requests, %lu again, %lu noise; reply %lu us, slowest %lu; "
-                     "stack left: link %lu, fetch %lu; free: %u internal, %u PSRAM",
+                     "stack left: link %lu, fetch %lu, conn %lu; free: %u internal, %u PSRAM",
                      (unsigned long)stats.requests, (unsigned long)stats.repeats,
                      (unsigned long)stats.noise, (unsigned long)stats.turnaround_us,
                      (unsigned long)stats.turnaround_max_us,
                      (unsigned long)link_stack_left(), (unsigned long)fetch_stack_left(),
+                     (unsigned long)conn_stack_left(),
                      (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
                      (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
         }

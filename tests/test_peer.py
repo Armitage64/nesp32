@@ -1,0 +1,367 @@
+"""PEER, two consoles playing one game, with no console: requests in,
+replies out, and the test as the network between two nesp32s.
+
+The connection is the hardware's, and here the stand-in's (host/nesp.py):
+the test says when a call is answered (conn), takes what a nesp32 sent to
+the other (conn_take) and gives it what came (conn_give).
+"""
+
+import nesp_proto as p
+import pytest
+from nesp import (CONN_ANSWERED, CONN_CALLED, CONN_CALLING, CONN_FAILED, CONN_LISTENING,
+                  CONN_LOST, CONN_NONE, Stick, frame, parse)
+
+PEER = p.NESP_SVC_PEER
+STATUS, HOST, JOIN, LEAVE, LAST, TICKS = (p.NESP_PEER_STATUS, p.NESP_PEER_HOST,
+                                          p.NESP_PEER_JOIN, p.NESP_PEER_LEAVE,
+                                          p.NESP_PEER_LAST, p.NESP_PEER_TICKS)
+NO_WIFI, IDLE, HOSTING, CONNECTING = (p.NESP_LOBBY_NO_WIFI, p.NESP_LOBBY_IDLE,
+                                      p.NESP_LOBBY_HOSTING, p.NESP_LOBBY_CONNECTING)
+PLAYER_1, PLAYER_2, FAILED = p.NESP_LOBBY_HOST, p.NESP_LOBBY_GUEST, p.NESP_LOBBY_FAILED
+HOME, AWAY = bytes((192, 168, 1, 23)), bytes((192, 168, 1, 42))
+NOWHERE = bytes(4)
+
+
+def greeting(app=b"TEST", version=1):
+    """What a nesp32 says first to the other."""
+    return b"NESP" + bytes((p.NESP_PEER_VERSION,)) + app + bytes((version,))
+
+
+def online(stick, address=HOME, app=b"TEST", version=1):
+    stick.set_wifi(p.NESP_WIFI_JOINED, rssi=-50, address=address)
+    assert stick.hello(app=app, version=version, services=[PEER]).ok
+    return stick
+
+
+def lobby(stick, op=STATUS, payload=b""):
+    """A lobby op: (state, the address the reply carries)."""
+    reply = stick.ask(PEER, op, payload)
+    assert reply.ok and len(reply.payload) == 5
+    return reply.payload[0], reply.payload[1:]
+
+
+def ticks(stick, first, wanted, buttons=b""):
+    """A session's exchange: (next, from, lost, the other's buttons)."""
+    reply = stick.ask(PEER, TICKS, bytes((first & 0xFF, wanted & 0xFF)) + bytes(buttons))
+    assert reply.ok and len(reply.payload) >= 3
+    return reply.payload[0], reply.payload[1], reply.payload[2], reply.payload[3:]
+
+
+def carry(one, other):
+    """The network: what each has sent reaches the other."""
+    other.conn_give(one.conn_take())
+    one.conn_give(other.conn_take())
+
+
+def connect(host, guest, now=0):
+    """HOST on one, JOIN on the other, and the network answers. Both are
+    past their greetings."""
+    assert lobby(host, HOST)[0] == HOSTING
+    assert lobby(guest, JOIN, HOME)[0] == CONNECTING
+    host.conn, guest.conn = CONN_ANSWERED, CONN_CALLED
+    for _ in range(2):
+        host.tick(now)
+        guest.tick(now)
+        carry(host, guest)
+    assert lobby(host)[0] == PLAYER_1 and lobby(guest)[0] == PLAYER_2
+
+
+@pytest.fixture
+def peer(stick):
+    return online(stick)
+
+
+@pytest.fixture
+def pair():
+    return online(Stick(), HOME), online(Stick(), AWAY)
+
+
+def test_it_answers_only_after_a_hello_asks_for_it(stick):
+    stick.set_wifi(p.NESP_WIFI_JOINED, address=HOME)
+    assert stick.ask(PEER, STATUS).status == p.NESP_ST_INACTIVE
+    assert stick.hello(services=[PEER]).ok
+    assert lobby(stick) == (IDLE, HOME)
+
+
+def test_off_the_network_nothing_can_be_begun(stick):
+    assert stick.hello(services=[PEER]).ok
+    assert lobby(stick) == (NO_WIFI, NOWHERE)
+    assert lobby(stick, HOST)[0] == NO_WIFI
+    assert lobby(stick, JOIN, AWAY)[0] == NO_WIFI
+    assert (stick.listens, stick.calls) == (0, 0)
+
+
+def test_host_waits_for_a_call_and_leave_stops_waiting(peer):
+    assert lobby(peer, HOST) == (HOSTING, HOME)
+    assert (peer.conn, peer.conn_port) == (CONN_LISTENING, p.NESP_PEER_PORT)
+    # Asked again, it is already doing so.
+    assert lobby(peer, HOST)[0] == HOSTING
+    assert peer.listens == 1
+    assert lobby(peer, LEAVE) == (IDLE, HOME)
+    assert peer.conn == CONN_NONE
+
+
+def test_join_calls_the_address_once(peer):
+    assert lobby(peer, JOIN, AWAY) == (CONNECTING, HOME)
+    assert (peer.conn, peer.conn_target, peer.conn_port) == (CONN_CALLING, AWAY,
+                                                           p.NESP_PEER_PORT)
+    assert lobby(peer, JOIN, AWAY)[0] == CONNECTING
+    assert peer.calls == 1
+    # Another address is another call.
+    other = bytes((10, 0, 0, 7))
+    assert lobby(peer, JOIN, other)[0] == CONNECTING
+    assert (peer.calls, peer.conn_target) == (2, other)
+
+
+def test_join_wants_an_address(peer):
+    assert peer.ask(PEER, JOIN, b"\x01\x02\x03").status == p.NESP_ST_BAD_ARG
+    assert peer.ask(PEER, HOST, b"\x01").status == p.NESP_ST_BAD_ARG
+    assert peer.ask(PEER, 0x20).status == p.NESP_ST_NO_OP
+    assert peer.calls == 0
+
+
+def test_a_call_nobody_answers_fails(peer):
+    lobby(peer, JOIN, AWAY)
+    peer.conn = CONN_FAILED
+    peer.tick(10)
+    assert lobby(peer)[0] == FAILED
+    assert peer.last is None
+    # And it can be tried again.
+    assert lobby(peer, JOIN, AWAY)[0] == CONNECTING
+    assert peer.calls == 2
+
+
+def test_a_nesp32_that_cannot_listen_says_so(peer):
+    peer.refuse_conns()
+    assert lobby(peer, HOST)[0] == FAILED
+    assert lobby(peer, JOIN, AWAY)[0] == FAILED
+
+
+def test_a_wait_that_breaks_is_not_begun_again_by_itself(peer):
+    lobby(peer, HOST)
+    peer.conn = CONN_FAILED
+    peer.tick(10)
+    peer.tick(20)
+    assert lobby(peer)[0] == FAILED
+    assert (peer.conn, peer.listens) == (CONN_NONE, 1)
+
+
+def test_it_is_a_game_only_once_both_have_said_what_they_are(peer):
+    lobby(peer, HOST)
+    peer.conn = CONN_ANSWERED
+    peer.tick(0)
+    assert peer.conn_take() == greeting()
+    assert lobby(peer)[0] == HOSTING        # the caller has said nothing yet
+    peer.conn_give(greeting()[:6])
+    peer.tick(5)
+    assert lobby(peer)[0] == HOSTING
+    peer.conn_give(greeting()[6:])
+    peer.tick(10)
+    assert lobby(peer)[0] == PLAYER_1
+    assert peer.conn_take() == b""          # its greeting went once
+
+
+def test_the_one_that_called_is_player_2_and_keeps_the_address(pair):
+    host, guest = pair
+    assert lobby(guest, LAST) == (IDLE, NOWHERE)
+    connect(host, guest)
+    assert guest.last == HOME and guest.keeps == 1
+    assert host.last is None
+    assert lobby(guest, LAST) == (PLAYER_2, HOME)
+    # Asked again for what they are already doing, neither begins again.
+    assert lobby(host, HOST)[0] == PLAYER_1
+    assert lobby(guest, JOIN, HOME)[0] == PLAYER_2
+    assert (host.listens, guest.calls) == (1, 1)
+
+
+def test_the_address_kept_is_there_after_power_off(stick):
+    stick.last = AWAY
+    online(stick)
+    assert lobby(stick, LAST) == (IDLE, AWAY)
+
+
+@pytest.mark.parametrize("theirs", [b"GET / HTTP", greeting(app=b"TETR"),
+                                    greeting(version=2)])
+def test_something_else_on_the_port_is_no_game(peer, theirs):
+    """Not a nesp32, or another game, or another version of this one. The
+    one that hosts goes on waiting for the right caller."""
+    lobby(peer, HOST)
+    peer.conn = CONN_ANSWERED
+    peer.tick(0)
+    peer.conn_give(theirs)
+    peer.tick(1)
+    assert lobby(peer)[0] == HOSTING
+    assert (peer.conn, peer.listens) == (CONN_LISTENING, 2)
+
+
+def test_a_host_that_is_another_game_fails_the_join(pair):
+    host, guest = online(Stick(), HOME, app=b"TETR"), pair[1]
+    lobby(host, HOST)
+    lobby(guest, JOIN, HOME)
+    host.conn, guest.conn = CONN_ANSWERED, CONN_CALLED
+    for now in range(3):
+        host.tick(now)
+        guest.tick(now)
+        carry(host, guest)
+    assert lobby(guest)[0] == FAILED
+    assert guest.conn == CONN_NONE and guest.last is None
+    assert lobby(host)[0] == HOSTING
+
+
+def test_a_caller_that_says_nothing_is_given_up(peer):
+    lobby(peer, JOIN, AWAY)
+    peer.conn = CONN_CALLED
+    peer.tick(1000)
+    peer.tick(1000 + p.NESP_PEER_GREET_MS - 1)
+    assert lobby(peer)[0] == CONNECTING
+    peer.tick(1000 + p.NESP_PEER_GREET_MS)
+    assert lobby(peer)[0] == FAILED
+    assert peer.conn == CONN_NONE
+
+
+def test_the_greetings_are_wanted_soon_and_a_session_by_its_requests(pair):
+    host, guest = pair
+    lobby(host, HOST)
+    assert not host.tick(0)
+    host.conn = CONN_ANSWERED
+    assert host.tick(1)                     # until the greetings are over
+    host.conn_give(greeting())
+    assert not host.tick(2)
+
+
+def test_buttons_cross_a_byte_a_tick(pair):
+    host, guest = pair
+    connect(host, guest)
+    # Tick 0's buttons from each; neither has the other's yet.
+    assert ticks(host, 0, 0, b"\x80") == (1, 0, 0, b"")
+    assert ticks(guest, 0, 0, b"\x01") == (1, 0, 0, b"")
+    carry(host, guest)
+    assert ticks(host, 1, 0, b"\x40") == (2, 0, 0, b"\x01")
+    assert ticks(guest, 1, 0, b"\x02") == (2, 0, 0, b"\x80")
+    carry(host, guest)
+    # Each has taken tick 0 and wants tick 1.
+    assert ticks(host, 2, 1) == (2, 1, 0, b"\x02")
+    assert ticks(guest, 2, 1) == (2, 1, 0, b"\x40")
+
+
+def test_buttons_sent_again_are_passed_over(pair):
+    host, guest = pair
+    connect(host, guest)
+    assert ticks(host, 0, 0, b"\x11")[0] == 1
+    # The reply was lost: the console sends tick 0 again, with tick 1.
+    assert ticks(host, 0, 0, b"\x11\x22")[0] == 2
+    assert ticks(host, 0, 0, b"\x11\x22")[0] == 2
+    assert ticks(host, 1, 0, b"\x22\x33")[0] == 3
+    assert host.conn_take() == b"\x11\x22\x33"
+    assert (host.peer_requests, host.peer_repeats) == (4, 1)
+    # None of it was a repeat to the link: every one was answered afresh.
+    assert host.repeats == 0
+
+
+def test_the_same_request_again_is_answered_anew(pair):
+    host, guest = pair
+    connect(host, guest)
+    request = frame(PEER, TICKS, 9, b"\x00\x00")
+    assert parse(host.feed(request)).payload == b"\x00\x00\x00"
+    host.conn_give(b"\x55")
+    assert parse(host.feed(request)).payload == b"\x00\x00\x00\x55"
+
+
+def test_a_frame_carries_two_ticks_at_most(pair):
+    host, guest = pair
+    connect(host, guest)
+    host.conn_give(bytes(range(1, 8)))
+    assert ticks(host, 0, 0) == (0, 0, 0, b"\x01\x02")
+    assert ticks(host, 0, 2) == (0, 2, 0, b"\x03\x04")
+    # Asked for the same tick again, it has the same answer.
+    assert ticks(host, 0, 2) == (0, 2, 0, b"\x03\x04")
+    assert ticks(host, 0, 3) == (0, 3, 0, b"\x04\x05")
+    assert host.ask(PEER, TICKS, b"\x00\x03\x01\x02\x03").status == p.NESP_ST_BAD_ARG
+    assert host.ask(PEER, TICKS, b"\x00").status == p.NESP_ST_BAD_ARG
+
+
+def test_ticks_are_named_by_their_low_byte(pair):
+    host, guest = pair
+    connect(host, guest)
+    for tick in range(600):
+        assert ticks(host, tick, tick, bytes((tick & 0xFF,))) == (
+            (tick + 1) & 0xFF, tick & 0xFF, 0, b"")
+        assert host.conn_take() == bytes((tick & 0xFF,))
+        host.conn_give(bytes((0xFF - (tick & 0xFF),)))
+        assert ticks(host, tick + 1, tick)[3] == bytes((0xFF - (tick & 0xFF),))
+
+
+def test_a_connection_with_no_room_takes_what_it_can(pair):
+    host, guest = pair
+    connect(host, guest)
+    host.conn_room(1)
+    assert ticks(host, 0, 0, b"\x11\x22")[0] == 1
+    assert ticks(host, 1, 0, b"\x22")[0] == 2
+    assert host.conn_take() == b"\x11\x22"
+
+
+def test_the_other_console_goes_away(pair):
+    """What it sent before it went is still handed over, and then the
+    console is told."""
+    host, guest = pair
+    connect(host, guest)
+    host.conn_give(b"\x01\x02\x03")
+    host.conn = CONN_LOST
+    host.tick(50)
+    assert ticks(host, 0, 0) == (0, 0, 0, b"\x01\x02")
+    assert ticks(host, 0, 2) == (0, 2, 0, b"\x03")
+    assert ticks(host, 0, 3) == (0, 3, 1, b"")
+    assert lobby(host)[0] == FAILED
+    # Nothing more goes out, and the console can host again.
+    assert ticks(host, 0, 3, b"\x80")[0] == 0
+    assert lobby(host, HOST)[0] == HOSTING
+
+
+def test_with_no_session_the_other_console_is_gone(peer):
+    assert ticks(peer, 7, 9, b"\x80") == (7, 9, 1, b"")
+    lobby(peer, HOST)
+    assert ticks(peer, 7, 9) == (7, 9, 1, b"")
+
+
+def test_a_hello_ends_the_game(pair):
+    host, guest = pair
+    connect(host, guest)
+    assert host.hello(services=[PEER]).ok   # the console was reset
+    assert host.conn == CONN_NONE
+    assert lobby(host)[0] == IDLE
+    assert host.shown(0) == ""
+
+
+def test_the_network_going_ends_the_game(pair):
+    host, guest = pair
+    connect(host, guest)
+    host.set_wifi(p.NESP_WIFI_IDLE)
+    assert lobby(host) == (NO_WIFI, NOWHERE)
+    assert host.conn == CONN_NONE
+    assert ticks(host, 0, 0)[2] == 1
+
+
+def test_the_nesp32s_screen_says_how_it_stands(pair):
+    host, guest = pair
+    host.tick(0)
+    assert (host.shown(0), host.shown(1)) == ("", "")
+    lobby(host, HOST)
+    host.tick(1)
+    assert (host.shown(0), host.shown(1)) == ("Waiting for player 2", "at 192.168.1.23")
+    lobby(guest, JOIN, HOME)
+    guest.tick(1)
+    assert (guest.shown(0), guest.shown(1)) == ("Joining the game", "at 192.168.1.23")
+    host.conn, guest.conn = CONN_ANSWERED, CONN_CALLED
+    for now in (2, 3):
+        host.tick(now)
+        guest.tick(now)
+        carry(host, guest)
+    ticks(host, 0, 0, b"\x01")
+    ticks(host, 1, 0)
+    host.tick(1000)
+    guest.tick(1000)
+    assert (host.shown(0), host.shown(1)) == ("Player 1", "2 frames, 1 waiting")
+    assert guest.shown(0) == "Player 2"
+    guest.conn = CONN_LOST
+    guest.tick(1001)
+    assert guest.shown(0) == "Player 2: the other is gone"

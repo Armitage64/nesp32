@@ -3,6 +3,7 @@
 
     host/serial_host.py /dev/cu.usbserial-XXXX
     host/serial_host.py /dev/cu.usbserial-XXXX --tracks ../nes-jukebox/build/tracks
+    host/serial_host.py /dev/cu.usbserial-XXXX --game       # or --idle
 
 With nes-radar's 5 V FTDI cable on controller port 2 in place of a Stick,
 this answers the console with the firmware's own link and services
@@ -19,6 +20,13 @@ directory, in the order of their names (nes-jukebox's tools/pack_tracks.py
 makes one). The keys a, b and n are then the nesp32's buttons: play or
 pause, the previous track, the next. Sampled sound changes the cable's
 rate, as it does a nesp32's UART's.
+
+With --game it is one end of a game for two consoles (PEER: nes-drmario's
+netplay). The Wi-Fi is then this computer's own network, joined from the
+start, and the other end is called, or waited for, on it: a nesp32 with
+its console, or another computer with one. With --idle no other console is
+needed: HOST GAME starts a game at once against an opponent who never
+presses a button, which is the first thing to try on one console.
 
 USB serial adapters hold received bytes for a latency timer before passing
 them on (16 ms by default on FTDI chips), which is longer than the console
@@ -37,6 +45,7 @@ import serial
 
 import nesp
 import nesp_proto as p
+import peer_net
 
 NETWORKS = [(b"Home Network", -48, p.NESP_AUTH_PASSWORD), (b"Upstairs", -58, p.NESP_AUTH_PASSWORD),
             (b"Cafe Guest", -66, p.NESP_AUTH_OPEN), (b"Enterprise", -70, p.NESP_AUTH_OTHER)]
@@ -122,10 +131,22 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("device", help="the serial port the cable is on")
     parser.add_argument("--tracks", help="a directory of .jbs and .pcm files: the jukebox's music")
+    parser.add_argument("--game", action="store_true",
+                        help="one end of a game for two consoles, on this computer's network")
+    parser.add_argument("--idle", action="store_true",
+                        help="a game for two consoles with no other: an opponent who presses nothing")
     args = parser.parse_args(argv)
     port = SerialPort(args.device)
     stick = nesp.Stick(port)
     stick.set_battery(100)
+    network = None
+    if args.game or args.idle:
+        address = peer_net.own_address()
+        if address is None and not args.idle:
+            parser.error("this computer is on no network")
+        stick.set_saved(b"This computer")
+        stick.set_wifi(p.NESP_WIFI_JOINED, rssi=-50, address=address or bytes(4))
+        network = peer_net.IdleNetwork(stick) if args.idle else peer_net.SocketNetwork(stick)
     for track in tracks_in(args.tracks) if args.tracks else ():
         stick.add_track(track)
     keys = Keys()
@@ -137,6 +158,8 @@ def main(argv=None):
         while True:
             if stick.poll():
                 stick.note_turnaround(int((time.monotonic() - port.heard_at) * 1e6))
+            if network is not None:
+                network.poll()
             now = time.monotonic()
             key = keys.read()
             if key in KEYS:
@@ -167,6 +190,8 @@ def main(argv=None):
         print()
     finally:
         keys.close()
+        if network is not None:
+            network.close()
     return 0
 
 

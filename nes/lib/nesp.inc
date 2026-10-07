@@ -13,6 +13,12 @@
 ;   NESP_TIMEOUT    only if link.inc was made with --timeout, for exchanges
 ;                   made inside the NMI: how long to wait for a reply, in
 ;                   passes of 256 looks of 13 cycles (1.86 ms each)
+;   NESP_NMI_ONLY   optional, with NESP_TIMEOUT. Every exchange is made
+;                   inside the NMI, so there is no nesp_nmi_hook, and
+;                   nothing is kept for one
+;   NESP_NO_HELLO   optional. No nesp_hello and no nesp_pattern: for a bank
+;                   of a ROM whose other bank says hello. The two then
+;                   agree on where everything else here is kept
 ;
 ; and has the segments ZEROPAGE, BSS, CODE and RXTX (aligned to a page).
 ;
@@ -49,8 +55,10 @@
 nesp_rx_data:   .res 1
 nesp_tx_data:   .res 1
 nesp_rx_end:    .res 1          ; where the frame being received ends
+.ifndef NESP_NMI_ONLY
 nesp_active:    .res 1          ; an exchange is under way: the NMI ends it
 nesp_sp:        .res 1          ; the stack as the exchange's caller left it
+.endif
 nesp_seq:       .res 1          ; the last request's sequence number
 nesp_tx_len:    .res 1          ; the whole of the request, in bytes
 nesp_count:     .res 1
@@ -76,6 +84,7 @@ nesp_reply_len = nesp_rx + NESP_HEADER - 1
 
 .segment "CODE"
 
+.ifndef NESP_NMI_ONLY
 ; Last thing in the NMI. The stack holds Y, X and A above the flags and the
 ; address the NMI interrupted, which is replaced.
 .macro nesp_nmi_hook
@@ -88,6 +97,7 @@ nesp_reply_len = nesp_rx + NESP_HEADER - 1
     sta $0106,x
 :
 .endmacro
+.endif
 
 ; A new request: service A, op X, Y bytes of payload already in
 ; nesp_request. See the top of the file.
@@ -116,10 +126,12 @@ nesp_reply_len = nesp_rx + NESP_HEADER - 1
 .endproc
 
 .proc nesp_again
+.ifndef NESP_NMI_ONLY
     tsx
     stx nesp_sp
     lda #1
     sta nesp_active             ; from here the NMI may end this
+.endif
     ldx #0
 @send:
     lda nesp_tx,x
@@ -132,8 +144,10 @@ nesp_reply_len = nesp_rx + NESP_HEADER - 1
     sta nesp_tries
 .endif
     jsr nesp_rx_frame
+.ifndef NESP_NMI_ONLY
     lda #0
     sta nesp_active
+.endif
     bcs @bad                    ; the wait for it ran out
 
     ; A reply to this request, and whole?
@@ -174,6 +188,7 @@ nesp_reply_len = nesp_rx + NESP_HEADER - 1
     rts
 .endproc
 
+.ifndef NESP_NMI_ONLY
 ; Where the NMI returns to when it cuts an exchange off: back to the
 ; exchange's caller, with carry set. OUT0 may have been left low in the
 ; middle of a byte.
@@ -187,6 +202,7 @@ nesp_reply_len = nesp_rx + NESP_HEADER - 1
     sec
     rts
 .endproc
+.endif
 
 ; The CRC of the frame at nesp_ptr, from the byte after its marker to the
 ; end of its payload, into nesp_crc_hi and nesp_crc_lo. Leaves Y at the
@@ -267,6 +283,8 @@ nesp_reply_len = nesp_rx + NESP_HEADER - 1
 
 .endif
 
+.ifndef NESP_NO_HELLO
+
 ; Say hello: who this ROM is and the services it needs. Before the call,
 ; nesp_request + NESP_HELLO_FIXED on holds the services' ids, Y of them.
 ; The ROM defines NESP_APP as a string of NESP_APP_ID characters, and
@@ -322,3 +340,5 @@ nesp_rng:       .res 2
     sta nesp_rng + 1
     rts
 .endproc
+
+.endif

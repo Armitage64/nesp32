@@ -84,6 +84,12 @@ RESULT = 0x02           # how the last run went
 [services.PEER]
 id = 0x04
 [services.PEER.ops]
+STATUS = 0x00           # the lobby's state, and this nesp32's address
+HOST = 0x01             # wait for the other nesp32 to call
+JOIN = 0x02             # call the nesp32 at an address
+LEAVE = 0x03            # drop whatever connection there is, or is being made
+LAST = 0x04             # the lobby's state, and the address last joined
+TICKS = 0x05            # this console's buttons for some ticks, and the other's back
 
 [services.DIAG]
 id = 0x05
@@ -169,6 +175,15 @@ WAIT = 0                # not now (paused): ask again
 GO = 1                  # samples follow, as a run of RAW's
 GONE = 2                # there is no such sound to play: ask for the stream
 
+[enums.LOBBY]           # PEER: how it stands with the other nesp32
+NO_WIFI = 0             # this one is not on a network
+IDLE = 1
+HOSTING = 2             # waiting for the other to call
+CONNECTING = 3          # calling it
+HOST = 4                # connected: it called, and this console is player 1
+GUEST = 5               # connected: this one called, and this console is player 2
+FAILED = 6              # the last call was not answered, or the connection was lost
+
 [enums.INFO]            # SYS INFO's strings
 FIRMWARE = 0            # "0.1.0"
 BOARD = 1               # "StickC Plus2"
@@ -207,3 +222,7 @@ JUKE_TITLE_MAX = 28     # characters in a name on the console's screen
 JUKE_SOUND_RATES = 6    # the rates a sound may have: 21, 16, 14, 12, 10 and 8 cycles a bit
 JUKE_SOUND_REFUSED = 0xFF   # JUKE SOUND's rate from a console that cannot play it
 JUKE_SOUND_LAST = 0xFC  # the byte that ends a sound and leaves the console's DAC at 0
+PEER_PORT = 6502        # TCP, on the nesp32 that hosts
+PEER_VERSION = 1        # of what two nesp32s say to each other
+PEER_PER_FRAME = 2      # ticks of buttons a TICKS frame may carry, each way
+PEER_GREET_MS = 2000    # how long the other nesp32 has to say what it is

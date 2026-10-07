@@ -31,6 +31,7 @@
 #include "nvs_flash.h"
 
 #include "board.h"
+#include "conn.h"
 #include "esp_heap_caps.h"
 #include "fetch.h"
 #include "link.h"
@@ -490,6 +491,7 @@ void radio_start(void)
     esp_netif_sntp_init(&sntp);
     xTaskCreate(worker, "radio", WORKER_STACK, NULL, WORKER_PRIORITY, NULL);
     fetch_start();
+    conn_start();
     ESP_LOGI(TAG, "Wi-Fi started; %s", want_joined ? "joining the saved network"
                                                     : "no network saved");
 }
@@ -524,6 +526,14 @@ const nesp_hal_t *radio_hal(void)
     hal.track_size = store_track_size;
     hal.track_read = store_track_read;
     hal.show = hal_show;
+    hal.peer_state = conn_state;
+    hal.peer_listen = conn_listen;
+    hal.peer_call = conn_call;
+    hal.peer_close = conn_close;
+    hal.peer_send = conn_send;
+    hal.peer_recv = conn_recv;
+    hal.peer_last = conn_last;
+    hal.peer_keep = conn_keep;
     return &hal;
 }
 

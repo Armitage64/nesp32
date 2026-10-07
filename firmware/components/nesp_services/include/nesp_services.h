@@ -108,7 +108,40 @@ typedef struct {
     /* A line of the nesp32's screen that is the application's to fill:
      * row 0 or 1. An empty text gives it back. */
     void (*show)(void *ctx, uint8_t row, const char *text);
+    /* One connection to another nesp32, a stream of bytes each way (PEER).
+     * None of these waits: the listening, the calling and the sending
+     * itself are another task's.
+     *
+     * How it stands: NESP_CONN_*. */
+    uint8_t (*peer_state)(void *ctx);
+    /* Wait for another nesp32 to call this port, or call the one at an
+     * address, in place of whatever connection there was. False: it could
+     * not even be begun. */
+    bool (*peer_listen)(void *ctx, uint16_t port);
+    bool (*peer_call)(void *ctx, const uint8_t *address, uint16_t port);
+    void (*peer_close)(void *ctx);
+    /* Bytes for the other nesp32. Returns how many were taken: none unless
+     * the connection is up, and fewer when there is no room for more. */
+    size_t (*peer_send)(void *ctx, const uint8_t *data, size_t len);
+    /* Bytes from it, as many as have come and fit. What came before a
+     * connection was lost can still be read after. */
+    size_t (*peer_recv)(void *ctx, uint8_t *out, size_t max);
+    /* An address kept over power-off: the last one a call to which came to
+     * anything. False: none has been kept. */
+    bool (*peer_last)(void *ctx, uint8_t *address);
+    void (*peer_keep)(void *ctx, const uint8_t *address);
 } nesp_hal_t;
+
+/* A connection to another nesp32, as the hardware has it. */
+enum {
+    NESP_CONN_NONE,                 /* none asked for, or closed */
+    NESP_CONN_LISTENING,
+    NESP_CONN_CALLING,
+    NESP_CONN_ANSWERED,             /* up: the other nesp32 called this one */
+    NESP_CONN_CALLED,               /* up: this one called */
+    NESP_CONN_FAILED,               /* it could not listen, or its call was not answered */
+    NESP_CONN_LOST                  /* it was up, and is gone */
+};
 
 typedef struct {
     nesp_link_t *link;
@@ -252,6 +285,36 @@ typedef struct {
     bool underruns_known;
 } nesp_juke_t;
 
+/* PEER: two consoles playing one game, each with a nesp32 (peer.c). What
+ * two nesp32s say first, each to the other: who they are, the version of
+ * what follows, and the application on their console with its version. */
+#define NESP_PEER_GREETING (4 + 1 + NESP_APP_ID + 1)
+#define NESP_PEER_HELD 64
+
+typedef struct {
+    const nesp_hal_t *hal;
+    const nesp_sys_t *sys;
+    uint8_t lobby;                  /* NESP_LOBBY_*, as it is while on a network */
+    uint8_t target[4];              /* the address called */
+    /* The greetings, once the connection is up. */
+    bool greeting;
+    uint32_t greeting_at;
+    uint8_t greeted;                /* bytes of this one's sent */
+    uint8_t heard_len;
+    uint8_t heard[NESP_PEER_GREETING];
+    /* A session: the consoles' buttons, a byte a tick each way. */
+    bool lost;                      /* the connection is gone, and all it brought is in `remote` */
+    uint8_t local_next;             /* this console's next tick to take */
+    uint8_t remote_base;            /* the tick of remote[0] */
+    uint8_t remote_len;
+    uint8_t remote[NESP_PEER_HELD]; /* the other's buttons, not yet taken */
+    /* For the nesp32's screen. */
+    uint32_t requests;
+    uint32_t repeats;               /* requests that brought nothing new */
+    bool show;
+    uint32_t shown_at;
+} nesp_peer_t;
+
 /* A Stick: the link and every service this firmware has. */
 typedef struct {
     nesp_link_t link;
@@ -261,7 +324,8 @@ typedef struct {
     nesp_wiki_t wiki;
     nesp_raw_t raw;
     nesp_juke_t juke;
-    nesp_service_t services[6];
+    nesp_peer_t peer;
+    nesp_service_t services[7];
 } nesp_stick_t;
 
 void nesp_stick_init(nesp_stick_t *stick, const nesp_hal_t *hal);
@@ -291,6 +355,8 @@ void nesp_raw_service(nesp_service_t *service, nesp_raw_t *raw, nesp_link_t *lin
                       const nesp_hal_t *hal);
 void nesp_juke_service(nesp_service_t *service, nesp_juke_t *juke, nesp_link_t *link,
                        nesp_raw_t *raw, const nesp_hal_t *hal);
+void nesp_peer_service(nesp_service_t *service, nesp_peer_t *peer, const nesp_sys_t *sys,
+                       const nesp_hal_t *hal);
 
 /* For a service with something to send as a run (JUKE's sampled sound).
  *

@@ -11,7 +11,9 @@ It is replacing the separate firmware and link protocol that each of
 [nes-wiki](../nes-wiki) and [nes-drmario](../nes-drmario) has, on the hat
 and the wiring they share. NESpedia has moved to it, and the jukebox's ROM
 has too, and plays on the same hardware. The jukebox's throughput test has
-moved and runs there too. The others have not yet.
+moved and runs there too. Dr. Mario's netplay has moved, and a full
+network game has been played with it on hardware. The radar has not moved
+yet.
 
 ![The status screen](docs/setup-status.png) ![Choosing a network](docs/setup-list.png)
 ![Typing a password](docs/setup-password.png) ![The link test](docs/setup-test.png)
@@ -23,8 +25,9 @@ MiSTer's NES core, through a SNAC adapter. It found the Stick, joined a
 Wi-Fi network from the controller, and the Stick joined it again by itself
 after a power cycle. The link test ran 6000 requests with every one good,
 and the Stick's slowest reply was 215 microseconds
-([`firmware/README.md`](firmware/README.md), "On hardware"). A real NES has
-not been tried.
+([`firmware/README.md`](firmware/README.md), "On hardware"). On a real NES
+the setup ROM has not been tried; Dr. Mario's netplay ROM has played a
+full game with a real NES among its consoles.
 
 | Part | State |
 |---|---|
@@ -38,7 +41,8 @@ not been tried.
 | RAW: a run of bytes with framing off, at a rate of its own, either way | working on a StickS3 with the MiSTer: a run to the console as the jukebox's sampled sound, and runs of the pattern both ways with the throughput test's ROM ([nes-jukebox](../nes-jukebox/throughput)), to 298296 baud to the console and 223722 from it |
 | JUKE, the jukebox's service: the playlist as a stream, the buttons, sampled sound through RAW | working on a StickS3 with the jukebox's ROM ([nes-jukebox](../nes-jukebox)) on the MiSTer; tested with that ROM on a simulated console |
 | The nesp32's files: the jukebox's tracks, in LittleFS (`firmware/main/store.c`, `tools/put_files.py`) | working on a StickS3: tracks written over USB are found and played |
-| Services for netplay and the radar | numbers reserved; not started |
+| PEER, for two consoles playing one game: a lobby, and a lockstep relay of buttons between two nesp32s over TCP (`firmware/main/conn.c`) | tested with nes-drmario's netplay ROM ([nes-drmario](../nes-drmario)) on two simulated consoles, the game the same on both; the firmware builds for both boards with it. On hardware a full network game has been played with that ROM, a real NES among the consoles; no figures were taken |
+| A service for the radar | a number reserved; not started |
 
 NESpedia runs on it: a search typed on the console is fetched over HTTPS
 and read, with the link answering throughout. The jukebox is the second
@@ -120,13 +124,14 @@ password goes to the Stick and is never sent back.
 | `proto/nesp.toml`, `tools/gen_proto.py` | the numbers both ends share, and the C, ca65 and Python files written from them |
 | `docs/PROTOCOL.md` | the protocol |
 | `firmware/components/nesp_core` | frames, CRC, services' registry |
-| `firmware/components/nesp_services` | SYS, NET, DIAG, WIKI, RAW and JUKE, and the text code WIKI lays articles out with |
-| `firmware/main` | the Stick: UART and link task, Wi-Fi, HTTPS fetches, files, screen and buttons |
+| `firmware/components/nesp_services` | SYS, NET, DIAG, WIKI, RAW, JUKE and PEER, and the text code WIKI lays articles out with |
+| `firmware/main` | the Stick: UART and link task, Wi-Fi, HTTPS fetches, the connection to another nesp32, files, screen and buttons |
 | `tools/put_files.py` | puts the jukebox's tracks on a nesp32, over USB |
 | `nes/lib/nesp.inc`, `nes/lib/gen_link.py` | the console's library, and its cycle-timed serial routines |
 | `nes/setup/` | the setup ROM |
 | `host/nesp_host.c`, `host/nesp.py` | the firmware's code as a library for this computer, with a stand-in for the hardware |
 | `host/serial_host.py` | that, on a USB serial cable in place of a Stick |
+| `host/peer_net.py` | for it, PEER's connection to another nesp32 on this computer's sockets, and an opponent who never presses a button |
 | `tests/console.py`, `tests/wire.py`, `tests/drive.py` | a console on py65, the serial line, and a hand on the controller |
 
 ## Tests
@@ -148,6 +153,11 @@ make test
 - `test_juke.py`: the playlist as a stream whatever is lost on the way,
   the buttons, and a sound handed to RAW, with the test as the console.
   The jukebox's ROM itself is run against this code in nes-jukebox's tests.
+- `test_peer.py`: the lobby, the greetings and the relay of buttons, with
+  the test as the network between two nesp32s. Dr. Mario's netplay ROM is
+  run against this code, on two consoles, in nes-drmario's tests.
+- `test_peer_net.py`: a computer's stand-in for that network, on real
+  sockets on this machine.
 - `test_put_files.py`: the image of the tracks that goes over USB.
 - `test_setup.py`: every screen of the setup ROM worked with the
   controller, to a network joined with a password of every character.
@@ -157,8 +167,12 @@ The ROM tests need cc65 and skip without it.
 ## Not done
 
 - A real NES, a long run, and the StickC Plus2.
-- The services netplay and the radar need, and their ROMs moved to them.
-  NESpedia's and the jukebox's are done.
+- Figures from PEER on hardware. A full network game of nes-drmario's
+  netplay ROM has been played; what the nesp32s' screens counted was not
+  recorded. nes-drmario's README has what could shorten the delay between
+  a button and the game.
+- The service the radar needs, and its ROM moved to it. NESpedia's, the
+  jukebox's and Dr. Mario's netplay are done.
 - A fetch that drops partway is not made again; what came is read, if it
   was a screenful.
 - Updates over Wi-Fi, and a way to put music on a Stick without a cable.

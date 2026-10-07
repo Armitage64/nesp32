@@ -7,7 +7,9 @@ needs (`../docs/PROTOCOL.md`).
 **Status: working on a StickS3**, on the MiSTer's NES core through a SNAC
 adapter ("On hardware", below). A real NES, a run of any length, and the
 StickC Plus2 build have not been tried. The jukebox runs on the same
-Stick and core ("The jukebox", below).
+Stick and core ("The jukebox", below). PEER, for two consoles playing one
+game, has played a network game of nes-drmario's netplay ROM ("Two
+consoles", below).
 
 With ESP-IDF 5.5.5 the image is about 1.19 MB of the 2 MB slot, with no
 warnings from this project's code.
@@ -32,11 +34,12 @@ component manager on the first build (`main/idf_component.yml`).
 | Path | Purpose |
 |---|---|
 | `components/nesp_core` | frames, the CRC, the services' registry, who is asked what. No hardware; also built for the tests |
-| `components/nesp_services` | SYS, NET (Wi-Fi), DIAG, WIKI, RAW and JUKE, the text code, and `nesp_hal_t`, what they ask of the hardware |
+| `components/nesp_services` | SYS, NET (Wi-Fi), DIAG, WIKI, RAW, JUKE and PEER, the text code, and `nesp_hal_t`, what they ask of the hardware |
 | `main/link.c` | the UART and the one task that answers the console, on a core of its own; the UART with framing off, for RAW |
 | `main/store.c` | the files: LittleFS in the `storage` partition, and the jukebox's tracks in it |
 | `main/radio.c` | Wi-Fi, its worker task, and the hardware as the services see it |
 | `main/fetch.c` | one HTTPS GET at a time, in a task of its own, handed to a service as it arrives |
+| `main/conn.c` | one TCP connection to another nesp32, in a task of its own: PEER's, for two consoles |
 | `main/main.cpp` | M5Unified: the screen, the buttons, the battery, power off |
 | `main/board.h` | the link's pins on each board |
 | `partitions.csv` | two slots for the firmware, and the rest for files |
@@ -53,6 +56,8 @@ has to begin within a few milliseconds of the request, every time.
   task in `radio.c`, and a fetch one left for the task in `fetch.c`, which
   makes the TLS connection and reads the reply on the other core. What the
   services read is kept under a spinlock, held for a few instructions.
+  The connection to another nesp32 is the task's in `conn.c`: the link
+  task leaves it bytes to send and takes the bytes that have come.
 - What takes time and is the link task's own to do is done after the
   reply has gone: the services' `tick`. The jukebox reads its files there,
   a few dozen bytes at a time, when the console cannot ask again before
@@ -171,9 +176,43 @@ isolating one thing:
 4. **The buttons**, the nesp32's and the controller's, during music and
    during a sound.
 
+## Two consoles
+
+A full network game of nes-drmario's netplay ROM has been hosted, joined
+and played on hardware with this firmware, a real NES with an Everdrive N8
+among the consoles. Which boards, and what the screens counted, were not
+recorded. Under the tests the service runs
+against that ROM on two simulated consoles; `conn.c` runs only on a
+nesp32. What to look for, with that ROM (`../../nes-drmario`,
+`build/drmario_net.nes`) on each console:
+
+1. **One console, no other.** A computer on the cable in place of a
+   nesp32, `host/serial_host.py <port> --idle`: HOST GAME starts a game at
+   once against an opponent who never presses a button. This tries the ROM
+   and the link, and nothing of `conn.c`.
+2. **One nesp32.** Its screen should say `NES: DRMA v1` once the ROM's
+   menu is open (2 PLAYER GAME on the title), and the menu the nesp32's
+   address. HOST GAME: the nesp32's screen says `Waiting for player 2` and
+   the address again. The log says if it could not listen.
+3. **Two ends.** The other console with a nesp32, or with a computer on
+   the cable (`host/serial_host.py <port> --game`): JOIN GAME there, the
+   first one's address, Start. Both screens say which player they are,
+   and the game starts on both. In play `waiting` on a nesp32's screen
+   counts frames in which its console brought it no new buttons, which is
+   a game standing still for a frame; on one network it should grow
+   slowly, and the reply times stay where the setup ROM's link test had
+   them.
+4. **One end switched off**, and the other console back at its title
+   within a few seconds.
+
+What `conn.c` leans on: lwIP's sockets from a task on the Wi-Fi's core, a
+non-blocking `connect` waited for with `select`, and a look for received
+bytes once a millisecond.
+
 ## Not done
 
 - A real NES, a long run, and the StickC Plus2.
+- Figures from PEER on hardware (above).
 - Leaving UIFlow: a Stick that ships with UIFlow has to be flashed once
   over USB. M5Burner brings UIFlow back.
 - Updates over Wi-Fi. The partitions are laid out for them.
