@@ -2,7 +2,7 @@
 """A computer in place of a Stick, on the USB serial cable.
 
     host/serial_host.py /dev/cu.usbserial-XXXX
-    host/serial_host.py /dev/cu.usbserial-XXXX --tracks ../nes-jukebox/build/tracks
+    host/serial_host.py /dev/cu.usbserial-XXXX --tracks apps/jukebox/build/tracks
     host/serial_host.py /dev/cu.usbserial-XXXX --game       # or --idle
 
 With nes-radar's 5 V FTDI cable on controller port 2 in place of a Stick,

@@ -11,12 +11,12 @@
 
 PYTHON ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 BUILD ?= build
-# The netplay ROM's link is nesp32's, a checkout of whose firmware sits
-# beside this one. From it come the link's library for the console and the
+# The netplay ROM's link is nesp32's, at the top of this repository
+# (two directories up). From it come the link's library for the console and the
 # numbers the two ends share; its link and services are built for this
 # computer, for the tests to run the ROM against. The original ROM needs
 # none of it.
-NESP32 ?= ../nesp32
+NESP32 ?= ../..
 NESP_BUILD ?= $(abspath $(BUILD))/nesp
 export NESP32 NESP_BUILD
 NESP := $(NESP_BUILD)/nesp.stamp

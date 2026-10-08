@@ -11,8 +11,8 @@ nesp32's tools/put_files.py, which writes them to the nesp32's flash in
 place of whatever tracks it had. The tracks named are the playlist, in the
 order given; a directory's are in the order of their names.
 
-The nesp32 must already run nesp32's firmware (its firmware/README.md), a
-checkout of which sits beside this one, or wherever NESP32 says. That tool
+The nesp32 must already run nesp32's firmware (its firmware/README.md), at
+the top of this repository, or wherever NESP32 says. That tool
 needs littlefs-python and esptool:
 
     pip install littlefs-python esptool
@@ -25,7 +25,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..")
-NESP32 = os.path.abspath(os.environ.get("NESP32", os.path.join(ROOT, "..", "nesp32")))
+NESP32 = os.path.abspath(os.environ.get("NESP32", os.path.join(ROOT, "..", "..")))
 
 sys.path.insert(0, HERE)
 

@@ -5,8 +5,8 @@
 #                 that rate of its ladder (nes/linktest.s)
 #   make test     the ROM against nesp32's firmware, on a simulated console
 #
-# The ROM's host is a nesp32, a checkout of whose firmware sits beside the
-# jukebox's (../Makefile has the same arrangement). From it come the link's
+# The ROM's host is a nesp32, whose firmware is at the top of this
+# repository (../Makefile has the same arrangement). From it come the link's
 # library for the console and the numbers the two ends share; its link and
 # services are built for this computer, for the tests to run the ROM
 # against. The font, the header and the palette come from the jukebox's
@@ -14,7 +14,7 @@
 
 PYTHON ?= $(if $(wildcard ../.venv/bin/python),../.venv/bin/python,python3)
 BUILD ?= build
-NESP32 ?= ../../nesp32
+NESP32 ?= ../../..
 NESP_BUILD ?= $(abspath $(BUILD))/nesp
 export NESP32 NESP_BUILD
 NESP := $(NESP_BUILD)/nesp.stamp

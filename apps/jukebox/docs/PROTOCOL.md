@@ -5,7 +5,7 @@ and 4) are implemented by `tools/jbs.py` and `tools/pcm.py` and fixed for
 v1.
 
 The link (part 3) is not the jukebox's own. The link ROM's host is a
-nesp32, and [nesp32's `docs/PROTOCOL.md`](../../nesp32/docs/PROTOCOL.md)
+nesp32, and [nesp32's `docs/PROTOCOL.md`](../../../docs/PROTOCOL.md)
 is the protocol: the line, the frames, the hello, and the JUKE and RAW
 services this ROM uses. Parts 3 and 4 here say only how this ROM uses
 them. `nes/serial_link.inc` is all of it, on nesp32's library for the

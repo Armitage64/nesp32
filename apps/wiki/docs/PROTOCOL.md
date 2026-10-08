@@ -4,7 +4,7 @@ How the console asks the Stick for an article and reads it, a line at a
 time, over controller port 2.
 
 The link is not NESpedia's own. The Stick runs nesp32's firmware, and
-[nesp32's `docs/PROTOCOL.md`](../../nesp32/docs/PROTOCOL.md) is the
+[nesp32's `docs/PROTOCOL.md`](../../../docs/PROTOCOL.md) is the
 protocol: the line, the frames, the hello, and the WIKI service this ROM
 uses. This file says only how this ROM uses it. `nes/serial_link.inc` is
 all of it, on nesp32's library for the console (`nes/lib/nesp.inc` there).

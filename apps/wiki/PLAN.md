@@ -1,6 +1,6 @@
 # NESpedia: a Wikipedia reader for the NES
 
-> **October 2026: the Stick's side has moved to [nesp32](../nesp32).** This
+> **October 2026: the Stick's side has moved to [nesp32](../..).** This
 > plan is the record of how NESpedia was designed and brought up with a
 > MicroPython firmware and a link protocol of its own. The ROM's design
 > below still stands. The firmware it describes (`firmware/stick/`), its
@@ -11,7 +11,7 @@
 
 ## Context
 
-`../nes-jukebox` proved the controller-port-2 link between a stock NTSC NES
+`../jukebox` proved the controller-port-2 link between a stock NTSC NES
 and an M5Stack Stick (UIFlow 2.0 MicroPython, NPN level-shifter hat), and its
 `throughput/` test put numbers on it. This project uses that same hat and
 wiring for a different job: type a search term on the NES, have the Stick
@@ -28,7 +28,7 @@ choice, take the safer and simpler one over the faster one.**
 
 ### What the throughput data says, and what it decides
 
-Measured on a real NES with a StickC Plus2 (`../nes-jukebox/throughput/README.md`):
+Measured on a real NES with a StickC Plus2 (`../jukebox/throughput/README.md`):
 
 | Direction | Fastest stable | Limit |
 |---|---|---|
@@ -93,7 +93,7 @@ Decisions:
 
 ## Screens
 
-Header, on both screens, as `../nes-jukebox/tools/gen_ui.py` builds it
+Header, on both screens, as `../jukebox/tools/gen_ui.py` builds it
 (`big_letter`, `small_text`, `SMALL_FONT`, `PALETTE_LOGO`, `palette_rows`):
 
 - **`NESpedia`** in the 2 x 2-tile logo letters on row 3, centered, in the
@@ -178,7 +178,7 @@ Stick -> NES, 8N2   $A5, STATE, LINE_LO, LINE_HI, TOTAL_LO, TOTAL_HI,
   (the ring's first lines are being fetched) and READER; messages go on the
   search screen's status line. The NMI does OAM, at most one 28-tile row, the header's scroll, and the
   controller read (one 94-cycle low on OUT0 a frame, as `ui_vblank` in
-  `../nes-jukebox/nes/ui.inc`; the Stick's decoder passes over the junk byte).
+  `../jukebox/nes/ui.inc`; the Stick's decoder passes over the junk byte).
 - **`split.inc`**: sprite 0 sits on a lit pixel of the credit line, in its
   colour, so it cannot be seen. The main loop waits for the hit, counts to
   the hblank before scanline 64, and writes the text's scroll with the
@@ -187,11 +187,11 @@ Stick -> NES, 8N2   $A5, STATE, LINE_LO, LINE_HI, TOTAL_LO, TOTAL_HI,
 - **`serial_link.inc`**: send a request, receive 36 bytes, check.
   `tools/gen_link.py` writes the cycle-timed routines at the shared period
   (`build/link.inc`), from the generators in
-  `../nes-jukebox/throughput/tools/gen_rates.py` (`receiver`, `sender`,
+  `../jukebox/throughput/tools/gen_rates.py` (`receiver`, `sender`,
   `delay`, `one_page`), with the receive made a fixed-count block: 25
   cycles from a byte's last sample to the next hunt. The NMI ends an
   exchange that runs late by returning to `rx_abort`, as in
-  `../nes-jukebox/nes/serial_link.inc`. `fake_link.inc` is the standalone
+  `../jukebox/nes/serial_link.inc`. `fake_link.inc` is the standalone
   ROM's host: the same four routines, served from PRG.
 - **`reader.inc`**: `top_line` (16 bits) and `fine` (0-7) are the position;
   `lo_line`..`hi_line` is what the ring holds. Each frame: move toward the
@@ -217,7 +217,7 @@ Stick, with a thin hardware module, as in the jukebox:
 | `wikitext.py` | the API URL; a streaming scanner fed chunks of the JSON body that finds `"title"` and `"extract"`, decodes JSON escapes and UTF-8, and maps to ASCII (accents to base letters, typographic quotes and dashes, `?` for the rest) |
 | `wrap.py` | greedy wrap to 28 columns into a preallocated bytearray; `== Heading ==` lines become flagged heading lines with a blank line before |
 | `server.py` | answers requests from the buffer, through a port object (`read`, `write`); whoever owns it does the fetching |
-| `net.py` | Wi-Fi and HTTPS, from `../nes-radar/firmware/stick_s3/nesradar/net.py`: raw socket and `ssl`, HTTP/1.0 so the body is never chunked, a User-Agent (Wikimedia requires one), optional `/flash/ca.der` |
+| `net.py` | Wi-Fi and HTTPS, from `../../../nes-radar/firmware/stick_s3/nesradar/net.py`: raw socket and `ssl`, HTTP/1.0 so the body is never chunked, a User-Agent (Wikimedia requires one), optional `/flash/ca.der` |
 | `board.py`, `ui.py`, `device.py` | pins and UART per board, the LCD, the main loop (UIFlow only) |
 
 - One request searches and fetches:
@@ -340,12 +340,12 @@ Each ends with something runnable; 1 to 3 need no serial hardware.
     the same cycle after the hit every frame.
   - **Whole system**: the link ROM and the real `server.py` joined by a
     cycle-exact line with NMIs a fixed frame apart (adapted from
-    `throughput/tests/thru_sim.py` and `../nes-jukebox/tests/link_harness.py`):
+    `throughput/tests/thru_sim.py` and `../jukebox/tests/link_harness.py`):
     search, load, scroll through an article; then with dropped and damaged
     bytes, replies up to and past the budget, a Stick that goes silent
     mid-fetch, and a NES reset mid-article.
 - By eye: `gen_screen.py --preview` for both screens beside
-  `../nes-jukebox/docs/screen.png`; the standalone ROM in Mesen 2.
+  `../jukebox/docs/screen.png`; the standalone ROM in Mesen 2.
 - On hardware: the default search end to end; hold Down through the whole
   article and page both ways, with the Stick's log showing no bad frames.
 

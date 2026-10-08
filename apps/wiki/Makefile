@@ -8,11 +8,11 @@
 
 PYTHON ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 BUILD ?= build
-# The Stick runs nesp32's firmware, a checkout of which sits beside this
-# one. From it come the link's library for the console, the numbers the two
+# The Stick runs nesp32's firmware, at the top of this repository (two
+# directories up). From it come the link's library for the console, the numbers the two
 # ends share, and the text code that lays an article out, which is built
 # for this computer so that the tools lay text out as a Stick does.
-NESP32 ?= ../nesp32
+NESP32 ?= ../..
 NESP_BUILD ?= $(abspath $(BUILD))/nesp
 export NESP32 NESP_BUILD
 ARTICLE ?= nes/demo_article.txt

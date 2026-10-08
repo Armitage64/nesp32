@@ -1,10 +1,10 @@
 # NES Jukebox
 
 Stream music from NES `.vgm` rips to a real NES over the controller-2
-serial link from [nes-radar](../nes-radar), and play it on the console's own
+serial link from [nes-radar](../../../nes-radar), and play it on the console's own
 APU.
 
-The link ROM's host is a [nesp32](../nesp32): one firmware for every NES
+The link ROM's host is a [nesp32](../..): one firmware for every NES
 application that uses the hat on controller port 2. The jukebox is this ROM
 and nesp32's JUKE service, with its RAW service for sampled sound; there is
 no firmware of its own here any more.
@@ -48,7 +48,7 @@ link under them is nesp32's.
 ## Building the ROM
 
 Needs [cc65](https://cc65.github.io/) (`ca65`, `ld65`), a C compiler,
-Python 3, and a checkout of [nesp32](../nesp32) beside this one (or at
+Python 3, and [nesp32](../..), the top of this repository (or
 `NESP32=`). The link's library for the console comes from it, and its
 firmware's link and services are built for this computer, for the tests to
 run the link ROM against.
@@ -116,7 +116,7 @@ writes.
 ## Music on a nesp32
 
 The nesp32 holds the tracks, as files in its flash. With it on USB, and
-already running [nesp32's firmware](../nesp32/firmware/README.md):
+already running [nesp32's firmware](../../firmware/README.md):
 
 ```sh
 pip install littlefs-python esptool
@@ -260,7 +260,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 ```
 
 `make test` does the same. The ROM tests build both ROMs and run them on
-py65, so they need cc65 and the checkout of nesp32; they skip without
+py65, so they need cc65 and nesp32's tree; they skip without
 either. The link ROM's tests run it against nesp32's own link and
 services, built for this computer, over a model of the serial line that
 is exact to the CPU cycle. The full suite takes about ten minutes, mostly

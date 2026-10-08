@@ -117,7 +117,7 @@ worst that the MicroPython firmware of nes-jukebox measured on a Plus2, an
 application has about 3.5 ms more of every frame for its reply, which at
 this rate is some 27 bytes.
 
-NESpedia's ROM (`../nes-wiki`) has since run on the same Stick and
+NESpedia's ROM (`../apps/wiki`) has since run on the same Stick and
 adapter: a search is fetched from Wikipedia over HTTPS, with the server's
 certificate checked, and the article read from the 8 MB of PSRAM the board
 reports. No figures were taken from that run.
@@ -193,7 +193,7 @@ minutes. That ROM's README has what the logs counted: a delay of 1 tick
 for most of every game, about one frame in a hundred waiting for buttons,
 and next to no reply misheard. Under the tests the service runs
 against that ROM on two simulated consoles; `conn.c` runs only on a
-nesp32. What to look for, with that ROM (`../../nes-drmario`,
+nesp32. What to look for, with that ROM (`../apps/drmario`,
 `build/drmario_net.nes`) on each console:
 
 1. **One console, no other.** A computer on the cable in place of a

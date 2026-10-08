@@ -1,6 +1,6 @@
 # NES Jukebox: implementation plan
 
-> **October 2026: the link's far side has moved to [nesp32](../nesp32).**
+> **October 2026: the link's far side has moved to [nesp32](../..).**
 > This plan is the record of how the jukebox was designed and brought up
 > with a link protocol of its own at 38400 baud, a MicroPython firmware
 > for the Stick and a desktop streamer, which is the form in which it
@@ -17,7 +17,7 @@
 > [`throughput/README.md`](throughput/README.md) for how things are now.
 
 Stream NES music from `.vgm` files to a stock NTSC NES over the controller-2
-serial link proven in `../nes-radar`, and play it on the console's own APU.
+serial link proven in `../../../nes-radar`, and play it on the console's own APU.
 
 ## Goals and non-goals
 

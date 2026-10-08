@@ -6,7 +6,7 @@ rate that is stable in each direction, for whichever nesp32, hat and cable
 are plugged in, so the margin over 85227 is a number.
 
 It is a ROM for the console, and the nesp32 needs nothing but its
-firmware: [nesp32](../../nesp32) is one firmware for every ROM, and this
+firmware: [nesp32](../../..) is one firmware for every ROM, and this
 one asks it for its RAW service, which carries a run of bytes at any rate
 with framing off. Nothing is copied to the nesp32 and nothing is run on a
 computer. The test is kept apart from the jukebox, and nothing here is
@@ -93,8 +93,8 @@ and waiting, and then its bytes.
 
 ## Running it
 
-Needs cc65 to build, a checkout of [nesp32](../../nesp32) beside this
-repository's, and a nesp32 with that firmware on it.
+Needs cc65 to build, [nesp32](../../..), the top of this
+repository, and a nesp32 with that firmware on it.
 
 ```sh
 make                      # build/linktest.nes
@@ -204,7 +204,7 @@ On a line with no limit of its own, the upper half ends like this:
 
 The console is in charge, as everywhere on nesp32's link: it asks in
 frames at 85227 baud, and the nesp32 answers. The ROM says hello as `THRU`
-and asks for the RAW service ([nesp32's protocol](../../nesp32/docs/PROTOCOL.md),
+and asks for the RAW service ([nesp32's protocol](../../../docs/PROTOCOL.md),
 "RAW"). A block is one run of RAW's:
 
 | | The console asks | Then |

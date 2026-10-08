@@ -43,10 +43,10 @@ def build():
 @pytest.fixture(scope="session")
 def cart_build(build):
     """The build directory, with the cartridge in it. The other programs on
-    it are built from their checkouts beside this one."""
-    for name in ("nes-jukebox", "nes-wiki", "nes-drmario"):
-        if not os.path.isdir(os.path.join(ROOT, "..", name)):
-            pytest.skip("%s is not beside this checkout" % name)
+    it are built from apps/."""
+    for name in ("jukebox", "wiki", "drmario"):
+        if not os.path.isdir(os.path.join(ROOT, "apps", name)):
+            pytest.skip("apps/%s is not here" % name)
     subprocess.run(["make", "-s", "BUILD=%s" % BUILD, "verify-cart"], cwd=ROOT, check=True)
     return BUILD
 

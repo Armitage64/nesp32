@@ -3,7 +3,7 @@
 A disassembly of Dr. Mario (NES) and a netplay build of it: a two-player
 game split over two consoles, each with a nesp32 on controller port 2, the
 nesp32s joined over Wi-Fi. The nesp32 is an M5Stack Stick with
-[nesp32](../nesp32)'s firmware, the one firmware for every ROM that uses
+[nesp32](../..)'s firmware, the one firmware for every ROM that uses
 one; this ROM asks it for its PEER service.
 
 **Status: a proof of concept that works.** It has moved to nesp32, and a
@@ -35,8 +35,8 @@ make verify     # the original still matches its SHA-1
 make test       # needs: python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 ```
 
-Needs cc65 (`ca65`, `ld65`), Python 3, and for the netplay ROM a checkout
-of [nesp32](../nesp32) beside this one (or `NESP32=` where it is) and a C
+Needs cc65 (`ca65`, `ld65`), Python 3, and for the netplay ROM
+[nesp32](../..), the top of this repository (or `NESP32=` where it is), and a C
 compiler: the link's library for the console comes from there, and the
 tests build its firmware's link and services for this computer. They take
 about six minutes.
@@ -93,7 +93,7 @@ nesp32, a computer answers the console with the firmware's own code
 (nesp32's `host/serial_host.py`, after `make host` there):
 
 ```sh
-cd ../nesp32
+cd ../..
 .venv/bin/python host/serial_host.py /dev/cu.usbserial-XXXX --game   # hosts or joins, as a nesp32
 .venv/bin/python host/serial_host.py /dev/cu.usbserial-XXXX --idle   # no other console needed
 ```

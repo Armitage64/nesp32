@@ -5,14 +5,14 @@ on the console, and an M5Stack Stick on controller port 2 fetches the
 article from Wikipedia and hands it over a line at a time, to be read with
 smooth scrolling under a fixed header.
 
-The Stick runs [nesp32](../nesp32), one firmware for every NES application
+The Stick runs [nesp32](../..), one firmware for every NES application
 that uses a Stick. NESpedia is this ROM and nesp32's WIKI service; there is
 no firmware of its own here any more.
 
 ![The search screen](docs/search.png) ![The reader](docs/reader.png)
 
-It uses the level-shifter hat from [nes-radar](../nes-radar) and
-[nes-jukebox](../nes-jukebox). See [`PLAN.md`](PLAN.md) for the design and
+It uses the level-shifter hat from [nes-radar](../../../nes-radar) and
+[nes-jukebox](../jukebox). See [`PLAN.md`](PLAN.md) for the design and
 [`docs/PROTOCOL.md`](docs/PROTOCOL.md) for the link.
 
 A proof of concept, and work in progress.
@@ -41,7 +41,7 @@ history, and what bringing it up found is in [`PLAN.md`](PLAN.md), phase 5.
 ## Building
 
 Needs [cc65](https://cc65.github.io/) (`ca65`, `ld65`), a C compiler,
-Python 3, and a checkout of [nesp32](../nesp32) beside this one (or at
+Python 3, and [nesp32](../..), the top of this repository (or
 `NESP32=`). The link's library for the console comes from it, and so does
 the code that lays text out, which is built for this computer so that the
 built-in article and the preview are laid out exactly as a Stick does it.
@@ -89,13 +89,13 @@ That runs the Stick's own text code on this computer.
 
 ## The Stick
 
-Flash nesp32's firmware ([its `firmware/README.md`](../nesp32/firmware/README.md)),
+Flash nesp32's firmware ([its `firmware/README.md`](../../firmware/README.md)),
 and put the Stick on Wi-Fi with nesp32's setup ROM, from the controller. A
 Stick set up once serves this ROM and every other; nothing on it is chosen
 or changed for NESpedia.
 
 The hat is nes-radar's two-transistor level shifter
-([its README](../nes-radar/firmware/stick_s3/README.md) has the circuit),
+([its README](../../../nes-radar/firmware/stick_s3/README.md) has the circuit),
 wired for the board: on a StickS3, TX on slot 5 (G8) and RX on slot 4 (G1).
 
 If a search says `NO ANSWER FROM THE NESP32`, the Stick is not there, or is

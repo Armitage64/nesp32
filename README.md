@@ -7,8 +7,8 @@ Stick provides them; nothing is chosen on the Stick, and nothing about a
 Stick is ever set up from a computer.
 
 It is replacing the separate firmware and link protocol that each of
-[nes-radar](../nes-radar), [nes-jukebox](../nes-jukebox),
-[nes-wiki](../nes-wiki) and [nes-drmario](../nes-drmario) has, on the hat
+[nes-radar](../nes-radar), [nes-jukebox](apps/jukebox),
+[nes-wiki](apps/wiki) and [nes-drmario](apps/drmario) has, on the hat
 and the wiring they share. NESpedia has moved to it, and the jukebox's ROM
 has too, and plays on the same hardware. The jukebox's throughput test has
 moved and runs there too. Dr. Mario's netplay has moved, and a full
@@ -38,11 +38,11 @@ figures were taken from those runs.
 | The setup ROM (`nes/setup/`): status, Wi-Fi from the controller, link test | done; tested on a simulated console against the C code over a cycle-exact line |
 | The Stick's firmware (`firmware/main/`): UART, Wi-Fi, screen | working on a StickS3 and on a StickC Plus2, with the MiSTer and with a real NES |
 | A computer in place of a Stick (`host/serial_host.py`) | written, not run on a cable |
-| WIKI, NESpedia's service: an HTTPS fetch, the text laid out in lines | working on a StickS3 with the NESpedia ROM ([nes-wiki](../nes-wiki)) |
-| RAW: a run of bytes with framing off, at a rate of its own, either way | working on a StickS3 with the MiSTer: a run to the console as the jukebox's sampled sound, and runs of the pattern both ways with the throughput test's ROM ([nes-jukebox](../nes-jukebox/throughput)), to 298296 baud to the console and 223722 from it |
-| JUKE, the jukebox's service: the playlist as a stream, the buttons, sampled sound through RAW | working on a StickS3 with the jukebox's ROM ([nes-jukebox](../nes-jukebox)) on the MiSTer; tested with that ROM on a simulated console |
+| WIKI, NESpedia's service: an HTTPS fetch, the text laid out in lines | working on a StickS3 with the NESpedia ROM ([nes-wiki](apps/wiki)) |
+| RAW: a run of bytes with framing off, at a rate of its own, either way | working on a StickS3 with the MiSTer: a run to the console as the jukebox's sampled sound, and runs of the pattern both ways with the throughput test's ROM ([nes-jukebox](apps/jukebox/throughput)), to 298296 baud to the console and 223722 from it |
+| JUKE, the jukebox's service: the playlist as a stream, the buttons, sampled sound through RAW | working on a StickS3 with the jukebox's ROM ([nes-jukebox](apps/jukebox)) on the MiSTer; tested with that ROM on a simulated console |
 | The nesp32's files: the jukebox's tracks, in LittleFS (`firmware/main/store.c`, `tools/put_files.py`) | working on a StickS3: tracks written over USB are found and played |
-| PEER, for two consoles playing one game: a lobby, and a lockstep relay of buttons between two nesp32s over datagrams (`firmware/main/conn.c`), with advice to each console on the delay it keeps | tested with nes-drmario's netplay ROM ([nes-drmario](../nes-drmario)) and nes-contra's ([nes-contra](../nes-contra), whose exchange is a short frame) on two simulated consoles, the game the same on both; the firmware builds for both boards with it. On hardware both ROMs have played network games, a real NES among the consoles; nes-contra's `docs/Netplay.md` has the figures taken from its sessions |
+| PEER, for two consoles playing one game: a lobby, and a lockstep relay of buttons between two nesp32s over datagrams (`firmware/main/conn.c`), with advice to each console on the delay it keeps | tested with nes-drmario's netplay ROM ([nes-drmario](apps/drmario)) and nes-contra's ([nes-contra](apps/contra), whose exchange is a short frame) on two simulated consoles, the game the same on both; the firmware builds for both boards with it. On hardware both ROMs have played network games, a real NES among the consoles; nes-contra's `docs/Netplay.md` has the figures taken from its sessions |
 | One cartridge (`nes/cart/`): the five programs and a menu, on an MMC1 | working on a real NES and on the MiSTer, with a StickC Plus2 and with a StickS3: the menu and every program. Tested on a simulated console: each program starts from the menu, and reset is the menu again |
 | A service for the radar | a number reserved; not started |
 
@@ -76,9 +76,9 @@ make cart       # build/nesp32.nes
 
 One ROM with the jukebox, NESpedia, Dr. Mario's netplay, the throughput
 test and setup, and a menu that is up at power-on: Up and Down, and A or
-Start to run a program. Reset is the menu again. It wants checkouts of
-[nes-jukebox](../nes-jukebox), [nes-wiki](../nes-wiki) and
-[nes-drmario](../nes-drmario) beside this one, and builds each program with
+Start to run a program. Reset is the menu again. It is built from
+[nes-jukebox](apps/jukebox), [nes-wiki](apps/wiki) and
+[nes-drmario](apps/drmario) in `apps/`, each program with
 its own Makefile, into `build/cart/`.
 
 It is an MMC1 (mapper 1) with 256 KB of PRG and 128 KB of CHR ROM and no
@@ -193,7 +193,7 @@ make test
   controller, to a network joined with a password of every character.
 - `test_cart.py`: the cartridge on a console with its mapper: every
   program on it as built, started from the menu, and left by reset. It
-  skips without the other programs' checkouts.
+  skips without the other programs in `apps/`.
 
 The ROM tests need cc65 and skip without it.
 

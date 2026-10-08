@@ -14,10 +14,10 @@ sys.path.insert(0, os.path.join(ROOT, "..", "tools"))
 sys.path.insert(0, os.path.join(ROOT, "..", "tests"))   # the line model, wire.py
 sys.path.insert(0, HERE)
 
-# The ROM's host is a nesp32, a checkout of whose firmware sits beside the
-# jukebox's. Its link and services are built for this computer, into a
+# The ROM's host is a nesp32, whose firmware is at the top of this
+# repository. Its link and services are built for this computer, into a
 # directory of their own, and the tests run the ROM against them.
-NESP32 = os.path.abspath(os.environ.get("NESP32", os.path.join(ROOT, "..", "..", "nesp32")))
+NESP32 = os.path.abspath(os.environ.get("NESP32", os.path.join(ROOT, "..", "..", "..")))
 NESP_BUILD = tempfile.mkdtemp(prefix="nes-throughput-nesp32-")
 atexit.register(shutil.rmtree, NESP_BUILD, ignore_errors=True)
 HAVE_NESP32 = os.path.isdir(NESP32)

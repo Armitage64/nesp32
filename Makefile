@@ -7,7 +7,7 @@
 #   make rom        build/setup.nes: the setup ROM
 #   make cart       build/nesp32.nes: the setup ROM and the four other
 #                   programs on one cartridge, with a menu. It builds them
-#                   from their checkouts beside this one.
+#                   from apps/.
 #   make test
 #
 # The Stick's firmware itself is built with ESP-IDF, from firmware/.
@@ -101,13 +101,13 @@ verify: $(ROM)
 
 # --- the cartridge --------------------------------------------------------------
 
-# The other four programs, each built by its own Makefile from a checkout
-# beside this one, into this build directory and against this tree. BUILD
+# The other four programs, each built by its own Makefile in apps/,
+# into this build directory and against this tree. BUILD
 # is given to each by name: one given to this make would otherwise be
 # theirs too.
-JUKEBOX ?= ../nes-jukebox
-WIKI ?= ../nes-wiki
-DRMARIO ?= ../nes-drmario
+JUKEBOX ?= apps/jukebox
+WIKI ?= apps/wiki
+DRMARIO ?= apps/drmario
 THROUGHPUT ?= $(JUKEBOX)/throughput
 
 CART := $(BUILD)/nesp32.nes

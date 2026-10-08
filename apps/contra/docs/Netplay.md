@@ -2,7 +2,7 @@
 
 `make` builds a second ROM, `build/contra_net.nes`, in which a two-player
 game can be played on two consoles: each has a
-[nesp32](https://github.com/Armitage64/nesp32) on controller port 2, each
+[nesp32](../../..) on controller port 2, each
 player uses controller 1 of their own console, and the nesp32s are joined
 over the network. Everything it changes is under `.ifdef NETPLAY`, so
 `build/contra.nes` is still the original, byte for byte, and `make verify`
@@ -346,7 +346,7 @@ make test       the simulation's tests
 ```
 
 `baserom.nes` has to be in the repository's root, as for `build.sh`, and
-nesp32's checkout beside this one (`NESP32=` says where else). The tests
+nesp32 is the top of this repository (`NESP32=` says where else). The tests
 need `requirements-dev.txt` and take about a quarter of an hour.
 
 | | |

@@ -4,8 +4,8 @@ How two consoles play one two-player game, each with a nesp32 on controller
 port 2 and the nesp32s joined over a network.
 
 The link, the firmware and the frames are nesp32's
-([`../nesp32`](../../nesp32), a checkout of which sits beside this one), and
-its [`docs/PROTOCOL.md`](../../nesp32/docs/PROTOCOL.md) has them: the line,
+([the top of this repository](../../..)), and
+its [`docs/PROTOCOL.md`](../../../docs/PROTOCOL.md) has them: the line,
 the hello, and the PEER service this ROM asks for, with its lobby, its
 exchange of buttons and what the two nesp32s say to each other. This is the
 game's side: what a tick is, and what the ROM does with what PEER gives it.

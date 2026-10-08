@@ -16,10 +16,10 @@ import tempfile  # noqa: E402
 
 import pytest  # noqa: E402
 
-# The Stick's end of the link is nesp32's firmware, a checkout of which sits
-# beside this one. Its link and services are built for this computer, into
+# The Stick's end of the link is nesp32's firmware, at the top of this
+# repository. Its link and services are built for this computer, into
 # a directory of their own, and the link ROM's tests run against them.
-NESP32 = os.path.abspath(os.environ.get("NESP32", os.path.join(ROOT, "..", "nesp32")))
+NESP32 = os.path.abspath(os.environ.get("NESP32", os.path.join(ROOT, "..", "..")))
 NESP_BUILD = tempfile.mkdtemp(prefix="nes-wiki-nesp32-")
 atexit.register(shutil.rmtree, NESP_BUILD, ignore_errors=True)
 HAVE_NESP32 = os.path.isdir(NESP32)

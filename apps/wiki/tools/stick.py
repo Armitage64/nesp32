@@ -1,6 +1,6 @@
 """The Stick's own code, for the tools and the tests.
 
-The Stick runs nesp32's firmware, a checkout of which sits beside this one
+The Stick runs nesp32's firmware, at the top of this repository
 (or wherever NESP32 says). Its text code, which lays an article out, and
 the numbers its link shares with this ROM are built for this computer by
 `make` (into build/nesp, or wherever NESP_BUILD says) and loaded here:
@@ -16,7 +16,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..")
-NESP32 = os.path.abspath(os.environ.get("NESP32", os.path.join(ROOT, "..", "nesp32")))
+NESP32 = os.path.abspath(os.environ.get("NESP32", os.path.join(ROOT, "..", "..")))
 BUILD = os.path.abspath(os.environ.setdefault("NESP_BUILD", os.path.join(ROOT, "build", "nesp")))
 
 if not os.path.exists(os.path.join(BUILD, "nesp_proto.py")):

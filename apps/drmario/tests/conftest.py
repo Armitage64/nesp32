@@ -11,10 +11,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..")
 sys.path.insert(0, HERE)
 
-# The netplay ROM's link is nesp32's, a checkout of whose firmware sits
-# beside this one. Its link and services are built for this computer, into
+# The netplay ROM's link is nesp32's, at the top of this repository.
+# Its link and services are built for this computer, into
 # a directory of their own, and the netplay ROM's tests run against them.
-NESP32 = os.path.abspath(os.environ.get("NESP32", os.path.join(ROOT, "..", "nesp32")))
+NESP32 = os.path.abspath(os.environ.get("NESP32", os.path.join(ROOT, "..", "..")))
 NESP_BUILD = tempfile.mkdtemp(prefix="nes-drmario-nesp32-")
 atexit.register(shutil.rmtree, NESP_BUILD, ignore_errors=True)
 HAVE_NESP32 = os.path.isdir(NESP32)
