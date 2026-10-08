@@ -186,6 +186,9 @@ int nesp_arq_take(nesp_arq_t *arq, uint32_t now_us, const uint8_t *data, size_t 
                 /* Smoothed: an eighth of the way to each new figure. */
                 arq->rtt = arq->rtt_count == 0 ? took
                                                : arq->rtt + (uint32_t)((int32_t)(took - arq->rtt) / 8);
+                if (arq->rtt_count == 0 || took < arq->rtt_least) {
+                    arq->rtt_least = took;
+                }
                 arq->rtt_count++;
                 uint32_t ticks = nesp_arq_ticks(took);
                 arq->needs[(ticks > NESP_ARQ_NEEDS ? NESP_ARQ_NEEDS : ticks) - 1]++;

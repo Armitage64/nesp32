@@ -201,11 +201,10 @@ The ROM tests need cc65 and skip without it.
 
 - A long run, and figures from a real NES and from the StickC Plus2: both
   work, with the cartridge, and nothing was measured.
-- Figures from PEER on hardware. A full network game of nes-drmario's
-  netplay ROM has been played; what the nesp32s' screens counted was not
-  recorded. That ROM has since taken nes-contra's exchange, with a delay
-  that sets itself, and its README has figures from a game on two
-  consoles.
+- Why the network between two nesp32s is slower for the first eight to
+  ten seconds after they connect than it is from then on (`docs/PROTOCOL.md`,
+  "The delay"). nes-drmario's README has the figures from its games on two
+  consoles, with nes-contra's exchange and a delay that sets itself.
 - The receiving nesp32 woken when a packet comes, in place of looking once
   a millisecond; and a way for two nesp32s to meet across the Internet
   without a port forwarded.

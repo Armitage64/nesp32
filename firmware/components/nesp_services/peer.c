@@ -159,6 +159,12 @@ static void pump(nesp_peer_t *peer)
 static uint8_t exchange(nesp_peer_t *peer, uint8_t first, uint8_t wanted,
                         const uint8_t *buttons, uint8_t count, uint8_t *out)
 {
+    if (peer->requests == 0) {
+        /* The session's first: the network's times are counted from here.
+         * Those from before it are of two nesp32s with little to say, a
+         * packet every 50 ms, and not of a game's sixty a second. */
+        peer->hal->peer_spread(peer->hal->ctx, peer->spread);
+    }
     peer->requests++;
     /* Its buttons: those of them not seen before go to the other nesp32. */
     uint8_t skip = (uint8_t)(peer->local_next - first);
@@ -233,6 +239,7 @@ static void ticks(nesp_peer_t *peer, const nesp_request_t *request, nesp_reply_t
  *
  * The advice does not follow every report. It is made longer when two
  * reports running call for it, and a tick shorter when NESP_PEER_CALM do.
+ * A session's first report is the exception, and sets it outright.
  *
  * A console's report also says how the other console's buttons have been
  * arriving: how many NMIs waited for them, and the fewest ticks of them it
@@ -244,15 +251,19 @@ static uint8_t clamp(uint32_t ticks)
     return (uint8_t)(ticks < 1 ? 1 : ticks > NESP_PEER_DELAY_MAX ? NESP_PEER_DELAY_MAX : ticks);
 }
 
-/* What to begin with, from the network's time as it is known so far. */
+/* What to begin with, from the network's time as it is known so far: the
+ * quickest it has been (conn.c). */
 static uint8_t first_delay(const nesp_peer_t *peer)
 {
     uint32_t rtt = peer->hal->peer_rtt(peer->hal->ctx);
     return rtt == 0 ? NESP_PEER_DELAY_UNKNOWN : clamp(nesp_arq_ticks(rtt));
 }
 
-/* A new report: the network's times since the last one, into the advice. */
-static void advise(nesp_peer_t *peer)
+/* A new report: the network's times since the last one, into the advice.
+ * A session's first has every time since its first exchange behind it, and
+ * its answer is taken at once: the delay the session began with was a
+ * guess from a packet or two, or from none. */
+static void advise(nesp_peer_t *peer, bool first)
 {
     uint32_t counts[NESP_ARQ_NEEDS];
     uint32_t *since = peer->since;
@@ -276,7 +287,10 @@ static void advise(nesp_peer_t *peer)
             break;
         }
     }
-    if (enough > peer->want) {
+    if (first) {
+        peer->up = peer->down = 0;
+        peer->want = enough;
+    } else if (enough > peer->want) {
         peer->down = 0;
         if (++peer->up >= NESP_PEER_UP) {
             peer->up = 0;
@@ -316,7 +330,7 @@ static uint8_t tune(nesp_peer_t *peer, uint8_t report)
         note[2] = first ? 1 : report & 3;
         note[3] = delay;
         peer->hal->peer_note(peer->hal->ctx, note);
-        advise(peer);
+        advise(peer, first);
     }
     return peer->want;
 }

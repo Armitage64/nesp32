@@ -668,6 +668,7 @@ int host_arq_take(nesp_arq_t *arq, uint32_t now, const uint8_t *data, size_t len
 }
 uint32_t host_arq_rtt(const nesp_arq_t *arq) { return arq->rtt; }
 uint32_t host_arq_rtt_last(const nesp_arq_t *arq) { return arq->rtt_last; }
+uint32_t host_arq_rtt_least(const nesp_arq_t *arq) { return arq->rtt_least; }
 uint8_t host_arq_unsaid(const nesp_arq_t *arq) { return arq->out_len; }
 uint32_t host_arq_last_at(const nesp_arq_t *arq) { return arq->last_at; }
 uint32_t host_arq_rtt_count(const nesp_arq_t *arq) { return arq->rtt_count; }

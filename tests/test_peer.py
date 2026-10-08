@@ -589,6 +589,45 @@ def test_a_shorter_delay_is_advised_only_after_a_while(pair):
         assert measured(host, now, d1=100) == 1     # and never less than 1
 
 
+def test_a_sessions_first_report_sets_the_delay_outright(pair):
+    """The delay a session begins with is from the first packet or two, or
+    is 2 with none. A second or so in, the first report has every time
+    since the session's first exchange, and what covers them is advised at once:
+    shorter with no wait of eight reports, or longer with none of two."""
+    host, guest = pair
+    connect(host, guest)
+    assert quick(host, 0, 0) == (0, b"")            # the session's first exchange
+    host.took((4 * 16667 - 9100) * 2)               # one slow packet
+    host.took(4000, 60)
+    host.tick(1000)
+    assert tune(host, 0, 0, 0, delay=4)[1] == 1
+    # And from there as ever: once is not enough.
+    assert measured(host, 3000, d3=100) == 1
+    assert measured(host, 5000, d3=100) == 3
+
+
+def test_the_networks_times_from_before_the_game_are_not_counted(pair):
+    """While the two wait for their consoles they say little, and that is
+    not a game's traffic. A session's first report is of the times since
+    its first exchange."""
+    host, guest = pair
+    connect(host, guest)
+    host.took(60000, 80)                            # in the lobby
+    assert quick(host, 0, 0) == (0, b"")            # the session's first exchange
+    host.took(4000, 60)
+    host.tick(1000)
+    assert tune(host, 0, 0, 0, delay=1)[1] == 1
+
+
+def test_a_sessions_first_report_may_make_the_delay_longer(pair):
+    host, guest = pair
+    connect(host, guest)
+    assert quick(host, 0, 0) == (0, b"")
+    host.took(60000, 60)
+    host.tick(1000)
+    assert tune(host, 0, 0, 0, delay=1)[1] == 3
+
+
 def test_too_few_measurements_say_nothing(pair):
     host, guest = pair
     connect(host, guest)
@@ -601,6 +640,7 @@ def test_a_report_asked_again_is_one_report(pair):
     twice towards a longer delay."""
     host, guest = pair
     connect(host, guest)
+    assert measured(host, 1000, d2=100) == 2        # the session's first
     assert measured(host, 2000, d4=100) == 2
     host.took(1000, 100)
     assert tune(host, 0, 0, 0, delay=2)[1] == 2     # at once: the same report

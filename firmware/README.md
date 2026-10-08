@@ -186,10 +186,12 @@ isolating one thing:
 
 ## Two consoles
 
-A full network game of nes-drmario's netplay ROM has been hosted, joined
-and played on hardware with this firmware, a real NES with an Everdrive N8
-among the consoles. Which boards, and what the screens counted, were not
-recorded. Under the tests the service runs
+Network games of nes-drmario's netplay ROM have been hosted, joined and
+played on hardware with this firmware, a StickS3 on the console that
+hosted and a StickC Plus2 on the one that joined, one of them for 35
+minutes. That ROM's README has what the logs counted: a delay of 1 tick
+for most of every game, about one frame in a hundred waiting for buttons,
+and next to no reply misheard. Under the tests the service runs
 against that ROM on two simulated consoles; `conn.c` runs only on a
 nesp32. What to look for, with that ROM (`../../nes-drmario`,
 `build/drmario_net.nes`) on each console:
@@ -198,7 +200,7 @@ nesp32. What to look for, with that ROM (`../../nes-drmario`,
    nesp32, `host/serial_host.py <port> --idle`: HOST GAME starts a game at
    once against an opponent who never presses a button. This tries the ROM
    and the link, and nothing of `conn.c`.
-2. **One nesp32.** Its screen should say `NES: DRMA v1` once the ROM's
+2. **One nesp32.** Its screen should say `NES: DRMA v2` once the ROM's
    menu is open (2 PLAYER GAME on the title), and the menu the nesp32's
    address. HOST GAME: the nesp32's screen says `Waiting for player 2` and
    the address again. The log says if it could not listen.

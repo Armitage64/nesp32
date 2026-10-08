@@ -76,7 +76,7 @@ static ring_t going;
 static bool have_last;
 static uint8_t last[4];
 static bool save;
-static uint32_t rtt;                /* the network's time there and back, smoothed */
+static uint32_t rtt;                /* the network's time there and back, at its quickest */
 static uint8_t note_out[NESP_ARQ_NOTE];
 static uint8_t note_in[NESP_ARQ_NOTE];
 static uint32_t spread[NESP_ARQ_NEEDS];
@@ -465,7 +465,11 @@ static void carry(uint32_t began, int sock, nesp_arq_t *arq, struct sockaddr_in 
             }
             memcpy(note_in, arq->note_in, sizeof(note_in));
             memcpy(spread, arq->needs, sizeof(spread));
-            rtt = arq->rtt;
+            /* The quickest and not the smoothed: a session's first delay
+             * is taken from this a few packets into the connection, where
+             * one slow packet, the call's answer as a rule, is most of any
+             * mean. */
+            rtt = arq->rtt_least;
         }
         portEXIT_CRITICAL(&lock);
 

@@ -176,6 +176,7 @@ typedef struct {
     uint32_t their_clock;
     uint32_t rtt;                   /* there and back, in microseconds: smoothed */
     uint32_t rtt_last;
+    uint32_t rtt_least;             /* the quickest it has been, in this connection */
     uint32_t rtt_count;
     uint32_t needs[NESP_ARQ_NEEDS]; /* the measurements, by the delay each would take */
     uint8_t note_out[NESP_ARQ_NOTE];

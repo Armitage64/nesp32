@@ -417,7 +417,7 @@ nothing for three seconds takes the other for gone.
 
 `BACK` gives each end how long the network takes, there and back, from
 every datagram: its own clock now, less the clock it gets back. PEER uses
-it for the delay a session begins with.
+the quickest of them for the delay a session begins with.
 
 **The delay.** A press on one console is used some ticks after it was
 read, which is the time it has to reach the other console. Each console
@@ -445,7 +445,19 @@ report   DELAY (3 bits), LATE (3 bits), MARGIN (2 bits)
 `DELAY` is the delay the console keeps now. The advice does not follow
 every report: it is made longer, to what the measurements call for, when
 two reports running call for longer, and a tick shorter when eight running
-call for shorter. A report with fewer than 20 measurements behind it says
+call for shorter. A session's first report is the exception: it has every
+measurement since the console's first exchange behind it, a second or so
+into the game, and what covers them is advised outright, in place of the
+guess the session began with. (Those from before the first exchange are
+left out: they are of two nesp32s with nothing to send, a packet every
+50 ms, and not of a game's sixty a second.)
+
+On hardware the network has been slower for the first eight to ten
+seconds after two nesp32s connect than it is from then on: about three
+packets in ten took over 14 ms there and back in that time, on a network
+where one in twenty or thirty did after it, in each of three sessions.
+Why is not known. So a session that begins at 1 tick is advised 2 by its
+first report, and comes back to 1 about half a minute in. A report with fewer than 20 measurements behind it says
 nothing, and a report asked again within a second, its reply not heard, is
 the same report.
 
@@ -461,7 +473,13 @@ frames waited.
 Before a session a console has the delay to begin with from its nesp32, as
 a sixth byte of the lobby's replies: the ticks the network takes one way,
 from `BACK`, with 9 ms added for the consoles and the nesp32s, and 2 if
-that is not yet known. It is 0 with no session.
+that is not yet known. It is 0 with no session. The network's time for
+this is the quickest measured since the two connected, and not a mean: a
+session starts a few packets in, the first of them the call's answer,
+which is slow as a rule, and one such packet in a mean began a console of
+nes-drmario's at 4 ticks on a network that 1 covers. It is still a guess,
+from a packet or two, or 2 from none; the session's first report mends
+it (above).
 
 The nesp32's own screen shows the address player 2 has to enter while it
 hosts, and in a session which player its console is, with the count of

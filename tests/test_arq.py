@@ -102,6 +102,25 @@ def test_how_long_the_network_takes():
     assert other.rtt_last == (12 + 10) * MS
 
 
+def test_one_slow_packet_does_not_set_the_quickest_time():
+    """A session's first delay is taken from the quickest the network has
+    been, a few packets into a connection. The first of them is the call's
+    answer, and slow as a rule: it is most of the smoothed time for a
+    while, and none of the quickest once another has come."""
+    one, other = Arq(), Arq()
+    other.take(40 * MS, one.packet(0))
+    one.take(83 * MS, other.packet(40 * MS))                    # 83 ms there and back
+    assert one.rtt_least == one.rtt == 83 * MS
+    now = 100 * MS
+    for _ in range(3):
+        other.take(now + 2 * MS, one.packet(now))
+        one.take(now + 4 * MS, other.packet(now + 2 * MS))      # and then 4
+        now += 50 * MS
+    assert one.rtt_last == 4 * MS
+    assert one.rtt_least == 4 * MS
+    assert one.rtt > 50 * MS                                    # the smoothed is still the first's
+
+
 def test_a_note_rides_with_every_packet_and_the_latest_is_kept():
     one, other = Arq(), Arq()
     assert other.noted == bytes(4)

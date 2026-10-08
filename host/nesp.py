@@ -166,7 +166,7 @@ def library():
         lib.host_arq_take.restype = ctypes.c_int
         lib.host_arq_take.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_char_p,
                                       ctypes.c_size_t]
-        for name in ("host_arq_rtt", "host_arq_rtt_last"):
+        for name in ("host_arq_rtt", "host_arq_rtt_last", "host_arq_rtt_least"):
             getattr(lib, name).restype = ctypes.c_uint32
             getattr(lib, name).argtypes = [ctypes.c_void_p]
         lib.host_arq_last_at.restype = ctypes.c_uint32
@@ -717,6 +717,10 @@ class Arq:
     @property
     def rtt_last(self):
         return self._lib.host_arq_rtt_last(self._arq)
+
+    @property
+    def rtt_least(self):
+        return self._lib.host_arq_rtt_least(self._arq)
 
     @property
     def rtt_count(self):
