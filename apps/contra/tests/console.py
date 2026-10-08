@@ -224,6 +224,8 @@ class Console:
                 # Bit 0 is D0 inverted; the rest is the $40 the bus held.
                 return 0x40 | (self.joy2_level(self.now + 3) ^ 1)
             return 0x40 | self._read_pad(1)
+        if address == APU_STATUS:
+            return APU_STATUS_DMC if self.dmc_left else 0     # a sample has bytes to fetch
         return 0
 
     def write_io(self, address, value):

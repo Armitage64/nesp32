@@ -132,8 +132,8 @@ library's memory is placed a byte at a time (`net/ram.inc`): in seven bytes
 of zero page that the game never touches, and past the end of its buffer of
 writes for the PPU.
 
-The exchange is the PEER service's TICKS as a *short frame*: six bytes out
-and six back (nesp32's `docs/PROTOCOL.md`). Between the nesp32s the
+The exchange is the PEER service's TICKS as a *short frame*: five bytes out
+and four back (nesp32's `docs/PROTOCOL.md`). Between the nesp32s the
 buttons go as datagrams, each repeating what the other end has not said it
 has, so that a lost packet holds nothing up.
 
@@ -167,12 +167,21 @@ scrolling the screen are the worst case, and the levels that scroll
 sideways or up are where it shows.
 
 **What the exchange costs.** 6710 cycles as PEER's ordinary frames, 10
-bytes out and 11 back. 4012 as short frames, which is what the ROM does:
-about an eighth of a frame, every frame. An overrun frame is a frame in
-which the game stands still on both consoles, so in the busiest places a
-session runs a little slower than a local game. In one session through the
-start of level 1, 1500 frames, that was between 7 and 27 frames, where the
-local game overran none.
+bytes out and 11 back. 4012 as short frames of six bytes each way, which
+is what the sessions on hardware below were played with. 3112 now, with
+five bytes out and four back and the CRCs worked out in fewer cycles; and
+the controller is read once, not twice, while no sample plays, which is
+170 more. An overrun frame is a frame in which the game stands still on
+both consoles, so in the busiest places a session runs slower than a
+local game. From the table's frames, those that would overrun with about
+2950 cycles more, against 4012:
+
+| Level | With 2950 | With 4012 |
+|---|---|---|
+| 1 | 7.0% | 9.2% |
+| 3 | 8.3% | 10.5% |
+| 6 | 3.7% | 7.0% |
+| the others | 0.2% at the most | 0.5% at the most |
 
 **What the network may take.** With the input delay at 1, about 940 frames
 of a session with the consoles' frames set against each other in three
@@ -269,8 +278,25 @@ StickS3, and a real NES that joins, with a StickC Plus2.
   the frames with least to spare, where the exchange, and a second one
   when a reply is misheard, no longer fit (the table above).
 
-A flash cartridge that showed a grey screen with a new build showed the
-game when the file was copied again.
+Then with the exchange made smaller, five bytes out and four back, and a
+session begun straight in the game:
+
+- Both work. In 4500 frames one reply was misheard between the two
+  consoles, and with one packet in twenty-three taking over 14 ms the
+  delay kept to 1 and one frame in a hundred waited.
+- The busy scenes still slow, less than before, and it is playable. A
+  local two-player game most likely slows there too, with that many
+  sprites on the screen: the original overruns frames of its own (the
+  table above).
+- The first build of it showed a black screen once the two had joined.
+  The game was running: the picture is turned on by a setting that the
+  title's graphics leave, and a session that skips the title has to leave
+  it itself.
+
+A flash cartridge that shows a grey screen with a new build, or a dark
+grey one, has more than once shown the game when the file was copied
+again, the fourth time on one occasion. Its card's reader is at fault, not
+the ROM: the file's MD5 on the card says which.
 
 The ROM showed a grey screen from an Everdrive N8 until the reset turned
 the NMI off before anything else: the cartridge starts a game with the NMI
@@ -278,17 +304,14 @@ on and its own leavings in memory, which the handler acted on.
 
 ## Not done, and not known
 
-- **The slowdown when the screen is crowded.** With many enemies on the
-  screen the game slows, where a local game does not. Those are the frames
-  with least to spare, and the exchange takes an eighth of every frame
-  (4012 cycles): what no longer fits runs over into the next. The serial
-  line is clean now and nothing is asked twice, so what is left to do is
-  make the exchange itself smaller. In the order of what each should save:
-  frames of five bytes out and four back in place of six and six (about
-  670 cycles); the check worked out in line, with no loop round it (about
-  240); the controller read once where the game's own read is known to be
-  good, and twice only while a sample plays (about 170). And to measure,
-  on the simulated console, how many frames of each level then overrun.
+- **The slowdown when the screen is crowded.** Less than it was, and
+  still there: those are the frames with least to spare, where the
+  original overruns too, and the exchange takes a tenth of every frame.
+  What is left to try, if it is wanted: making no wait for a reply in a
+  frame whose buttons from the other console are already here, which they
+  are whenever its delay has a tick to spare; and leaving the reply's CRC
+  at one byte. And to see how a local two-player game does in the same
+  scenes, which is the least this can come to.
 - **The firmware's own end of the datagrams** (its `main/conn.c`) has run
   on hardware and has no tests of its own: what it does is tested through
   a computer's stand-in for it.

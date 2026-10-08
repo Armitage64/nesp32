@@ -35,6 +35,11 @@ def to_game(table):
         assert console.byte("GAME_ROUTINE_INDEX") == ROUTINE_LEVEL
         assert console.byte("LEVEL_ROUTINE_INDEX") == LEVEL_PLAYING
         assert console.byte("PLAYER_MODE") == 1
+    # And the picture is on: the background and the sprites, as the title
+    # leaves it for a game begun from there.
+    table.run(10)
+    for console in table.consoles:
+        assert console.byte("PPUMASK_SETTINGS") == 0x1E and console.mask == 0x1E
 
 
 def play(table, frames=PLAY_FRAMES, seed=3):
@@ -236,7 +241,9 @@ def test_two_games_that_differ_end_the_session(net_console):
         assert console.byte("net_mode") == 1
     console = table.consoles[0]
     console.ram[console.labels["RANDOM_NUM"]] ^= 0x55
-    table.play(280, moves(seed=4))
+    # A digest is taken a few ticks before it is compared, so the next one
+    # that sees this may be the one after next.
+    table.play(560, moves(seed=4))
     for console in table.consoles:
         assert console.byte("net_mode") == 0
 

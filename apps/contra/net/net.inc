@@ -90,6 +90,8 @@ net_reset:
     sta PLAYER_MODE
     lda #$04
     sta GAME_ROUTINE_INDEX      ; game_routine_04: a new game's scores and lives
+    lda #$1e
+    sta PPUMASK_SETTINGS        ; the picture on, which the title's graphics would have set
     lda net_boot+1
     sta net_role
     lda net_boot+2
@@ -392,10 +394,14 @@ net_digest:
     bpl @sprites
     rts
 
-; This console's controller into A: read twice, and if a sample's fetch
-; spoiled one of the reads, as it was the last time both were alike.
+; This console's controller into A. While a sample plays it is read twice,
+; and if a fetch spoiled one of the reads, it is as it was the last time
+; both were alike. With none playing nothing spoils a read, and one does.
 net_read_pad:
     jsr net_read_port
+    lda APU_STATUS
+    and #$10                    ; a sample has bytes still to fetch
+    beq @once
     lda $04
     sta $00
     jsr net_read_port
@@ -405,6 +411,11 @@ net_read_pad:
     lda net_pad
 
 @good:
+    sta net_pad
+    rts
+
+@once:
+    lda $04
     sta net_pad
     rts
 
@@ -428,19 +439,21 @@ net_read_port:
     stx JOY1
     rts
 
-; A session's exchange: PEER's TICKS, as a short frame of six bytes each
-; way (nesp32's docs/PROTOCOL.md). Out: up to PER_FRAME ticks of this
-; console's buttons, from the first the nesp32 has not said it holds, and
-; the tick of the other console's that is wanted next. In: which of this
-; console's the nesp32 now holds, and up to PER_FRAME ticks of the other's.
-; The ticks are named by their low four bits, two to a byte.
+; A session's exchange: PEER's TICKS, as a short frame (nesp32's
+; docs/PROTOCOL.md). Out: up to PER_FRAME ticks of this console's buttons,
+; from the first the nesp32 has not said it holds, and the tick of the
+; other console's that is wanted next, the two named by their low four
+; bits in one byte. In: one tick of the other's, if it is there.
 ;
-;   request   count, first tick and tick wanted, buttons, buttons
-;   reply     count, next tick to send and first tick, buttons, buttons
+;   request   count, first tick and tick wanted, buttons (and buttons)
+;   reply     count, buttons
+;
+; A reply names no ticks. That one comes says the nesp32 holds the buttons
+; it was sent, and its CRC says which request it answers.
 ;
 ; With net_tune set the request's count is NESP_PEER_TUNE: one tick of
-; buttons and then this console's report, and the reply has one tick at the
-; most and then the delay advised.
+; buttons and then this console's report, and the reply has the delay
+; advised after its buttons.
 net_exchange:
     lda net_acked
     and #RING-1
@@ -466,7 +479,9 @@ net_exchange:
     lda net_tune
     beq @plain
     ; The report, in place of a second tick of buttons: the delay, the
-    ; NMIs that waited (7 at the most) and the fewest ticks held (3).
+    ; NMIs that waited (7 at the most) and the fewest ticks held (3). It
+    ; goes with the buttons just read, in this NMI or not at all: in a
+    ; later one there might be none to send.
     lda #$00
     sta net_tune
     lda net_late
@@ -492,7 +507,10 @@ net_exchange:
     asl
     ora net_temp
     sta nesp_tx+3
+    ldx #$01                    ; one tick of buttons goes with it
+    stx net_temp
     lda #NESP_PEER_TUNE
+    ldy #$02
     jsr net_ask
     bcs @exit
     cmp #NESP_SHORT_NONE
@@ -502,7 +520,7 @@ net_exchange:
     sta net_late
     lda #$ff
     sta net_margin
-    lda nesp_rx+3               ; the advice
+    lda nesp_rx+4               ; the advice
     beq @acks
     cmp #NET_DELAY_MAX+1
     bcs @acks
@@ -512,46 +530,24 @@ net_exchange:
 @plain:
     jsr net_unsent
     cmp #PER_FRAME+1
-    bcc @count
+    bcc :+
     lda #PER_FRAME
-
-@count:
+:
+    sta net_temp                ; how many ticks of buttons go
+    ldy #$01
     jsr net_ask
     bcs @exit
     cmp #NESP_SHORT_NONE
     beq @drop                   ; the other console is gone, or the nesp32 was switched off and on
-    pha                         ; how many of the other's buttons came
+    pha                         ; whether one of the other's buttons came
 
 @acks:
-    ; The nesp32 cannot hold more ticks than were ever read.
-    lda nesp_rx+1
-    lsr
-    lsr
-    lsr
-    lsr
-    sec
-    sbc net_acked
-    and #$0f                    ; how many more it holds than it had said
-    sta net_temp
-    jsr net_unsent
-    cmp net_temp
-    bcc @buttons
-    lda net_acked
+    lda net_acked               ; the nesp32 holds what it was sent
     clc
     adc net_temp
     sta net_acked
-
-@buttons:
     pla
-    sta net_temp
     beq @exit
-    lda nesp_rx+1
-    eor net_have
-    and #$0f
-    bne @exit                   ; not from the tick that was wanted
-    ldy #$00
-
-@take:
     lda net_have
     sec
     sbc net_tick
@@ -560,12 +556,9 @@ net_exchange:
     lda net_have
     and #RING-1
     tax
-    lda nesp_rx+2,y
+    lda nesp_rx+3
     sta net_remote,x
     inc net_have
-    iny
-    cpy net_temp
-    bne @take
 
 @exit:
     rts
@@ -573,8 +566,8 @@ net_exchange:
 @drop:
     jmp net_drop
 
-; A short request of count A, and the same once more if no reply to it is
-; heard. On a console a sample's fetch takes cycles from the serial routines
+; A short request of count A, whose reply is to have Y bytes of data, and
+; the same once more if no reply to it is heard. On a console a sample's fetch takes cycles from the serial routines
 ; now and again, and a reply is misheard; the nesp32 has taken the buttons
 ; all the same, and passes them over when they come twice. Asked again in
 ; the same NMI, the game does not have to stand still a frame for it.
@@ -584,6 +577,7 @@ net_ask:
     jsr nesp_short
     bcc @heard
     pla
+    ldy nesp_count              ; as it was asked
     jmp nesp_short
 
 @heard:
