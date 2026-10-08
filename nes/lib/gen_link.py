@@ -8,6 +8,9 @@ runs at NESP_PERIOD CPU cycles a bit, and the Stick's UART is set from the
 same number. This writes, for that rate:
 
     nesp_rx_frame   receive one reply into nesp_rx, however long it says it is
+    nesp_rx_bytes   receive A bytes into nesp_rx, for a short reply: any
+                    number but NESP_HEADER, at which the other works out a
+                    length
     nesp_tx_byte    send A as 8N1
     nesp_crc_table_hi, _lo      the CRC a byte at a time, for a ROM that
                                 defines NESP_CRC_TABLE
@@ -169,14 +172,16 @@ def receiver(period, baud, to_nes_bits):
              "; Receive a reply into nesp_rx. %d cycles a bit, %d baud." % (period, baud),
              "; There is no timeout; the caller's NMI is one. Carry clear, as the",
              "; other receiver leaves it for a frame that came. Destroys A, X and Y.",
-             ".proc nesp_rx_frame", "    ldx #0", "    lda #NESP_HEADER",
-             "    sta nesp_rx_end", "    jmp @hunt", "@byte:"]
+             ".proc nesp_rx_frame", "    lda #NESP_HEADER",
+             "    sta nesp_rx_end     ; nesp_rx_bytes comes in here",
+             "    ldx #0", "    jmp @hunt", "@byte:"]
     lines += samples(period, shape, use_y=True)
     lines += store(shape)
     lines += ["@next:",
               "@hunt:                      ; the tests skip ahead while this sees mark",
               "    lda JOY2", "    lsr a", "    bcc @hunt", "    jmp @byte",
-              "@done:", "    clc", "    rts", ".endproc", one_page("nesp_rx_frame")]
+              "@done:", "    clc", "    rts", ".endproc", one_page("nesp_rx_frame"),
+              RX_BYTES]
     return lines
 
 
@@ -188,16 +193,21 @@ def timeout_receiver(period, baud, to_nes_bits):
              "; nesp_tries is how long to wait for a start bit, in passes of 256",
              "; looks; it is not wound up again between bytes. Carry clear if the",
              "; frame came, set if the wait ran out. Destroys A, X and Y.",
-             ".proc nesp_rx_frame", "    ldy #0", "    lda #NESP_HEADER",
-             "    sta nesp_rx_end", "    ldx #0",
+             ".proc nesp_rx_frame", "    lda #NESP_HEADER",
+             "    sta nesp_rx_end     ; nesp_rx_bytes comes in here",
+             "    ldy #0", "    ldx #0",
              "@hunt:                      ; the tests skip ahead while this sees mark",
              "    lda JOY2", "    lsr a", "    bcs @byte", "    dex", "    bne @hunt",
              "    dec nesp_tries", "    bne @hunt", "    sec", "    rts", "@byte:"]
     lines += samples(period, shape, use_y=False)
     lines += store(shape)
     lines += ["@next:", "    ldx #0", "    jmp @hunt", "@done:", "    clc", "    rts",
-              ".endproc", one_page("nesp_rx_frame")]
+              ".endproc", one_page("nesp_rx_frame"), RX_BYTES]
     return lines
+
+
+# Past the lda # that a whole frame's receiver begins with.
+RX_BYTES = "nesp_rx_bytes = nesp_rx_frame + 2"
 
 
 def sender(period):

@@ -28,6 +28,10 @@ idf.py -B build-esp32 -p /dev/cu.usbserial-XXXX flash monitor
 idf.py -B build-esp32s3 -D SDKCONFIG=build-esp32s3/sdkconfig -D IDF_TARGET=esp32s3 build
 ```
 
+`firmware/deploy.sh` does both for whichever boards are on this computer's
+USB, telling a StickS3 from a StickC Plus2 by the name of its port, and
+`firmware/deploy.sh watch` prints their logs without restarting them.
+
 Flashing replaces whatever is on the Stick, UIFlow included; M5Burner
 brings UIFlow back.
 
@@ -42,7 +46,7 @@ component manager on the first build (`main/idf_component.yml`).
 | `main/store.c` | the files: LittleFS in the `storage` partition, and the jukebox's tracks in it |
 | `main/radio.c` | Wi-Fi, its worker task, and the hardware as the services see it |
 | `main/fetch.c` | one HTTPS GET at a time, in a task of its own, handed to a service as it arrives |
-| `main/conn.c` | one TCP connection to another nesp32, in a task of its own: PEER's, for two consoles |
+| `main/conn.c` | one connection to another nesp32, as datagrams, in a task of its own: PEER's, for two consoles |
 | `main/main.cpp` | M5Unified: the screen, the buttons, the battery, power off |
 | `main/board.h` | the link's pins on each board |
 | `partitions.csv` | two slots for the firmware, and the rest for files |

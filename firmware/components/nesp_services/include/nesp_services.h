@@ -108,6 +108,10 @@ typedef struct {
     /* A line of the nesp32's screen that is the application's to fill:
      * row 0 or 1. An empty text gives it back. */
     void (*show)(void *ctx, uint8_t row, const char *text);
+    /* May be NULL. A line for whoever is watching the nesp32's log: the
+     * figures a service keeps of how it is going, which its screen has no
+     * room for. */
+    void (*watch)(void *ctx, const char *text);
     /* One connection to another nesp32, a stream of bytes each way (PEER).
      * None of these waits: the listening, the calling and the sending
      * itself are another task's.
@@ -130,7 +134,69 @@ typedef struct {
      * anything. False: none has been kept. */
     bool (*peer_last)(void *ctx, uint8_t *address);
     void (*peer_keep)(void *ctx, const uint8_t *address);
+    /* How long the network takes to the other nesp32 and back, in
+     * microseconds, smoothed. 0: not known. */
+    uint32_t (*peer_rtt)(void *ctx);
+    /* A note of NESP_ARQ_NOTE bytes that goes with everything sent from
+     * now on, in place of the last; and the latest that has come from the
+     * other nesp32, zeros until one has. Unlike the stream's bytes a note
+     * may never arrive: a later one takes its place. */
+    void (*peer_note)(void *ctx, const uint8_t *note);
+    void (*peer_noted)(void *ctx, uint8_t *note);
+    /* Every measurement of the network's time since the connection came
+     * up, counted by the delay it would take to cover it: NESP_ARQ_NEEDS
+     * counts, for 1 tick, 2, and so on, the last for all beyond. */
+    void (*peer_spread)(void *ctx, uint32_t *counts);
 } nesp_hal_t;
+
+/* A stream of bytes over datagrams (arq.c): what a port needs to carry
+ * PEER's connection over a network that loses packets. */
+#define NESP_ARQ_HEADER 24
+#define NESP_ARQ_CARRY 32           /* bytes a datagram carries at most */
+#define NESP_ARQ_HELD 96            /* bytes kept each way */
+#define NESP_ARQ_NOTE 4
+#define NESP_ARQ_NEEDS (NESP_PEER_DELAY_MAX + 1)
+#define NESP_ARQ_PACKET (NESP_ARQ_HEADER + NESP_ARQ_CARRY)
+enum { NESP_ARQ_CALL, NESP_ARQ_ANSWER, NESP_ARQ_DATA, NESP_ARQ_BYE };
+
+typedef struct {
+    uint32_t session;
+    uint8_t out[NESP_ARQ_HELD];     /* sent, and not yet said to have come */
+    uint16_t out_base;              /* where in the stream out[0] is */
+    uint8_t out_len;
+    uint8_t in[NESP_ARQ_HELD];      /* come, and not yet read */
+    uint8_t in_len;
+    uint16_t in_next;               /* where in the other's stream this end has got to */
+    bool sent;
+    bool fresh;                     /* there is something new to say */
+    uint32_t sent_at;
+    bool heard;
+    uint32_t heard_at;              /* when the newest of its clocks came */
+    uint32_t last_at;               /* when anything of it last came */
+    uint32_t their_clock;
+    uint32_t rtt;                   /* there and back, in microseconds: smoothed */
+    uint32_t rtt_last;
+    uint32_t rtt_count;
+    uint32_t needs[NESP_ARQ_NEEDS]; /* the measurements, by the delay each would take */
+    uint8_t note_out[NESP_ARQ_NOTE];
+    uint8_t note_in[NESP_ARQ_NOTE];
+} nesp_arq_t;
+
+/* The delay, in ticks of a game, that covers a network taking this long
+ * there and back: half of it, and 9 ms that the consoles and the nesp32s
+ * take besides. Not less than 1; it may be more than NESP_PEER_DELAY_MAX. */
+uint32_t nesp_arq_ticks(uint32_t rtt_us);
+/* A new connection, named by its caller. */
+void nesp_arq_open(nesp_arq_t *arq, uint32_t session);
+/* Bytes for the other end, and bytes from it: how many were taken. */
+size_t nesp_arq_write(nesp_arq_t *arq, const uint8_t *data, size_t len);
+size_t nesp_arq_read(nesp_arq_t *arq, uint8_t *out, size_t max);
+/* Is it time a datagram went? */
+bool nesp_arq_due(const nesp_arq_t *arq, uint32_t now_us);
+/* One of a kind, into out (NESP_ARQ_PACKET bytes). Returns its length. */
+size_t nesp_arq_packet(nesp_arq_t *arq, uint8_t kind, uint32_t now_us, uint8_t *out);
+/* One that came. Its kind, or -1 if it is not this connection's. */
+int nesp_arq_take(nesp_arq_t *arq, uint32_t now_us, const uint8_t *data, size_t len);
 
 /* A connection to another nesp32, as the hardware has it. */
 enum {
@@ -308,9 +374,23 @@ typedef struct {
     uint8_t remote_base;            /* the tick of remote[0] */
     uint8_t remote_len;
     uint8_t remote[NESP_PEER_HELD]; /* the other's buttons, not yet taken */
+    /* The delay: what this console says it keeps, what it is advised,
+     * and what goes into the advice (peer.c). */
+    uint32_t now;                   /* the clock, as the last tick had it */
+    uint8_t delay;                  /* 0: it has not said */
+    uint8_t want;                   /* 0: no advice yet */
+    uint8_t up;                     /* reports in a row that called for longer */
+    uint8_t down;                   /* and for shorter */
+    uint8_t told;                   /* this console's reports passed on: the count is their name */
+    uint32_t told_at;
+    uint32_t spread[NESP_ARQ_NEEDS];    /* the network's times, as they stood at the last report */
+    uint32_t since[NESP_ARQ_NEEDS];     /* and those the last report had come since the one before */
+    uint32_t watched_at;
     /* For the nesp32's screen. */
     uint32_t requests;
     uint32_t repeats;               /* requests that brought nothing new */
+    uint32_t again;                 /* of those, ones that sent buttons already held:
+                                       the console did not hear the reply before */
     bool show;
     uint32_t shown_at;
 } nesp_peer_t;

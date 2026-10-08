@@ -19,6 +19,14 @@
 ;   NESP_NO_HELLO   optional. No nesp_hello and no nesp_pattern: for a bank
 ;                   of a ROM whose other bank says hello. The two then
 ;                   agree on where everything else here is kept
+;   NESP_SHORT_FRAMES optional. nesp_short, for a service's short frames
+;                   (docs/PROTOCOL.md): a request of six bytes and a reply
+;                   of six, where the least a frame can be is seven
+;   NESP_OWN_MEMORY optional. The ROM has named every byte of memory below
+;                   itself, before including this: for a game with no run
+;                   of zero page to spare (nes-contra). Only what the
+;                   serial routines count cycles by has to be zero page,
+;                   and nesp_ptr; the file says so if any of it is not
 ;
 ; and has the segments ZEROPAGE, BSS, CODE and RXTX (aligned to a page).
 ;
@@ -33,6 +41,11 @@
 ;                   answers it with the same reply, and does nothing twice
 ;   nesp_reply      the reply's payload, nesp_reply_len bytes of it
 ;   nesp_attention  not 0 if the Stick has an event waiting (SYS EVENT)
+;   nesp_short      with NESP_SHORT_FRAMES: a short request. A = its count, and
+;                   its three bytes are at nesp_tx + 1. Carry clear and A =
+;                   the reply's count if a good reply came, with its three
+;                   bytes at nesp_rx + 1; carry set if none did. It has no
+;                   sequence number, and is not kept to be sent again
 ;
 ; The serial routines count CPU cycles (link.inc, generated), so nothing
 ; may interrupt them, and the receiver waits for a start bit with no timeout
@@ -51,6 +64,13 @@
 
 .include "nesp_proto.inc"
 
+.ifdef NESP_OWN_MEMORY
+.assert nesp_rx_data < $100 && nesp_tx_data < $100 && nesp_rx_end < $100, error, "the serial routines' bytes must be zero page"
+.assert nesp_ptr < $FF, error, "nesp_ptr must be zero page"
+.ifdef NESP_TIMEOUT
+.assert nesp_tries < $100, error, "nesp_tries must be zero page"
+.endif
+.else
 .segment "ZEROPAGE"
 nesp_rx_data:   .res 1
 nesp_tx_data:   .res 1
@@ -71,13 +91,16 @@ nesp_attention: .res 1
 .ifdef NESP_TIMEOUT
 nesp_tries:     .res 1
 .endif
+.endif
 
 ; After the zero page's names, so that the routines use them as zero page.
 .include "link.inc"
 
+.ifndef NESP_OWN_MEMORY
 .segment "BSS"
 nesp_rx:        .res NESP_RX_MASK + 1 + NESP_OVERHEAD
 nesp_tx:        .res NESP_TX_MAX + NESP_OVERHEAD
+.endif
 nesp_request   = nesp_tx + NESP_HEADER
 nesp_reply     = nesp_rx + NESP_HEADER
 nesp_reply_len = nesp_rx + NESP_HEADER - 1
@@ -283,6 +306,82 @@ nesp_reply_len = nesp_rx + NESP_HEADER - 1
 
 .endif
 
+.ifdef NESP_SHORT_FRAMES
+
+.assert NESP_SHORT <> NESP_HEADER, error, "nesp_rx_bytes cannot count a short frame"
+.assert NESP_SHORT <= NESP_OVERHEAD, error, "a short frame is longer than the buffers' least"
+
+; A short request and its reply. See the top of the file.
+.proc nesp_short
+    ora #NESP_SHORT_REQUEST
+    sta nesp_tx
+    lda #<nesp_tx
+    sta nesp_ptr
+    lda #>nesp_tx
+    sta nesp_ptr + 1
+    jsr nesp_short_sum
+    lda nesp_crc_hi
+    sta nesp_tx + NESP_SHORT - 2
+    lda nesp_crc_lo
+    sta nesp_tx + NESP_SHORT - 1
+    ldx #0
+@send:
+    lda nesp_tx,x
+    jsr nesp_tx_byte            ; preserves X
+    inx
+    cpx #NESP_SHORT
+    bne @send
+.ifdef NESP_TIMEOUT
+    lda #NESP_TIMEOUT
+    sta nesp_tries
+.endif
+    lda #NESP_SHORT
+    jsr nesp_rx_bytes
+    bcs @bad                    ; the wait for it ran out
+    lda nesp_rx
+    and #NESP_SHORT_MARK
+    cmp #NESP_SHORT_REPLY
+    bne @bad
+    lda #<nesp_rx
+    sta nesp_ptr
+    lda #>nesp_rx
+    sta nesp_ptr + 1
+    jsr nesp_short_sum
+    lda nesp_rx + NESP_SHORT - 2
+    cmp nesp_crc_hi
+    bne @bad
+    lda nesp_rx + NESP_SHORT - 1
+    cmp nesp_crc_lo
+    bne @bad
+    lda nesp_rx
+    and #<~NESP_SHORT_MARK
+    clc
+    rts
+@bad:
+    sec
+    rts
+.endproc
+
+; The CRC of the short frame at nesp_ptr: of its marker and what follows.
+.proc nesp_short_sum
+    lda #>NESP_CRC_INIT
+    sta nesp_crc_hi
+    lda #<NESP_CRC_INIT
+    sta nesp_crc_lo
+    ldy #0
+@byte:
+    lda (nesp_ptr),y
+    sty nesp_index
+    jsr nesp_crc
+    ldy nesp_index
+    iny
+    cpy #NESP_SHORT - 2
+    bne @byte
+    rts
+.endproc
+
+.endif
+
 .ifndef NESP_NO_HELLO
 
 ; Say hello: who this ROM is and the services it needs. Before the call,
@@ -323,9 +422,11 @@ nesp_app_id:
 ; The next byte of the test pattern (DIAG PATTERN and SINK) in A: a 16-bit
 ; xorshift (7, 9, 8) kept in nesp_rng, which must not be 0. Preserves X
 ; and Y.
+.ifndef NESP_OWN_MEMORY
 .segment "ZEROPAGE"
 nesp_rng:       .res 2
 .segment "CODE"
+.endif
 .proc nesp_pattern
     lda nesp_rng + 1
     lsr a

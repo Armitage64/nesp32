@@ -73,6 +73,11 @@ typedef struct {
     size_t conn_out_len;
     uint8_t conn_in[HOST_CONN_MAX];
     size_t conn_in_len;
+    uint32_t conn_rtt;              /* set by the caller: microseconds, 0 not known */
+    uint8_t note_out[NESP_ARQ_NOTE];    /* the service's latest for the other nesp32 */
+    uint32_t notes;                 /* how many it has left */
+    uint8_t note_in[NESP_ARQ_NOTE]; /* set by the caller: the other's */
+    uint32_t spread[NESP_ARQ_NEEDS];    /* the caller's measurements of the network */
     uint32_t listens;
     uint32_t calls;
     uint32_t closes;
@@ -355,6 +360,28 @@ static size_t hal_peer_recv(void *ctx, uint8_t *out, size_t max)
     return max;
 }
 
+static uint32_t hal_peer_rtt(void *ctx)
+{
+    return ((host_t *)ctx)->conn_rtt;
+}
+
+static void hal_peer_note(void *ctx, const uint8_t *note)
+{
+    host_t *host = ctx;
+    memcpy(host->note_out, note, NESP_ARQ_NOTE);
+    host->notes++;
+}
+
+static void hal_peer_noted(void *ctx, uint8_t *note)
+{
+    memcpy(note, ((host_t *)ctx)->note_in, NESP_ARQ_NOTE);
+}
+
+static void hal_peer_spread(void *ctx, uint32_t *counts)
+{
+    memcpy(counts, ((host_t *)ctx)->spread, sizeof(((host_t *)ctx)->spread));
+}
+
 static bool hal_peer_last(void *ctx, uint8_t *address)
 {
     host_t *host = ctx;
@@ -411,6 +438,10 @@ host_t *host_new(void)
     host->hal.peer_recv = hal_peer_recv;
     host->hal.peer_last = hal_peer_last;
     host->hal.peer_keep = hal_peer_keep;
+    host->hal.peer_rtt = hal_peer_rtt;
+    host->hal.peer_note = hal_peer_note;
+    host->hal.peer_noted = hal_peer_noted;
+    host->hal.peer_spread = hal_peer_spread;
     host->battery = 0xFF;
     nesp_stick_init(&host->stick, &host->hal);
     return host;
@@ -594,6 +625,54 @@ bool host_last(const host_t *host, uint8_t *out)
     memcpy(out, host->last, 4);
     return host->have_last;
 }
+
+void host_conn_rtt(host_t *host, uint32_t microseconds) { host->conn_rtt = microseconds; }
+/* A measurement of the network's time, there and back, `times` over. */
+void host_conn_took(host_t *host, uint32_t microseconds, uint32_t times)
+{
+    uint32_t ticks = nesp_arq_ticks(microseconds);
+    host->spread[(ticks > NESP_ARQ_NEEDS ? NESP_ARQ_NEEDS : ticks) - 1] += times;
+}
+uint32_t host_notes(const host_t *host) { return host->notes; }
+void host_note_take(const host_t *host, uint8_t *out) { memcpy(out, host->note_out, NESP_ARQ_NOTE); }
+void host_note_give(host_t *host, const uint8_t *note) { memcpy(host->note_in, note, NESP_ARQ_NOTE); }
+
+/* --- the stream over datagrams, on its own (arq.c) ------------------------------ */
+
+nesp_arq_t *host_arq_new(uint32_t session)
+{
+    nesp_arq_t *arq = malloc(sizeof(*arq));
+    if (arq != NULL) {
+        nesp_arq_open(arq, session);
+    }
+    return arq;
+}
+
+void host_arq_free(nesp_arq_t *arq) { free(arq); }
+size_t host_arq_write(nesp_arq_t *arq, const uint8_t *data, size_t len)
+{
+    return nesp_arq_write(arq, data, len);
+}
+size_t host_arq_read(nesp_arq_t *arq, uint8_t *out, size_t max)
+{
+    return nesp_arq_read(arq, out, max);
+}
+bool host_arq_due(const nesp_arq_t *arq, uint32_t now) { return nesp_arq_due(arq, now); }
+size_t host_arq_packet(nesp_arq_t *arq, uint8_t kind, uint32_t now, uint8_t *out)
+{
+    return nesp_arq_packet(arq, kind, now, out);
+}
+int host_arq_take(nesp_arq_t *arq, uint32_t now, const uint8_t *data, size_t len)
+{
+    return nesp_arq_take(arq, now, data, len);
+}
+uint32_t host_arq_rtt(const nesp_arq_t *arq) { return arq->rtt; }
+uint32_t host_arq_rtt_last(const nesp_arq_t *arq) { return arq->rtt_last; }
+uint8_t host_arq_unsaid(const nesp_arq_t *arq) { return arq->out_len; }
+uint32_t host_arq_last_at(const nesp_arq_t *arq) { return arq->last_at; }
+uint32_t host_arq_rtt_count(const nesp_arq_t *arq) { return arq->rtt_count; }
+void host_arq_note(nesp_arq_t *arq, const uint8_t *note) { memcpy(arq->note_out, note, NESP_ARQ_NOTE); }
+void host_arq_noted(const nesp_arq_t *arq, uint8_t *out) { memcpy(out, arq->note_in, NESP_ARQ_NOTE); }
 
 uint32_t host_peer_requests(const host_t *host) { return host->stick.peer.requests; }
 uint32_t host_peer_repeats(const host_t *host) { return host->stick.peer.repeats; }

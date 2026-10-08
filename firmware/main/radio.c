@@ -64,6 +64,8 @@ static nesp_network_t networks[NESP_SCAN_MAX];  /* under lock */
 static uint8_t battery = 0xFF;
 static char app_id[NESP_APP_ID] = {' ', ' ', ' ', ' '};
 static char shown[2][RADIO_SHOWN_MAX];      /* under lock: the application's lines */
+static char watched[RADIO_WATCH_MAX];       /* under lock: its line for the log */
+static bool watch_news;
 static uint8_t app_version;
 static QueueHandle_t orders;
 static nesp_hal_t hal;
@@ -202,6 +204,16 @@ static void hal_app(void *ctx, const char *id, uint8_t version)
 /* Memory for something big. From the PSRAM if the board has it; a piece
  * small enough not to starve Wi-Fi and TLS may come from the chip's own. */
 #define INTERNAL_MOST (64 * 1024)
+
+static void hal_watch(void *ctx, const char *text)
+{
+    (void)ctx;
+    portENTER_CRITICAL(&lock);
+    strncpy(watched, text, RADIO_WATCH_MAX - 1);
+    watched[RADIO_WATCH_MAX - 1] = 0;
+    watch_news = true;
+    portEXIT_CRITICAL(&lock);
+}
 
 static void hal_show(void *ctx, uint8_t row, const char *text)
 {
@@ -526,6 +538,7 @@ const nesp_hal_t *radio_hal(void)
     hal.track_size = store_track_size;
     hal.track_read = store_track_read;
     hal.show = hal_show;
+    hal.watch = hal_watch;
     hal.peer_state = conn_state;
     hal.peer_listen = conn_listen;
     hal.peer_call = conn_call;
@@ -534,6 +547,10 @@ const nesp_hal_t *radio_hal(void)
     hal.peer_recv = conn_recv;
     hal.peer_last = conn_last;
     hal.peer_keep = conn_keep;
+    hal.peer_rtt = conn_rtt;
+    hal.peer_note = conn_note;
+    hal.peer_noted = conn_noted;
+    hal.peer_spread = conn_spread;
     return &hal;
 }
 
@@ -553,6 +570,16 @@ void radio_app(char *id, uint8_t *version)
     memcpy(id, app_id, NESP_APP_ID);
     *version = app_version;
     portEXIT_CRITICAL(&lock);
+}
+
+bool radio_watch(char *out)
+{
+    portENTER_CRITICAL(&lock);
+    bool news = watch_news;
+    watch_news = false;
+    memcpy(out, watched, RADIO_WATCH_MAX);
+    portEXIT_CRITICAL(&lock);
+    return news;
 }
 
 void radio_shown(uint8_t row, char *out)

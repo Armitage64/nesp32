@@ -62,6 +62,11 @@ typedef struct {
      * the service has dealt with it, and the console is not told. */
     bool (*tick)(void *ctx, uint32_t now_ms);
     bool (*event)(void *ctx, uint8_t code, uint8_t arg);
+    /* May be NULL. A short request (docs/PROTOCOL.md, "Short frames"): its
+     * count and its NESP_SHORT_DATA bytes in, the reply's count returned
+     * and its bytes written to out, which is zeros. It goes to the one
+     * service in use that has this. */
+    uint8_t (*quick)(void *ctx, uint8_t count, const uint8_t *in, uint8_t *out);
     void *ctx;
     bool always;            /* active without being asked for: SYS */
 } nesp_service_t;

@@ -223,6 +223,25 @@ static size_t answer(nesp_link_t *link, const uint8_t *frame, uint8_t *out)
     return total;
 }
 
+/* The reply to a short request, written to out. Returns its length. */
+static size_t answer_short(nesp_link_t *link, const uint8_t *frame, uint8_t *out)
+{
+    uint8_t count = NESP_SHORT_NONE;
+    memset(out, 0, NESP_SHORT);
+    for (uint8_t index = 0; index < link->count; index++) {
+        const nesp_service_t *service = link->slots[index].service;
+        if (link->slots[index].active && service->quick != NULL) {
+            count = service->quick(service->ctx, frame[0] & (uint8_t)~NESP_SHORT_MARK,
+                                   frame + 1, out + 1);
+            break;
+        }
+    }
+    out[0] = (uint8_t)(NESP_SHORT_REPLY | (count & (uint8_t)~NESP_SHORT_MARK));
+    nesp_checks(out, 1 + NESP_SHORT_DATA, out + 1 + NESP_SHORT_DATA,
+                out + 2 + NESP_SHORT_DATA);
+    return NESP_SHORT;
+}
+
 size_t nesp_link_feed(nesp_link_t *link, const uint8_t *data, size_t len, uint8_t *out)
 {
     /* Keep the newest bytes if more come than there is room for. */
@@ -252,6 +271,33 @@ size_t nesp_link_feed(nesp_link_t *link, const uint8_t *data, size_t len, uint8_
     size_t framed = 0;          /* bytes that were part of good requests */
     bool found = false;
     while (at < count) {
+        if ((rx[at] & NESP_SHORT_MARK) == NESP_SHORT_REQUEST) {
+            /* A short request: its length is known, and its CRC takes in
+             * the marker. */
+            uint8_t a, b;
+            if (at + NESP_SHORT > count) {
+                if (pending == count) {
+                    pending = at;
+                }
+                at++;
+                continue;
+            }
+            nesp_checks(rx + at, 1 + NESP_SHORT_DATA, &a, &b);
+            if (a != rx[at + NESP_SHORT - 2] || b != rx[at + NESP_SHORT - 1]) {
+                at++;
+                continue;
+            }
+            if (found) {
+                link->counters.dropped++;
+            }
+            found = true;
+            newest = at;
+            link->counters.requests++;
+            framed += NESP_SHORT;
+            at += NESP_SHORT;
+            pending = count;
+            continue;
+        }
         if (rx[at] != NESP_REQUEST_MARKER) {
             at++;
             continue;
@@ -295,7 +341,8 @@ size_t nesp_link_feed(nesp_link_t *link, const uint8_t *data, size_t len, uint8_
 
     size_t sent = 0;
     if (found) {
-        sent = answer(link, rx + newest, out);
+        sent = (rx[newest] & NESP_SHORT_MARK) == NESP_SHORT_REQUEST
+                   ? answer_short(link, rx + newest, out) : answer(link, rx + newest, out);
     }
     /* Everything before an unfinished request has been dealt with, and
      * what of it was not a request was noise. */

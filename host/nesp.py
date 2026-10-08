@@ -143,6 +143,38 @@ def library():
         lib.host_conn_give.restype = ctypes.c_size_t
         lib.host_conn_give.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t]
         lib.host_set_last.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        lib.host_conn_rtt.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        lib.host_conn_took.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32]
+        lib.host_arq_rtt_count.restype = ctypes.c_uint32
+        lib.host_arq_rtt_count.argtypes = [ctypes.c_void_p]
+        lib.host_notes.restype = ctypes.c_uint32
+        lib.host_notes.argtypes = [ctypes.c_void_p]
+        lib.host_note_take.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        lib.host_note_give.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        lib.host_arq_new.restype = ctypes.c_void_p
+        lib.host_arq_new.argtypes = [ctypes.c_uint32]
+        lib.host_arq_free.argtypes = [ctypes.c_void_p]
+        lib.host_arq_write.restype = ctypes.c_size_t
+        lib.host_arq_write.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t]
+        lib.host_arq_read.restype = ctypes.c_size_t
+        lib.host_arq_read.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t]
+        lib.host_arq_due.restype = ctypes.c_bool
+        lib.host_arq_due.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        lib.host_arq_packet.restype = ctypes.c_size_t
+        lib.host_arq_packet.argtypes = [ctypes.c_void_p, ctypes.c_uint8, ctypes.c_uint32,
+                                        ctypes.c_char_p]
+        lib.host_arq_take.restype = ctypes.c_int
+        lib.host_arq_take.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_char_p,
+                                      ctypes.c_size_t]
+        for name in ("host_arq_rtt", "host_arq_rtt_last"):
+            getattr(lib, name).restype = ctypes.c_uint32
+            getattr(lib, name).argtypes = [ctypes.c_void_p]
+        lib.host_arq_last_at.restype = ctypes.c_uint32
+        lib.host_arq_last_at.argtypes = [ctypes.c_void_p]
+        lib.host_arq_unsaid.restype = ctypes.c_uint8
+        lib.host_arq_unsaid.argtypes = [ctypes.c_void_p]
+        lib.host_arq_note.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        lib.host_arq_noted.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
         lib.host_last.restype = ctypes.c_bool
         lib.host_last.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
         lib.host_checks.argtypes = [ctypes.c_char_p, ctypes.c_size_t, _u8p]
@@ -180,6 +212,22 @@ def reply_frame(svc, status, seq, payload=b""):
     """A reply as the Stick sends it."""
     body = bytes((svc, status, seq, len(payload))) + bytes(payload)
     return bytes((proto.NESP_REPLY_MARKER,)) + body + checks(body)
+
+
+def short_frame(count, data=b""):
+    """A short request as the console sends it."""
+    body = bytes((proto.NESP_SHORT_REQUEST | count,)) + bytes(data).ljust(proto.NESP_SHORT_DATA, b"\0")
+    return body + checks(body)
+
+
+def parse_short(data):
+    """A short reply's bytes as (count, its three bytes). Raises if they are
+    not one whole good one."""
+    data = bytes(data)
+    if (len(data) != proto.NESP_SHORT or data[0] & proto.NESP_SHORT_MARK != proto.NESP_SHORT_REPLY
+            or checks(data[:-2]) != data[-2:]):
+        raise ValueError("not a short reply: %r" % data)
+    return data[0] & ~proto.NESP_SHORT_MARK & 0xFF, data[1:-2]
 
 
 class Reply:
@@ -311,6 +359,10 @@ class Stick:
             seq = self._seq
         return parse(self.feed(frame(svc, op, seq, payload)))
 
+    def quick(self, count, data=b""):
+        """One short request. Returns the reply's (count, three bytes)."""
+        return parse_short(self.feed(short_frame(count, data)))
+
     def hello(self, app=b"TEST", version=1, reply_max=proto.NESP_PAYLOAD_MAX, services=()):
         payload = bytes((proto.NESP_PROTOCOL,)) + app + bytes((version, reply_max))
         return self.ask(proto.NESP_SVC_SYS, proto.NESP_SYS_HELLO, payload + bytes(services))
@@ -394,6 +446,35 @@ class Stick:
         """Bytes from the other nesp32. Returns how many there was room for."""
         data = bytes(data)
         return self._lib.host_conn_give(self._host, data, len(data))
+
+    @property
+    def rtt(self):
+        raise AttributeError("the network's time is the caller's to set")
+
+    @rtt.setter
+    def rtt(self, microseconds):
+        """How long the network takes there and back; 0 for not known."""
+        self._lib.host_conn_rtt(self._host, int(microseconds))
+
+    def took(self, microseconds, times=1):
+        """A measurement of the network's time there and back, or several
+        alike."""
+        self._lib.host_conn_took(self._host, int(microseconds), times)
+
+    @property
+    def notes(self):
+        """How many notes the service has left for the other nesp32."""
+        return self._lib.host_notes(self._host)
+
+    def note_take(self):
+        """The latest of them."""
+        buffer = ctypes.create_string_buffer(proto_note())
+        self._lib.host_note_take(self._host, buffer)
+        return buffer.raw
+
+    def note_give(self, note):
+        """The other nesp32's latest note."""
+        self._lib.host_note_give(self._host, bytes(note))
 
     def refuse_conns(self, refused=True):
         self._lib.host_conn_refuse(self._host, refused)
@@ -578,6 +659,82 @@ class Stick:
     @property
     def noise(self):
         return self._lib.host_counter(self._host, 3)
+
+
+ARQ_NOTE = 4
+ARQ_PACKET = 56
+ARQ_CALL, ARQ_ANSWER, ARQ_DATA, ARQ_BYE = range(4)
+
+
+def proto_note():
+    return ARQ_NOTE
+
+
+class Arq:
+    """One end of a stream over datagrams (the firmware's arq.c), with no
+    socket: the test is the network. Times are microseconds."""
+
+    def __init__(self, session=0x1234ABCD):
+        self._lib = library()
+        self._arq = self._lib.host_arq_new(session)
+
+    def __del__(self):
+        if getattr(self, "_arq", None):
+            self._lib.host_arq_free(self._arq)
+            self._arq = None
+
+    def write(self, data):
+        data = bytes(data)
+        return self._lib.host_arq_write(self._arq, data, len(data))
+
+    def read(self, most=256):
+        buffer = ctypes.create_string_buffer(most)
+        count = self._lib.host_arq_read(self._arq, buffer, most)
+        return buffer.raw[:count]
+
+    def due(self, now):
+        return self._lib.host_arq_due(self._arq, now & 0xFFFFFFFF)
+
+    def packet(self, now, kind=ARQ_DATA):
+        buffer = ctypes.create_string_buffer(ARQ_PACKET)
+        count = self._lib.host_arq_packet(self._arq, kind, now & 0xFFFFFFFF, buffer)
+        return buffer.raw[:count]
+
+    def take(self, now, data):
+        data = bytes(data)
+        return self._lib.host_arq_take(self._arq, now & 0xFFFFFFFF, data, len(data))
+
+    @property
+    def rtt(self):
+        return self._lib.host_arq_rtt(self._arq)
+
+    @property
+    def rtt_last(self):
+        return self._lib.host_arq_rtt_last(self._arq)
+
+    @property
+    def rtt_count(self):
+        """How many times the network's time has been measured."""
+        return self._lib.host_arq_rtt_count(self._arq)
+
+    @property
+    def heard_at(self):
+        """When anything of the other end last came."""
+        return self._lib.host_arq_last_at(self._arq)
+
+    @property
+    def unsaid(self):
+        """Bytes written that the other end has not said it has."""
+        return self._lib.host_arq_unsaid(self._arq)
+
+    def note(self, note):
+        self._lib.host_arq_note(self._arq, bytes(note))
+
+    @property
+    def noted(self):
+        buffer = ctypes.create_string_buffer(ARQ_NOTE)
+        self._lib.host_arq_noted(self._arq, buffer)
+        return buffer.raw
 
 
 def c_checks(data):

@@ -8,8 +8,9 @@ computer's own sockets.
 The firmware's stand-in hardware (host/nesp_host.c) only notes what it is
 asked: to listen, to call, to hang up, and the bytes to send. This does
 what a nesp32's own task does about it (firmware/main/conn.c), the same
-way: TCP, the port the firmware names, nothing round the bytes. So a
-computer and a nesp32 can be the two ends of a game.
+way: datagrams to the port the firmware names, each repeating what the
+other end has not said it has (the firmware's arq.c, which this uses). So
+a computer and a nesp32 can be the two ends of a game.
 
 IdleNetwork needs no other end. Whatever is asked of it, it is connected at
 once, to an opponent who never presses a button.
@@ -21,10 +22,12 @@ import select
 import socket
 import time
 
-from nesp import (CONN_ANSWERED, CONN_CALLED, CONN_CALLING, CONN_FAILED, CONN_LISTENING,
-                  CONN_LOST, CONN_UP)
+from nesp import (ARQ_ANSWER, ARQ_BYE, ARQ_CALL, ARQ_DATA, CONN_ANSWERED, CONN_CALLED,
+                  CONN_CALLING, CONN_FAILED, CONN_LISTENING, CONN_LOST, CONN_UP, Arq)
 
 CALL_S = 3                  # how long a call is given to be answered
+CALL_EVERY_S = 0.1          # between two sendings of it
+GONE_S = 3                  # nothing heard for this long: the other end is gone
 LAST_PATH = os.path.expanduser("~/.nesp32_peer_last")
 GREETING = 10               # bytes each end says first (nesp_services.h's NESP_PEER_GREETING)
 
@@ -76,10 +79,14 @@ class SocketNetwork:
         self.last_path = last_path
         self.error = ""
         self._orders = Orders(stick)
-        self._server = None
         self._sock = None
-        self._dialing = None        # when the call was begun
-        self._unsent = b""
+        self._arq = None            # the stream over the datagrams, once it has a name
+        self._other = None          # where the other end is
+        self._calling = None        # when the call was begun
+        self._called_at = 0.0
+        self._answering = False
+        self._notes = stick.notes
+        self._measured = 0
         self._keeps = stick.keeps
         stick.last = self._load_last()
 
@@ -99,26 +106,32 @@ class SocketNetwork:
             self.error = "address not saved: %s" % error
 
     def close(self):
-        for sock in (self._server, self._sock):
-            if sock is not None:
-                sock.close()
-        self._server = self._sock = self._dialing = None
-        self._unsent = b""
+        if self._sock is not None:
+            if self._arq is not None and self._other is not None and self._calling is None:
+                for _ in range(3):      # goodbye, more than once
+                    self._send(self._arq.packet(self._now(), ARQ_BYE))
+            self._sock.close()
+        self._sock = self._arq = self._other = self._calling = None
+
+    @staticmethod
+    def _now():
+        return int(time.monotonic() * 1e6) & 0xFFFFFFFF     # as the nesp32's clock: it wraps
 
     def poll(self):
         stick = self.stick
         if self._orders.new():
             self.close()            # whatever there was is not wanted now
             if stick.conn == CONN_LISTENING:
-                self._listen()
+                self._open(self._port())
             elif stick.conn == CONN_CALLING:
                 self._dial()
-        if self._server is not None:
-            self._accept()
-        elif self._dialing is not None:
-            self._answered()
-        elif self._sock is not None:
-            self._carry()
+        if self._sock is not None:
+            if self._arq is None:
+                self._hear_call()
+            elif self._calling is not None:
+                self._call()
+            else:
+                self._carry()
         if stick.keeps != self._keeps:
             self._keeps = stick.keeps
             self._save_last()
@@ -128,94 +141,107 @@ class SocketNetwork:
 
     def _fail(self, what, error):
         self.error = "%s: %s" % (what, error)
+        self._arq = None            # nothing to say goodbye to
         self.close()
         self.stick.conn = CONN_FAILED
 
-    def _listen(self):
+    def _open(self, port):
         try:
-            server = socket.socket()
-            server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            server.bind(("0.0.0.0", self._port()))
-            server.listen(1)
-            server.setblocking(False)
-        except OSError as error:
-            self._fail("listen", error)
-            return
-        self._server = server
-
-    def _accept(self):
-        try:
-            sock, _ = self._server.accept()
-        except BlockingIOError:
-            return                  # nobody yet
-        except OSError as error:
-            self._fail("accept", error)
-            return
-        self._server.close()
-        self._server = None
-        self._up(sock, CONN_ANSWERED)
-
-    def _dial(self):
-        sock = socket.socket()
-        sock.setblocking(False)
-        result = sock.connect_ex((dotted(self.stick.conn_target), self._port()))
-        if result not in (0, errno.EINPROGRESS, errno.EWOULDBLOCK):
-            sock.close()
-            self._fail("connect", os.strerror(result))
-            return
-        self._sock = sock
-        self._dialing = time.monotonic()
-
-    def _answered(self):
-        sock = self._sock
-        if not select.select([], [sock], [], 0)[1]:
-            if time.monotonic() - self._dialing >= CALL_S:
-                self._fail("connect", "no answer")
-            return
-        error = sock.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
-        if error:
-            self._fail("connect", os.strerror(error))
-            return
-        self._dialing = None
-        self._up(sock, CONN_CALLED)
-
-    def _up(self, sock, state):
-        try:
-            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.bind(("0.0.0.0", port))
             sock.setblocking(False)
         except OSError as error:
-            self._fail("connect", error)
-            return
+            self._fail("listen", error)
+            return False
         self._sock = sock
-        self.stick.conn = state
+        return True
+
+    def _send(self, packet):
+        try:
+            self._sock.sendto(packet, self._other)
+        except OSError:
+            pass                    # as a packet lost
+
+    def _packets(self):
+        """What has come, as (datagram, where from)."""
+        while self._sock is not None:
+            try:
+                yield self._sock.recvfrom(256)
+            except BlockingIOError:
+                return
+            except OSError:
+                return              # nothing is listening at the other end
+
+    def _hear_call(self):
+        """The one that waits: the first call names the connection."""
+        for packet, source in self._packets():
+            if len(packet) < 24 or packet[:2] != b"NE" or packet[2] & 0x7F != ARQ_CALL:
+                continue
+            arq = Arq(int.from_bytes(packet[4:8], "little"))
+            if arq.take(self._now(), packet) != ARQ_CALL:
+                continue
+            self._arq, self._other, self._answering = arq, source, True
+            self.stick.conn = CONN_ANSWERED
+            return
+
+    def _dial(self):
+        if not self._open(0):
+            return
+        self._arq = Arq(int.from_bytes(os.urandom(4), "little") | 1)
+        self._other = (dotted(self.stick.conn_target), self._port())
+        self._calling = time.monotonic()
+        self._called_at = 0.0
+        self._answering = False
+
+    def _call(self):
+        """The one that calls: again and again until it is answered."""
+        now = time.monotonic()
+        if now - self._calling >= CALL_S:
+            self._fail("connect", "no answer")
+            return
+        if now - self._called_at >= CALL_EVERY_S:
+            self._called_at = now
+            self._send(self._arq.packet(self._now(), ARQ_CALL))
+        for packet, _ in self._packets():
+            if self._arq.take(self._now(), packet) == ARQ_ANSWER:
+                self._calling = None
+                self.stick.conn = CONN_CALLED
+                return
 
     def _lost(self):
+        self._arq = None
         self.close()
         if self.stick.conn in CONN_UP:
             self.stick.conn = CONN_LOST
 
     def _carry(self):
-        sock = self._sock
-        self._unsent += self.stick.conn_take()
-        if self._unsent:
-            try:
-                self._unsent = self._unsent[sock.send(self._unsent):]
-            except BlockingIOError:
-                pass
-            except OSError:
+        arq, stick = self._arq, self.stick
+        now = self._now()
+        arq.write(stick.conn_take())
+        if stick.notes != self._notes:
+            self._notes = stick.notes
+            arq.note(stick.note_take())
+        for packet, source in self._packets():
+            kind = arq.take(now, packet)
+            if kind < 0:
+                continue
+            self._other = source
+            if kind == ARQ_BYE:
                 self._lost()
                 return
-        try:
-            data = sock.recv(64)
-        except BlockingIOError:
-            return                  # nothing has come
-        except OSError:
+            if kind == ARQ_DATA:
+                self._answering = False
+        if (now - arq.heard_at) & 0xFFFFFFFF >= GONE_S * 1e6:
             self._lost()
             return
-        if not data:
-            self._lost()            # the other end closed
-            return
-        self.stick.conn_give(data)
+        stick.conn_give(arq.read())
+        stick.note_give(arq.noted)
+        stick.rtt = arq.rtt
+        if arq.rtt_count != self._measured:
+            self._measured = arq.rtt_count
+            stick.took(arq.rtt_last)
+        if arq.due(now):
+            self._send(arq.packet(now, ARQ_ANSWER if self._answering else ARQ_DATA))
 
 
 class IdleNetwork:

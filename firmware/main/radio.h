@@ -28,6 +28,12 @@ void radio_app(char *id, uint8_t *version);
 #define RADIO_SHOWN_MAX 40          /* a line of the screen, as main.cpp keeps one */
 void radio_shown(uint8_t row, char *out);
 
+/* What the service in use last had to say for the log (nesp_hal_t's
+ * watch), into out, which holds RADIO_WATCH_MAX bytes. False: nothing new
+ * since the last call. */
+#define RADIO_WATCH_MAX 160
+bool radio_watch(char *out);
+
 #ifdef __cplusplus
 }
 #endif

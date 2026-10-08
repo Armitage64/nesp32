@@ -87,6 +87,36 @@ The Stick's decoder looks for `$4E` and a good CRC, and passes over
 anything else a byte at a time. A marker in the noise with a plausible
 length does not hold up the request behind it.
 
+### Short frames
+
+A frame is seven bytes at the least, and a game that asks something in
+every one of its frames pays for each byte both ways: at this rate a byte
+out is 210 CPU cycles and a byte back 231, of the 29780 in a frame, and
+the console can do nothing else meanwhile. For that there is a second kind
+of frame, six bytes whichever way it goes:
+
+```text
+short request   $D0 + N, DATA[3], CRC_HI, CRC_LO     console to nesp32
+short reply     $B0 + N, DATA[3], CRC_HI, CRC_LO     nesp32 to console
+```
+
+`N` is a count, 0 to 3, in the low two bits of the first byte, and the CRC
+is over that byte and the three that follow. There is no service, no op,
+no sequence number and no length: a short request goes to the one service
+in use that takes them, and what its four values mean is that service's.
+A short reply with `N` = 3 and zeros says that nothing took it: no such
+service is in use, or it has nothing to answer with.
+
+A short request is never answered from a held reply, and the console's
+library does not keep one to send again (`nesp_short`): the service makes
+the same request again harmless, as PEER does. Like any request it is
+found by its marker and its CRC, in whatever else is on the line, and of
+several requests waiting only the newest is acted on.
+
+Only PEER has them so far. nes-contra's exchange was 10 bytes out and 11
+back as frames, and 6710 cycles of each frame on the simulated console; as
+short frames it is 4012.
+
 ### How the check was chosen
 
 The first design had nes-drmario's two running sums in place of a CRC,
@@ -253,12 +283,13 @@ and then a relay. It does not know what a button is, and keeps no time.
 
 | `OP` | Name | Request | Reply |
 |---|---|---|---|
-| `$00` | STATUS | | `STATE`, `ADDRESS[4]` |
+| `$00` | STATUS | | `STATE`, `ADDRESS[4]`, `DELAY` |
 | `$01` | HOST | | the same: wait for the other nesp32 to call |
 | `$02` | JOIN | `ADDRESS[4]` | the same: call the nesp32 at that address |
 | `$03` | LEAVE | | the same: drop whatever connection there is, or is being made |
 | `$04` | LAST | | `STATE`, and in `ADDRESS` the address last joined (zeros if none) |
 | `$05` | TICKS | `FIRST`, `WANTED`, `BUTTONS` ... | `NEXT`, `FROM`, `LOST`, `BUTTONS` ... |
+| short | TICKS again, in six bytes | `N` buttons: `FIRST` and `WANTED`, `BUTTONS[2]` | `N` buttons: `NEXT` and `FROM`, `BUTTONS[2]` |
 
 In every reply but LAST's, `ADDRESS` is the nesp32's own IPv4 address.
 
@@ -310,10 +341,22 @@ console's than it was sent when it has no room for more, and `NEXT` says
 so. What the other console sent before it went is still handed over, and
 only then is `LOST` set.
 
+**As a short frame** (section 2) the same exchange is six bytes each way.
+The count of buttons is the frame's `N`, and the two ticks are named by
+their low four bits, in one byte: `FIRST` or `NEXT` in its high half,
+`WANTED` or `FROM` in its low. That is enough for a console that is never
+more than a few ticks from what the nesp32 holds, and the nesp32 takes each
+for the tick nearest what it holds: `FIRST` at or before its own count,
+`WANTED` at or after the first it has kept. A reply's `N` of 3 is `LOST`.
+The two forms may be mixed in one session. nes-contra's ROM makes its
+exchange this way, and the long way only before a session, where the two
+menus pass each other a byte ahead of the first tick's.
+
 #### Between the nesp32s
 
-TCP, to port 6502 on the nesp32 that hosts. Each says what it is before
-either calls it a game:
+Datagrams, to UDP port 6502 on the nesp32 that hosts (below). They carry
+a stream of bytes each way, in order and all of it. Each nesp32 says what
+it is in that stream before either calls it a game:
 
 ```text
 'N', 'E', 'S', 'P', 1, APP[4], APP_VERSION
@@ -326,19 +369,114 @@ is another game, or another version of this one. A nesp32 that hosts goes
 on waiting for the right caller; one that called says FAILED.
 
 Then one byte a tick each way, in order: a byte's place in the stream is
-its tick, so the stream must be reliable and ordered. On one network that
-needs nothing more. Across the Internet the hosting side has to forward the
-port to its nesp32, and player 2 enters the host's public address.
+its tick. On one network that needs nothing more. Across the Internet the
+hosting side has to forward UDP port 6502 to its nesp32, and player 2
+enters the host's public address.
+
+**The datagrams.** A game sends a byte for each of its frames and wants
+each there soon. A TCP connection that loses a packet stops until it has
+sent it again, a fifth of a second or more with both games standing still,
+so the stream goes over datagrams in which nothing waits for anything:
+each one repeats every byte the other end has not yet said it has, oldest
+first, so the next to arrive makes good whatever was lost before it
+(`firmware/components/nesp_services/arq.c`).
+
+```text
+'N', 'E', KIND, COUNT, SESSION[4], BASE[2], NEXT[2], CLOCK[4], BACK[4], NOTE[4], BYTES[COUNT]
+```
+
+Numbers are low byte first.
+
+| Field | Meaning |
+|---|---|
+| `KIND` | 0 a call, 1 its answer, 2 neither, 3 goodbye. Bit 7 says `BACK` is a clock |
+| `COUNT` | bytes of the stream carried, 32 at the most |
+| `SESSION` | the connection's name, chosen by the one that calls |
+| `BASE` | where in the sender's stream the first byte carried is |
+| `NEXT` | where in the other's stream the sender has got to: it has all before it |
+| `CLOCK` | the sender's clock, in microseconds |
+| `BACK` | the other's last `CLOCK`, with the time since it came added on |
+| `NOTE` | four bytes of PEER's, the latest only (below) |
+
+A datagram goes at once when there is a new byte, every 8 ms while any
+byte is not yet said to have come, and every 50 ms otherwise. The one that
+calls sends calls, ten a second for three seconds, until one is answered;
+the one that waits answers the first caller and from then on takes only
+that session's datagrams, from wherever they come. An end that hears
+nothing for three seconds takes the other for gone.
+
+`BACK` gives each end how long the network takes, there and back, from
+every datagram: its own clock now, less the clock it gets back. PEER uses
+it for the delay a session begins with.
+
+**The delay.** A press on one console is used some ticks after it was
+read, which is the time it has to reach the other console. Each console
+keeps that delay for its own buttons and may change it as the game goes,
+with nothing agreed: the other console only ever takes the buttons it is
+given for each tick. Made a tick longer, a console sends the buttons it
+last read once more; made a tick shorter, it lets one read go by.
+
+A network's times are not one time: most are short, and now and again
+one is very long. No delay covers those, and a delay made longer for their
+sake would be paid in every press of the game. So each nesp32 counts every
+measurement of the network's time by the delay that would cover it, and
+advises its console the delay that covers 90 in 100 of those since the
+console's last report. A press that meets one of the rest waits, and the
+game stands still a frame or two for it.
+
+The console asks one exchange in 128: a short TICKS frame whose count is 3
+carries one tick of buttons and then the console's report in place of a
+second, and its reply has one tick at the most and then the delay advised.
+
+```text
+report   DELAY (3 bits), LATE (3 bits), MARGIN (2 bits)
+```
+
+`DELAY` is the delay the console keeps now. The advice does not follow
+every report: it is made longer, to what the measurements call for, when
+two reports running call for longer, and a tick shorter when eight running
+call for shorter. A report with fewer than 20 measurements behind it says
+nothing, and a report asked again within a second, its reply not heard, is
+the same report.
+
+`LATE` and `MARGIN` are what the console saw of the *other's* buttons
+since its last report: how many of its NMIs waited for them (7 at the
+most), and the fewest ticks of them it ever held when it took one (3 at
+the most). The nesp32 passes them on as a `NOTE` (the report's number,
+`LATE`, `MARGIN`, `DELAY`), and nothing is made of them yet: a first
+version made the delay longer whenever buttons were late, and on a network
+with spikes that took it to the longest there is, for a twentieth fewer
+frames waited.
+
+Before a session a console has the delay to begin with from its nesp32, as
+a sixth byte of the lobby's replies: the ticks the network takes one way,
+from `BACK`, with 9 ms added for the consoles and the nesp32s, and 2 if
+that is not yet known. It is 0 with no session.
 
 The nesp32's own screen shows the address player 2 has to enter while it
 hosts, and in a session which player its console is, with the count of
 requests and of those that brought it nothing new: frames in which the game
-stood still, or an exchange that failed.
+stood still, or an exchange that failed. Its log has more, every two
+seconds of a session (`firmware/deploy.sh watch`): the delay the console
+keeps and the one advised; the requests, with those that brought no
+buttons at all ("late": the game stood still for want of the other
+console's) and those that brought buttons it already held ("again": a reply
+the console did not hear); the network's times behind the last advice, by
+the delay each would take; and the network's time there and back, the last,
+the least and the most, with how many took over 14 ms and over 40 ms.
 
 In nes-drmario's ROM an exchange is made inside the NMI, 9 to 11 bytes out
 and 10 to 12 back, with the receiver that gives up by counting (section
 7). The input delay is 3 ticks, which on the simulated consoles is a local
 network's: with 10 ms between the nesp32s nearly every frame is a tick.
+
+nes-contra's ROM makes its exchange before the game's work in each NMI,
+not after it, so that buttons leave as soon as they are read and the other
+console's are asked for at the last moment they can be used. Its input
+delay is 1 tick by default: on the simulated consoles no frame waits for
+buttons with 5 ms between the nesp32s, and next to none with 7,
+whatever the two consoles' frames are to each other; 2 ticks do the same
+at 20 ms. Its `docs/Netplay.md` has the figures.
 
 ### DIAG `$05`
 
@@ -633,9 +771,22 @@ that never says hello defines `NESP_NO_HELLO`. With `--pack` the two serial
 routines share a page, for a ROM with one to spare and no more.
 nes-drmario's netplay ROM is all three.
 
+The library keeps a dozen bytes of zero page and its two buffers in the
+`ZEROPAGE` and `BSS` segments. A game with no run of zero page to spare
+defines `NESP_OWN_MEMORY` and names each of those bytes itself, wherever it
+has one free: only the four the serial routines count cycles by, and
+`nesp_ptr`, have to be zero page, and the file says so if they are not.
+nes-contra's netplay ROM does this.
+
 A reply's length is not known until its fifth byte. The receiver works out
 where the frame ends as that byte arrives, cut to `NESP_RX_MASK`, so that
 no reply, however damaged, is stored past the buffer.
+
+A ROM that defines `NESP_SHORT_FRAMES` has `nesp_short` besides: a short
+request (section 2) with its count in A and its three bytes at `nesp_tx +
+1`, which comes back with carry clear, the reply's count in A and its
+three bytes at `nesp_rx + 1`. It receives through `nesp_rx_bytes`, the same
+receiver told how many bytes to take.
 
 ## 8. Adding to it
 

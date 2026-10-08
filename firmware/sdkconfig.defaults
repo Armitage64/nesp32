@@ -36,3 +36,7 @@ CONFIG_LWIP_IPV6=n
 # answer still starts, and the services make do with less.
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_IGNORE_NOTFOUND=y
+
+# A game's packets are a few bytes and wanted at once: the radio is not to
+# hold one back to send it with others.
+CONFIG_ESP_WIFI_AMPDU_TX_ENABLED=n

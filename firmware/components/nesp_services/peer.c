@@ -29,7 +29,10 @@
 #include "nesp_services.h"
 
 #define GREETING NESP_PEER_GREETING
+_Static_assert(1 + NESP_PEER_PER_FRAME <= NESP_SHORT_DATA, "TICKS does not fit a short frame");
 #define SHOW_MS 500
+#define WATCH_MS 2000
+_Static_assert(NESP_ARQ_NEEDS == 6, "watch() names six counts");
 
 static const char greeting_mark[4] = {'N', 'E', 'S', 'P'};
 
@@ -114,6 +117,16 @@ static void greet(nesp_peer_t *peer, uint8_t conn, uint32_t now)
         peer->remote_len = 0;
         peer->requests = 0;
         peer->repeats = 0;
+        peer->again = 0;
+        peer->delay = peer->want = 0;
+        peer->up = peer->down = 0;
+        peer->told = 0;
+        memset(peer->spread, 0, sizeof(peer->spread));
+        memset(peer->since, 0, sizeof(peer->since));
+        {
+            uint8_t none[NESP_ARQ_NOTE] = {0};
+            peer->hal->peer_note(peer->hal->ctx, none);
+        }
         peer->show = true;
         if (called) {
             peer->hal->peer_keep(peer->hal->ctx, peer->target);
@@ -139,6 +152,43 @@ static void pump(nesp_peer_t *peer)
     }
 }
 
+/* A session's exchange, however it was asked for: this console's buttons
+ * for `count` ticks from `first`, and the other's from `wanted` written to
+ * out, at most NESP_PEER_PER_FRAME of them. Returns how many. */
+static uint8_t exchange(nesp_peer_t *peer, uint8_t first, uint8_t wanted,
+                        const uint8_t *buttons, uint8_t count, uint8_t *out)
+{
+    peer->requests++;
+    /* Its buttons: those of them not seen before go to the other nesp32. */
+    uint8_t skip = (uint8_t)(peer->local_next - first);
+    size_t sent = 0;
+    if (skip < count) {
+        sent = peer->hal->peer_send(peer->hal->ctx, buttons + skip, (size_t)(count - skip));
+        peer->local_next = (uint8_t)(peer->local_next + sent);
+    }
+    if (sent == 0) {
+        /* With no buttons the console had none new: its game stood still
+         * for want of the other's. With some, all of them held already, it
+         * did not hear the last reply and is asking again. */
+        peer->repeats++;
+        if (count != 0) {
+            peer->again++;
+        }
+    }
+    /* The other's: the console has everything before the tick it asks for. */
+    pump(peer);
+    uint8_t taken = (uint8_t)(wanted - peer->remote_base);
+    if (taken != 0 && taken <= peer->remote_len) {
+        memmove(peer->remote, peer->remote + taken, (size_t)(peer->remote_len - taken));
+        peer->remote_len = (uint8_t)(peer->remote_len - taken);
+        peer->remote_base = (uint8_t)(peer->remote_base + taken);
+    }
+    uint8_t ready = peer->remote_len < NESP_PEER_PER_FRAME ? peer->remote_len
+                                                           : NESP_PEER_PER_FRAME;
+    memcpy(out, peer->remote, ready);
+    return ready;
+}
+
 static void ticks(nesp_peer_t *peer, const nesp_request_t *request, nesp_reply_t *reply)
 {
     if (request->len < 2 || request->len > 2 + NESP_PEER_PER_FRAME
@@ -157,33 +207,150 @@ static void ticks(nesp_peer_t *peer, const nesp_request_t *request, nesp_reply_t
         reply->data[2] = 1;
         return;
     }
-    peer->requests++;
-    /* Its buttons: those of them not seen before go to the other nesp32. */
-    uint8_t skip = (uint8_t)(peer->local_next - first);
-    size_t sent = 0;
-    if (skip < count) {
-        sent = peer->hal->peer_send(peer->hal->ctx, request->data + 2 + skip,
-                                    (size_t)(count - skip));
-        peer->local_next = (uint8_t)(peer->local_next + sent);
-    }
-    if (sent == 0) {
-        peer->repeats++;
-    }
-    /* The other's: the console has everything before the tick it asks for. */
-    pump(peer);
-    uint8_t taken = (uint8_t)(wanted - peer->remote_base);
-    if (taken != 0 && taken <= peer->remote_len) {
-        memmove(peer->remote, peer->remote + taken, (size_t)(peer->remote_len - taken));
-        peer->remote_len = (uint8_t)(peer->remote_len - taken);
-        peer->remote_base = (uint8_t)(peer->remote_base + taken);
-    }
-    uint8_t ready = peer->remote_len < NESP_PEER_PER_FRAME ? peer->remote_len
-                                                           : NESP_PEER_PER_FRAME;
+    uint8_t ready = exchange(peer, first, wanted, request->data + 2, count, reply->data + 3);
     reply->data[0] = peer->local_next;
     reply->data[1] = peer->remote_base;
     reply->data[2] = peer->lost && ready == 0 ? 1 : 0;
-    memcpy(reply->data + 3, peer->remote, ready);
     reply->len = (uint8_t)(3 + ready);
+}
+
+/* --- the delay ------------------------------------------------------------------- */
+
+/* A press on one console is used some ticks after it was read, which is
+ * the time it has to reach the other console. Each console keeps that delay
+ * for its own buttons, and may change it as the game goes: nothing has to
+ * be agreed, since the other console only ever takes the buttons it is
+ * given for each tick.
+ *
+ * The delay is to cover the time the network takes, and a network's times
+ * are not one time: most are short, and now and again one is very long. No
+ * delay covers those, and one made longer for their sake would be paid in
+ * every press of the game. So the advice is the delay that covers
+ * NESP_PEER_COVER in a hundred of the times measured since the console's
+ * last report, a couple of seconds' worth, and a press that meets one of
+ * the rest waits a frame or two: the game stands still for it.
+ *
+ * The advice does not follow every report. It is made longer when two
+ * reports running call for it, and a tick shorter when NESP_PEER_CALM do.
+ *
+ * A console's report also says how the other console's buttons have been
+ * arriving: how many NMIs waited for them, and the fewest ticks of them it
+ * held. That is passed to the other nesp32 as a note, and nothing is made
+ * of it yet. */
+
+static uint8_t clamp(uint32_t ticks)
+{
+    return (uint8_t)(ticks < 1 ? 1 : ticks > NESP_PEER_DELAY_MAX ? NESP_PEER_DELAY_MAX : ticks);
+}
+
+/* What to begin with, from the network's time as it is known so far. */
+static uint8_t first_delay(const nesp_peer_t *peer)
+{
+    uint32_t rtt = peer->hal->peer_rtt(peer->hal->ctx);
+    return rtt == 0 ? NESP_PEER_DELAY_UNKNOWN : clamp(nesp_arq_ticks(rtt));
+}
+
+/* A new report: the network's times since the last one, into the advice. */
+static void advise(nesp_peer_t *peer)
+{
+    uint32_t counts[NESP_ARQ_NEEDS];
+    uint32_t *since = peer->since;
+    uint32_t all = 0;
+    peer->hal->peer_spread(peer->hal->ctx, counts);
+    for (int index = 0; index < NESP_ARQ_NEEDS; index++) {
+        since[index] = counts[index] - peer->spread[index];
+        all += since[index];
+        peer->spread[index] = counts[index];
+    }
+    if (all < NESP_PEER_FEW || peer->want == 0) {
+        return;
+    }
+    /* The least delay that covers enough of them. */
+    uint32_t covered = 0;
+    uint8_t enough = NESP_PEER_DELAY_MAX;
+    for (int index = 0; index < NESP_PEER_DELAY_MAX; index++) {
+        covered += since[index];
+        if (covered * 100 >= all * NESP_PEER_COVER) {
+            enough = (uint8_t)(index + 1);
+            break;
+        }
+    }
+    if (enough > peer->want) {
+        peer->down = 0;
+        if (++peer->up >= NESP_PEER_UP) {
+            peer->up = 0;
+            peer->want = enough;
+        }
+    } else if (enough < peer->want) {
+        peer->up = 0;
+        if (++peer->down >= NESP_PEER_CALM) {
+            peer->down = 0;
+            peer->want--;
+        }
+    } else {
+        peer->up = peer->down = 0;
+    }
+}
+
+/* A console's report: its delay in the top three bits, then how many
+ * ticks were late, then the margin. Returns the delay it is advised. */
+static uint8_t tune(nesp_peer_t *peer, uint8_t report)
+{
+    uint8_t delay = report >> 5;
+    peer->delay = delay;
+    if (peer->want == 0) {
+        peer->want = delay != 0 ? delay : first_delay(peer);
+    }
+    /* A report asked again, because its reply was not heard, is the same
+     * report: one is passed on a second at the most. */
+    if (delay != 0 && (peer->told == 0 || peer->now - peer->told_at >= 1000)) {
+        uint8_t note[NESP_ARQ_NOTE];
+        /* A session's first report is of its start, when one console
+         * waits for the other to begin: nothing is made of it. */
+        bool first = peer->told == 0;
+        peer->told = (uint8_t)(peer->told == 0xFF ? 1 : peer->told + 1);
+        peer->told_at = peer->now;
+        note[0] = peer->told;
+        note[1] = first ? 0 : (report >> 2) & 7;
+        note[2] = first ? 1 : report & 3;
+        note[3] = delay;
+        peer->hal->peer_note(peer->hal->ctx, note);
+        advise(peer);
+    }
+    return peer->want;
+}
+
+/* TICKS as a short frame: the two ticks are named by their low four bits,
+ * in one byte, and the count of buttons is the frame's own. A count of
+ * NESP_SHORT_NONE back is TICKS' `LOST`. */
+static uint8_t quick(void *ctx, uint8_t count, const uint8_t *in, uint8_t *out)
+{
+    nesp_peer_t *peer = ctx;
+    if (!in_session(peer)) {
+        return NESP_SHORT_NONE;
+    }
+    if (count == NESP_PEER_TUNE) {
+        /* One tick of buttons, and in place of a second the console's
+         * report; one tick of the other's back at most, and the advice. */
+        uint8_t held[NESP_PEER_PER_FRAME];
+        uint8_t first = (uint8_t)(peer->local_next - ((peer->local_next - (in[0] >> 4)) & 0x0F));
+        uint8_t wanted = (uint8_t)(peer->remote_base
+                                   + (((in[0] & 0x0F) - peer->remote_base) & 0x0F));
+        uint8_t ready = exchange(peer, first, wanted, in + 1, 1, held);
+        out[0] = (uint8_t)((peer->local_next & 0x0F) << 4 | (peer->remote_base & 0x0F));
+        out[1] = held[0];
+        out[2] = tune(peer, in[2]);
+        if (peer->lost && ready == 0) {
+            return NESP_SHORT_NONE;
+        }
+        return ready != 0 ? 1 : 0;
+    }
+    /* The console is never more than a few ticks from what is held here. */
+    uint8_t first = (uint8_t)(peer->local_next - ((peer->local_next - (in[0] >> 4)) & 0x0F));
+    uint8_t wanted = (uint8_t)(peer->remote_base + (((in[0] & 0x0F) - peer->remote_base) & 0x0F));
+    uint8_t ready = exchange(peer, first, wanted, in + 1, count, out + 1);
+    out[0] = (uint8_t)((peer->local_next & 0x0F) << 4 | (peer->remote_base & 0x0F));
+    return peer->lost && ready == 0 ? NESP_SHORT_NONE : ready;
 }
 
 /* --- the lobby ------------------------------------------------------------------ */
@@ -238,7 +405,9 @@ static void lobby(nesp_peer_t *peer, const nesp_request_t *request, nesp_reply_t
     }
     reply->data[0] = state;
     memcpy(reply->data + 1, address, 4);
-    reply->len = 5;
+    /* And for a console about to start a session, the delay to begin with. */
+    reply->data[5] = in_session(peer) && !peer->lost ? first_delay(peer) : 0;
+    reply->len = 6;
 }
 
 static void handle(void *ctx, const nesp_request_t *request, nesp_reply_t *reply)
@@ -307,9 +476,35 @@ static void show(nesp_peer_t *peer, uint32_t now)
     peer->hal->show(peer->hal->ctx, 1, text[1]);
 }
 
+/* For the log, every couple of seconds of a session: the delay and the
+ * advice, the requests with those that waited for the other console's
+ * buttons (late) and those that sent buttons already held, a reply not
+ * having been heard (again), and the network's times behind the last
+ * advice, by the delay each would take. */
+static void watch(nesp_peer_t *peer, uint32_t now)
+{
+    char text[160];
+    if (peer->hal->watch == NULL || !in_session(peer) || now - peer->watched_at < WATCH_MS) {
+        return;
+    }
+    peer->watched_at = now;
+    snprintf(text, sizeof(text),
+             "player %d, delay %u, advised %u (%u for longer, %u for shorter); %lu frames, "
+             "%lu late, %lu again; network needs 1:%lu 2:%lu 3:%lu 4:%lu 5:%lu more:%lu",
+             peer->lobby == NESP_LOBBY_HOST ? 1 : 2, (unsigned)peer->delay, (unsigned)peer->want,
+             (unsigned)peer->up, (unsigned)peer->down, (unsigned long)peer->requests,
+             (unsigned long)(peer->repeats - peer->again), (unsigned long)peer->again,
+             (unsigned long)peer->since[0], (unsigned long)peer->since[1],
+             (unsigned long)peer->since[2], (unsigned long)peer->since[3],
+             (unsigned long)peer->since[4], (unsigned long)peer->since[5]);
+    peer->hal->watch(peer->hal->ctx, text);
+}
+
 static bool tick(void *ctx, uint32_t now)
 {
     nesp_peer_t *peer = ctx;
+    peer->now = now;
+    watch(peer, now);
     uint8_t conn = peer->hal->peer_state(peer->hal->ctx);
     switch (peer->lobby) {
     case NESP_LOBBY_HOSTING:
@@ -388,5 +583,6 @@ void nesp_peer_service(nesp_service_t *service, nesp_peer_t *peer, const nesp_sy
     service->deactivate = deactivate;
     service->handle = handle;
     service->tick = tick;
+    service->quick = quick;
     service->ctx = peer;
 }

@@ -38,6 +38,7 @@ const uint32_t POWER_OFF_HOLD_MS = 2000;
 const uint32_t SCREEN_MS = 500;
 const uint32_t BATTERY_MS = 10000;
 const uint32_t REPORT_MS = 10000;
+const uint32_t WATCH_MS = 2000;
 const uint32_t CONSOLE_GONE_MS = 2000;  // no request for this long: not there
 const int ROWS = 7;
 const char *const WIFI_STATES[] = {"not set up", "not joined", "joining", "joined", "failed"};
@@ -131,6 +132,7 @@ extern "C" void app_main(void)
     uint32_t screen_at = 0;
     uint32_t battery_at = 0;
     uint32_t report_at = 0;
+    uint32_t watch_at = 0;
     for (;;) {
         M5.update();
         if (M5.BtnA.wasPressed()) {
@@ -168,6 +170,22 @@ extern "C" void app_main(void)
                      (unsigned long)conn_stack_left(),
                      (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
                      (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+        }
+        if (now - watch_at >= WATCH_MS) {
+            // And for whoever is watching a game: what PEER says of it, and
+            // how long the network between the two nesp32s has taken.
+            watch_at = now;
+            char said[RADIO_WATCH_MAX];
+            if (radio_watch(said)) {
+                conn_ping_t ping;
+                conn_ping(&ping);
+                ESP_LOGI(TAG, "peer: %s", said);
+                ESP_LOGI(TAG, "peer: network %lu us there and back, least %lu, most %lu; "
+                         "of %lu, %lu over 14 ms and %lu over 40 ms",
+                         (unsigned long)ping.last_us, (unsigned long)ping.least_us,
+                         (unsigned long)ping.most_us, (unsigned long)ping.count,
+                         (unsigned long)ping.over_14ms, (unsigned long)ping.over_40ms);
+            }
         }
         if (now - screen_at >= SCREEN_MS) {
             screen_at = now;

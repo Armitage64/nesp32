@@ -42,7 +42,7 @@ figures were taken from those runs.
 | RAW: a run of bytes with framing off, at a rate of its own, either way | working on a StickS3 with the MiSTer: a run to the console as the jukebox's sampled sound, and runs of the pattern both ways with the throughput test's ROM ([nes-jukebox](../nes-jukebox/throughput)), to 298296 baud to the console and 223722 from it |
 | JUKE, the jukebox's service: the playlist as a stream, the buttons, sampled sound through RAW | working on a StickS3 with the jukebox's ROM ([nes-jukebox](../nes-jukebox)) on the MiSTer; tested with that ROM on a simulated console |
 | The nesp32's files: the jukebox's tracks, in LittleFS (`firmware/main/store.c`, `tools/put_files.py`) | working on a StickS3: tracks written over USB are found and played |
-| PEER, for two consoles playing one game: a lobby, and a lockstep relay of buttons between two nesp32s over TCP (`firmware/main/conn.c`) | tested with nes-drmario's netplay ROM ([nes-drmario](../nes-drmario)) on two simulated consoles, the game the same on both; the firmware builds for both boards with it. On hardware a full network game has been played with that ROM, a real NES among the consoles; no figures were taken |
+| PEER, for two consoles playing one game: a lobby, and a lockstep relay of buttons between two nesp32s over datagrams (`firmware/main/conn.c`), with advice to each console on the delay it keeps | tested with nes-drmario's netplay ROM ([nes-drmario](../nes-drmario)) and nes-contra's ([nes-contra](../nes-contra), whose exchange is a short frame) on two simulated consoles, the game the same on both; the firmware builds for both boards with it. On hardware both ROMs have played network games, a real NES among the consoles; nes-contra's `docs/Netplay.md` has the figures taken from its sessions |
 | One cartridge (`nes/cart/`): the five programs and a menu, on an MMC1 | working on a real NES and on the MiSTer, with a StickC Plus2 and with a StickS3: the menu and every program. Tested on a simulated console: each program starts from the menu, and reset is the menu again |
 | A service for the radar | a number reserved; not started |
 
@@ -205,6 +205,13 @@ The ROM tests need cc65 and skip without it.
   netplay ROM has been played; what the nesp32s' screens counted was not
   recorded. nes-drmario's README has what could shorten the delay between
   a button and the game.
+- A console's receiver that a sample's stolen cycles spoil less. On a real
+  NES nes-contra's music has its nesp32's replies misheard, one in twenty
+  to one in twelve; the ROM asks again in the same frame, which costs it
+  cycles it is short of. nes-contra's `docs/Netplay.md` has the figures.
+- The receiving nesp32 woken when a packet comes, in place of looking once
+  a millisecond; and a way for two nesp32s to meet across the Internet
+  without a port forwarded.
 - The service the radar needs, and its ROM moved to it. NESpedia's, the
   jukebox's and Dr. Mario's netplay are done.
 - A fetch that drops partway is not made again; what came is read, if it

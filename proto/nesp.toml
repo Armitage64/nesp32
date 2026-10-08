@@ -30,6 +30,15 @@ REPLY_MIN = 16          # and the least a hello may ask for
 # value for "123456789" is 0x29B1.
 CRC_POLY = 0x1021
 CRC_INIT = 0xFFFF
+# A short frame, for a service asked something small in every frame of a
+# game: a marker whose low two bits are a count, three bytes and the CRC of
+# those four.
+SHORT_REQUEST = 0xD0
+SHORT_REPLY = 0xB0
+SHORT_MARK = 0xFC       # the bits of a short frame's first byte that are its marker
+SHORT_DATA = 3
+SHORT = 6               # the whole of one, in bytes
+SHORT_NONE = 3          # a short reply's count when nothing could answer
 APP_ID = 4              # characters in a hello's application id
 
 # A reply's status. 0 is good. Bit 7 marks an error, and bit 6 may be set on
@@ -222,7 +231,16 @@ JUKE_TITLE_MAX = 28     # characters in a name on the console's screen
 JUKE_SOUND_RATES = 6    # the rates a sound may have: 21, 16, 14, 12, 10 and 8 cycles a bit
 JUKE_SOUND_REFUSED = 0xFF   # JUKE SOUND's rate from a console that cannot play it
 JUKE_SOUND_LAST = 0xFC  # the byte that ends a sound and leaves the console's DAC at 0
-PEER_PORT = 6502        # TCP, on the nesp32 that hosts
+PEER_PORT = 6502        # UDP, on the nesp32 that hosts
 PEER_VERSION = 1        # of what two nesp32s say to each other
 PEER_PER_FRAME = 2      # ticks of buttons a TICKS frame may carry, each way
 PEER_GREET_MS = 2000    # how long the other nesp32 has to say what it is
+# The delay between a button and the game, in ticks, which each console
+# keeps for its own buttons and its nesp32 advises it on.
+PEER_DELAY_MAX = 5
+PEER_DELAY_UNKNOWN = 2  # the advice before the network's time is known
+PEER_TUNE = 3           # a short TICKS frame's count when it carries the console's report
+PEER_COVER = 90         # the share of the network's times, in percent, that the delay is to cover
+PEER_UP = 2             # reports in a row that call for a longer delay before it is advised
+PEER_CALM = 8           # and for a shorter one
+PEER_FEW = 20           # fewer measurements than this in a report say nothing
