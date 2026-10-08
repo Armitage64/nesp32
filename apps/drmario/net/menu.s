@@ -9,7 +9,12 @@
 ;   LOCAL GAME    back to the game, for two controllers on this console
 ;
 ; When the nesp32s are connected it starts a session in the game's bank
-; (net_go, with the role in Y), and does not come back.
+; (net_go, with the role in Y and the delay to begin with in X), and does
+; not come back. That delay is the nesp32's advice, from how long the
+; network took while the two connected.
+;
+; A session's frames are made from this bank too (net/session.inc): the
+; game's NMI comes in at SESSION_ENTRY for each.
 ;
 ; The nesp32 is spoken to through nesp32's library for the console, of
 ; which this bank has its own copy: a hello as DRMA that asks for the PEER
@@ -26,7 +31,7 @@
 ; The link's library, before the font below is in force: its hello carries
 ; the name as it is written here.
 .define NESP_APP "DRMA"
-NESP_APP_VERSION = 1
+NESP_APP_VERSION = 2            ; 2: a check tick in 256, which both consoles must keep
 .include "nesp.inc"
 
 ; The font, in the CHR page the game's options screen uses. By number: a
@@ -92,7 +97,8 @@ menu_digits     = menu_vars + 24    ; 12: the address to join
 menu_own        = menu_vars + 36    ; 12: this nesp32's
 menu_linked     = menu_vars + 48    ; 01 the nesp32 has answered a hello
 menu_len        = menu_vars + 49    ; the payload's length, of the request to go out
-MENU_VARS       = 50
+menu_delay      = menu_vars + 50    ; the delay the session is to begin with
+MENU_VARS       = 51
 
 .assert IP_TILES + 1 <= menu_vars - menu_line, error
 .assert menu_vars + MENU_VARS <= $0400, error
@@ -117,8 +123,16 @@ DIRTY_CURSOR = $10
 
 .segment "MENU"
 
-menu_entry:
     .assert * = MENU_ENTRY, error, "the game comes in at MENU_ENTRY"
+    JMP menu_entry
+    .assert * = SESSION_ENTRY, error, "and at SESSION_ENTRY, from its NMI in a session"
+    JMP session_frame
+
+.include "net/session.inc"
+
+
+
+menu_entry:
     LDA #$00
     STA $2001
     STA $4015                   ; the title's tune stops here
@@ -137,6 +151,8 @@ menu_entry:
     BPL @clear
     STA net_pending
     STA net_result
+    LDA #NET_DELAY              ; until the nesp32 advises one
+    STA menu_delay
     LDA #STATE_NONE             ; and no hello yet: whatever the nesp32
     STA menu_state              ; was doing ends with that
     LDA #$3F
@@ -243,6 +259,7 @@ leave_local:
 ; Into a session, as player Y + 1.
 leave_session:
     JSR screen_off
+    LDX menu_delay
     LDA net_go
     STA net_vector
     LDA net_go + 1
@@ -454,6 +471,13 @@ menu_link:
 @state:
     LDA nesp_reply
     STA menu_state
+    ; The delay to begin a session with, if the nesp32 gives one.
+    LDA nesp_reply + 5
+    BEQ @digits
+    CMP #NET_DELAY_MAX + 1
+    BCS @digits
+    STA menu_delay
+@digits:
     LDX #12
     JSR octets_to_digits
     LDA menu_dirty

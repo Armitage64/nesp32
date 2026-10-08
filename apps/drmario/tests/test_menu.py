@@ -4,6 +4,7 @@ one game on both."""
 
 import nesp
 import nesp_proto as p
+import pytest
 
 from console import PAD_A, PAD_B, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_START, PAD_UP
 from drive import (
@@ -18,6 +19,7 @@ from drive import (
 )
 from netplay import APP, Table
 from test_lockstep import to_game
+from wire import ms
 
 MENU_BANK = 2                   # the MMC1's PRG register with the menu in place
 OWN_ROW, HOST_ROW, DIGITS_ROW, MARK_ROW, STATUS_ROW = 20, 14, 12, 13, 16
@@ -76,7 +78,7 @@ def test_the_menu_says_hello_and_shows_the_nesp32s_address(net_console):
     console, stick = table.consoles[0], table.sticks[0]
     assert screen_row(console, 18).strip() == "THIS NESP32 IS AT"
     assert screen_row(console, OWN_ROW).strip() == "192.168.001.023"
-    assert stick.app == (APP, 1) and stick.active(p.NESP_SVC_PEER)
+    assert stick.app == (APP, 2) and stick.active(p.NESP_SVC_PEER)
     assert stick.hellos == 1
     # It goes on asking, and nothing is asked twice or missed.
     table.run(4 * STATUS_POLL)
@@ -119,12 +121,16 @@ def test_local_game_leaves_the_games_memory_alone(net_console):
     assert (bytes(console.ram[0x300:0x330]), bytes(console.ram[0x380:0x3B0])) == players
 
 
-def test_both_banks_keep_the_links_memory_in_the_same_place(banks):
+def test_both_banks_keep_the_sessions_memory_in_the_same_place(banks):
+    """The game's bank has the way into a session's frame and out of it,
+    and the menu's has the frame, with the link's library."""
     game, menu = banks
-    shared = [name for name in game if name.startswith(("nesp_", "net_")) and name in menu
+    shared = [name for name in game if name.startswith("net_") and name in menu
               and game[name] < 0x800]
-    assert {"nesp_seq", "nesp_rx", "nesp_tx", "nesp_ptr", "net_pending"} <= set(shared)
+    assert {"net_tick", "net_delay", "net_stalled", "net_back", "net_vector"} <= set(shared)
     assert all(game[name] == menu[name] for name in shared)
+    assert not any(name.startswith("nesp_") for name in game)
+    assert menu["session_frame"] and menu["nesp_short"]
     # And the code that runs while the bank changes under it.
     assert game["net_far"] == menu["net_far"]
 
@@ -202,8 +208,11 @@ def test_join_with_nobody_hosting(net_console):
     assert screen_row(console, MARK_ROW).index("-") == screen_row(console, DIGITS_ROW).index("23")
 
 
-def test_host_and_join_start_one_game(net_console):
-    table = Table(net_console)
+@pytest.mark.parametrize("delay_ms, ticks", [(5, 1), (20, 2)])
+def test_host_and_join_start_one_game(net_console, delay_ms, ticks):
+    """And each console begins with the delay its nesp32 advised, from how
+    long the network took while the two connected."""
+    table = Table(net_console, delay=ms(delay_ms))
     table.boot()
     open_menu(table, 0)
     tap(table, 0, PAD_A, rest=2 * STATUS_POLL)
@@ -211,9 +220,10 @@ def test_host_and_join_start_one_game(net_console):
     edit_last_octet_to_23(table, 1)
     tap(table, 1, PAD_START, rest=6 * STATUS_POLL)
     for side, console in enumerate(table.consoles):
-        assert console.mapper[3] == 0
+        assert console.mapper[3] == 0 or console.in_nmi    # a session's frame is in the menu's bank
         assert console.byte("net_mode") == 1
         assert console.byte("net_role") == side
+    assert table.delays() == (ticks, ticks)
     to_game(table)
     table.play(200, moves(seed=3))
     assert table.same_game() > 200

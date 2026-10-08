@@ -11,9 +11,14 @@ full network game has been played with it on hardware, with the music as
 it should be, from an Everdrive N8 on a real NES among the consoles. On two
 simulated consoles, with nesp32's own link and services between them, the
 menu hosts and joins and a game plays at full speed, the same on both
-screens throughout (`make test`). The prototype this replaces, with a
-MicroPython firmware and a protocol of its own, is gone from here, and the
-ROM no longer speaks to it.
+screens throughout (`make test`).
+
+The exchange is now nes-contra's: made before the game's work, in short
+frames, with an input delay that sets itself (1 frame on a quick network,
+where it was always 3) and a check that the two games are still the same.
+A game has been played with it on hardware too, at a delay of 1: it
+answers to the buttons at once, and does not slow ("What has been
+learned").
 
 On the title, choose **2 PLAYER GAME**. The console then asks how:
 
@@ -41,30 +46,32 @@ about six minutes.
 | Path | Purpose |
 |---|---|
 | `bank_FF.asm`, `bank_ram.inc`, `bank_val.inc` | the disassembly. Everything netplay changes is under `.ifdef NETPLAY` |
-| `net/net.inc` | ticks, stalls and lags; the buttons' rings; a session's exchange; the way to the menu |
-| `net/session.inc` | starting and ending a session |
+| `net/net.inc` | the game's bank: ticks, stalls and lags, starting a session, and the way to the menu's bank |
+| `net/session.inc` | a session's frame, in the menu's bank: the buttons' rings, the delay, the exchange and the check |
 | `net/menu.s` | the menu, in a second PRG bank of its own: the hello, and PEER's lobby |
 | `net/common.inc`, `net/ram.inc` | a session's numbers, the code both banks share, and the memory they share |
-| `net/game.cfg`, `net/menu.cfg` | where each bank's code goes, and the link library's memory, the same in both |
+| `net/game.cfg`, `net/menu.cfg` | where each bank's code goes, and the link library's memory |
 | `tools/prepare.py` | strips the disassembly's left-hand columns for ca65 (a port of `preparations.lua`) |
 | `tests/console.py`, `tests/wire.py`, `tests/netplay.py` | a console on py65, the serial line, and two consoles with their nesp32s and a network between |
 | `docs/PROTOCOL.md` | how the two games are kept the same, and what the ROM asks of PEER |
 
 The link itself is nesp32's: its `docs/PROTOCOL.md` has the line, the
-frames and the PEER service, `nes/lib/nesp.inc` there is the library both
-banks include, and `firmware/` there is what runs on the nesp32.
+frames and the PEER service, `nes/lib/nesp.inc` there is the library the
+menu's bank includes, and `firmware/` there is what runs on the nesp32.
 
 `assemble.bat`, `assemble.sh` and `preparations.lua` are the disassembly's
 own build, for Windows; the Makefile replaces them here.
 
 ## Where the netplay code sits
 
-The cartridge is full. The session's code and the link's library take
-space the game does not use: 512 bytes of padding before `$FD00`, the
-sample data at `$FD00` (the game never plays a sample), and the padding
-after the reset code. About 120 bytes of that are left. The menu did not
-fit there, so the netplay ROM has a second 32 KB PRG bank for it
-(docs/PROTOCOL.md, "The cartridge"). It needs a flashcart or an emulator.
+The cartridge is full, so the netplay ROM has a second 32 KB PRG bank
+(docs/PROTOCOL.md, "The cartridge"). The menu is there, and so is a
+session's frame with the link's library and its table: the game's NMI goes
+to that bank and back once a frame, about 110 cycles for the two changes.
+What is left in the game's bank is small, and sits in the 512 bytes of
+padding before `$FD00`. The sample data after it (the game never plays a
+sample) is left out and its two pages are empty. It needs a flashcart or
+an emulator.
 
 ## The nesp32
 
@@ -106,12 +113,25 @@ From the simulation:
   the main loop still at work does nothing at all, and the game depends
   only on how many ticks there have been.
 - **There is room in a frame.** A tick's NMI with its exchange is about
-  8500 of 29780 CPU cycles with a nesp32 that answers in 0.2 ms, and the
-  busiest frame of a two-player game still ends before the next NMI, at
-  about 27400.
-- **A fixed input delay of 3 frames is a local network's.** Full speed
-  with 10 ms between the nesp32s, about three quarters with 40 ms, under
-  half with 90 ms. The game slows down and does not break.
+  6300 of 29780 CPU cycles with a nesp32 that answers in 0.2 ms, where it
+  was 8500 with PEER's ordinary frames. The exchange is about 3500 of
+  that, with the controller's read and the way to the menu's bank and
+  back. In 1500 frames of play 99 in 100 ended by 22800, and the busiest
+  at 27400.
+- **The delay finds its own level.** On a network that takes 5 or 7 ms to
+  cross, a session begins with a delay of 1 frame and no frame waits for
+  buttons, wherever one console's frames fall in the other's. From 8 ms the
+  nesp32s advise 2, and at 10 to 12 ms a session at 2 waited 11 frames
+  in 600 at the worst and none as a rule; at 35 ms they advise 3.
+  Begun a frame too short, both consoles are at the delay the network
+  needs within 500 frames; begun a frame too long, within 1300. The game
+  is the same on both throughout. On a network of 150 ms or more both go to 5, and the game
+  waits.
+- **The game reads its controllers in its NMI**, after its writes to the
+  PPU and before its main loop goes on. So the exchange could go ahead of
+  the game's work with no rearrangement: it is made where the game reads,
+  and an NMI that has no buttons for its tick ends there, to be taken up
+  from there in the next frame.
 - **The game never plays a sample**, so nothing takes cycles from the
   bit-banged serial routines, and the sample data's space is free.
 - **The disassembly's edit mode** (`con_bzk_hack`) skips the copy
@@ -136,6 +156,27 @@ From hardware, with nesp32's firmware:
   runs before the title was the same in both, so the card or the cart may
   as well have been the cause.
 
+From hardware, with the exchange as it is now: two consoles on one home
+network, a StickS3 on the one that hosted and a StickC Plus2 on the one
+that joined, and the figures from the nesp32s' logs (nesp32's
+`firmware/deploy.sh watch`) over 7900 frames.
+
+- **It plays at a delay of 1 frame on both consoles**, and feels it: the
+  pill answers at once, and nothing slows.
+- **60 frames in 7967 waited for buttons on one console and 65 in 7852 on
+  the other**, under one in a hundred. The network took 3 to 5 ms there
+  and back as a rule, over 14 ms for 199 packets in 15506 and over 40 ms
+  for 29, and 148 ms at the worst. The waiting is those.
+- **No reply was misheard**, in over 5000 on each console: the short
+  frames and the change of bank in every frame are sound on real
+  hardware. The nesp32s answered in 90 and 150 microseconds, 358 at the
+  slowest.
+- **The console that joined began at a delay of 4**, and was at 1 after
+  about a minute, a frame shorter every 17 seconds or so. The nesp32's
+  delay to begin with is taken from the network's time as the two
+  connect, and one slow packet then is enough to set it long. That is
+  nesp32's to mend.
+
 From hardware, with the prototype's own firmware and protocol (a real NES
 with a flashcart, a StickC Plus2 on MicroPython, an FT232 cable on a Mac).
 None of it has been measured again since the move to nesp32:
@@ -154,73 +195,27 @@ None of it has been measured again since the move to nesp32:
 
 ## To do
 
-- **Figures from a network game on hardware**: `waiting` on a nesp32's
-  screen counts the frames its console brought it nothing new, against
-  `frames`. Those are the stalls, which the picture still shows, and how
-  many there are says whether the input delay suits the network.
-- **Less input delay.** Both consoles use their own buttons 3 frames
-  late, host and guest alike (measured on the simulated consoles: a press
-  moves the pill 3 frames later than in a local game, on both screens).
-  That is a fixed margin, not what a network needs. For later, the most
-  worthwhile first:
-  - **Ask later in the frame.** The console asks for the other's buttons
-    once a frame, right after its NMI, so buttons that reach its nesp32 a
-    moment later wait there most of a frame. Asked for again when the main
-    loop is done, with the library's other receiver, they would not, and 2
-    frames should then do on one network where 3 do now. The firmware
-    needs no change; the game's bank has about 120 bytes for it.
-  - **What nes-contra's netplay has, brought back here.** nesp32's firmware
-    has all of its side already, so each of these is the ROM's to do
-    (nes-contra's `net/net.inc` is the pattern, and its `docs/Netplay.md`
-    has what each did there):
-    - *The exchange before the game's work, not after it.* It is what lets
-      a delay of 1 frame do on a home network, where 3 are needed now. The
-      game here runs in the main loop and not in the NMI, so this is a
-      rearrangement and not a copy.
-    - *An input delay that sets itself*, in place of the fixed 3 frames.
-      The delay to begin with comes as a sixth byte of PEER's lobby
-      replies, and during a game the nesp32 advises a tick longer or
-      shorter from the network's times (nesp32's `docs/PROTOCOL.md`, "The
-      delay"). The ROM needs the delay as a variable, the report and the
-      advice in its exchange, and a read repeated or let go by when it
-      changes. Needed before the Internet is worth trying.
-    - *Short frames*: the exchange in six bytes each way, where it is 9 to
-      11 out and 10 to 12 back. About 2700 cycles of every frame, in a game
-      whose busiest frame uses 92 in 100 of what there is.
-    - *A check that the games are still the same*: one tick in 256 carries
-      a digest in place of buttons. There is none here, and two games that
-      had come apart would go unnoticed.
-    - *Asking again in the same frame* for a reply that was not heard is
-      of little use here: this game plays no samples, and its line is
-      clean.
-
-    The catch is room. The game's bank has about 120 bytes left, and
-    nes-contra's session code is several hundred. The new receiver is a
-    little smaller, and short frames could take the place of the long
-    frames' code in that bank; whether it then fits has to be measured. If
-    it does not, the bulk of the session's code goes in the menu's bank,
-    which has room.
-  - **A steadier way between the nesp32s**, since the margin is there for
-    the spikes: ESP-NOW
-    for two consoles in one room, past the access point; the receiving
-    nesp32 woken by what comes instead of looking once a millisecond.
-  - **A faster exchange.** The line runs three times faster than the
-    link's rate (nes-jukebox's throughput test), which is about 1.5 ms of
-    every exchange.
-  - **No delay at all on a player's own bottle.** The two bottles only
-    meet in the garbage, the win and the pause. Each console could run
-    its own player at once and the other's a few frames behind, with the
-    garbage sent as events. That is another way of stepping the game, not
-    a change to the protocol, and wants the second bank for its code.
-    Rolling back, as newer games do, is not for this one: a frame is
-    nearly all used already.
+- **A steadier way between the nesp32s**, since what is left of the
+  waiting is the network's spikes (nes-contra's `docs/Netplay.md`, "On
+  hardware"): ESP-NOW for two consoles in one room, past the access point;
+  the receiving nesp32 woken by what comes instead of looking once a
+  millisecond.
+- **A faster exchange.** The line runs three times faster than the link's
+  rate (nes-jukebox's throughput test), which is about 1.5 ms of every
+  exchange. And no wait for a reply in a frame whose buttons from the
+  other console are already here.
+- **No delay at all on a player's own bottle.** The two bottles only meet
+  in the garbage, the win and the pause. Each console could run its own
+  player at once and the other's a few frames behind, with the garbage
+  sent as events. That is another way of stepping the game, not a change
+  to the protocol; the second bank has room for its code. Rolling back, as
+  newer games do, is not for this one: there is nowhere to keep a copy of
+  the game.
 - **The Internet**: the host forwards UDP port 6502 today. A relay would
-  spare that.
-- **A check that the games are still the same**: a sum of the game's
-  memory exchanged every so often, so that a difference is reported and
-  not just seen.
+  spare that. The delay will be what the distance makes it.
 - **Say why on the console** when a session ends (the other console left,
-  the nesp32 went quiet); it only goes back to the title now.
+  the nesp32 went quiet, the games differed); it only goes back to the
+  title now.
 - **The menu**: held buttons do not repeat in the address editor, and its
   colours and layout have only been looked at once.
 - **An idle opponent on the nesp32**, as the computer has, to test one
@@ -229,10 +224,11 @@ None of it has been measured again since the move to nesp32:
 
 ## Known limits
 
-- The input delay is fixed at 3 frames, which suits a local network. In
-  simulation the game ran at full speed with 10 ms between the nesp32s,
-  at about three quarters with 40 ms and at under half with 90 ms. It
-  slows down rather than breaks.
+- Both consoles must run this build: the nesp32s tell an older one from
+  it, and will not join the two.
+- The input delay is 1 to 5 frames, each console's own, as its nesp32
+  advises. A network slower than 5 frames covers slows the game rather
+  than breaks it.
 - A button press shorter than a stall is not seen.
 - In a stall the picture stands still, and a sound the game asks for is
   heard when it asks, which is a tick's time and not a frame's.

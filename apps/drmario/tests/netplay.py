@@ -24,17 +24,19 @@ from console import FRAME_CYCLES
 from drive import BOOT_FRAMES
 from nesp import CONN_ANSWERED, CONN_CALLED, CONN_CALLING, CONN_FAILED, CONN_LISTENING
 from nesp import CONN_LOST, CONN_UP, Stick
+from nesp_proto import NESP_CPU_HZ
 from wire import SLICE, link, ms
 
 APP = b"DRMA"
 PEER = p.NESP_SVC_PEER
 PLAYERS_STATES = (p.NESP_LOBBY_HOST, p.NESP_LOBBY_GUEST)
-NET_MODE, NET_TICK, NET_WAITING = "net_mode", "net_tick", "net_waiting"
+NET_MODE, NET_TICK, NET_DELAY = "net_mode", "net_tick", "net_delay"
+NET_WAITING, NET_STALLED = "net_waiting", "net_stalled"
 # Memory that is not the game's: the stack page, the link library's zero
 # page and buffers, and the session's own numbers, which differ by design.
 # And the sound engine's, with the orders the game leaves it: in a session
 # the music keeps the frames' time, which is each console's own.
-NOT_GAME = ((0x100, 0x200), (0x6F, 0x70), (0xB0, 0xC0), (0x330, 0x380), (0x742, 0x75B),
+NOT_GAME = ((0x100, 0x200), (0x6F, 0x70), (0xB0, 0xC0), (0x330, 0x380), (0x742, 0x764),
             (0xE0, 0xF0), (0x67E, 0x700))
 
 
@@ -58,6 +60,8 @@ class Lan:
         self.answer_at = []
         self.arriving = []          # for each: (cycle, data) on their way to it
         self.last_due = []
+        self.noted = []             # how many notes each had left, as last seen
+        self.notes = []             # for each: (cycle, note) on their way to it
         self.up = False
 
     def add(self, stick, address):
@@ -67,6 +71,8 @@ class Lan:
         self.answer_at.append(None)
         self.arriving.append([])
         self.last_due.append(0.0)
+        self.noted.append(stick.notes)
+        self.notes.append([])
 
     def latency(self):
         return self.delay() if callable(self.delay) else self.delay
@@ -96,6 +102,19 @@ class Lan:
             return
         for side, stick in enumerate(self.sticks):
             other = 1 - side
+            # What a nesp32 knows of the network: how long it takes there
+            # and back, now and as every packet has found it. And its notes
+            # for the other, of which only the latest matters.
+            there_and_back = 2 * self.latency() * 1e6 / NESP_CPU_HZ
+            stick.rtt = there_and_back
+            if self.up:
+                stick.took(there_and_back)      # every packet measures it
+            if stick.notes != self.noted[side]:
+                self.noted[side] = stick.notes
+                self.notes[other].append((now + self.latency(), stick.note_take()))
+            notes = self.notes[side]
+            while notes and notes[0][0] <= now:
+                stick.note_give(notes.pop(0)[1])
             data = stick.conn_take()
             if data:
                 # A stream: nothing overtakes what was sent before it.
@@ -121,8 +140,11 @@ ADDRESSES = ((192, 168, 1, 23), (192, 168, 1, 42))
 
 class Table:
     def __init__(self, make_console, delay=ms(10), drift=0.0, turnaround=ms(0.2),
-                 port_options=None, addresses=ADDRESSES):
+                 port_options=None, addresses=ADDRESSES, input_delay=None):
         self.now = 0.0
+        # The delay each console begins a session with: its nesp32's advice,
+        # as the menu takes it, unless a test says otherwise.
+        self.input_delay = input_delay
         self.consoles = (make_console(), make_console(frame_cycles=FRAME_CYCLES * (1 + drift)))
         self.lan = Lan(self, delay)
         self.sticks = []
@@ -163,7 +185,8 @@ class Table:
     def start(self, apart=0.3):
         """Both consoles to the title, then straight into a session with no
         menu: the nesp32s are told what the menu would tell them, and the
-        first console is player 1."""
+        first console is player 1. `apart` is how far into the first
+        console's frame the second one's begins."""
         self.boot(apart)
         host, guest = self.sticks
         for stick in self.sticks:
@@ -178,24 +201,43 @@ class Table:
         for side, console in enumerate(self.consoles):
             mpu = console.mpu
             mpu.a = side
+            advice = self.sticks[side].ask(PEER, p.NESP_PEER_STATUS).payload[5]
+            mpu.x = self.input_delay or advice
             mpu.pc = console.labels["net_start_session"]
             console.in_nmi = False
+        self.begun()
+
+    def begun(self):
+        """A session has just begun on both consoles: what frames() and
+        stalls() count from."""
+        self.started = [len(console.frames) for console in self.consoles]
+        for console in self.consoles:
+            console.count_calls("net_stall")
 
     def _before_nmi(self, side, console):
-        if console.byte(NET_MODE) and console.byte(NET_WAITING):
+        """An NMI is the first try at a tick if it finds the main loop
+        waiting and was not left stalled."""
+        if (console.byte(NET_MODE) and console.byte(NET_WAITING)
+                and not console.byte(NET_STALLED)):
             self.traces[side].setdefault(self.ticks(side), game_state(console))
 
     def ticks(self, side):
-        """Ticks a console has taken, past the 8 bits it keeps. It counts
-        them from -INPUT_DELAY."""
+        """The tick a console is at, past the 8 bits it keeps. A session
+        begins a few ticks before 0, as many on both consoles."""
         console = self.consoles[side]
         if not console.byte(NET_MODE):
-            return getattr(console, "_ticks", 0)
-        low = (console.byte(NET_TICK) + console.labels["INPUT_DELAY"]) & 0xFF
-        seen = getattr(console, "_ticks", 0)
+            console._ticks = None
+            return 0
+        low = console.byte(NET_TICK)
+        seen = getattr(console, "_ticks", None)
+        if seen is None:
+            seen = low - 256 if low >= 0x80 else low
         seen += (low - seen) & 0xFF
         console._ticks = seen
         return seen
+
+    def delays(self):
+        return tuple(console.byte(NET_DELAY) for console in self.consoles)
 
     def run(self, frames, pads=(0, 0)):
         """Run for about this many frames of the table's clock, with these
@@ -221,3 +263,12 @@ class Table:
         for tick in shared:
             assert self.traces[0][tick] == self.traces[1][tick], "the games differ at tick %d" % tick
         return len(shared)
+
+    def frames(self, side=0):
+        """Frames a console has had since its session began."""
+        return len(self.consoles[side].frames) - self.started[side]
+
+    def stalls(self, side=0):
+        """NMIs of a console's session that ended short of the game, for
+        want of the other console's buttons."""
+        return self.consoles[side].calls_of("net_stall")

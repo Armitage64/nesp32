@@ -6,17 +6,18 @@
 ; one byte for each tick, where a tick is one NMI that the game takes. A
 ; console takes a tick only when it holds both players' buttons for it, so
 ; the two games see the same buttons at the same tick and stay the same.
-; Its own buttons are used INPUT_DELAY ticks after they were read, which is
+; Its own buttons are used net_delay ticks after they were read, which is
 ; the time they have to reach the other console.
 ;
 ; An NMI in a session is one of three things:
 ;
 ;   a tick    the main loop was waiting and the buttons are here. The
-;             handler does all its work, and afterwards makes an exchange
-;             with the nesp32: buttons out, the other console's in.
+;             handler does all its work.
 ;   a stall   the main loop was waiting but the other console's buttons
-;             are not here. Nothing of the game runs. The handler only
-;             makes the exchange, and the picture stands still.
+;             are not here. The handler has done its writes to the PPU and
+;             stops where the game reads its controllers. The NMIs that
+;             follow write nothing to the PPU, whose picture stands, and
+;             try again from there; the one that has the buttons goes on.
 ;   a lag     the main loop was still at work. Nothing of the game runs.
 ;
 ; So the game's state depends on how many ticks there have been and on
@@ -32,29 +33,81 @@
 ; there, but for the beat it counts for the viruses that dance in the
 ; one-player game's magnifier, which no session shows.
 ;
-; The link is nesp32's, and the exchange is its PEER service's TICKS
-; (nesp32's docs/PROTOCOL.md). All of it is made in the NMI, where nothing
-; can interrupt the library's cycle-timed serial routines; the menu, in the
-; other bank, has said the hello. sub_B793_read_joy_regs reads the
-; controller without leaving OUT0 low.
-;
-; Ticks are counted from -INPUT_DELAY, so that the buttons read in a
-; session's first frame are those of tick 0: the first byte of the stream
-; that the nesp32s pass on.
+; The game reads its controllers in its NMI, after its writes to the PPU
+; and before its main loop goes on. That is where a session makes its
+; exchange with the nesp32, buttons out and the other console's in: before
+; the game's work, so that a press leaves as soon as it is read. The
+; exchange and all that goes with it are in the menu's bank
+; (net/session.inc), with the link's library; this bank has no room for
+; them, and only the way there. The banks are changed only in an NMI that
+; found the main loop waiting, so never in the middle of the game's own
+; writes to the mapper.
 
 .include "net/ram.inc"
 
-; The link's library. Its routines go behind the serial routines, in the
-; page the samples had (net/game.cfg); this file's stay here. The library
-; is assembled to be placed by the linker, and the game is not.
-NESP_NO_HELLO = 1
-net_library_from = *
-.pushseg
-.reloc
-.include "nesp.inc"
-.popseg
-.org net_library_from
+.assert NET_GAME_BUTTONS = ram_btn_press, error
+.assert NET_GAME_NMI_FLAG = ram_nmi_flag, error
 
+
+
+; From the reset vector: no session, and OUT0 at mark.
+net_reset:
+    LDA #$00
+    LDX #NET_VARS - 1
+@loop:
+    STA net_local,X
+    DEX
+    BPL @loop
+    LDA #$01
+    STA $4016
+    RTS
+
+
+
+; Start a session, as player 1 (A = 00) or player 2 (A = 01), with a delay
+; of X ticks; the menu comes in at net_start_session_y with the player in
+; Y. Both consoles begin from the state of one switched on for the first
+; time, at the first tick. Does not return: the game starts again, at the
+; options of a two-player game.
+net_start_session:
+    TAY
+net_start_session_y:
+    SEI
+    LDA #$00
+    STA $2000
+    STA $2001
+    STX net_temp
+    LDX #$FF
+    TXS
+    ; What the game's reset keeps: the top score, the options and the
+    ; mark that it has run before.
+    TAX
+@loop:
+    STA $0700,X
+    INX
+    BNE @loop
+    STA ram_p1_virus_level
+    STA ram_p2_virus_level
+    STA ram_p1_speed
+    STA ram_p2_speed
+    STY net_role
+    LDA net_temp
+    STA net_delay
+    STA net_want
+    ; The ticks before 0 have no buttons, and are as many on both consoles
+    ; whatever the delay of each: a console begins to read when it comes
+    ; to the tick that is its delay before 0.
+    LDA #<-NET_DELAY_MAX
+    STA net_tick
+    LDA #$FF
+    STA net_margin
+    LDA #<net_input_back
+    STA net_back
+    LDA #>net_input_back
+    STA net_back + 1
+    LDA #$01
+    STA net_mode
+    JMP loc_8000_reset_init
 
 
 
@@ -77,32 +130,19 @@ net_wait_nmi:
 
 
 ; First thing in the NMI. Carry set if the handler is to do nothing more.
+; After an NMI that stalled it does not come back: the PPU has had this
+; tick's writes, and the handler goes on from where it reads the
+; controllers.
 net_nmi_head:
     LDA net_mode
     BEQ @run
     LDA net_waiting
     BEQ @lag
-    ; No room to read buttons for another tick until the nesp32 has taken
-    ; some of those held?
-    LDA net_tick
-    CLC
-    ADC #INPUT_DELAY
-    SEC
-    SBC net_acked
-    CMP #RING
-    BCS @stall
-    LDA net_have
-    CMP net_tick
-    BNE @run
-@stall:
-    INC net_silent
-    LDA net_silent
-    CMP #SILENT_FRAMES
-    BCS net_drop
-    JSR net_exchange_game
-@skip:
-    SEC
-    RTS
+    LDA net_stalled
+    BEQ @run
+    PLA
+    PLA
+    JMP net_nmi_input
 @lag:
     JSR sub_FFD0                ; the music goes on
     SEC
@@ -113,147 +153,31 @@ net_nmi_head:
 
 
 
-; The session is over: the other console is gone. Start again as a
-; console that was reset.
-net_drop:
-    JMP vec_FF00_RESET
-
-
-
-; Last thing in an NMI that was not skipped.
-net_nmi_tail:
-    LDA net_mode
-    BEQ @RTS
-    LDA #$00
-    STA net_waiting
-    STA net_silent
-    JMP net_exchange_game
-@RTS:
-    RTS
-
-
-
-; The controllers, in a session. Reads this console's controller for the
-; tick INPUT_DELAY from now, and gives the game both players' buttons for
-; this tick. Then as the game's own: ram_btn_press and ram_btn_hold.
+; The controllers, in a session: to the menu's bank for the frame's
+; exchange (net/session.inc), which gives the game both players' buttons
+; for this tick if they are here. Then as the game's own: ram_btn_press
+; and ram_btn_hold.
+;
+; If they are not here the NMI ends now, whatever in it was to come after
+; the buttons: the game's handler called the routine that called this.
 net_read_input:
-    JSR sub_B793_read_joy_regs
-    LDA net_tick
-    CLC
-    ADC #INPUT_DELAY
-    AND #RING - 1
-    TAX
-    LDA ram_btn_press
-    STA net_local,X
-    LDA net_tick
-    AND #RING - 1
-    TAX
-    LDY net_role
-    LDA net_local,X
-    STA a:ram_btn_press,Y
-    TYA
-    EOR #$01
-    TAY
-    LDA net_remote,X
-    STA a:ram_btn_press,Y
-    INC net_tick
-    JMP bra_B7E7
-
-
-
-; A session's exchange: PEER's TICKS. Out: up to PER_FRAME ticks of this
-; console's buttons, from the first the nesp32 has not said it holds, and
-; the tick of the other console's that is wanted next. In: which of this
-; console's the nesp32 now holds, and up to PER_FRAME ticks of the other's.
-;
-;   request   first tick, tick wanted, buttons, buttons
-;   reply     next tick to send, first tick, lost, buttons, buttons
-;
-; Every NMI of a session that is not a lag comes through here once.
-net_exchange_game:
     JSR sub_FFD0                ; the sound engine: once a frame, tick or not
-    LDA net_acked
-    STA nesp_request
-    AND #RING - 1
-    TAX
-    LDA net_local,X
-    STA nesp_request + 2
-    INX
-    TXA
-    AND #RING - 1
-    TAX
-    LDA net_local,X
-    STA nesp_request + 3
-    LDA net_have
-    STA nesp_request + 1
-    JSR net_unsent
-    CMP #PER_FRAME + 1
-    BCC @count
-    LDA #PER_FRAME
-@count:
-    CLC
-    ADC #$02
-    TAY
-    LDA #NESP_SVC_PEER
-    LDX #NESP_PEER_TICKS
-    JSR nesp_call
-    BCS net_RTS
-    BNE @drop                   ; a nesp32 that was switched off and on
-    ; The nesp32 cannot hold more ticks than were ever read.
-    LDA nesp_reply
-    SEC
-    SBC net_acked
-    STA net_temp
-    JSR net_unsent
-    CMP net_temp
-    BCC @buttons
-    LDA nesp_reply
-    STA net_acked
-@buttons:
-    LDA nesp_reply + 1
-    CMP net_have
-    BNE @peer
-    LDA nesp_reply_len
-    SEC
-    SBC #$03
-    BEQ @peer
-    CMP #PER_FRAME + 1
-    BCS @peer
-    STA net_temp
-    LDY #$00
-@take:
-    LDA net_have
-    SEC
-    SBC net_tick
-    CMP #RING
-    BCS @peer                   ; no room: it is asked for again
-    LDA net_have
-    AND #RING - 1
-    TAX
-    LDA nesp_reply + 3,Y
-    STA net_remote,X
-    INC net_have
-    INY
-    CPY net_temp
-    BNE @take
-@peer:
-    LDA nesp_reply + 2
-    BEQ net_RTS
-@drop:
-    JMP net_drop
-net_RTS:
-    RTS
-
-
-
-; A = how many ticks of this console's buttons the nesp32 does not hold.
-net_unsent:
-    LDA net_tick
-    CLC
-    ADC #INPUT_DELAY
-    SEC
-    SBC net_acked
-    RTS
+    LDA #<SESSION_ENTRY
+    STA net_vector
+    LDA #>SESSION_ENTRY
+    STA net_vector + 1
+    LDA #$02
+    JMP net_far
+net_input_back:
+    LDA net_stalled
+    BNE net_stall
+    JMP bra_B7E7
+net_stall:
+    PLA
+    PLA
+    PLA
+    PLA
+    JMP bra_8030_skip
 
 
 
@@ -280,5 +204,3 @@ net_menu_back:
     LDA ram_for_2000
     STA $2000
     RTS
-
-.assert PER_FRAME = NESP_PEER_PER_FRAME, error

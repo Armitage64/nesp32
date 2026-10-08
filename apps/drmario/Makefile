@@ -23,7 +23,8 @@ NESP := $(NESP_BUILD)/nesp.stamp
 NESP_LIB := $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/gen_link.py
 ROM := $(BUILD)/drmario.nes
 NET_ROM := $(BUILD)/drmario_net.nes
-NET_SOURCES := net/common.inc net/ram.inc net/net.inc net/session.inc $(BUILD)/link.inc \
+NET_SOURCES := net/common.inc net/ram.inc net/net.inc
+MENU_SOURCES := net/menu.s net/session.inc net/common.inc net/ram.inc $(BUILD)/link.inc \
 	$(NESP_LIB) $(NESP)
 NET_INCLUDES := -I $(BUILD) -I $(NESP_BUILD) -I . -I $(NESP32)/nes/lib
 SHA1_ORIGINAL := 01de1e04c396298358e86468ba96148066688194
@@ -50,9 +51,8 @@ $(NESP): FORCE | $(BUILD)
 	$(MAKE) -s -C $(NESP32) BUILD=$(NESP_BUILD) proto host
 	@test -f $@ || touch $@
 
-# The library's serial routines: the receiver that gives up by counting,
-# since every exchange is made in an NMI, and both routines on one page,
-# which is what the game's bank has for them.
+# The library's serial routines, with the receiver that gives up by
+# counting, since every exchange is made in an NMI.
 $(BUILD)/link.inc: $(NESP_LIB) $(NESP)
 	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $@ --timeout --pack
 
@@ -70,10 +70,11 @@ $(BUILD)/drmario_net.prg: $(BUILD)/drmario_net.o net/game.cfg
 	ld65 -C net/game.cfg -o $@ --dbgfile $(BUILD)/drmario_net.dbg \
 		-m $(BUILD)/drmario_net.map $<
 
-# The menu's bank, and a header that says the PRG is twice the size. It is
+# The menu's bank, which has a session's frames and the link's library
+# too, and a header that says the PRG is twice the size. It is
 # an NES 2.0 header, which the MiSTer's core asks for: the same mapper, no
 # submapper, and no memory on the cartridge.
-$(BUILD)/menu.o: net/menu.s net/common.inc net/ram.inc $(BUILD)/link.inc $(NESP_LIB) $(NESP)
+$(BUILD)/menu.o: $(MENU_SOURCES)
 	ca65 -g $(NET_INCLUDES) -l $(BUILD)/menu.lst -o $@ net/menu.s
 
 $(BUILD)/menu.prg: $(BUILD)/menu.o net/menu.cfg
