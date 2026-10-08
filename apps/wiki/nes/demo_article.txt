@@ -1,0 +1,69 @@
+NESpedia
+NESpedia is a Wikipedia reader for the Nintendo Entertainment System. This article is built into the ROM, so that the reader can be tried in an emulator or from a flash cart with nothing in the controller ports but a controller. It is the only article this ROM has: whatever is searched for, this is what is found.
+
+The other build of the ROM has no article in it at all. It asks for one through controller port 2, where an M5Stack Stick stands in for the second player, joins a Wi-Fi network, and fetches the page from Wikipedia.
+
+
+== Reading ==
+
+The text is 28 characters wide and 22 lines of it show at a time. Up and Down scroll it by the pixel for as long as they are held. Right or A turns a page forward, and Left or B a page back; a page glides past rather than jumping, and two lines of it stay in view so the place is not lost.
+
+Start goes back to the top of the article. Select goes back to the search screen.
+
+The mark at the right edge of the screen shows how far through the article the window is. It is at the top beside the first line and at the bottom beside the last.
+
+
+== Searching ==
+
+The search screen has a field for up to 30 characters and a keyboard to fill it from. The D-pad moves over the keys, A types the one that is lit, and B takes the last character back. Select changes the letters from capitals to small ones and back again. Start sends the search.
+
+The field starts out holding the words Nintendo Entertainment System, which seemed the right place to begin.
+
+
+== How it works ==
+
+=== The console ===
+
+An NES has 2 KB of memory, and an article can be a hundred times that, so the console never holds the article. It holds the screen, and a little more than the screen.
+
+The picture is made of tiles, and the console's video memory has room for 30 rows of them in a table that wraps round from its last row to its first. The reader uses that table as a ring. Line 0 of the article goes in row 0, line 29 in row 29, and line 30 in row 0 again. 23 rows can be in view at once, so 7 are out of sight, and those are kept filled with the lines just beyond the window, mostly on the side it is moving toward.
+
+Each time the window moves down by a line, one row leaves the top of the screen and can be given the next line the reader has not yet seen. That happens while the row is hidden, so the text is never seen being drawn.
+
+If a line has not arrived when the window reaches it, the window waits for it. A slow answer makes the scrolling pause; it cannot make the screen show the wrong text.
+
+=== The header ===
+
+The name at the top of the screen does not scroll with the text, and the console has only one scroll position. So each frame is drawn in two parts. It starts at the top of a second table that holds the header, and at the bottom of the header the reader points the picture at the article's place in the ring.
+
+It finds the bottom of the header by a single hidden dot. The console raises a flag when it draws the first of its sprites over a lit pixel of the background, and that sprite is one pixel sitting on the credit line, in the credit line's own colour.
+
+=== The link ===
+
+The second controller port has one wire the console can set and one it can read. A serial line is run over each of them by counting processor cycles: 21 cycles to a bit, which is 85227 bits a second.
+
+The console asks for a line by its number and the Stick answers with 36 bytes: the line's 28 characters, where it is in the article, how long the article is, and a check on all of it. A whole exchange fits in the part of a frame that is left after the header has been drawn.
+
+The picture must be attended to sixty times a second, and the serial routines cannot be interrupted, so an answer that comes too late is cut off and asked for again in a later frame.
+
+=== The Stick ===
+
+The Stick does what the console cannot. It asks Wikipedia for the page as plain text, turns letters the console has no shape for into ones it has, wraps the text at 28 columns, and keeps the lines in memory. Headings are marked so that the console can show them in another colour.
+
+Every line is exactly 28 bytes, so the line the console asks for is found by multiplying, and the answer is on its way in about a thousandth of a second.
+
+
+== Limits ==
+
+The console's letters are the 95 of ASCII. An accented letter loses its accent, and writing in other scripts is shown as a question mark.
+
+Tables, pictures and links are not shown. Wikipedia's plain text leaves them out.
+
+An article longer than about nine thousand lines is cut short, and says so where it stops.
+
+
+== See also ==
+
+NES Jukebox, which plays music on the console over the same link, and whose measurements of that link decided how fast this one runs.
+
+NES Radar, the first project to use it.
