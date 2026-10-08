@@ -55,11 +55,14 @@ WAIT_NMI = bytes((0xA5, 0x33, 0xF0, 0xFC))
 NMI_FLAG = 0x33
 # lda $2002 / bpl: the reset code waiting for a vblank.
 WAIT_VBLANK = bytes((0xAD, 0x02, 0x20, 0x10, 0xFB))
-# The serial receiver's wait for a start bit: lda $4017 / lsr / bcs / dex /
-# bne. X counts its looks.
-HUNT = bytes((0xAD, 0x17, 0x40, 0x4A, 0xB0))
-HUNT_REST = (0xCA, 0xD0)        # after the bcs's offset
-HUNT_CYCLES = 13
+# The serial receiver's wait for a start bit: four looks, each bit $4017 /
+# bne, then dex / bne, 29 cycles in all. X counts those. (A run of looks
+# with no dex after the fourth is where a frame's next byte is due, and is
+# not skipped.)
+HUNT = bytes((0x2C, 0x17, 0x40, 0xD0))
+HUNT_LOOKS = 4
+HUNT_REST = (0xCA, 0xD0)        # after the last look
+HUNT_CYCLES = 29
 
 
 def load_labels(path):
@@ -329,10 +332,11 @@ class Console:
                     if self.in_nmi:
                         self.frame.nmi_cycles = mpu.processorCycles + 6 - self._nmi_at
                     self.in_nmi = False
-                elif opcode == HUNT[0]:
+                elif opcode == WAIT_VBLANK[0]:
                     if bus.code(pc, 5) == WAIT_VBLANK and not self.vblank_unread:
                         self._wait(limit)
                         continue
+                elif opcode == HUNT[0]:
                     if self._skip_hunt(pc, limit):
                         continue
             mpu.step()
@@ -356,8 +360,9 @@ class Console:
         it did."""
         if self.joy2_quiet_until is None:
             return False
-        code = self.bus.code(pc, 8)
-        if code[:5] != HUNT or tuple(code[6:]) != HUNT_REST:
+        code = self.bus.code(pc, 5 * HUNT_LOOKS + 2)
+        if (any(code[5 * look:5 * look + 4] != HUNT for look in range(HUNT_LOOKS))
+                or tuple(code[5 * HUNT_LOOKS:]) != HUNT_REST):
             return False
         mpu = self.mpu
         quiet = self.joy2_quiet_until(mpu.processorCycles)

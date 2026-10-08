@@ -63,7 +63,7 @@ The ROM has nesp32's library for the console (`nes/lib/nesp.inc` there) in
 each of its two banks, at the same places in memory. Every exchange is made
 inside an NMI, where nothing can interrupt the library's cycle-timed serial
 routines, so the library is built with the receiver that gives up by
-counting: the console waits about 5.6 ms for a reply to begin. A reply that
+counting: the console waits about 4.1 ms for a reply to begin. A reply that
 is late, cut short or fails its CRC is dropped whole, and what it carried
 is asked for again in the next frame.
 
@@ -162,7 +162,7 @@ Measured on the simulated consoles (`tests/test_lockstep.py`):
   slowest.)
 - A nesp32 that takes longer makes the NMI longer, and more frames lags:
   every frame was a tick with it taking up to 1 ms, and about 97 in 100
-  with it taking 5 ms. A reply that has not begun 5.6 ms after the request
+  with it taking 5 ms. A reply that has not begun 4.1 ms after the request
   is not heard at all.
 - With the network taking 10 ms each way nearly every frame is a tick. At
   40 ms about three in four are, and at 90 ms under half: `INPUT_DELAY` is

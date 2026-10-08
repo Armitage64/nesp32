@@ -169,16 +169,37 @@ None of it has been measured again since the move to nesp32:
     loop is done, with the library's other receiver, they would not, and 2
     frames should then do on one network where 3 do now. The firmware
     needs no change; the game's bank has about 120 bytes for it.
-  - **An input delay that sets itself**, as nes-contra's does, in place of
-    the fixed 3 frames. The firmware has it all now: the delay to begin
-    with comes as a sixth byte of PEER's lobby replies, from the time the
-    nesp32s measure between them, and during a game each console reports
-    on the other's buttons and is advised a tick longer or shorter
-    (nesp32's `docs/PROTOCOL.md`, "The delay"). What is left is the ROM's
-    side: the delay as a variable, the report and the advice in the
-    exchange, and a read repeated or let go by when it changes. nes-contra's
-    `net/net.inc` is the pattern. Needed before the Internet is worth
-    trying.
+  - **What nes-contra's netplay has, brought back here.** nesp32's firmware
+    has all of its side already, so each of these is the ROM's to do
+    (nes-contra's `net/net.inc` is the pattern, and its `docs/Netplay.md`
+    has what each did there):
+    - *The exchange before the game's work, not after it.* It is what lets
+      a delay of 1 frame do on a home network, where 3 are needed now. The
+      game here runs in the main loop and not in the NMI, so this is a
+      rearrangement and not a copy.
+    - *An input delay that sets itself*, in place of the fixed 3 frames.
+      The delay to begin with comes as a sixth byte of PEER's lobby
+      replies, and during a game the nesp32 advises a tick longer or
+      shorter from the network's times (nesp32's `docs/PROTOCOL.md`, "The
+      delay"). The ROM needs the delay as a variable, the report and the
+      advice in its exchange, and a read repeated or let go by when it
+      changes. Needed before the Internet is worth trying.
+    - *Short frames*: the exchange in six bytes each way, where it is 9 to
+      11 out and 10 to 12 back. About 2700 cycles of every frame, in a game
+      whose busiest frame uses 92 in 100 of what there is.
+    - *A check that the games are still the same*: one tick in 256 carries
+      a digest in place of buttons. There is none here, and two games that
+      had come apart would go unnoticed.
+    - *Asking again in the same frame* for a reply that was not heard is
+      of little use here: this game plays no samples, and its line is
+      clean.
+
+    The catch is room. The game's bank has about 120 bytes left, and
+    nes-contra's session code is several hundred. The new receiver is a
+    little smaller, and short frames could take the place of the long
+    frames' code in that bank; whether it then fits has to be measured. If
+    it does not, the bulk of the session's code goes in the menu's bank,
+    which has room.
   - **A steadier way between the nesp32s**, since the margin is there for
     the spikes: ESP-NOW
     for two consoles in one room, past the access point; the receiving

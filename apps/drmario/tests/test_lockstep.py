@@ -114,7 +114,7 @@ def test_a_network_that_comes_and_goes(net_console):
 
 
 def test_a_nesp32_that_is_sometimes_too_slow_to_answer(net_console):
-    """The console waits about 5.6 ms for a reply. Later ones are missed,
+    """The console waits about 4.1 ms for a reply. Later ones are missed,
     or fall across the next exchange, and are asked for again."""
     rng = random.Random(11)
     table = Table(net_console, turnaround=lambda: ms(rng.choice((0.5, 1, 2, 4, 7, 12, 19))))

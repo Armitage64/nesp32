@@ -12,7 +12,7 @@ OUT0_MARK       = $01
 ; game.cfg and menu.cfg both say.
 NESP_RX_MASK    = $1F           ; the longest reply payload: 32 bytes
 NESP_TX_MAX     = 8             ; the longest request: a hello for one service
-NESP_TIMEOUT    = 3             ; passes of 1.86 ms waited for a reply
+NESP_TIMEOUT    = 1             ; passes of 4.15 ms waited for a reply
 NESP_NMI_ONLY   = 1             ; every exchange is made in an NMI
 
 ; Zero page, free in the game.
