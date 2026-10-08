@@ -93,19 +93,25 @@ A frame is seven bytes at the least, and a game that asks something in
 every one of its frames pays for each byte both ways: at this rate a byte
 out is 210 CPU cycles and a byte back 231, of the 29780 in a frame, and
 the console can do nothing else meanwhile. For that there is a second kind
-of frame, six bytes whichever way it goes:
+of frame:
 
 ```text
-short request   $D0 + N, DATA[3], CRC_HI, CRC_LO     console to nesp32
-short reply     $B0 + N, DATA[3], CRC_HI, CRC_LO     nesp32 to console
+short request   $D0 + N, DATA[2 or 3], CRC_HI, CRC_LO     console to nesp32
+short reply     $B0 + N, DATA[1 or 2], CRC_HI, CRC_LO     nesp32 to console
 ```
 
-`N` is a count, 0 to 3, in the low two bits of the first byte, and the CRC
-is over that byte and the three that follow. There is no service, no op,
-no sequence number and no length: a short request goes to the one service
-in use that takes them, and what its four values mean is that service's.
-A short reply with `N` = 3 and zeros says that nothing took it: no such
-service is in use, or it has nothing to answer with.
+`N` is a count, 0 to 3, in the low two bits of the first byte. A request
+has two bytes of data if its `N` is under 2 and three if not, and its CRC
+is over its marker and its data. There is no service, no op, no sequence
+number and no length: a short request goes to the one service in use that
+takes them, and what its values mean is that service's.
+
+A reply has one byte of data or two, as the service has it for what was
+asked: the console knows which from what it asked, and listens for that
+many. Its CRC is over the request's first byte of data and then its own
+marker and data, so a reply cannot be taken for the answer to another
+request. A reply with `N` = 3 and one byte of 0 says that nothing took the
+request. A service may also make no reply, and the console then asks again.
 
 A short request is never answered from a held reply, and the console's
 library does not keep one to send again (`nesp_short`): the service makes
@@ -115,7 +121,7 @@ several requests waiting only the newest is acted on.
 
 Only PEER has them so far. nes-contra's exchange was 10 bytes out and 11
 back as frames, and 6710 cycles of each frame on the simulated console; as
-short frames it is 4012.
+short frames of 5 and 4 it is 3112.
 
 ### How the check was chosen
 
@@ -289,7 +295,7 @@ and then a relay. It does not know what a button is, and keeps no time.
 | `$03` | LEAVE | | the same: drop whatever connection there is, or is being made |
 | `$04` | LAST | | `STATE`, and in `ADDRESS` the address last joined (zeros if none) |
 | `$05` | TICKS | `FIRST`, `WANTED`, `BUTTONS` ... | `NEXT`, `FROM`, `LOST`, `BUTTONS` ... |
-| short | TICKS again, in six bytes | `N` buttons: `FIRST` and `WANTED`, `BUTTONS[2]` | `N` buttons: `NEXT` and `FROM`, `BUTTONS[2]` |
+| short | TICKS again, in five bytes and four | `N` ticks: `FIRST` and `WANTED`, `BUTTONS[1 or 2]` | `N` ticks: `BUTTONS[1]` |
 
 In every reply but LAST's, `ADDRESS` is the nesp32's own IPv4 address.
 
@@ -341,16 +347,20 @@ console's than it was sent when it has no room for more, and `NEXT` says
 so. What the other console sent before it went is still handed over, and
 only then is `LOST` set.
 
-**As a short frame** (section 2) the same exchange is six bytes each way.
-The count of buttons is the frame's `N`, and the two ticks are named by
-their low four bits, in one byte: `FIRST` or `NEXT` in its high half,
-`WANTED` or `FROM` in its low. That is enough for a console that is never
-more than a few ticks from what the nesp32 holds, and the nesp32 takes each
-for the tick nearest what it holds: `FIRST` at or before its own count,
-`WANTED` at or after the first it has kept. A reply's `N` of 3 is `LOST`.
-The two forms may be mixed in one session. nes-contra's ROM makes its
-exchange this way, and the long way only before a session, where the two
-menus pass each other a byte ahead of the first tick's.
+**As a short frame** (section 2) the request's two ticks are named by
+their low four bits, in one byte: `FIRST` in its high half and `WANTED` in
+its low. That is enough for a console that is never more than a few ticks
+from what the nesp32 holds, and the nesp32 takes each for the tick nearest
+what it holds: `FIRST` at or before its own count, `WANTED` at or after the
+first it has kept. Then come the buttons, one tick's, or two with an `N`
+of 2: five bytes, or six.
+
+The reply is four bytes: one tick of the other console's buttons, if its
+`N` is 1. It names no ticks. That it comes at all says the nesp32 holds
+every tick it was sent, and the console counts them as held; if the nesp32
+could not take them all it makes no reply. An `N` of 3 is `LOST`. The two
+forms may be mixed in one session. nes-contra's ROM makes its exchange
+this way.
 
 #### Between the nesp32s
 
@@ -426,7 +436,7 @@ game stands still a frame or two for it.
 
 The console asks one exchange in 128: a short TICKS frame whose count is 3
 carries one tick of buttons and then the console's report in place of a
-second, and its reply has one tick at the most and then the delay advised.
+second, and its reply has a second byte of data, the delay advised.
 
 ```text
 report   DELAY (3 bits), LATE (3 bits), MARGIN (2 bits)
@@ -805,10 +815,11 @@ where the frame ends as that byte arrives, cut to `NESP_RX_MASK`, so that
 no reply, however damaged, is stored past the buffer.
 
 A ROM that defines `NESP_SHORT_FRAMES` has `nesp_short` besides: a short
-request (section 2) with its count in A and its three bytes at `nesp_tx +
-1`, which comes back with carry clear, the reply's count in A and its
-three bytes at `nesp_rx + 1`. It receives through `nesp_rx_bytes`, the same
-receiver told how many bytes to take.
+request (section 2) with its count in A, its data at `nesp_tx + 1`, and in
+Y how many bytes of data its reply is to have. It comes back with carry
+clear, the reply's count in A and its data at `nesp_rx + 3`. It receives
+through `nesp_rx_bytes`, the same receiver told where in the buffer to
+begin and end, and works its CRCs out from the table.
 
 ## 8. Adding to it
 

@@ -30,6 +30,7 @@
 
 #define GREETING NESP_PEER_GREETING
 _Static_assert(1 + NESP_PEER_PER_FRAME <= NESP_SHORT_DATA, "TICKS does not fit a short frame");
+_Static_assert(NESP_PEER_PER_FRAME == 2, "a short frame's length is by counts of 2 and under");
 #define SHOW_MS 500
 #define WATCH_MS 2000
 _Static_assert(NESP_ARQ_NEEDS == 6, "watch() names six counts");
@@ -320,37 +321,47 @@ static uint8_t tune(nesp_peer_t *peer, uint8_t report)
     return peer->want;
 }
 
-/* TICKS as a short frame: the two ticks are named by their low four bits,
- * in one byte, and the count of buttons is the frame's own. A count of
- * NESP_SHORT_NONE back is TICKS' `LOST`. */
-static uint8_t quick(void *ctx, uint8_t count, const uint8_t *in, uint8_t *out)
+/* TICKS as a short frame. The two ticks are named by their low four bits,
+ * in one byte, and then come the buttons: one tick's, or two with a count
+ * of 2. A count of NESP_PEER_TUNE is one tick's and then the console's
+ * report (the delay, above).
+ *
+ * The reply is one tick of the other console's buttons, if its count is 1,
+ * and to a report the delay advised besides; NESP_SHORT_NONE is TICKS'
+ * `LOST`. It names no ticks: that it comes at all says the nesp32 holds
+ * the buttons it was sent, and its CRC says which request it answers. So
+ * there is none when not all of them could be taken, and the console asks
+ * again. */
+static int quick(void *ctx, uint8_t count, const uint8_t *in, uint8_t *reply_count, uint8_t *out)
 {
     nesp_peer_t *peer = ctx;
+    uint8_t held[NESP_PEER_PER_FRAME];
+    bool tuning = count == NESP_PEER_TUNE;
+    uint8_t sent = tuning ? 1 : count;
+    out[0] = 0;
     if (!in_session(peer)) {
-        return NESP_SHORT_NONE;
-    }
-    if (count == NESP_PEER_TUNE) {
-        /* One tick of buttons, and in place of a second the console's
-         * report; one tick of the other's back at most, and the advice. */
-        uint8_t held[NESP_PEER_PER_FRAME];
-        uint8_t first = (uint8_t)(peer->local_next - ((peer->local_next - (in[0] >> 4)) & 0x0F));
-        uint8_t wanted = (uint8_t)(peer->remote_base
-                                   + (((in[0] & 0x0F) - peer->remote_base) & 0x0F));
-        uint8_t ready = exchange(peer, first, wanted, in + 1, 1, held);
-        out[0] = (uint8_t)((peer->local_next & 0x0F) << 4 | (peer->remote_base & 0x0F));
-        out[1] = held[0];
-        out[2] = tune(peer, in[2]);
-        if (peer->lost && ready == 0) {
-            return NESP_SHORT_NONE;
-        }
-        return ready != 0 ? 1 : 0;
+        *reply_count = NESP_SHORT_NONE;
+        return 1;
     }
     /* The console is never more than a few ticks from what is held here. */
     uint8_t first = (uint8_t)(peer->local_next - ((peer->local_next - (in[0] >> 4)) & 0x0F));
     uint8_t wanted = (uint8_t)(peer->remote_base + (((in[0] & 0x0F) - peer->remote_base) & 0x0F));
-    uint8_t ready = exchange(peer, first, wanted, in + 1, count, out + 1);
-    out[0] = (uint8_t)((peer->local_next & 0x0F) << 4 | (peer->remote_base & 0x0F));
-    return peer->lost && ready == 0 ? NESP_SHORT_NONE : ready;
+    uint8_t ready = exchange(peer, first, wanted, in + 1, sent, held);
+    /* Not all of its buttons taken: no reply, unless that is because the
+     * other console is gone, which the reply is there to say. */
+    if ((uint8_t)(peer->local_next - first) < sent
+        && up(peer->hal->peer_state(peer->hal->ctx))) {
+        return -1;
+    }
+    if (ready != 0) {
+        out[0] = held[0];
+    }
+    *reply_count = peer->lost && ready == 0 ? NESP_SHORT_NONE : (ready != 0 ? 1 : 0);
+    if (tuning) {
+        out[1] = tune(peer, in[2]);
+        return 2;
+    }
+    return 1;
 }
 
 /* --- the lobby ------------------------------------------------------------------ */

@@ -20,8 +20,9 @@
 ;                   of a ROM whose other bank says hello. The two then
 ;                   agree on where everything else here is kept
 ;   NESP_SHORT_FRAMES optional. nesp_short, for a service's short frames
-;                   (docs/PROTOCOL.md): a request of six bytes and a reply
-;                   of six, where the least a frame can be is seven
+;                   (docs/PROTOCOL.md): a request of five bytes or six and
+;                   a reply of four or five, where the least a frame can be
+;                   is seven. With NESP_CRC_TABLE and NESP_TIMEOUT
 ;   NESP_OWN_MEMORY optional. The ROM has named every byte of memory below
 ;                   itself, before including this: for a game with no run
 ;                   of zero page to spare (nes-contra). Only what the
@@ -41,11 +42,13 @@
 ;                   answers it with the same reply, and does nothing twice
 ;   nesp_reply      the reply's payload, nesp_reply_len bytes of it
 ;   nesp_attention  not 0 if the Stick has an event waiting (SYS EVENT)
-;   nesp_short      with NESP_SHORT_FRAMES: a short request. A = its count, and
-;                   its three bytes are at nesp_tx + 1. Carry clear and A =
-;                   the reply's count if a good reply came, with its three
-;                   bytes at nesp_rx + 1; carry set if none did. It has no
-;                   sequence number, and is not kept to be sent again
+;   nesp_short      with NESP_SHORT_FRAMES: a short request. A = its count,
+;                   its data is at nesp_tx + 1, and Y is how many bytes of
+;                   data its reply is to have, which the ROM knows from
+;                   what it asked. Carry clear and A = the reply's count if
+;                   a good reply came, with its data at nesp_rx + 3; carry
+;                   set if none did. It has no sequence number, and is not
+;                   kept to be sent again
 ;
 ; The serial routines count CPU cycles (link.inc, generated), so nothing
 ; may interrupt them, and the receiver waits for a start bit with no timeout
@@ -308,52 +311,82 @@ nesp_reply_len = nesp_rx + NESP_HEADER - 1
 
 .ifdef NESP_SHORT_FRAMES
 
-.assert NESP_SHORT <> NESP_HEADER, error, "nesp_rx_bytes cannot count a short frame"
-.assert NESP_SHORT <= NESP_OVERHEAD, error, "a short frame is longer than the buffers' least"
+.ifndef NESP_CRC_TABLE
+.error "short frames are worked out with the CRC's table: define NESP_CRC_TABLE"
+.endif
+.ifndef NESP_TIMEOUT
+.error "nesp_short is for the receiver that counts: link.inc made with --timeout"
+.endif
 
 ; A short request and its reply. See the top of the file.
 .proc nesp_short
+    sty nesp_count              ; the reply's bytes of data
+    pha
     ora #NESP_SHORT_REQUEST
     sta nesp_tx
+    pla
+    lsr a                       ; two bytes of data to a count under 2, and three if not
+    clc
+    adc #3
+    sta nesp_index              ; the marker and the data: what the CRC is of
     lda #<nesp_tx
     sta nesp_ptr
     lda #>nesp_tx
     sta nesp_ptr + 1
-    jsr nesp_short_sum
-    lda nesp_crc_hi
-    sta nesp_tx + NESP_SHORT - 2
+    ldy #0
+    jsr nesp_short_new
+    sta (nesp_ptr),y
+    iny
     lda nesp_crc_lo
-    sta nesp_tx + NESP_SHORT - 1
+    sta (nesp_ptr),y
+    iny
+    sty nesp_tx_len
     ldx #0
 @send:
     lda nesp_tx,x
     jsr nesp_tx_byte            ; preserves X
     inx
-    cpx #NESP_SHORT
+    cpx nesp_tx_len
     bne @send
-.ifdef NESP_TIMEOUT
     lda #NESP_TIMEOUT
     sta nesp_tries
-.endif
-    lda #NESP_SHORT
+    ; The reply goes in from nesp_rx + 2, so that it does not end where a
+    ; frame's header does: its marker, its data and two bytes of CRC.
+    lda nesp_count
+    clc
+    adc #5
+    ldy #2
     jsr nesp_rx_bytes
     bcs @bad                    ; the wait for it ran out
-    lda nesp_rx
+    lda nesp_rx + 2
     and #NESP_SHORT_MARK
     cmp #NESP_SHORT_REPLY
     bne @bad
+    ; Its CRC: of the request's first byte of data, and then its own
+    ; marker and data.
+    lda #2
+    sta nesp_index
+    ldy #1
+    jsr nesp_short_new
+    pha
     lda #<nesp_rx
     sta nesp_ptr
     lda #>nesp_rx
     sta nesp_ptr + 1
+    lda nesp_count
+    clc
+    adc #3
+    sta nesp_index
+    pla
+    ldy #2
     jsr nesp_short_sum
-    lda nesp_rx + NESP_SHORT - 2
-    cmp nesp_crc_hi
+    cmp (nesp_ptr),y
     bne @bad
-    lda nesp_rx + NESP_SHORT - 1
-    cmp nesp_crc_lo
+    iny
+    lda nesp_crc_lo
+    cmp (nesp_ptr),y
     bne @bad
-    lda nesp_rx
+    lda nesp_rx + 2
     and #<~NESP_SHORT_MARK
     clc
     rts
@@ -362,20 +395,28 @@ nesp_reply_len = nesp_rx + NESP_HEADER - 1
     rts
 .endproc
 
-; The CRC of the short frame at nesp_ptr: of its marker and what follows.
-.proc nesp_short_sum
-    lda #>NESP_CRC_INIT
-    sta nesp_crc_hi
+; A CRC begun, and then as nesp_short_sum.
+.proc nesp_short_new
     lda #<NESP_CRC_INIT
     sta nesp_crc_lo
-    ldy #0
+    lda #>NESP_CRC_INIT
+    ; fall through
+.endproc
+
+; The bytes at nesp_ptr from Y up to nesp_index into the CRC, whose high
+; byte is in A and its low in nesp_crc_lo. Leaves Y at nesp_index.
+.proc nesp_short_sum
 @byte:
-    lda (nesp_ptr),y
-    sty nesp_index
-    jsr nesp_crc
-    ldy nesp_index
+    eor (nesp_ptr),y
+    tax
+    lda nesp_crc_lo
+    eor nesp_crc_table_hi,x
+    pha
+    lda nesp_crc_table_lo,x
+    sta nesp_crc_lo
+    pla
     iny
-    cpy #NESP_SHORT - 2
+    cpy nesp_index
     bne @byte
     rts
 .endproc

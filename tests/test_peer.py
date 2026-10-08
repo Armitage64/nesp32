@@ -52,8 +52,20 @@ def tune(stick, first, wanted, button, delay, late=0, margin=1):
     report = delay << 5 | min(late, 7) << 2 | min(margin, 3)
     count, data = stick.quick(p.NESP_PEER_TUNE,
                               bytes(((first & 15) << 4 | wanted & 15, button, report)))
-    assert count in (0, 1)
-    return data[1:1 + count], data[2]
+    assert count in (0, 1) and len(data) == 2
+    return data[:count], data[1]
+
+
+def quick(stick, first, wanted, buttons=b""):
+    """The same exchange as a short frame, with the two ticks as their low
+    four bits: (lost, the other's buttons, one tick's at the most), or
+    None if the nesp32 made no reply."""
+    reply = stick.quick(len(buttons), bytes(((first & 15) << 4 | wanted & 15,)) + bytes(buttons))
+    if reply is None:
+        return None
+    count, data = reply
+    assert len(data) == 1
+    return (1, b"") if count == p.NESP_SHORT_NONE else (0, data[:count])
 
 
 def ticks(stick, first, wanted, buttons=b""):
@@ -61,15 +73,6 @@ def ticks(stick, first, wanted, buttons=b""):
     reply = stick.ask(PEER, TICKS, bytes((first & 0xFF, wanted & 0xFF)) + bytes(buttons))
     assert reply.ok and len(reply.payload) >= 3
     return reply.payload[0], reply.payload[1], reply.payload[2], reply.payload[3:]
-
-
-def quick(stick, first, wanted, buttons=b""):
-    """The same exchange as a short frame: (next, from, lost, the other's
-    buttons), with the two ticks as their low four bits."""
-    count, data = stick.quick(len(buttons), bytes(((first & 15) << 4 | wanted & 15,)) + bytes(buttons))
-    if count == p.NESP_SHORT_NONE:
-        return data[0] >> 4, data[0] & 15, 1, b""
-    return data[0] >> 4, data[0] & 15, 0, data[1:1 + count]
 
 
 def carry(one, other):
@@ -399,13 +402,15 @@ def test_the_nesp32s_screen_says_how_it_stands(pair):
 def test_a_short_frame_is_the_same_exchange(pair):
     host, guest = pair
     connect(host, guest)
-    assert quick(host, 0, 0, b"\x81") == (1, 0, 0, b"")
-    assert quick(guest, 0, 0, b"\x42\x43") == (2, 0, 0, b"")
+    assert quick(host, 0, 0, b"\x81") == (0, b"")
+    assert quick(guest, 0, 0, b"\x42\x43") == (0, b"")
     carry(host, guest)
-    assert quick(host, 1, 0, b"\x82") == (2, 0, 0, b"\x42\x43")
-    assert quick(guest, 2, 0) == (2, 0, 0, b"\x81")
+    # One tick of the other's buttons to a reply: the rest wait their turn.
+    assert quick(host, 1, 0, b"\x82") == (0, b"\x42")
+    assert quick(host, 2, 1) == (0, b"\x43")
+    assert quick(guest, 2, 0) == (0, b"\x81")
     carry(host, guest)
-    assert quick(guest, 2, 1) == (2, 1, 0, b"\x82")
+    assert quick(guest, 2, 1) == (0, b"\x82")
     # And it is the same session to an exchange made the long way.
     assert ticks(host, 2, 2) == (2, 2, 0, b"")
 
@@ -413,9 +418,9 @@ def test_a_short_frame_is_the_same_exchange(pair):
 def test_a_short_frame_sent_again_is_passed_over(pair):
     host, guest = pair
     connect(host, guest)
-    assert quick(host, 0, 0, b"\x01") == (1, 0, 0, b"")
-    assert quick(host, 0, 0, b"\x01\x02") == (2, 0, 0, b"")
-    assert quick(host, 0, 0, b"\x01\x02") == (2, 0, 0, b"")
+    assert quick(host, 0, 0, b"\x01") == (0, b"")
+    assert quick(host, 0, 0, b"\x01\x02") == (0, b"")
+    assert quick(host, 0, 0, b"\x01\x02") == (0, b"")
     assert host.conn_take() == b"\x01\x02"
 
 
@@ -423,34 +428,59 @@ def test_a_short_frame_names_ticks_by_four_bits(pair):
     host, guest = pair
     connect(host, guest)
     for tick in range(40):
-        assert quick(host, tick, tick, bytes((tick,))) == ((tick + 1) & 15, tick & 15, 0, b"")
-        assert quick(guest, tick, tick, bytes((tick ^ 0xFF,)))[:3] == ((tick + 1) & 15, tick & 15, 0)
+        assert quick(host, tick, tick, bytes((tick,))) == (0, b"")
+        assert quick(guest, tick, tick, bytes((tick ^ 0xFF,))) == (0, b"")
         carry(host, guest)
-        assert quick(host, tick + 1, tick)[3] == bytes((tick ^ 0xFF,))
-        assert quick(guest, tick + 1, tick)[3] == bytes((tick,))
+        assert quick(host, tick + 1, tick) == (0, bytes((tick ^ 0xFF,)))
+        assert quick(guest, tick + 1, tick) == (0, bytes((tick,)))
         # What was taken is not handed over twice.
-        assert quick(host, tick + 1, tick + 1)[3] == b""
-        assert quick(guest, tick + 1, tick + 1)[3] == b""
+        assert quick(host, tick + 1, tick + 1) == (0, b"")
+        assert quick(guest, tick + 1, tick + 1) == (0, b"")
+
+
+def test_a_short_reply_says_the_buttons_are_held_or_is_not_made(pair):
+    """A reply names no ticks: that it comes says the nesp32 holds what it
+    was sent. With no room for all of it there is none, and the console
+    asks again."""
+    host, guest = pair
+    connect(host, guest)
+    host.conn_room(1)
+    assert quick(host, 0, 0, b"\x01\x02") is None
+    assert quick(host, 0, 0, b"\x01\x02") == (0, b"")      # the second went this time
+    assert host.conn_take() == b"\x01\x02"
+
+
+def test_a_short_reply_is_checked_against_its_request(pair):
+    host, guest = pair
+    connect(host, guest)
+    request = nesp.short_frame(1, b"\x00\x55")
+    reply = host.feed(request)
+    assert len(reply) == 4 and nesp.parse_short(reply, request) == (0, b"\x00")
+    other = nesp.short_frame(1, b"\x10\x55")               # another request's ticks
+    with pytest.raises(ValueError):
+        nesp.parse_short(reply, other)
 
 
 def test_a_short_frame_with_no_session_says_so(peer):
-    assert peer.quick(1, b"\x00\x55") == (p.NESP_SHORT_NONE, bytes(3))
+    assert quick(peer, 0, 0, b"\x55") == (1, b"")
     assert peer.conn_take() == b""
 
 
 def test_a_short_frame_says_when_the_other_console_is_gone(pair):
     host, guest = pair
     connect(host, guest)
-    assert quick(guest, 0, 0, b"\x07") == (1, 0, 0, b"")
+    assert quick(guest, 0, 0, b"\x07") == (0, b"")
     carry(host, guest)
     host.conn = CONN_LOST
-    # What it sent before it went is still handed over, and only then.
-    assert quick(host, 0, 0) == (0, 0, 0, b"\x07")
-    assert quick(host, 0, 1)[2] == 1
+    # What it sent before it went is still handed over, and only then:
+    # also to a console that has buttons of its own to send, which go
+    # nowhere now.
+    assert quick(host, 0, 0, b"\x31") == (0, b"\x07")
+    assert quick(host, 0, 1, b"\x31") == (1, b"")
 
 
 def test_a_short_frame_before_any_hello_is_answered_with_none(stick):
-    assert stick.quick(0) == (p.NESP_SHORT_NONE, bytes(3))
+    assert stick.quick(0) == (p.NESP_SHORT_NONE, bytes(1))
 
 
 def test_a_short_frame_behind_noise_and_a_bad_one(pair):
@@ -460,8 +490,17 @@ def test_a_short_frame_behind_noise_and_a_bad_one(pair):
     bad = bytearray(good)
     bad[2] ^= 0x10
     reply = host.feed(b"\xD1\x00" + bytes(bad) + good)
-    assert nesp.parse_short(reply)[0] == 0
+    assert nesp.parse_short(reply, good)[0] == 0
     assert host.conn_take() == b"\x99"
+
+
+def test_short_requests_are_five_bytes_or_six(pair):
+    host, guest = pair
+    connect(host, guest)
+    assert [len(nesp.short_frame(count, b"\x00")) for count in range(4)] == [5, 5, 6, 6]
+    for count in range(3):
+        assert len(host.feed(nesp.short_frame(count, b"\x00\x01\x02"))) == 4
+    assert len(host.feed(nesp.short_frame(p.NESP_PEER_TUNE, b"\x30\x03\x40"))) == 5
 
 
 # --- the delay ----------------------------------------------------------------------
@@ -480,7 +519,7 @@ def test_the_delay_to_begin_with_is_from_the_networks_time(pair):
 def test_a_report_rides_a_short_frame_and_is_passed_on_as_a_note(pair):
     host, guest = pair
     connect(host, guest)
-    assert quick(guest, 0, 0, b"\x42") == (1, 0, 0, b"")
+    assert quick(guest, 0, 0, b"\x42") == (0, b"")
     carry(host, guest)
     host.tick(5000)
     assert host.notes == 1                      # the one that cleared it for the session

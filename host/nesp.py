@@ -215,17 +215,20 @@ def reply_frame(svc, status, seq, payload=b""):
 
 
 def short_frame(count, data=b""):
-    """A short request as the console sends it."""
-    body = bytes((proto.NESP_SHORT_REQUEST | count,)) + bytes(data).ljust(proto.NESP_SHORT_DATA, b"\0")
+    """A short request as the console sends it: two bytes of data if its
+    count is under 2, and three if not."""
+    length = 2 if count < 2 else 3
+    body = bytes((proto.NESP_SHORT_REQUEST | count,)) + bytes(data)[:length].ljust(length, b"\0")
     return body + checks(body)
 
 
-def parse_short(data):
-    """A short reply's bytes as (count, its three bytes). Raises if they are
-    not one whole good one."""
+def parse_short(data, request):
+    """A short reply's bytes as (count, its data). Its CRC begins with the
+    first byte of data of the request it answers. Raises if they are not
+    one whole good one."""
     data = bytes(data)
-    if (len(data) != proto.NESP_SHORT or data[0] & proto.NESP_SHORT_MARK != proto.NESP_SHORT_REPLY
-            or checks(data[:-2]) != data[-2:]):
+    if (len(data) not in (4, 5) or data[0] & proto.NESP_SHORT_MARK != proto.NESP_SHORT_REPLY
+            or checks(request[1:2] + data[:-2]) != data[-2:]):
         raise ValueError("not a short reply: %r" % data)
     return data[0] & ~proto.NESP_SHORT_MARK & 0xFF, data[1:-2]
 
@@ -360,8 +363,11 @@ class Stick:
         return parse(self.feed(frame(svc, op, seq, payload)))
 
     def quick(self, count, data=b""):
-        """One short request. Returns the reply's (count, three bytes)."""
-        return parse_short(self.feed(short_frame(count, data)))
+        """One short request. Returns the reply's (count, data), or None if
+        there was no reply."""
+        request = short_frame(count, data)
+        reply = self.feed(request)
+        return parse_short(reply, request) if reply else None
 
     def hello(self, app=b"TEST", version=1, reply_max=proto.NESP_PAYLOAD_MAX, services=()):
         payload = bytes((proto.NESP_PROTOCOL,)) + app + bytes((version, reply_max))

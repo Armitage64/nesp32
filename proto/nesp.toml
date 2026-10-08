@@ -31,13 +31,13 @@ REPLY_MIN = 16          # and the least a hello may ask for
 CRC_POLY = 0x1021
 CRC_INIT = 0xFFFF
 # A short frame, for a service asked something small in every frame of a
-# game: a marker whose low two bits are a count, three bytes and the CRC of
-# those four.
+# game: a marker whose low two bits are a count, two or three bytes, and a
+# CRC. Every byte of one is 200 cycles and more of a console's frame.
 SHORT_REQUEST = 0xD0
 SHORT_REPLY = 0xB0
 SHORT_MARK = 0xFC       # the bits of a short frame's first byte that are its marker
-SHORT_DATA = 3
-SHORT = 6               # the whole of one, in bytes
+SHORT_DATA = 3          # the most bytes of data in one
+SHORT_MAX = 6           # the longest, in bytes
 SHORT_NONE = 3          # a short reply's count when nothing could answer
 APP_ID = 4              # characters in a hello's application id
 

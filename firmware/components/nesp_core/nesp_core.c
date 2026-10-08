@@ -223,23 +223,37 @@ static size_t answer(nesp_link_t *link, const uint8_t *frame, uint8_t *out)
     return total;
 }
 
-/* The reply to a short request, written to out. Returns its length. */
+/* How long a short request with this first byte is. */
+static size_t short_length(uint8_t first)
+{
+    return (size_t)((first & (uint8_t)~NESP_SHORT_MARK) < 2 ? 5 : 6);
+}
+
+/* The reply to a short request, written to out. Returns its length, 0 for
+ * none. Its CRC begins with the request's first byte of data, which a
+ * console that asked something else since would not have sent. */
 static size_t answer_short(nesp_link_t *link, const uint8_t *frame, uint8_t *out)
 {
+    uint8_t summed[2 + NESP_SHORT_DATA];
     uint8_t count = NESP_SHORT_NONE;
-    memset(out, 0, NESP_SHORT);
+    int length = 1;
+    out[1] = out[2] = 0;
     for (uint8_t index = 0; index < link->count; index++) {
         const nesp_service_t *service = link->slots[index].service;
         if (link->slots[index].active && service->quick != NULL) {
-            count = service->quick(service->ctx, frame[0] & (uint8_t)~NESP_SHORT_MARK,
-                                   frame + 1, out + 1);
+            length = service->quick(service->ctx, frame[0] & (uint8_t)~NESP_SHORT_MARK,
+                                    frame + 1, &count, out + 1);
             break;
         }
     }
+    if (length < 1 || length > 2) {
+        return 0;
+    }
     out[0] = (uint8_t)(NESP_SHORT_REPLY | (count & (uint8_t)~NESP_SHORT_MARK));
-    nesp_checks(out, 1 + NESP_SHORT_DATA, out + 1 + NESP_SHORT_DATA,
-                out + 2 + NESP_SHORT_DATA);
-    return NESP_SHORT;
+    summed[0] = frame[1];
+    memcpy(summed + 1, out, (size_t)(1 + length));
+    nesp_checks(summed, (size_t)(2 + length), out + 1 + length, out + 2 + length);
+    return (size_t)(3 + length);
 }
 
 size_t nesp_link_feed(nesp_link_t *link, const uint8_t *data, size_t len, uint8_t *out)
@@ -272,18 +286,19 @@ size_t nesp_link_feed(nesp_link_t *link, const uint8_t *data, size_t len, uint8_
     bool found = false;
     while (at < count) {
         if ((rx[at] & NESP_SHORT_MARK) == NESP_SHORT_REQUEST) {
-            /* A short request: its length is known, and its CRC takes in
-             * the marker. */
+            /* A short request: its length is its count's to say, and its
+             * CRC takes in the marker. */
             uint8_t a, b;
-            if (at + NESP_SHORT > count) {
+            size_t total = short_length(rx[at]);
+            if (at + total > count) {
                 if (pending == count) {
                     pending = at;
                 }
                 at++;
                 continue;
             }
-            nesp_checks(rx + at, 1 + NESP_SHORT_DATA, &a, &b);
-            if (a != rx[at + NESP_SHORT - 2] || b != rx[at + NESP_SHORT - 1]) {
+            nesp_checks(rx + at, total - 2, &a, &b);
+            if (a != rx[at + total - 2] || b != rx[at + total - 1]) {
                 at++;
                 continue;
             }
@@ -293,8 +308,8 @@ size_t nesp_link_feed(nesp_link_t *link, const uint8_t *data, size_t len, uint8_
             found = true;
             newest = at;
             link->counters.requests++;
-            framed += NESP_SHORT;
-            at += NESP_SHORT;
+            framed += total;
+            at += total;
             pending = count;
             continue;
         }
