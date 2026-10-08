@@ -24,6 +24,8 @@ typedef struct {
     nesp_hal_t hal;
     nesp_wifi_t wifi;
     uint8_t battery;
+    uint8_t drive;                  /* NESP_DRIVE_*: set by the caller, as a computer would */
+    uint32_t drive_stops;           /* times it was told to stop: a nesp32 restarts */
     bool time_known;
     uint32_t seconds;
     uint8_t scan_state;
@@ -101,6 +103,21 @@ static const char *hal_board_name(void *ctx)
 static uint8_t hal_battery(void *ctx)
 {
     return ((host_t *)ctx)->battery;
+}
+
+static uint8_t hal_drive(void *ctx, uint8_t lend)
+{
+    host_t *host = ctx;
+    if (host->drive == NESP_DRIVE_NONE) {
+        return NESP_DRIVE_NONE;
+    }
+    if (lend == NESP_LEND_START && host->drive == NESP_DRIVE_OFF) {
+        host->drive = NESP_DRIVE_WAITING;
+    } else if (lend == NESP_LEND_STOP && host->drive != NESP_DRIVE_OFF) {
+        host->drive = NESP_DRIVE_OFF;
+        host->drive_stops++;
+    }
+    return host->drive;
 }
 
 static bool hal_time(void *ctx, uint32_t *seconds)
@@ -409,6 +426,7 @@ host_t *host_new(void)
     host->hal.board = hal_board;
     host->hal.board_name = hal_board_name;
     host->hal.battery = hal_battery;
+    host->hal.drive = hal_drive;
     host->hal.time = hal_time;
     host->hal.wifi = hal_wifi;
     host->hal.scan_start = hal_scan_start;
@@ -443,6 +461,7 @@ host_t *host_new(void)
     host->hal.peer_noted = hal_peer_noted;
     host->hal.peer_spread = hal_peer_spread;
     host->battery = 0xFF;
+    host->drive = NESP_DRIVE_OFF;
     nesp_stick_init(&host->stick, &host->hal);
     return host;
 }
@@ -504,6 +523,14 @@ void host_set_battery(host_t *host, uint8_t percent)
 {
     host->battery = percent;
 }
+
+void host_set_drive(host_t *host, uint8_t state)
+{
+    host->drive = state;
+}
+
+uint8_t host_drive(const host_t *host) { return host->drive; }
+uint32_t host_drive_stops(const host_t *host) { return host->drive_stops; }
 
 void host_set_time(host_t *host, bool known, uint32_t seconds)
 {
@@ -899,3 +926,18 @@ size_t host_extract_text_len(const host_extract_t *out) { return out->text_len; 
 const uint8_t *host_extract_text(const host_extract_t *out) { return out->text; }
 bool host_extract_found(const host_extract_t *out) { return out->extract.found; }
 bool host_extract_done(const host_extract_t *out) { return out->extract.done; }
+
+/* --- the converter of rips (vgm.c) ------------------------------------------- */
+
+/* The .jbs file of an uncompressed .vgm, into out. Returns its length; 0 if
+ * the rip cannot be played or does not fit. */
+size_t host_vgm_to_jbs(const uint8_t *vgm, size_t len, const char *name, uint8_t *out, size_t max)
+{
+    nesp_vgm_t *work = malloc(sizeof(*work));
+    size_t made = 0;
+    if (work == NULL || !nesp_vgm_to_jbs(work, vgm, len, name, out, max, &made)) {
+        made = 0;
+    }
+    free(work);
+    return made;
+}

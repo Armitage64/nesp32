@@ -215,6 +215,27 @@ def test_time(stick):
     assert stick.ask(SYS, p.NESP_SYS_TIME).payload == bytes((1, 0x00, 0x21, 0x43, 0x65))
 
 
+def test_the_files_are_lent_to_a_computer_as_a_drive_and_taken_back(stick):
+    def drive(lend):
+        return stick.ask(SYS, p.NESP_SYS_DRIVE, bytes((lend,))).payload
+
+    assert drive(p.NESP_LEND_ASK) == bytes((p.NESP_DRIVE_OFF,))
+    assert drive(p.NESP_LEND_STOP) == bytes((p.NESP_DRIVE_OFF,)) and stick.drive_stops == 0
+    assert drive(p.NESP_LEND_START) == bytes((p.NESP_DRIVE_WAITING,))
+    stick.set_drive(p.NESP_DRIVE_MOUNTED)                   # a computer takes it
+    assert drive(p.NESP_LEND_START) == bytes((p.NESP_DRIVE_MOUNTED,))
+    assert drive(p.NESP_LEND_ASK) == bytes((p.NESP_DRIVE_MOUNTED,))
+    assert drive(p.NESP_LEND_STOP) == bytes((p.NESP_DRIVE_OFF,)) and stick.drive_stops == 1
+    assert stick.ask(SYS, p.NESP_SYS_DRIVE).status == p.NESP_ST_BAD_ARG
+    assert stick.ask(SYS, p.NESP_SYS_DRIVE, bytes((3,))).status == p.NESP_ST_BAD_ARG
+
+
+def test_a_board_that_cannot_be_a_drive_says_so(stick):
+    stick.set_drive(p.NESP_DRIVE_NONE)
+    for lend in (p.NESP_LEND_ASK, p.NESP_LEND_START, p.NESP_LEND_STOP):
+        assert stick.ask(SYS, p.NESP_SYS_DRIVE, bytes((lend,))).payload == bytes((p.NESP_DRIVE_NONE,))
+
+
 def test_events_raise_attention_on_every_reply_until_they_are_taken(stick):
     assert not stick.ask(SYS, p.NESP_SYS_STATUS).attention
     stick.event(p.NESP_EVENT_BUTTON_A)

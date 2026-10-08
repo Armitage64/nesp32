@@ -44,6 +44,11 @@ def library():
                                       ctypes.c_int8, ctypes.c_char_p]
         lib.host_set_saved.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint8]
         lib.host_set_battery.argtypes = [ctypes.c_void_p, ctypes.c_uint8]
+        lib.host_set_drive.argtypes = [ctypes.c_void_p, ctypes.c_uint8]
+        lib.host_drive.restype = ctypes.c_uint8
+        lib.host_drive.argtypes = [ctypes.c_void_p]
+        lib.host_drive_stops.restype = ctypes.c_uint32
+        lib.host_drive_stops.argtypes = [ctypes.c_void_p]
         lib.host_set_time.argtypes = [ctypes.c_void_p, ctypes.c_bool, ctypes.c_uint32]
         lib.host_scan_clear.argtypes = [ctypes.c_void_p]
         lib.host_scan_add.restype = ctypes.c_bool
@@ -81,6 +86,9 @@ def library():
                                         ctypes.c_char_p]
         lib.host_to_ascii.restype = ctypes.c_int
         lib.host_to_ascii.argtypes = [ctypes.c_uint32, ctypes.c_char_p]
+        lib.host_vgm_to_jbs.restype = ctypes.c_size_t
+        lib.host_vgm_to_jbs.argtypes = [ctypes.c_char_p, ctypes.c_size_t, ctypes.c_char_p,
+                                        ctypes.c_char_p, ctypes.c_size_t]
         lib.host_wiki_url.restype = ctypes.c_size_t
         lib.host_wiki_url.argtypes = [ctypes.c_char_p, ctypes.c_size_t, ctypes.c_char_p,
                                       ctypes.c_size_t]
@@ -389,6 +397,19 @@ class Stick:
 
     def set_battery(self, percent):
         self._lib.host_set_battery(self._host, percent)
+
+    def set_drive(self, state):
+        """How the nesp32's files stand as a USB drive (NESP_DRIVE_*), as a
+        computer taking it or letting it go would make it."""
+        self._lib.host_set_drive(self._host, state)
+
+    @property
+    def drive(self):
+        return self._lib.host_drive(self._host)
+
+    @property
+    def drive_stops(self):
+        return self._lib.host_drive_stops(self._host)
 
     def set_time(self, seconds):
         self._lib.host_set_time(self._host, seconds is not None, seconds or 0)
@@ -772,6 +793,15 @@ def to_ascii(code):
     out = ctypes.create_string_buffer(4)
     count = library().host_to_ascii(code, out)
     return None if count < 0 else out.raw[:count]
+
+
+def vgm_to_jbs(data, name=None, room=1 << 20):
+    """The .jbs file the firmware makes of an uncompressed .vgm, or None if
+    it makes none. name is the title of a rip that has none of its own."""
+    out = ctypes.create_string_buffer(room)
+    name = name.encode("utf-8") if isinstance(name, str) else name
+    length = library().host_vgm_to_jbs(bytes(data), len(data), name, out, room)
+    return out.raw[:length] if length else None
 
 
 def wiki_url(query):

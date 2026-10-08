@@ -115,6 +115,17 @@ static void event(nesp_sys_t *sys, nesp_reply_t *reply)
     nesp_link_set_attention(sys->link, sys->event_count != 0);
 }
 
+static void drive(nesp_sys_t *sys, const nesp_request_t *request, nesp_reply_t *reply)
+{
+    if (request->len != 1 || request->data[0] > NESP_LEND_STOP) {
+        reply->status = NESP_ST_BAD_ARG;
+        return;
+    }
+    reply->data[0] = sys->hal->drive != NULL ? sys->hal->drive(sys->hal->ctx, request->data[0])
+                                             : NESP_DRIVE_NONE;
+    reply->len = 1;
+}
+
 static void handle(void *ctx, const nesp_request_t *request, nesp_reply_t *reply)
 {
     nesp_sys_t *sys = ctx;
@@ -130,6 +141,9 @@ static void handle(void *ctx, const nesp_request_t *request, nesp_reply_t *reply
         break;
     case NESP_SYS_INFO:
         info(sys, request, reply);
+        break;
+    case NESP_SYS_DRIVE:
+        drive(sys, request, reply);
         break;
     case NESP_SYS_TIME: {
         uint32_t seconds = 0;

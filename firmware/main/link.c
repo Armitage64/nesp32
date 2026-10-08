@@ -99,7 +99,15 @@ static void hear(const uart_event_t *event, int64_t arrived)
         return;                     /* a break or a framing error: the console's
                                        controller read, or a console that is off */
     }
-    size_t wanted = event->size < sizeof(heard) ? event->size : sizeof(heard);
+    /* Everything that has come, not only what this event tells of: the
+     * UART drops an event when its queue is full, and bytes read by the
+     * event would then lag behind for good, each request answered when a
+     * later one was heard. */
+    size_t wanted = 0;
+    uart_get_buffered_data_len(LINK_UART, &wanted);
+    if (wanted > sizeof(heard)) {
+        wanted = sizeof(heard);
+    }
     int count = uart_read_bytes(LINK_UART, heard, wanted, 0);
     if (count <= 0) {
         return;
@@ -130,6 +138,11 @@ static void link_task(void *arg)
     uint8_t pending[2];
     TickType_t wait = pdMS_TO_TICKS(IDLE_WAIT_MS);
 
+    /* The UART has been open since before the files were made ready, which
+     * can take seconds, with a console talking to it all the while: none
+     * of that is wanted now. */
+    uart_flush_input(LINK_UART);
+    xQueueReset(uart_events);
     for (;;) {
         if (xQueueReceive(uart_events, &event, wait) == pdTRUE) {
             hear(&event, esp_timer_get_time());

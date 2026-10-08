@@ -63,6 +63,11 @@ typedef struct {
     bool (*join)(void *ctx, const char *name, uint8_t name_len,
                  const char *password, uint8_t password_len);
     void (*forget)(void *ctx);
+    /* May be NULL: a board that cannot. The nesp32's files as a USB drive
+     * for a computer: asked for, or started, or stopped (NESP_LEND_*).
+     * Returns how it stands (NESP_DRIVE_*). The doing of it is another
+     * task's. */
+    uint8_t (*drive)(void *ctx, uint8_t lend);
     /* Shown on the Stick's screen: the application now on the console. */
     void (*app)(void *ctx, const char *id, uint8_t version);
     /* Fetch an https address, in place of any fetch under way. The reply
@@ -456,6 +461,21 @@ bool nesp_raw_owns_line(const nesp_raw_t *raw);
 
 /* What the UART heard while a run had the line. */
 void nesp_raw_heard(nesp_raw_t *raw, const uint8_t *data, size_t len);
+
+/* A rip of a NES game's music (an uncompressed .vgm) as the .jbs file that
+ * JUKE plays, into out (vgm.c). name is the title of one that has none of
+ * its own, and may be NULL. False if it is not such a rip, or cannot be
+ * played, or does not fit. work is somewhere to keep a frame of it. */
+#define NESP_VGM_FRAME_WRITES 512   /* a frame's writes to the chip, at most */
+typedef struct {
+    uint8_t writes[NESP_VGM_FRAME_WRITES][2];   /* register and value, as they came */
+    uint16_t count;
+    uint8_t kept[NESP_VGM_FRAME_WRITES][2];     /* those of them that go */
+    uint16_t events[2][NESP_VGM_FRAME_WRITES];
+} nesp_vgm_t;
+
+bool nesp_vgm_to_jbs(nesp_vgm_t *work, const uint8_t *vgm, size_t len, const char *name,
+                     uint8_t *out, size_t max, size_t *out_len);
 
 #ifdef __cplusplus
 }

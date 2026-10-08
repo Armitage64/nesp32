@@ -66,6 +66,7 @@ ECHO = 0x02             # the payload, back
 INFO = 0x03             # a string by number (enum INFO)
 TIME = 0x04             # the time of day, if the Stick knows it
 EVENT = 0x05            # the oldest event waiting
+DRIVE = 0x06            # the nesp32's files as a USB drive: ask, start or stop (enum LEND)
 
 [services.NET]
 id = 0x01
@@ -204,6 +205,18 @@ UNKNOWN = 0
 PLUS2 = 1
 S3 = 2
 HOST = 3                # a computer standing in for a Stick
+
+[enums.LEND]            # SYS DRIVE: what is asked of the drive
+ASK = 0                 # only how it is
+START = 1               # lend the files to a computer
+STOP = 2                # take them back: the nesp32 restarts
+
+[enums.DRIVE]           # and how it is
+NONE = 0                # this board cannot be one
+OFF = 1
+WAITING = 2             # it is one, and no computer has taken it
+MOUNTED = 3             # a computer has it
+EJECTED = 4             # the computer has let it go: the nesp32 is about to restart
 
 [enums.EVENT]
 NONE = 0

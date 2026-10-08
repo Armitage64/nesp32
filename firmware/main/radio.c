@@ -36,6 +36,7 @@
 #include "fetch.h"
 #include "link.h"
 #include "store.h"
+#include "usb.h"
 
 #define JOIN_TRIES 3
 #define RETRY_MS 15000
@@ -516,6 +517,7 @@ const nesp_hal_t *radio_hal(void)
     hal.board = hal_board;
     hal.board_name = hal_board_name;
     hal.battery = hal_battery;
+    hal.drive = usb_drive;
     hal.time = hal_time;
     hal.wifi = hal_wifi;
     hal.scan_start = hal_scan_start;

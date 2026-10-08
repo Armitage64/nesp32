@@ -18,6 +18,7 @@ yet.
 
 ![The status screen](docs/setup-status.png) ![Choosing a network](docs/setup-list.png)
 ![Typing a password](docs/setup-password.png) ![The link test](docs/setup-test.png)
+![The USB drive](docs/setup-usb.png)
 
 ## Status
 
@@ -36,13 +37,14 @@ figures were taken from those runs.
 | The protocol ([`docs/PROTOCOL.md`](docs/PROTOCOL.md)) | version 1: frames, hello, and the services SYS, NET (Wi-Fi) and DIAG |
 | The link and services in C (`firmware/components/`) | done; tested on a computer |
 | The console's library (`nes/lib/`) | done; every read and write timed on py65 |
-| The setup ROM (`nes/setup/`): status, Wi-Fi from the controller, link test | done; tested on a simulated console against the C code over a cycle-exact line |
+| The setup ROM (`nes/setup/`): status, Wi-Fi from the controller, link test, the USB drive | done; tested on a simulated console against the C code over a cycle-exact line |
 | The Stick's firmware (`firmware/main/`): UART, Wi-Fi, screen | working on a StickS3 and on a StickC Plus2, with the MiSTer and with a real NES |
 | A computer in place of a Stick (`host/serial_host.py`) | written, not run on a cable |
 | WIKI, NESpedia's service: an HTTPS fetch, the text laid out in lines | working on a StickS3 with the NESpedia ROM ([nes-wiki](apps/wiki)) |
 | RAW: a run of bytes with framing off, at a rate of its own, either way | working on a StickS3 with the MiSTer: a run to the console as the jukebox's sampled sound, and runs of the pattern both ways with the throughput test's ROM ([nes-jukebox](apps/jukebox/throughput)), to 298296 baud to the console and 223722 from it |
 | JUKE, the jukebox's service: the playlist as a stream, the buttons, sampled sound through RAW | working on a StickS3 with the jukebox's ROM ([nes-jukebox](apps/jukebox)) on the MiSTer; tested with that ROM on a simulated console |
-| The nesp32's files: the jukebox's tracks, in LittleFS (`firmware/main/store.c`, `tools/put_files.py`) | working on a StickS3: tracks written over USB are found and played |
+| The nesp32's files: the jukebox's tracks, in a FAT filing system (`firmware/main/store.c`, `tools/put_files.py`), with rips of games' music (`.vgm`, `.vgz`) made playable on the nesp32 itself (`firmware/components/nesp_services/vgm.c`) | builds for both boards, and the converter makes the same files as nes-jukebox's on a computer; not yet run on hardware. Before this the files were in LittleFS, and that worked on a StickS3 |
+| A StickS3 as a USB drive, for music to be copied to (`firmware/main/usb.c`, the setup ROM's USB screen) | builds, and the ROM's screen is tested on a simulated console; not yet run on hardware |
 | PEER, for two consoles playing one game: a lobby, and a lockstep relay of buttons between two nesp32s over datagrams (`firmware/main/conn.c`), with advice to each console on the delay it keeps | tested with nes-drmario's netplay ROM ([nes-drmario](apps/drmario)) and nes-contra's ([nes-contra](apps/contra), whose exchange is a short frame) on two simulated consoles, the game the same on both; the firmware builds for both boards with it. On hardware both ROMs have played network games, a real NES among the consoles; nes-contra's `docs/Netplay.md` has the figures taken from its sessions |
 | One cartridge (`nes/cart/`): the five programs and a menu, on an MMC1 | working on a real NES and on the MiSTer, with a StickC Plus2 and with a StickS3: the menu and every program. Tested on a simulated console: each program starts from the menu, and reset is the menu again |
 | A service for the radar | a number reserved; not started |
@@ -96,20 +98,41 @@ not would not start this cartridge.
 
 ## Music for the jukebox
 
-The jukebox's tracks are files in the nesp32's flash, and go there over
-USB:
+The jukebox's tracks are files in the nesp32's flash, in a folder called
+`tracks`, and are played in the order of their names. Rips of NES games'
+music go there as they are, `.vgm` or `.vgz`: the next time the nesp32
+starts it makes each into the stream the console plays, which its screen
+shows as `Converting 3/12`, and puts that in the rip's place as a `.jbs`
+file of the same name. So each is converted once, and the `.jbs` files on
+the drive are the music it has. A rip still there after a start is one that
+could not be played. There are about 3900 KB for them, and a track is a few
+kilobytes.
+
+**A StickS3** is given them as any USB drive is. Run the setup ROM with the
+StickS3 on controller port 2, choose Enable USB Drive on its status screen, and plug
+the StickS3 into a computer: a drive called `NESP32` appears. Copy the
+music into its `tracks` folder and eject the drive, and the nesp32 restarts
+with the music. (B on the console, or the nesp32's front button, also ends
+it; eject first.) While it is a drive its USB port is not the serial port
+it is flashed through, which comes back with the restart.
+
+**A StickC Plus2** cannot be a drive: its USB port is a serial port and
+nothing else. Its music is written from a computer, which needs ESP-IDF
+(the firmware's own build) to make the filing system:
 
 ```sh
-pip install littlefs-python esptool
-tools/put_files.py tracks/          # .jbs and .pcm files: the playlist, in name order
+pip install construct esptool
+tools/put_files.py music/           # .vgm, .vgz, .jbs and .pcm files: the playlist, in name order
 ```
 
-nes-jukebox makes the files and calls this itself (`tools/deploy.py`
-there, from a directory of rips and recordings). The tool builds the whole
-filing system on this computer and writes it over whatever tracks the
-nesp32 had, so the files named are the playlist. There are 3968 KB for
-them: a track of music is a few kilobytes, a minute of sampled sound 465
-to 1220.
+This builds the whole filing system on the computer and writes it over
+whatever tracks the nesp32 had, so the files named are the playlist. It
+works for a StickS3 too.
+
+Sampled sound is not converted on the nesp32. nes-jukebox makes `.pcm`
+files of recordings (`tools/deploy.py` there, which also calls
+`put_files.py`), and such a file copied to the drive plays: a minute of it
+is 465 to 1220 KB.
 
 ## The setup ROM
 
@@ -118,10 +141,11 @@ controller port 2, run the ROM, and use controller 1.
 
 | Screen | Buttons |
 |---|---|
-| Status: the Stick, its firmware, its Wi-Fi, address, signal, battery | A: Wi-Fi setup. B: link test |
+| Status: the Stick, its firmware, its Wi-Fi, address, signal, battery, and a menu: Wi-Fi setup, test interface, enable USB drive | Up, Down. A: choose |
 | Networks, strongest first, with a lock on those that want a password | Up, Down. A: choose. Select: look again. B: back |
 | Keyboard, for a password (or the name of a network that hides it) | D-pad. A: type. B: delete. Select: `abc`, `ABC`, `#+=`. Start: join |
 | Link test: a checked request every frame, and the Stick's time to reply | B: back |
+| USB drive: a StickS3's files lent to a computer, for music to be copied to | B: back, and the nesp32 restarts |
 
 Every printable character can be typed, and a password may be the full 63.
 The Stick saves the network and joins it by itself from then on. The
@@ -156,7 +180,8 @@ password goes to the Stick and is never sent back.
 | `firmware/components/nesp_core` | frames, CRC, services' registry |
 | `firmware/components/nesp_services` | SYS, NET, DIAG, WIKI, RAW, JUKE and PEER, and the text code WIKI lays articles out with |
 | `firmware/main` | the Stick: UART and link task, Wi-Fi, HTTPS fetches, the connection to another nesp32, files, screen and buttons |
-| `tools/put_files.py` | puts the jukebox's tracks on a nesp32, over USB |
+| `tools/put_files.py` | puts the jukebox's tracks on a nesp32, over USB, for a board that cannot be a drive |
+| `tools/lcd.py` | pictures of the nesp32's own screen, for trying a layout before flashing it |
 | `nes/lib/nesp.inc`, `nes/lib/gen_link.py` | the console's library, and its cycle-timed serial routines |
 | `nes/setup/` | the setup ROM |
 | `nes/cart/` | the cartridge: its menu, and the tool that puts the five programs on it |
@@ -190,6 +215,9 @@ make test
 - `test_peer_net.py`: a computer's stand-in for that network, on real
   sockets on this machine.
 - `test_put_files.py`: the image of the tracks that goes over USB.
+- `test_vgm.py`: the converter of rips, held to the same bytes as
+  nes-jukebox's Python over its rips, over made-up ones, and over 300 made
+  at random.
 - `test_setup.py`: every screen of the setup ROM worked with the
   controller, to a network joined with a password of every character.
 - `test_cart.py`: the cartridge on a console with its mapper: every

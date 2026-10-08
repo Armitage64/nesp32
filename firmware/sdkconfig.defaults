@@ -11,6 +11,16 @@ CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 
+# The files are FAT, for a computer to read when the partition is lent to
+# it as a drive: with the names people give music, and in sectors of 512
+# bytes, which is what every computer takes a drive's to be. The wear
+# levelling is left in its safe mode, the slower one: a drive gets its cable
+# pulled.
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_API_ENCODING_UTF_8=y
+CONFIG_FATFS_USE_LABEL=y
+CONFIG_WL_SECTOR_SIZE_512=y
+
 # Built for speed, not size: the 80 KB that building for size saves was
 # judged not worth what it might cost.
 CONFIG_COMPILER_OPTIMIZATION_PERF=y

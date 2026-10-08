@@ -47,6 +47,9 @@ SCREENS = {
     "drmario-joining": ("NES: Dr. Mario", WIFI, ADDRESS, "Joining the game", REQ),
     "drmario-playing": ("NES: Dr. Mario", WIFI, "Player 2") + PLAYING,
     "drmario-lost": ("NES: Dr. Mario", WIFI, "Player 2: peer disconnected", PLAYING[0], REQ),
+    "converting": ("Converting 3/12",),
+    "usb-waiting": ("NES: Setup", WIFI, "USB drive", "Plug into a computer", REQ),
+    "usb-mounted": ("NES: Setup", WIFI, "USB drive", "Eject it when done", REQ),
 }
 
 

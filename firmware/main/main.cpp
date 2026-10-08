@@ -9,7 +9,8 @@
 // services it needs (docs/PROTOCOL.md, "Hello"), and the screen shows it.
 //
 //   A (front)        told to the service in use that wants it (the jukebox's:
-//                    play or pause), or else to the console
+//                    play or pause), or else to the console; while the files
+//                    are a USB drive, the end of that (the nesp32 restarts)
 //   B (side)         the same (previous track); held for 2 s, power off
 //   power, tapped    the same (next track)
 #include <M5Unified.h>
@@ -30,6 +31,7 @@
 #include "link.h"
 #include "radio.h"
 #include "store.h"
+#include "usb.h"
 
 namespace {
 
@@ -97,6 +99,15 @@ void split(const char *text, char *first, char *second)
     std::strcpy(second, text + cut + (text[cut] == ' '));
 }
 
+// While the store makes the rips of music playable, at start.
+void converting(unsigned rip, unsigned of)
+{
+    char text[40];
+    std::snprintf(text, sizeof(text), "Converting %u/%u", rip, of);
+    line(0, "NESP32 " NESP_FIRMWARE_TEXT);
+    line(1, text);
+}
+
 void draw()
 {
     char text[40];
@@ -138,7 +149,13 @@ void draw()
     char said[2][RADIO_SHOWN_MAX];
     radio_shown(0, said[0]);
     radio_shown(1, said[1]);
-    if (console && (said[0][0] != 0 || said[1][0] != 0)) {
+    uint8_t drive = usb_drive_state();
+    if (drive != NESP_DRIVE_NONE && drive != NESP_DRIVE_OFF) {
+        // The files are lent to a computer (usb.c), and that comes first.
+        line(row++, "USB drive");
+        line(row++, drive == NESP_DRIVE_WAITING ? "Plug into a computer"
+                    : drive == NESP_DRIVE_MOUNTED ? "Eject it when done" : "Restarting");
+    } else if (console && (said[0][0] != 0 || said[1][0] != 0)) {
         if (said[1][0] == 0) {
             char whole[RADIO_SHOWN_MAX];
             std::strcpy(whole, said[0]);
@@ -176,6 +193,7 @@ void draw()
 
 extern "C" void app_main(void)
 {
+    usb_start();
     auto config = M5.config();
     M5.begin(config);
     M5.Display.setRotation(1);
@@ -188,7 +206,7 @@ extern "C" void app_main(void)
     // files next: a ROM that asks for them is not answered until they are
     // there to be listed.
     link_open();
-    store_start();
+    store_start(converting);
     link_start(radio_hal());
     radio_start();
     ESP_LOGI(TAG, "nesp32 %s on a %s", NESP_FIRMWARE_TEXT, BOARD_NAME);
@@ -199,8 +217,14 @@ extern "C" void app_main(void)
     uint32_t watch_at = 0;
     for (;;) {
         M5.update();
+        usb_poll();
+        uint8_t drive = usb_drive_state();
         if (M5.BtnA.wasPressed()) {
-            link_event(NESP_EVENT_BUTTON_A, 0);
+            if (drive != NESP_DRIVE_NONE && drive != NESP_DRIVE_OFF) {
+                usb_drive(nullptr, NESP_LEND_STOP);     // a way out with no console
+            } else {
+                link_event(NESP_EVENT_BUTTON_A, 0);
+            }
         }
         if (M5.BtnB.wasPressed()) {
             link_event(NESP_EVENT_BUTTON_B, 0);

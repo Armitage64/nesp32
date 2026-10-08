@@ -1,8 +1,9 @@
 ; The status screen: what the Stick is and how it is. The first screen, and
 ; the one every other comes back to.
 ;
-;   A    set up Wi-Fi
-;   B    test the link
+;   Up, Down    move the arrow among what can be done from here
+;   A           do it: set up Wi-Fi, test the link, or lend the nesp32's
+;               files to a computer as a USB drive
 ;
 ; Every few frames it does one step of a round: say hello if the Stick has
 ; not been heard from, ask for something, and write the line that shows it.
@@ -22,7 +23,13 @@ LINE_ADDRESS  = 5
 LINE_SIGNAL   = 6
 LINE_BATTERY  = 7
 
+; The menu, under the lines.
+MENU_ROW    = BODY_ROW + 9
+MENU_COLUMN = LEFT + 2          ; after the arrow
+MENU_ITEMS  = 3
+
 .segment "ZEROPAGE"
+menu_item:     .res 1           ; where the arrow is
 status_step:   .res 1
 hello_status:  .res 1           ; what the Stick said to the last hello
 ; SYS STATUS, as it came: Wi-Fi state, signal, address (4), battery, events.
@@ -43,7 +50,10 @@ status_screen:
     label BODY_ROW + LINE_ADDRESS, LEFT, "ADDRESS"
     label BODY_ROW + LINE_SIGNAL, LEFT, "SIGNAL"
     label BODY_ROW + LINE_BATTERY, LEFT, "BATTERY"
-    text  HELP_ROW, LEFT, "A:WI-FI SETUP   B:LINK TEST"
+    text  MENU_ROW, MENU_COLUMN, "WI-FI SETUP"
+    text  MENU_ROW + 1, MENU_COLUMN, "TEST INTERFACE"
+    text  MENU_ROW + 2, MENU_COLUMN, "ENABLE USB DRIVE"
+    text  HELP_ROW, LEFT, "UP/DOWN:MOVE  A:CHOOSE"
     .byte 0
 
 ; Which line each step of the round writes, and what works it out.
@@ -90,7 +100,23 @@ wifi_failed:   .byte "COULD NOT JOIN", 0
     sta state
     lda #STATUS_STEPS - 1       ; the round begins with the hello
     sta status_step
-    rts
+    lda #0
+    sta menu_item
+    ; fall through
+.endproc
+
+; The arrow, at the menu's item.
+.proc menu_arrow
+    lda menu_item
+    asl a
+    asl a
+    asl a
+    clc
+    adc #8 * MENU_ROW
+    tay
+    ldx #LIST_ARROW_X
+    lda #TILE_ARROW
+    jmp cursor_at
 .endproc
 
 .proc status_frame
@@ -117,16 +143,36 @@ wifi_failed:   .byte "COULD NOT JOIN", 0
     ldy #VALUE_WIDTH
     jsr stage_pad
 @input:
-    lda linked
+    lda pad_new
+    and #PAD_UP
+    beq @down
+    lda menu_item
+    beq @down
+    dec menu_item
+    jsr menu_arrow
+@down:
+    lda pad_new
+    and #PAD_DOWN
+    beq @choose
+    lda menu_item
+    cmp #MENU_ITEMS - 1
+    bcs @choose
+    inc menu_item
+    jsr menu_arrow
+@choose:
+    lda linked                  ; nothing can be done without a nesp32
     beq @done
     lda pad_new
     and #PAD_A
+    beq @done
+    ldx menu_item
+    beq @wifi
+    dex
     beq @test
+    jmp open_usb
+@wifi:
     jmp open_scan
 @test:
-    lda pad_new
-    and #PAD_B
-    beq @done
     jmp open_test
 @done:
     rts

@@ -115,11 +115,15 @@ writes.
 
 ## Music on a nesp32
 
-The nesp32 holds the tracks, as files in its flash. With it on USB, and
-already running [nesp32's firmware](../../firmware/README.md):
+The nesp32 holds the tracks, as files in its flash. Rips (`.vgm`, `.vgz`)
+need nothing from here any more: the nesp32 converts them itself, and a
+StickS3 takes them as a USB drive (the top [README](../../README.md),
+"Music for the jukebox"). What follows is for recordings, which are
+converted here, and for writing a whole playlist at once. With the nesp32
+on USB, and already running [nesp32's firmware](../../firmware/README.md):
 
 ```sh
-pip install littlefs-python esptool
+pip install construct esptool
 tools/deploy.py                              # everything in music/
 tools/deploy.py music/a.vgz music/b.mp3      # these, in this order
 tools/deploy.py -p /dev/cu.usbserial-XXXX music/

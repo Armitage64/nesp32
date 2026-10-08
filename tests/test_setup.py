@@ -13,7 +13,8 @@ import pytest
 from console import VBLANK_CYCLES
 from drive import (PAD_A, PAD_B, PAD_DOWN, PAD_SELECT, PAD_START, PAD_UP, STATE_FAILED,
                    STATE_JOINING, STATE_KEYS, STATE_LIST, STATE_SCAN, STATE_STATUS, STATE_TEST,
-                   Setup)
+                   STATE_USB, Setup)
+from drive import MENU_TEST, MENU_USB
 from nesp import Stick
 from wire import link, ms
 
@@ -210,7 +211,8 @@ def test_select_looks_again_and_b_goes_back(setup):
     assert s.listed()[:2] == [("Cafe", False, 2), ("OTHER NETWORK...", False, 0)]
     s.press(PAD_B)
     s.wait_for(STATE_STATUS)
-    assert s.heading == "STATUS" and s.c.sprite() is None       # and the arrow is gone
+    # and the arrow is the status screen's own, at the top of its menu
+    assert s.heading == "STATUS" and s.c.sprite()[1] == 8 * (layout.BODY_ROW + 9)
 
 
 def test_a_scan_the_stick_never_finishes_is_given_up(setup):
@@ -524,7 +526,7 @@ def test_the_link_test_counts_good_exchanges(setup):
     s = setup()
     s.stick.note_turnaround(140)
     s.stick.note_turnaround(95)
-    s.press(PAD_B)
+    s.menu(MENU_TEST)
     s.wait_for(STATE_TEST)
     assert s.heading == "LINK TEST"
     s.c.run(200)
@@ -546,7 +548,7 @@ def test_the_link_test_counts_good_exchanges(setup):
 
 def test_the_link_test_tells_wrong_from_missing(setup):
     s = setup()
-    s.press(PAD_B)
+    s.menu(MENU_TEST)
     s.wait_for(STATE_TEST)
     generator = random.Random(11)
     seen = {"wrong": 0, "lost": 0}
@@ -585,13 +587,114 @@ def test_the_link_test_tells_wrong_from_missing(setup):
 
 # --- the picture -----------------------------------------------------------------
 
+# --- the menu --------------------------------------------------------------------
+
+def test_the_status_screens_menu_is_worked_with_an_arrow(setup):
+    s = setup()
+    row = layout.BODY_ROW + 9
+    assert [s.c.text(row + item, layout.LEFT + 2, 16).rstrip() for item in range(3)] \
+        == ["WI-FI SETUP", "TEST INTERFACE", "ENABLE USB DRIVE"]
+
+    def arrow():
+        x, y, tile = s.c.sprite()
+        assert x == 8 * layout.LEFT and s.tile_names()[tile] == "ARROW"
+        return (y - 8 * row) // 8
+
+    assert arrow() == 0
+    s.press(PAD_UP)
+    assert arrow() == 0                         # it stops at the ends
+    for expected in (1, 2, 2):
+        s.press(PAD_DOWN)
+        assert arrow() == expected
+    s.press(PAD_UP)
+    assert arrow() == 1
+    s.press(PAD_B)
+    s.press(PAD_SELECT)
+    s.c.run(10)
+    assert s.state == STATE_STATUS              # only A chooses
+    s.press(PAD_A)
+    s.wait_for(STATE_TEST)
+    s.press(PAD_B)
+    s.wait_for(STATE_STATUS)
+    assert arrow() == 0                         # and it is at the top again
+
+
+# --- the USB drive ---------------------------------------------------------------
+
+def test_select_lends_the_files_to_a_computer_and_says_how_that_stands(setup):
+    s = setup()
+    assert s.stick.drive == p.NESP_DRIVE_OFF
+    s.menu(MENU_USB)
+    s.wait_for(STATE_USB)
+    assert s.heading == "USB DRIVE"
+    s.wait_for_message("WAITING FOR A COMPUTER")
+    assert s.stick.drive == p.NESP_DRIVE_WAITING
+    s.stick.set_drive(p.NESP_DRIVE_MOUNTED)
+    s.wait_for_message("THE USB DRIVE IS MOUNTED")
+    s.stick.set_drive(p.NESP_DRIVE_EJECTED)
+    s.wait_for_message("EJECTED. RESTARTING...")
+    assert s.stick.drive_stops == 0
+
+
+def test_b_takes_the_files_back_and_goes_back(setup):
+    s = setup()
+    s.menu(MENU_USB)
+    s.wait_for_message("WAITING FOR A COMPUTER")
+    s.stick.set_drive(p.NESP_DRIVE_MOUNTED)
+    s.wait_for_message("THE USB DRIVE IS MOUNTED")
+    s.press(PAD_B)
+    s.wait_for(STATE_STATUS)
+    assert s.stick.drive_stops == 1 and s.stick.drive == p.NESP_DRIVE_OFF
+    s.settle(80)
+    assert s.value("NESP32") == "CONNECTED"
+
+
+def test_a_nesp32_that_has_restarted_out_of_being_a_drive_is_seen_to_have(setup):
+    s = setup()
+    s.menu(MENU_USB)
+    s.wait_for_message("WAITING FOR A COMPUTER")
+    s.stick.set_drive(p.NESP_DRIVE_OFF)         # as one is that has started again
+    s.wait_for(STATE_STATUS)
+    assert s.stick.drive_stops == 0
+
+
+def test_a_drive_too_busy_to_answer_is_waited_for(setup):
+    # While a computer writes to it the nesp32 misses requests, many in a
+    # row: that is not its going away.
+    s = setup()
+    s.menu(MENU_USB)
+    s.wait_for_message("WAITING FOR A COMPUTER")
+    s.port.deaf = True
+    s.c.run(400)
+    assert s.state == STATE_USB and s.message == "WAITING FOR A COMPUTER"
+    s.port.deaf = False
+    s.stick.set_drive(p.NESP_DRIVE_MOUNTED)
+    s.wait_for_message("THE USB DRIVE IS MOUNTED")
+    s.stick.set_drive(p.NESP_DRIVE_OFF)         # ejected, and it has started again
+    s.wait_for(STATE_STATUS)
+    s.settle(200)
+    assert s.value("NESP32") == "CONNECTED"
+
+
+def test_a_board_that_cannot_be_a_drive_says_so(setup):
+    s = setup()
+    s.stick.set_drive(p.NESP_DRIVE_NONE)
+    s.menu(MENU_USB)
+    s.wait_for_message("THIS BOARD CANNOT BE A DRIVE")
+    s.c.run(100)
+    assert s.state == STATE_USB
+    s.press(PAD_B)
+    s.wait_for(STATE_STATUS)
+    assert s.stick.drive_stops == 0
+
+
 def test_the_nmi_is_over_well_inside_the_vblank(setup):
     s = setup()
     s.scan(NETWORKS)
     s.choose(0)
     s.wait_for(STATE_KEYS)
     s.type("abc")
-    s.press(PAD_SELECT)
+    s.menu(MENU_USB)
     s.settle(20)
     s.press(PAD_START)
     s.wait_for(STATE_JOINING)

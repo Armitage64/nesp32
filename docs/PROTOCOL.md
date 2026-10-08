@@ -224,6 +224,7 @@ Multi-byte numbers are low byte first, except the CRC.
 | `$03` | INFO | which string | its characters, cut to `REPLY_MAX` |
 | `$04` | TIME | | `KNOWN`, `SECONDS[4]` since 1970 |
 | `$05` | EVENT | | `CODE`, `ARG`: the oldest event waiting, or 0, 0 |
+| `$06` | DRIVE | `LEND` | `DRIVE`: how the nesp32's files stand as a USB drive |
 
 - `WIFI`: 0 none set up, 1 not joined, 2 joining, 3 joined, 4 the last
   join failed.
@@ -231,6 +232,14 @@ Multi-byte numbers are low byte first, except the CRC.
 - `BATTERY`: percent, or `$FF` if the Stick cannot tell.
 - INFO's strings: 0 the firmware's version, 1 the board's name, 2 the
   saved network's name, 3 the application of the last hello.
+- DRIVE lends the nesp32's files (the jukebox's music) to a computer on its
+  USB port, as a drive. `LEND`: 0 only ask, 1 start, 2 stop. `DRIVE`: 0 this
+  board cannot be a drive (a StickC Plus2: its USB port is a serial port and
+  nothing else), 1 off, 2 a drive that no computer has taken, 3 a computer
+  has it, 4 the computer has ejected it. The nesp32 has no files of its own
+  while it is a drive. It stops being one by restarting, when it is told to
+  stop or the computer ejects it, and a ROM then hears nothing until it has
+  said hello again.
 - Events: 1 button A, 2 button B, 3 the power button. Eight are kept; more
   are dropped. A service in use may take a button for itself, and the
   console then hears nothing of it: JUKE takes all three.

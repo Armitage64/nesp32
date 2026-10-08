@@ -1,0 +1,6 @@
+# The StickC Plus2's ESP32-PICO-V3-02 is revision 3 of the chip (v3.1 on the
+# one looked at). Saying so leaves out what earlier revisions need to use
+# PSRAM at all, a copy of the C library in the memory code runs from while
+# the flash is busy, which that memory was otherwise full of. A firmware
+# built this way does not start on an older chip.
+CONFIG_ESP32_REV_MIN_3=y

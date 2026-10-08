@@ -13,9 +13,9 @@ order given; a directory's are in the order of their names.
 
 The nesp32 must already run nesp32's firmware (its firmware/README.md), at
 the top of this repository, or wherever NESP32 says. That tool
-needs littlefs-python and esptool:
+needs ESP-IDF (IDF_PATH), construct and esptool:
 
-    pip install littlefs-python esptool
+    pip install construct esptool
 """
 
 import argparse

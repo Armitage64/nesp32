@@ -21,8 +21,8 @@ for path in (BUILD, "host", "tests", os.path.join("nes", "setup")):
 import gen_screen as layout  # noqa: E402
 import nesp_proto as p  # noqa: E402
 from console import Console  # noqa: E402
-from drive import (PAD_B, PAD_DOWN, PAD_START, STATE_FAILED, STATE_JOINING, STATE_KEYS,  # noqa: E402
-                   STATE_STATUS, STATE_TEST, Setup)
+from drive import (MENU_TEST, MENU_USB, PAD_B, PAD_DOWN, PAD_START, STATE_FAILED, STATE_JOINING, STATE_KEYS,  # noqa: E402
+                   STATE_STATUS, STATE_TEST, STATE_USB, Setup)
 from nesp import Stick  # noqa: E402
 from wire import link  # noqa: E402
 
@@ -83,10 +83,19 @@ def main(argv):
 
     stick.note_turnaround(212)
     stick.note_turnaround(148)
-    setup.press(PAD_B)
+    setup.menu(MENU_TEST)
     setup.wait_for(STATE_TEST)
     console.run(700)
     save("setup-test", console)
+
+    setup.press(PAD_B)
+    setup.wait_for(STATE_STATUS)
+    setup.menu(MENU_USB)
+    setup.wait_for(STATE_USB)
+    stick.set_drive(p.NESP_DRIVE_MOUNTED)
+    setup.wait_for_message("THE USB DRIVE IS MOUNTED")
+    setup.settle(10)
+    save("setup-usb", console)
 
     cart = os.path.join(BUILD, "nesp32.nes")
     if os.path.exists(cart):

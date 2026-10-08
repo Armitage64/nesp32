@@ -1,2 +1,10 @@
 # The StickS3's ESP32-S3-PICO-1-N8R8: 8 MB of octal PSRAM.
 CONFIG_SPIRAM_MODE_OCT=y
+# The files as a USB drive (main/usb.c).
+CONFIG_TINYUSB_MSC_ENABLED=y
+# What the computer writes, taken a flash sector at a time: in pieces of 512
+# bytes each one costs an erase of the sector it is in.
+CONFIG_TINYUSB_MSC_BUFSIZE=4096
+CONFIG_TINYUSB_DESC_MANUFACTURER_STRING="nesp32"
+CONFIG_TINYUSB_DESC_PRODUCT_STRING="nesp32"
+CONFIG_TINYUSB_DESC_MSC_STRING="nesp32 files"

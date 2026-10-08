@@ -1,4 +1,8 @@
 dependencies:
   idf: ">=5.1"
   m5stack/m5unified: "*"
-  joltwallet/littlefs: "^1.14"
+  # The files as a USB drive, on the board whose USB port is the chip's own.
+  espressif/esp_tinyusb:
+    version: "^2.0.0"
+    rules:
+      - if: "target == esp32s3"

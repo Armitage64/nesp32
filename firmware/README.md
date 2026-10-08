@@ -35,8 +35,8 @@ USB, telling a StickS3 from a StickC Plus2 by the name of its port, and
 Flashing replaces whatever is on the Stick, UIFlow included; M5Burner
 brings UIFlow back.
 
-M5Unified and LittleFS (`joltwallet/littlefs`) are fetched by the
-component manager on the first build (`main/idf_component.yml`).
+M5Unified, and for a StickS3 TinyUSB (`espressif/esp_tinyusb`), are fetched
+by the component manager on the first build (`main/idf_component.yml`).
 
 | Path | Purpose |
 |---|---|
@@ -164,7 +164,8 @@ isolating one thing:
    the top of the tree (nes-jukebox's `tools/deploy.py` makes one and calls
    it). The log should then count them. If it says 0, or the partition is
    formatted again at every start, the image is not one this firmware's
-   LittleFS mounts.
+   FAT and wear levelling mount. (The files were in LittleFS when this was
+   done on hardware; with FAT it is still to do.)
 2. **Music.** nes-jukebox's `build/jukebox_link.nes` on the console. The
    nesp32's screen should say `NES: JUKE v2`, the track, and `STOPPED`; the
    console's, `PRESS START`. Start, or the nesp32's button A, plays. On
@@ -226,5 +227,8 @@ bytes once a millisecond.
 - Leaving UIFlow: a Stick that ships with UIFlow has to be flashed once
   over USB. M5Burner brings UIFlow back.
 - Updates over Wi-Fi. The partitions are laid out for them.
-- A way to put files on a nesp32 without a cable. `tools/put_files.py`
-  writes the whole `storage` partition over USB.
+- A way to put files on a nesp32 without a cable. A StickS3 is a USB drive
+  when the setup ROM asks (`main/usb.c`), and `tools/put_files.py` writes
+  the whole `storage` partition over USB.
+- The FAT files, the rips converted at start, and the USB drive on
+  hardware: all three build and are tested as far as a computer can.

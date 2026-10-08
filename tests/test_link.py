@@ -12,7 +12,7 @@ import random
 import nesp
 import nesp_proto as p
 import pytest
-from drive import PAD_B, STATE_STATUS, STATE_TEST, Setup
+from drive import MENU_TEST, STATE_STATUS, STATE_TEST, Setup
 from nesp import Stick
 from wire import link, ms
 
@@ -40,7 +40,7 @@ def run_test(make, frames=FRAMES, poll_every=None, **port_options):
         c.host_every = poll_every
     s = Setup(c, stick, port)
     c.run_until(lambda: c.byte("linked"), 300)
-    s.press(PAD_B)
+    s.menu(MENU_TEST)
     s.wait_for(STATE_TEST)
     c.run(frames)
     return c, stick, port
@@ -155,7 +155,7 @@ def test_a_line_that_damages_requests(rom):
     port.read = damaged
     s = Setup(c, stick, port)
     c.run_until(lambda: c.byte("linked"), 400)
-    s.press(PAD_B)
+    s.menu(MENU_TEST)
     s.wait_for(STATE_TEST, 400)
     c.run(300)
     sent, good, silent, wrong = counts(c)

@@ -11,6 +11,8 @@ from console import (PAD_A, PAD_B, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_SELECT, PA
 
 STATE_STATUS, STATE_SCAN, STATE_LIST, STATE_KEYS = 0, 1, 2, 3
 STATE_SEND, STATE_JOINING, STATE_FAILED, STATE_TEST = 4, 5, 6, 7
+STATE_USB = 8
+MENU_WIFI, MENU_TEST, MENU_USB = 0, 1, 2
 LAYER_KEYS = layout.KEY_ROWS * layout.KEY_COLUMNS
 
 __all__ = ["Setup", "PAD_A", "PAD_B", "PAD_DOWN", "PAD_LEFT", "PAD_RIGHT", "PAD_SELECT",
@@ -97,6 +99,12 @@ class Setup:
 
     def press(self, buttons):
         self.c.press(buttons, frames=1, release=1)
+
+    def menu(self, item):
+        """From the status screen: the menu's item, by its place (MENU_*)."""
+        for _ in range(item):
+            self.press(PAD_DOWN)
+        self.press(PAD_A)
 
     def wait_for(self, state, frames=600):
         self.c.run_until(lambda: self.state == state, frames)
