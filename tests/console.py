@@ -59,8 +59,13 @@ PAD_UP, PAD_DOWN, PAD_LEFT, PAD_RIGHT = 0x08, 0x04, 0x02, 0x01
 # looks in X and gives up, so only whole looks short of X running out are
 # skipped.
 HUNT = (bytes((0xAD, 0x17, 0x40, 0x4A, 0x90, 0xFA)), 9)             # lda / lsr / bcc
-HUNT_TIMEOUT = (bytes((0xAD, 0x17, 0x40, 0x4A, 0xB0)), 13)          # lda / lsr / bcs ..
-READS_ABS = (0xAD,)             # lda: reads on its 4th cycle
+# Four looks, each bit / bne, then dex / bne: 29 cycles a count. A run of
+# looks with no dex after the fourth is the window's, where a frame's next
+# byte is due: those are not skipped.
+HUNT_TIMEOUT = (bytes((0x2C, 0x17, 0x40, 0xD0)), 29)
+HUNT_TIMEOUT_LOOKS = 4
+HUNT_TIMEOUT_REST = (0xCA, 0xD0)                                    # after the last look
+READS_ABS = (0xAD, 0x2C)        # lda and bit: each reads on its 4th cycle
 STORES_ABS = (0x8D,)            # sta: writes on its 4th
 STALL_FRAMES = 4
 
@@ -420,6 +425,12 @@ class Console:
         offset = pc - PRG_START
         for code, cycles in (HUNT, HUNT_TIMEOUT):
             if self.prg[offset:offset + len(code)] != code:
+                continue
+            if code is HUNT_TIMEOUT[0] and (
+                    any(self.prg[offset + 5 * look:offset + 5 * look + 4] != code
+                        for look in range(HUNT_TIMEOUT_LOOKS))
+                    or tuple(self.prg[offset + 5 * HUNT_TIMEOUT_LOOKS:
+                                      offset + 5 * HUNT_TIMEOUT_LOOKS + 2]) != HUNT_TIMEOUT_REST):
                 continue
             # Whole passes of the hunt while the line rests at mark, so its
             # phase against the next start bit is kept.

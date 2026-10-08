@@ -205,10 +205,6 @@ The ROM tests need cc65 and skip without it.
   netplay ROM has been played; what the nesp32s' screens counted was not
   recorded. nes-drmario's README has what could shorten the delay between
   a button and the game.
-- A console's receiver that a sample's stolen cycles spoil less. On a real
-  NES nes-contra's music has its nesp32's replies misheard, one in twenty
-  to one in twelve; the ROM asks again in the same frame, which costs it
-  cycles it is short of. nes-contra's `docs/Netplay.md` has the figures.
 - The receiving nesp32 woken when a packet comes, in place of looking once
   a millisecond; and a way for two nesp32s to meet across the Internet
   without a port forwarded.

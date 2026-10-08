@@ -744,7 +744,8 @@ Measured on the simulated console and line (`tests/test_link.py`,
   the old one.
 - The console's samples fall within a quarter of a bit of mid-bit at every
   phase, and the Stick's clock may be 3% out either way. With the receiver
-  that counts its own timeout (below) those are 0.35 of a bit and 2%.
+  that counts its own timeout (below) those are a third of a bit, for a
+  frame's first byte, and a fifth for the rest, and 2%.
 
 ## 7. The console's library
 
@@ -760,9 +761,30 @@ There are two receivers, for the two places an exchange can be made:
 | | Default | `--timeout` |
 |---|---|---|
 | Where the exchange is made | in the main loop, between two NMIs | inside the NMI |
-| What ends a wait | the NMI: its handler ends with `nesp_nmi_hook`, which returns to the exchange's caller with carry set | a count: `NESP_TIMEOUT` passes of 1.86 ms |
-| Start-bit hunt | 9 cycles a look | 13 cycles a look |
-| From | nes-jukebox and nes-wiki | nes-drmario |
+| What ends a wait | the NMI: its handler ends with `nesp_nmi_hook`, which returns to the exchange's caller with carry set | a count: `NESP_TIMEOUT` passes of 4.15 ms |
+| Start-bit hunt | 9 cycles a look | for a frame's first byte, four looks to a count: 6 cycles apart, and 11 across the count. For each byte after it, six looks 6 cycles apart, where it is due |
+| From | nes-jukebox and nes-wiki | nes-drmario and nes-contra |
+
+The counting receiver is made for a console that is playing samples.
+Each byte a sample fetches stops the CPU for up to four cycles, which a
+routine that counts cycles cannot see: every sample after it in that byte
+comes late. So where the bytes of a frame follow one another, as a UART
+sends them, it looks for each next start bit with six looks 6 cycles
+apart at the place it is due, and finds it to within 3 cycles. Only a
+frame's first byte, and one that comes after a gap, is found by the loop
+that counts, whose looks are 6 cycles apart but for one in four, which
+comes 11 after the last, across the count. On the simulated console it
+reads every byte with four cycles stolen at each fetch, and with six all
+but one first byte in thirty. The receiver before it, which hunted for
+every byte 13 cycles a look, had none to spare beyond four: on a real NES
+nes-contra's music had one reply in twelve misheard, and with this one
+none in 4400.
+
+Samples are aimed at the middle of the bit. Aimed a cycle and a half
+before it (`gen_link.py --early=1.5`), since a stolen cycle can only make
+one late, the simulated console reads everything with six stolen; a real
+NES still misheard one reply in forty that way, with a first byte hunted
+for 11 cycles a look. A real line's edges are not square.
 
 A ROM whose every exchange is made inside its NMI defines `NESP_NMI_ONLY`,
 and has no `nesp_nmi_hook` and nothing kept for one. One in two banks has a

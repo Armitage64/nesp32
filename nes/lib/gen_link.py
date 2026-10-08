@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Write the console's cycle-timed serial routines for the link's rate.
 
-    nes/lib/gen_link.py build build/link.inc [--timeout] [--pack]
+    nes/lib/gen_link.py build build/link.inc [--timeout] [--pack] [--early=N]
 
 The first argument is where tools/gen_proto.py put nesp_proto.py. The link
 runs at NESP_PERIOD CPU cycles a bit, and the Stick's UART is set from the
@@ -48,9 +48,11 @@ Two receivers, for the two places an exchange can be made:
     default     no timeout; the caller's NMI is one (nesp_nmi_hook). The
                 hunt is 9 cycles a look. X counts the bytes.
     --timeout   for an exchange made inside the NMI, where nothing else can
-                end it. The wait counts its looks, 13 cycles each: X counts
-                256 of them and nesp_tries counts those. Y counts the bytes.
-                Carry is set if the wait ran out.
+                end it. The wait counts, 29 cycles a count: X counts 256
+                of them and nesp_tries counts those. Y counts the bytes.
+                Carry is set if the wait ran out. After a frame's first
+                byte it looks for each next one where it is due, more
+                closely: see timeout_receiver.
 
 Sending. A holds the byte and shifts right after each write, so a bit costs
 sta + lsr, 6 cycles, and the rest is padding. Bits 1 and 2 of A reach OUT1
@@ -185,23 +187,91 @@ def receiver(period, baud, to_nes_bits):
     return lines
 
 
-def timeout_receiver(period, baud, to_nes_bits):
-    shape = Shape(timeout=True)
-    check_tails(period, shape, to_nes_bits)
+# The counting receiver. Its looks for a start bit are bit / bne, with A
+# holding 1: 6 cycles from one to the next, where lda / lsr / bcs is 8.
+LOOK = 6                # bit abs, bne
+COUNTED = LOOK + 5      # and dex, bne: the look that follows the hunt's count
+CLOSE = 3               # looks of the hunt that follow another, 6 cycles on
+WINDOW = 6              # looks, back to back, where a frame's next byte is due
+LOOK_TO_CODE = 4        # the rest of the bit, and the bne taken
+BIT_LOOP = 16           # lda abs, lsr, ror zp, dex, bne: a sample, less its padding
+# A sample is aimed this many cycles before the middle of its bit. On a
+# console a sample being played stops the CPU for up to four cycles at each
+# byte it fetches, which a routine that counts cycles cannot see: its
+# samples can only ever come late. Aiming them early would allow for that,
+# and on the simulated line it does; on a real NES, aimed 1.5 early, one
+# reply in forty was still misheard, and aimed at the middle none in 4400:
+# a real line's edges are not square. --early=N sets it, to try.
+EARLY = 0
+# From a byte's last sample to the window's first look: the rest of the
+# lda, lsr, ror, dex, bne not taken, lda zp, eor #, sta abs+y, iny, cpy zp,
+# bne taken, lda #, and the look's own read.
+TAIL = 1 + 2 + 5 + 2 + 2 + 3 + 2 + 5 + 2 + 3 + 3 + 2 + READ_AT
+# And after the header's last byte: bne not taken, cpy #, bne not taken,
+# lda abs, and #, adc #, sta zp.
+HEADER_TAIL = TAIL - 3 + 2 + 2 + 2 + 4 + 2 + 2 + 3
+
+
+def timeout_receiver(period, baud, to_nes_bits, early=None):
+    """Where the bytes of a frame follow one another, as a UART sends them,
+    the start of each is known to a few cycles from the one before. So it
+    is looked for with WINDOW looks 6 cycles apart, and found to within
+    3 cycles either way. A frame's first byte, and one that comes after a
+    gap, is hunted for by the loop that counts: 1 + CLOSE looks to a count,
+    of which the first comes 11 cycles after the one before it, across the
+    count, and the others 6.
+
+    A look that comes 6 cycles after another goes to @byte when it sees a
+    start bit, which fell 3 cycles before on average. The one that comes
+    after 11 goes to @first, 2 cycles on: its start bit fell 5.5 before."""
+    pad = period - BIT_LOOP
+    early = EARLY if early is None else early
+    # From the look that saw the start bit to the first sample's read:
+    # LOOK_TO_CODE, the delay, ldx #, the loop's padding and the lda's read.
+    first = int(1.5 * period - early - LOOK / 2 - LOOK_TO_CODE - 2 - pad - READ_AT + 0.5)
+    skip = 2
+    if pad < 2 or pad == 3 or first - skip < 2:
+        raise ValueError("at %d cycles a bit the counting receiver has no room" % period)
+    # The window has to begin before the next byte's start bit can, and go
+    # on until after it must have: a sample, and so the byte, may be as
+    # much as a look and a stolen fetch out, either way.
+    edge = 0.5 * period + (to_nes_bits - 9) * period    # from a last sample on time
+    slack = COUNTED / 2 + 4
+    if TAIL > edge - slack:
+        raise ValueError("at %d cycles a bit the window opens late" % period)
+    if TAIL + (WINDOW - 1) * LOOK < edge + slack:
+        raise ValueError("at %d cycles a bit the window closes early" % period)
+    if HEADER_TAIL > edge + period - slack:
+        raise ValueError("at %d cycles a bit the look after the header is late" % period)
     lines = ["", ".align 256",
              "; Receive a reply into nesp_rx. %d cycles a bit, %d baud." % (period, baud),
              "; nesp_tries is how long to wait for a start bit, in passes of 256",
-             "; looks; it is not wound up again between bytes. Carry clear if the",
-             "; frame came, set if the wait ran out. Destroys A, X and Y.",
+             "; counts of %d cycles; it is not wound up again between bytes. Carry"
+             % (COUNTED + CLOSE * LOOK),
+             "; clear if the frame came, set if the wait ran out. Destroys A, X and Y.",
              ".proc nesp_rx_frame", "    lda #NESP_HEADER",
              "    sta nesp_rx_end     ; nesp_rx_bytes comes in here",
-             "    ldy #0", "    ldx #0",
+             "    ldy #0", "    lda #1              ; what the looks test the port with",
+             "    ldx #0",
              "@hunt:                      ; the tests skip ahead while this sees mark",
-             "    lda JOY2", "    lsr a", "    bcs @byte", "    dex", "    bne @hunt",
-             "    dec nesp_tries", "    bne @hunt", "    sec", "    rts", "@byte:"]
-    lines += samples(period, shape, use_y=False)
-    lines += store(shape)
-    lines += ["@next:", "    ldx #0", "    jmp @hunt", "@done:", "    clc", "    rts",
+             "    bit JOY2", "    bne @first"]
+    for _ in range(CLOSE):
+        lines += ["    bit JOY2", "    bne @byte"]
+    lines += ["    dex", "    bne @hunt",
+              "    dec nesp_tries", "    bne @hunt", "    sec", "    rts",
+              "@byte:                      ; from a look 6 cycles after another"]
+    lines += delay(skip, use_y=False)
+    lines += ["@first:"]
+    lines += delay(first - skip, use_y=False)
+    lines += ["    ldx #8", "@bit:"]
+    lines += delay(pad, use_y=False)
+    lines += ["    lda JOY2", "    lsr a", "    ror nesp_rx_data", "    dex", "    bne @bit"]
+    lines += store(Shape(timeout=True))
+    lines += ["@next:", "    lda #1"]
+    for _ in range(WINDOW):
+        lines += ["    bit JOY2", "    bne @byte"]
+    lines += ["    ldx #0              ; not where it was due: a gap, or the end",
+              "    jmp @hunt", "@done:", "    clc", "    rts",
               ".endproc", one_page("nesp_rx_frame"), RX_BYTES]
     return lines
 
@@ -246,12 +316,14 @@ def crc_table(poly):
     return entries
 
 
-def include(proto, timeout=False, pack=False):
+def include(proto, timeout=False, pack=False, early=None):
     period = proto.NESP_PERIOD
     lines = ["; Generated by nes/lib/gen_link.py. Do not edit.", "",
              '.segment "RXTX"']
-    make = timeout_receiver if timeout else receiver
-    lines += make(period, proto.NESP_BAUD, proto.NESP_TO_NES_BITS)
+    if timeout:
+        lines += timeout_receiver(period, proto.NESP_BAUD, proto.NESP_TO_NES_BITS, early)
+    else:
+        lines += receiver(period, proto.NESP_BAUD, proto.NESP_TO_NES_BITS)
     lines += sender(period)
     if pack:
         lines = [line for line in lines if line != ".align 256"]
@@ -272,8 +344,10 @@ def main(argv):
     import nesp_proto
 
     with open(argv[2], "w") as handle:
+        early = [float(option.split("=")[1]) for option in argv[3:]
+                 if option.startswith("--early=")]
         handle.write(include(nesp_proto, timeout="--timeout" in argv[3:],
-                             pack="--pack" in argv[3:]))
+                             pack="--pack" in argv[3:], early=early[0] if early else None))
     return 0
 
 

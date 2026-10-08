@@ -28,12 +28,13 @@ class Receiver:
     """One of the two receivers: the ROM it is in, how its hunt is found,
     and how near the middle of a bit its samples must fall."""
 
-    def __init__(self, make, hunt, limit, clock, tries=None):
+    def __init__(self, make, hunt, limit, clock, tries=None, early=0.0):
         self.make = make
         self.hunt_code, self.hunt_pass = hunt
         self.limit = limit
         self.clock = clock          # percent the Stick's clock may be out, at least
         self.tries = tries
+        self.early = early          # bits before mid-bit that its samples are aimed
 
 
 @pytest.fixture(params=["nmi", "timeout"])
@@ -42,9 +43,11 @@ def receiver(request, console, timeout_console):
         # The hunt sees a start bit 0 to 9 cycles after its edge, so with a
         # true clock a sample is at most 4.5 cycles, 0.21 of a bit, out.
         return Receiver(console, HUNT, 0.25, clock=3)
-    # 0 to 13 cycles: 6.5 cycles, 0.31 of a bit, which leaves less for a
-    # clock that is out. An ESP32's UART is within a tenth of a percent.
-    return Receiver(timeout_console, HUNT_TIMEOUT, 0.35, clock=2, tries=3)
+    # Its first byte's start bit is seen 0 to 11 cycles after its edge at
+    # the worst, and each later byte's 0 to 6, where it is due: a first
+    # byte's sample is at most 6 cycles out, 0.29 of a bit, and a later
+    # byte's 3.5. An ESP32's UART is within a tenth of a percent.
+    return Receiver(timeout_console, HUNT_TIMEOUT, 0.30, clock=2, tries=1)
 
 
 def payload(length, seed):
@@ -78,7 +81,10 @@ def receive(receiver, data, start, error=0.0, gap=0.0):
     mpu = c.call("nesp_rx_frame")
     routine = c.labels["nesp_rx_frame"] - PRG_START
     hunt = PRG_START + c.prg.index(receiver.hunt_code, routine)
-    samples = [cycle for cycle, pc, _ in c.joy2_reads if pc != hunt]
+    # A sample is an lda; the counting receiver's looks for a start bit are
+    # bit, and the other's are one lda, at its hunt.
+    samples = [cycle for cycle, pc, _ in c.joy2_reads
+               if pc != hunt and c.prg[pc - PRG_START] == 0xAD]
     offsets = []
     for index in range(min(len(samples) // 8, len(starts))):
         for k in range(8):
@@ -104,7 +110,8 @@ def test_every_sample_is_near_the_middle_of_its_bit(receiver, length):
         total += sum(offsets)
         count += len(offsets)
     assert worst <= receiver.limit, worst
-    assert abs(total / count) < 0.04                # and centered on it, on average
+    # And centered on it, on average, or as much before it as it is aimed.
+    assert abs(total / count + receiver.early) < 0.04
 
 
 @pytest.mark.parametrize("share", [-0.8, -0.4, 0.4, 0.8])
@@ -171,8 +178,8 @@ def test_the_counting_receiver_gives_up(timeout_console):
     before = c.now
     mpu = c.call("nesp_rx_frame")
     assert mpu.p & 1                        # carry set: nothing came
-    # 3 passes of 256 looks of 13 cycles: 5.6 ms, as nes-drmario's wait.
-    assert 3 * 256 * 13 <= c.now - before <= 3 * 256 * 13 + 100
+    # 3 passes of 256 counts of 29 cycles: 12.4 ms.
+    assert 3 * 256 * 29 <= c.now - before <= 3 * 256 * 29 + 100
 
 
 def test_the_counting_receiver_gives_up_in_the_middle_of_a_frame(timeout_console):
@@ -222,3 +229,49 @@ def test_the_routines_each_sit_on_one_page(console, timeout_console):
         c = make()
         assert c.labels["nesp_rx_frame"] & 0xFF == 0
         assert c.labels["nesp_tx_byte"] & 0xFF == 0
+
+
+# --- a sample being played ---------------------------------------------------------
+
+def receive_through_a_sample(make, data, start, first_fetch, stolen=4, every=432):
+    """nesp_rx_frame against a reply, on a console that is playing a sample
+    at the fastest rate: every 432 cycles a byte of it is fetched, and the
+    CPU stops for up to four. Returns what the routine stored."""
+    c = make()
+    wire = Wire()
+    wire.send(data, c.now + 200 + start)
+    fetch = [c.now + first_fetch]
+
+    def level(cycle):
+        # The fetch falls before the instruction that reads the port, if it
+        # is due: that read, and all after it, come later.
+        value = wire.level(cycle + (stolen if cycle >= fetch[0] else 0))
+        if cycle >= fetch[0]:
+            fetch[0] += every
+            c.mpu.processorCycles += stolen
+        return value
+
+    c.joy2_level = level
+    c.memory[c.labels["nesp_tries"]] = 3
+    c.call("nesp_rx_frame")
+    return c.data("nesp_rx", len(data))
+
+
+def test_the_counting_receiver_reads_through_a_sample(timeout_console):
+    """nes-contra's music has samples for its drums, and on a real console
+    its replies were misheard, one in twelve, by a receiver that looked for
+    every byte's start bit 13 cycles apart: with four cycles stolen it had
+    none to spare, and a real line's edges are not as sharp as these.
+    Wherever in a frame the fetches fall, and wherever its first start bit
+    falls in the hunt, this one reads every byte; and with six stolen, two
+    more than a fetch takes, every byte but a frame's first, which it has
+    to find without knowing where to look. (The old one misread one frame
+    in eight with five stolen, and three in ten with six.)"""
+    for data in (frame(0, 5), frame(7, 6), bytes((0xB1, 0x34, 0x00, 0xFF, 0x55, 0xAA))):
+        for phase in PHASES[::2]:
+            for first_fetch in range(150, 150 + 432, 9):
+                stored = receive_through_a_sample(timeout_console, data, phase, first_fetch)
+                assert stored == data, (phase, first_fetch)
+                stored = receive_through_a_sample(timeout_console, data, phase, first_fetch,
+                                                  stolen=6)
+                assert stored[1:] == data[1:], (phase, first_fetch)

@@ -12,7 +12,7 @@
 ;                   without one takes 66
 ;   NESP_TIMEOUT    only if link.inc was made with --timeout, for exchanges
 ;                   made inside the NMI: how long to wait for a reply, in
-;                   passes of 256 looks of 13 cycles (1.86 ms each)
+;                   passes of 256 counts of 29 cycles (4.15 ms each)
 ;   NESP_NMI_ONLY   optional, with NESP_TIMEOUT. Every exchange is made
 ;                   inside the NMI, so there is no nesp_nmi_hook, and
 ;                   nothing is kept for one
