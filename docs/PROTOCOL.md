@@ -23,7 +23,7 @@ Every number in this document comes from `proto/nesp.toml`, from which
 
 ## 1. The line
 
-The wiring is nes-radar's hat, unchanged: the Stick drives D0 (bit 0 of
+The wiring is nes-radar's hat, unchanged ([`WIRING.md`](WIRING.md)): the Stick drives D0 (bit 0 of
 `$4017`, inverted by the port's buffer) and reads OUT0 (bit 0 of `$4016`
 writes), which rests at mark.
 

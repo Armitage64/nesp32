@@ -9,7 +9,8 @@ Stick is ever set up from a computer.
 It is replacing the separate firmware and link protocol that each of
 [nes-radar](../nes-radar), [nes-jukebox](apps/jukebox),
 [nes-wiki](apps/wiki) and [nes-drmario](apps/drmario) has, on the hat
-and the wiring they share. NESpedia has moved to it, and the jukebox's ROM
+and the wiring they share ([`docs/WIRING.md`](docs/WIRING.md) has the hat,
+its pins and the level shifter). NESpedia has moved to it, and the jukebox's ROM
 has too, and plays on the same hardware. The jukebox's throughput test has
 moved and runs there too. Dr. Mario's netplay has moved, and a full
 network game has been played with it on hardware. The radar has not moved

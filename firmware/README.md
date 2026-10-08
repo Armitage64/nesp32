@@ -123,7 +123,7 @@ certificate checked, and the article read from the 8 MB of PSRAM the board
 reports. No figures were taken from that run.
 
 What these runs do not show: figures from a real NES, whose port is
-electrically not the SNAC adapter's (nes-radar's README has what differed
+electrically not the SNAC adapter's ([`docs/WIRING.md`](../docs/WIRING.md) has what differed
 before), though the cartridge has since worked on one; more than a few
 minutes; how long the Stick's replies took while it was making a TLS
 connection, which the log's report every ten seconds would say.

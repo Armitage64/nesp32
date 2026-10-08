@@ -95,7 +95,7 @@ Stick set up once serves this ROM and every other; nothing on it is chosen
 or changed for NESpedia.
 
 The hat is nes-radar's two-transistor level shifter
-([its README](../../../nes-radar/firmware/stick_s3/README.md) has the circuit),
+([`docs/WIRING.md`](../../docs/WIRING.md) has the circuit),
 wired for the board: on a StickS3, TX on slot 5 (G8) and RX on slot 4 (G1).
 
 If a search says `NO ANSWER FROM THE NESP32`, the Stick is not there, or is
