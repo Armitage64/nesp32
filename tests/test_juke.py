@@ -172,7 +172,7 @@ def test_nothing_plays_until_a_button_says_so(deck):
     deck.wait(100)
     assert deck.ask() == b""
     assert deck.stick.shown(0) == "1/3 Game - First"
-    assert deck.stick.shown(1).startswith("STOPPED")
+    assert deck.stick.shown(1) == ""            # the track has both lines to itself
 
 
 def test_a_stick_with_no_music_says_so(stick):
@@ -180,14 +180,13 @@ def test_a_stick_with_no_music_says_so(stick):
     assert deck.ask() == b"" and deck.state == NO_TRACKS
     assert deck.press(PLAY) == NO_TRACKS
     assert deck.ask() == b"" and deck.state == NO_TRACKS
-    assert stick.shown(1).startswith("NO MUSIC")
+    assert (stick.shown(0), stick.shown(1)) == ("", "")
 
 
 def test_play_sends_the_track_with_its_names_ahead_of_it(deck):
     assert deck.press(PLAY) == PLAYING
     assert deck.pull(len(ONE_STREAM))[:len(ONE_STREAM)] == ONE_STREAM
     assert deck.state == PLAYING and deck.flushes == 1
-    assert deck.stick.shown(1).startswith("PLAYING")
 
 
 @pytest.mark.parametrize("room", [1, 5, 24, 56, 61])
@@ -217,7 +216,6 @@ def test_a_reply_that_was_lost_is_sent_again(deck):
     deck.pull(len(ONE_STREAM), 24)
     assert deck.music[:len(ONE_STREAM)] == ONE_STREAM and first == ONE_STREAM[:24]
     assert deck.stick.juke_resent == 2
-    assert deck.stick.shown(1) == "PLAYING, 2 again, 0 dry"
 
 
 def test_a_lost_reply_is_made_up_in_full_when_the_console_has_more_room(deck):
@@ -311,7 +309,6 @@ def test_play_pauses_and_goes_on_from_where_it_was(deck):
     assert deck.press(PLAY) == PAUSED
     for _ in range(20):
         assert deck.ask() == b"" and deck.state == PAUSED and not deck.drained
-    assert deck.stick.shown(1).startswith("PAUSED")
     assert deck.press(PLAY) == PLAYING
     deck.pull(len(ONE_STREAM))
     assert deck.music[:len(ONE_STREAM)] == ONE_STREAM and len(deck.music) > held
@@ -411,8 +408,6 @@ def test_the_consoles_underruns_are_kept_as_a_total(deck):
     deck.underruns = 260                        # the byte has wrapped
     deck.ask()
     assert deck.stick.juke_underruns == 10
-    deck.wait(600)
-    assert deck.stick.shown(1) == "PLAYING, 0 again, 10 dry"
 
 
 @pytest.mark.parametrize("request_", [b"", bytes(3), bytes(5)])
@@ -451,7 +446,6 @@ def test_a_sounds_place_in_the_stream_is_its_names_and_a_record(tape):
 def test_the_sound_goes_as_a_run_at_its_own_rate_and_the_music_follows(tape):
     line = tape.stick.line
     assert tape.sound(1) == GO
-    assert tape.stick.shown(1).startswith("PLAYING")
     assert tape.hear() == SAMPLES + LAST
     assert line.rates == [16, p.NESP_PERIOD]
     # The music after it starts from an empty ring, as a change of track does.
@@ -608,9 +602,8 @@ def test_a_sound_can_be_the_whole_playlist_and_repeat(stick):
         assert deck.flushes == turn + 1
 
 
-def test_the_screen_says_sound_while_the_line_is_its(tape):
+def test_the_screen_keeps_the_track_while_the_line_is_the_sounds(tape):
     tape.stick.line.busy = True
     assert tape.sound(1) == GO
     tape.wait(p.NESP_RAW_START_MS + 600)
-    assert tape.stick.shown(0) == "2/3 Tape - Speech"
-    assert tape.stick.shown(1).startswith("SOUND")
+    assert (tape.stick.shown(0), tape.stick.shown(1)) == ("2/3 Tape - Speech", "")

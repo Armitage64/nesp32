@@ -41,11 +41,20 @@ const uint32_t REPORT_MS = 10000;
 const uint32_t WATCH_MS = 2000;
 const uint32_t CONSOLE_GONE_MS = 2000;  // no request for this long: not there
 const int ROWS = 7;
+const uint32_t TITLE_BLUE = 0x40A0FFu;  // the top line and the rule under it
+// The applications the screen has a name for. Any other is shown by the id
+// and version of its hello.
+const struct {
+    const char *id;
+    const char *name;
+} APP_NAMES[] = {{"CNTR", "Contra"}, {"DRMA", "Dr. Mario"}, {"JUKE", "Jukebox"},
+                 {"SETP", "Setup"}, {"THRU", "Throughput"}, {"WIKI", "Wikipedia"}};
 const char *const WIFI_STATES[] = {"not set up", "not joined", "joining", "joined", "failed"};
 
-char shown[ROWS][40];
+char shown[ROWS][RADIO_SHOWN_MAX];
 
-// Write a line of the screen, if it has changed.
+// Write a line of the screen, if it has changed. The top one is the title:
+// in blue, with a rule under it.
 void line(int row, const char *text)
 {
     if (std::strncmp(shown[row], text, sizeof(shown[row])) == 0) {
@@ -55,7 +64,37 @@ void line(int row, const char *text)
     int height = M5.Display.fontHeight() + 4;
     M5.Display.fillRect(0, row * height, M5.Display.width(), height, TFT_BLACK);
     M5.Display.setCursor(2, row * height + 2);
+    M5.Display.setTextColor(row == 0 ? TITLE_BLUE : (uint32_t)0xFFFFFFu, (uint32_t)0x000000u);
     M5.Display.print(text);
+    if (row == 0) {
+        M5.Display.drawFastHLine(0, height - 2, M5.Display.width(), TITLE_BLUE);
+    }
+}
+
+// A line too long for the screen, as two: broken at a space if it has one
+// where it would do. Each holds RADIO_SHOWN_MAX bytes.
+void split(const char *text, char *first, char *second)
+{
+    int room = M5.Display.width() - 2;
+    size_t length = std::strlen(text);
+    size_t fits = length;
+    std::strcpy(first, text);
+    while (fits > 0 && M5.Display.textWidth(first) > room) {
+        first[--fits] = 0;
+    }
+    second[0] = 0;
+    if (fits == length) {
+        return;
+    }
+    size_t cut = fits;
+    for (size_t at = fits; at > 0; at--) {
+        if (text[at] == ' ') {
+            cut = at;
+            break;
+        }
+    }
+    first[cut] = 0;
+    std::strcpy(second, text + cut + (text[cut] == ' '));
 }
 
 void draw()
@@ -74,38 +113,63 @@ void draw()
     line(0, "NESP32 " NESP_FIRMWARE_TEXT);
     if (console) {
         std::snprintf(text, sizeof(text), "NES: %s v%u", app, version);
+        for (const auto &known : APP_NAMES) {
+            if (std::strcmp(app, known.id) == 0) {
+                std::snprintf(text, sizeof(text), "NES: %s", known.name);
+            }
+        }
     } else {
         std::snprintf(text, sizeof(text), "NES: waiting");
     }
     line(1, text);
-    std::snprintf(text, sizeof(text), "Wi-Fi: %s",
-                  wifi.state < 5 ? WIFI_STATES[wifi.state] : "?");
+    // Joined, the network's name says so; otherwise how far along it is.
+    if (wifi.state == NESP_WIFI_JOINED) {
+        std::snprintf(text, sizeof(text), "Wifi: %.*s", (int)wifi.name_len, wifi.name);
+    } else {
+        std::snprintf(text, sizeof(text), "Wifi: %s",
+                      wifi.state < 5 ? WIFI_STATES[wifi.state] : "?");
+    }
     line(2, text);
-    // The network's name and the nesp32's address, unless the service in use
-    // has something of its own to say there (the jukebox: its track).
+    // The nesp32's address, unless the service in use has something of its
+    // own to say there (the jukebox: its track), which takes two lines and
+    // moves the link's numbers down one. If it has only the one line, and
+    // that a long one, it runs on into the second.
+    int row = 3;
     char said[2][RADIO_SHOWN_MAX];
     radio_shown(0, said[0]);
     radio_shown(1, said[1]);
     if (console && (said[0][0] != 0 || said[1][0] != 0)) {
-        line(3, said[0]);
-        line(4, said[1]);
+        if (said[1][0] == 0) {
+            char whole[RADIO_SHOWN_MAX];
+            std::strcpy(whole, said[0]);
+            split(whole, said[0], said[1]);
+        }
+        line(row++, said[0]);
+        line(row++, said[1]);
     } else {
-        std::snprintf(text, sizeof(text), "%.*s", (int)wifi.name_len, wifi.name);
-        line(3, text);
         if (wifi.state == NESP_WIFI_JOINED) {
             std::snprintf(text, sizeof(text), "%u.%u.%u.%u", wifi.address[0], wifi.address[1],
                           wifi.address[2], wifi.address[3]);
         } else {
             text[0] = 0;
         }
-        line(4, text);
+        line(row++, text);
     }
-    std::snprintf(text, sizeof(text), "%lu req, %lu again", (unsigned long)stats.requests,
-                  (unsigned long)stats.repeats);
-    line(5, text);
-    std::snprintf(text, sizeof(text), "reply %lu us, max %lu",
-                  (unsigned long)stats.turnaround_us, (unsigned long)stats.turnaround_max_us);
-    line(6, text);
+    // With another nesp32 connected, the ping: what the network last took
+    // between the two, there and back, in milliseconds.
+    uint8_t peer = conn_state(nullptr);
+    conn_ping_t ping;
+    conn_ping(&ping);
+    if ((peer == NESP_CONN_ANSWERED || peer == NESP_CONN_CALLED) && ping.count != 0) {
+        std::snprintf(text, sizeof(text), "req: %lu, ping: %lu", (unsigned long)stats.requests,
+                      (unsigned long)((ping.last_us + 500) / 1000));
+    } else {
+        std::snprintf(text, sizeof(text), "req: %lu", (unsigned long)stats.requests);
+    }
+    line(row++, text);
+    while (row < ROWS) {
+        line(row++, "");
+    }
 }
 
 }  // namespace
@@ -117,7 +181,7 @@ extern "C" void app_main(void)
     M5.Display.setRotation(1);
     M5.Display.setTextSize(1);
     M5.Display.setFont(&fonts::FreeSans9pt7b);
-    M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
+    M5.Display.setTextWrap(false);      // a long name is cut off, not run into the next line
     M5.Display.fillScreen(TFT_BLACK);
 
     // The UART first, before anything slow, so that TX rests at mark. The

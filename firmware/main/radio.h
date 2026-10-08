@@ -25,7 +25,7 @@ void radio_app(char *id, uint8_t *version);
 
 /* One of the two lines of the screen that a service may fill (nesp_hal_t's
  * show), into out, which holds RADIO_SHOWN_MAX bytes. Empty: it has not. */
-#define RADIO_SHOWN_MAX 40          /* a line of the screen, as main.cpp keeps one */
+#define RADIO_SHOWN_MAX 80          /* a line of the screen, or one that main.cpp makes two of */
 void radio_shown(uint8_t row, char *out);
 
 /* What the service in use last had to say for the log (nesp_hal_t's

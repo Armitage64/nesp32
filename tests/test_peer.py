@@ -375,10 +375,10 @@ def test_the_nesp32s_screen_says_how_it_stands(pair):
     assert (host.shown(0), host.shown(1)) == ("", "")
     lobby(host, HOST)
     host.tick(1)
-    assert (host.shown(0), host.shown(1)) == ("Waiting for player 2", "at 192.168.1.23")
+    assert (host.shown(0), host.shown(1)) == ("192.168.1.23", "Waiting for player 2")
     lobby(guest, JOIN, HOME)
     guest.tick(1)
-    assert (guest.shown(0), guest.shown(1)) == ("Joining the game", "at 192.168.1.23")
+    assert (guest.shown(0), guest.shown(1)) == ("192.168.1.23", "Joining the game")
     host.conn, guest.conn = CONN_ANSWERED, CONN_CALLED
     for now in (2, 3):
         host.tick(now)
@@ -389,11 +389,11 @@ def test_the_nesp32s_screen_says_how_it_stands(pair):
     ticks(host, 0, 0, b"\x01")          # the same again: it did not hear the reply
     host.tick(1000)
     guest.tick(1000)
-    assert (host.shown(0), host.shown(1)) == ("Player 1", "3 frames, 2 waiting")
+    assert (host.shown(0), host.shown(1)) == ("Player 1", "late frames: 66.7%")
     assert guest.shown(0) == "Player 2"
     guest.conn = CONN_LOST
     guest.tick(1001)
-    assert guest.shown(0) == "Player 2: the other is gone"
+    assert guest.shown(0) == "Player 2: peer disconnected"
 
 
 # --- short frames ------------------------------------------------------------------

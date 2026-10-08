@@ -467,20 +467,7 @@ static bool fill(nesp_juke_t *juke)
     return juke->pending_len < FILL && juke->phase < WAIT;
 }
 
-static const char *state_text(const nesp_juke_t *juke)
-{
-    if (juke->sound == S_ARMED || juke->sound == S_PLAYING) {
-        return "SOUND";
-    }
-    switch (juke->state) {
-    case NESP_PLAYER_PLAYING: return "PLAYING";
-    case NESP_PLAYER_PAUSED: return "PAUSED";
-    case NESP_PLAYER_NO_TRACKS: return "NO MUSIC";
-    default: return "STOPPED";
-    }
-}
-
-/* The nesp32's screen: the track, and how the stream is doing. */
+/* The nesp32's screen: the track, which may take both lines. */
 static void show(nesp_juke_t *juke, uint32_t now)
 {
     if (!juke->show && now - juke->shown_at < SHOW_MS) {
@@ -499,9 +486,7 @@ static void show(nesp_juke_t *juke, uint32_t now)
                  (unsigned)juke->count, juke->name);
     }
     juke->hal->show(juke->hal->ctx, 0, text);
-    snprintf(text, sizeof(text), "%s, %lu again, %lu dry", state_text(juke),
-             (unsigned long)juke->resent, (unsigned long)juke->underruns);
-    juke->hal->show(juke->hal->ctx, 1, text);
+    juke->hal->show(juke->hal->ctx, 1, "");
 }
 
 static bool tick(void *ctx, uint32_t now)

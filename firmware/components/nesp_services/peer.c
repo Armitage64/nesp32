@@ -472,24 +472,29 @@ static void show(nesp_peer_t *peer, uint32_t now)
     uint8_t address[4];
     switch (peer->lobby) {
     case NESP_LOBBY_HOSTING:
-        /* Player 2 has this to enter. */
+        /* Player 2 has this to enter: where the screen has the address
+         * when there is no game. */
         online(peer, address);
-        snprintf(text[0], sizeof(text[0]), "Waiting for player 2");
-        snprintf(text[1], sizeof(text[1]), "at %u.%u.%u.%u", address[0], address[1],
+        snprintf(text[0], sizeof(text[0]), "%u.%u.%u.%u", address[0], address[1],
                  address[2], address[3]);
+        snprintf(text[1], sizeof(text[1]), "Waiting for player 2");
         break;
     case NESP_LOBBY_CONNECTING:
-        snprintf(text[0], sizeof(text[0]), "Joining the game");
-        snprintf(text[1], sizeof(text[1]), "at %u.%u.%u.%u", peer->target[0], peer->target[1],
+        snprintf(text[0], sizeof(text[0]), "%u.%u.%u.%u", peer->target[0], peer->target[1],
                  peer->target[2], peer->target[3]);
+        snprintf(text[1], sizeof(text[1]), "Joining the game");
         break;
     case NESP_LOBBY_HOST:
     case NESP_LOBBY_GUEST:
         snprintf(text[0], sizeof(text[0]), "Player %d%s",
                  peer->lobby == NESP_LOBBY_HOST ? 1 : 2,
-                 peer->lost ? ": the other is gone" : "");
-        snprintf(text[1], sizeof(text[1]), "%lu frames, %lu waiting",
-                 (unsigned long)peer->requests, (unsigned long)peer->repeats);
+                 peer->lost ? ": peer disconnected" : "");
+        /* Of the session's exchanges, those that brought nothing new: in
+         * tenths of a percent. */
+        uint32_t tenths = peer->requests == 0 ? 0
+            : (uint32_t)(((uint64_t)peer->repeats * 1000u + peer->requests / 2u) / peer->requests);
+        snprintf(text[1], sizeof(text[1]), "late frames: %lu.%lu%%",
+                 (unsigned long)(tenths / 10u), (unsigned long)(tenths % 10u));
         break;
     case NESP_LOBBY_FAILED:
         snprintf(text[0], sizeof(text[0]), "No game was joined");

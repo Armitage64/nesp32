@@ -153,7 +153,7 @@ def test_host_and_back(net_console):
     assert "WAITING FOR PLAYER 2" in screen_text(console)
     assert screen_row(console, HOST_ROW).strip() == "192.168.001.023"
     assert table.sticks[0].lobby == p.NESP_LOBBY_HOSTING
-    assert table.sticks[0].shown(1) == "at 192.168.1.23"
+    assert table.sticks[0].shown(0) == "192.168.1.23"
     tap(table, 0, PAD_B, rest=2 * STATUS_POLL)
     assert "HOST GAME" in screen_text(console)
     assert table.sticks[0].lobby == p.NESP_LOBBY_IDLE

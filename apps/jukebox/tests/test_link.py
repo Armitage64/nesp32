@@ -196,7 +196,6 @@ def test_the_nesp32_keeps_the_consoles_underruns(linked, demo_stream):
     machine.run(30)
     assert machine.word("underruns") < 60
     assert machine.stick.juke_underruns == machine.word("underruns")
-    assert machine.stick.shown(1) == "PLAYING, 0 again, %d dry" % machine.word("underruns")
     played_exactly(machine, demo_stream, 600)
 
 
