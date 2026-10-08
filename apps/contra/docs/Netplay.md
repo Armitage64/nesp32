@@ -109,7 +109,9 @@ the times it has measured since the console last asked, which is once in
 one of the rest (nesp32's `docs/PROTOCOL.md`, "The delay"). The advice is
 made longer when two askings running call for it, and a tick shorter when
 eight do. A session begins with the delay that covers the network's time
-as it was while the two connected.
+at its quickest while the two connected, and its first report, a second or
+two in, sets the delay outright from what the game's own packets have
+taken since.
 
 ### Checking that they stay alike
 
