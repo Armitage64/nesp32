@@ -139,14 +139,17 @@ def test_a_delay_longer_than_it_need_be_is_made_shorter(net_console):
 
 def test_the_two_consoles_need_not_keep_the_same_delay(net_console):
     """One is started with 1 and the other with 3. The game is the same
-    on both, through the tick that carries the digests too."""
+    on both, through the tick that carries the digests too; and the one
+    that began too long is told so in its first report."""
     table = Table(net_console, delay=ms(3))
     table.start()
     for console, delay in zip(table.consoles, (1, 3)):
         console.mpu.x = delay
-    to_game(table)
+    table.run(4)
     assert table.delays() == (1, 3)
+    to_game(table)
     table.play(350, moves(seed=3))
+    assert table.delays() == (1, 1)
     assert table.same_game() > 300
     assert all(console.byte("net_mode") == 1 for console in table.consoles)
 

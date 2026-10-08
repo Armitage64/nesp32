@@ -172,10 +172,25 @@ that joined, and the figures from the nesp32s' logs (nesp32's
   hardware. The nesp32s answered in 90 and 150 microseconds, 358 at the
   slowest.
 - **The console that joined began at a delay of 4**, and was at 1 after
-  about a minute, a frame shorter every 17 seconds or so. The nesp32's
-  delay to begin with is taken from the network's time as the two
-  connect, and one slow packet then is enough to set it long. That is
-  nesp32's to mend.
+  about a minute, a frame shorter every 17 seconds or so. The nesp32 took
+  the delay to begin with from a mean of the network's time as the two
+  connected, and one slow packet then was enough to set it long. It takes
+  the quickest time now, and a session's first report, a second or two
+  in, sets the delay outright from what the game's own packets have taken
+  (nesp32's `docs/PROTOCOL.md`, "The delay").
+- **With that firmware a session begins at 1, goes to 2 within two
+  seconds and is back at 1 about half a minute in**, in each of two games.
+  The network is slower for the first eight to ten seconds after the two
+  nesp32s connect, three packets in ten over 14 ms there and back where
+  one in twenty or thirty are after it, and the delay follows that. Why
+  it is slower then is not known. In the second of those games, 5500
+  frames, 27 frames waited on one console and 36 on the other, and no
+  reply was misheard.
+- **A session of 35 minutes**, 127800 frames and the game played through
+  twice: one frame in 75 waited, two replies were misheard on the one
+  console whose count was kept to the end, and the delay was 1 for most
+  of it, 2 for 17 seconds at a time when more than one packet in ten
+  called for it, and 3 and 4 for a while on a network at its worst.
 
 From hardware, with the prototype's own firmware and protocol (a real NES
 with a flashcart, a StickC Plus2 on MicroPython, an FT232 cable on a Mac).

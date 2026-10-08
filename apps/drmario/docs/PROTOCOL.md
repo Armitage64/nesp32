@@ -143,7 +143,9 @@ between; to make it a tick shorter it lets one read go by.
 How long it should be is the nesp32's to say, from the times the network
 takes (nesp32's `docs/PROTOCOL.md`, "The delay"). One exchange in 128
 carries the console's report in place of a second tick of buttons, and its
-reply has the delay advised after its buttons.
+reply has the delay advised after its buttons. A session's first report
+sets the delay outright; after it the advice is made longer when two
+reports running call for it, and a tick shorter when eight do.
 
 ### Checking that they stay alike
 
