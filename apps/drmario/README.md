@@ -75,7 +75,7 @@ network and joins it by itself from then on. Nothing is set up from a
 computer, and nothing is chosen on the nesp32: this ROM says what it is
 when its menu opens.
 
-The nesp32s talk over TCP port 6502. On one network that needs nothing
+The nesp32s talk over UDP port 6502. On one network that needs nothing
 more. Across the Internet the hosting side has to forward that port to its
 nesp32, and player 2 enters the host's public address.
 
@@ -169,13 +169,18 @@ None of it has been measured again since the move to nesp32:
     loop is done, with the library's other receiver, they would not, and 2
     frames should then do on one network where 3 do now. The firmware
     needs no change; the game's bank has about 120 bytes for it.
-  - **An input delay chosen for each session** from the time the nesp32s
-    measure between them after their greetings, in place of the fixed 3
-    frames: one more byte from PEER's lobby, and a variable in the ROM.
-    Needed before the Internet is worth trying.
+  - **An input delay that sets itself**, as nes-contra's does, in place of
+    the fixed 3 frames. The firmware has it all now: the delay to begin
+    with comes as a sixth byte of PEER's lobby replies, from the time the
+    nesp32s measure between them, and during a game each console reports
+    on the other's buttons and is advised a tick longer or shorter
+    (nesp32's `docs/PROTOCOL.md`, "The delay"). What is left is the ROM's
+    side: the delay as a variable, the report and the advice in the
+    exchange, and a read repeated or let go by when it changes. nes-contra's
+    `net/net.inc` is the pattern. Needed before the Internet is worth
+    trying.
   - **A steadier way between the nesp32s**, since the margin is there for
-    the spikes: UDP with each packet carrying the last few ticks, where a
-    lost packet now holds both games for TCP to send it again; ESP-NOW
+    the spikes: ESP-NOW
     for two consoles in one room, past the access point; the receiving
     nesp32 woken by what comes instead of looking once a millisecond.
   - **A faster exchange.** The line runs three times faster than the
@@ -188,7 +193,7 @@ None of it has been measured again since the move to nesp32:
     a change to the protocol, and wants the second bank for its code.
     Rolling back, as newer games do, is not for this one: a frame is
     nearly all used already.
-- **The Internet**: the host forwards TCP port 6502 today. A relay would
+- **The Internet**: the host forwards UDP port 6502 today. A relay would
   spare that.
 - **A check that the games are still the same**: a sum of the game's
   memory exchanged every so often, so that a difference is reported and
