@@ -23,11 +23,10 @@ def press(table, pad, hold=10, rest=10):
 
 
 def to_game(table):
-    """A session starts at the title, which comes up at 2 PLAYERS. Player 1
-    ends its scroll and starts the game."""
-    table.run(60)
-    press(table, PAD_START)
-    press(table, PAD_START)
+    """A session starts in a two-player game, at the screen that names the
+    first stage, with no title and nothing to press."""
+    for console in table.consoles:
+        assert console.byte("net_mode") == 0 or console.byte("GAME_ROUTINE_INDEX") >= 4
     for _ in range(3000):
         if all(console.byte("LEVEL_ROUTINE_INDEX") == LEVEL_PLAYING for console in table.consoles):
             break
@@ -169,7 +168,7 @@ def test_a_network_that_comes_and_goes(net_console):
 
 
 def test_a_nesp32_that_is_sometimes_too_slow_to_answer(net_console):
-    """The console waits about 3.7 ms for a reply. Later ones are missed,
+    """The console waits about 4.1 ms for a reply. Later ones are missed,
     or fall across the next exchange, and are asked for again."""
     rng = random.Random(11)
     table = Table(net_console, turnaround=lambda: ms(rng.choice((0.5, 1, 2, 4, 7, 12, 19))))

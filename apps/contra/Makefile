@@ -59,7 +59,7 @@ $(NESP): FORCE | $(BUILD)
 # since every exchange is made in an NMI, and both routines on the one page
 # net/contra_net.cfg has for them.
 $(BUILD)/link.inc: $(NESP_LIB) $(NESP)
-	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $@ --timeout --pack
+	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $@ --timeout --pack $(LINK_OPTIONS)
 
 # Each ROM is assembled from the same sources: the original as it is, and
 # the netplay one with NETPLAY defined.

@@ -64,11 +64,14 @@ DMC_STEAL = 4                   # the most a fetch takes from the CPU
 IDLE = "forever_loop"           # where the game waits for the NMI
 # lda $2002 / bpl: the reset code waiting for a vblank.
 WAIT_VBLANK = bytes((0xAD, 0x02, 0x20, 0x10, 0xFB))
-# The serial receiver's wait for a start bit: lda $4017 / lsr / bcs / dex /
-# bne. X counts its looks.
-HUNT = bytes((0xAD, 0x17, 0x40, 0x4A, 0xB0))
-HUNT_REST = (0xCA, 0xD0)        # after the bcs's offset
-HUNT_CYCLES = 13
+# The serial receiver's wait for a start bit: four looks, each bit $4017 /
+# bne, then dex / bne, 29 cycles in all. X counts those. (A run of looks
+# with no dex after the fourth is where a frame's next byte is due, and is
+# not skipped.)
+HUNT = bytes((0x2C, 0x17, 0x40, 0xD0))
+HUNT_LOOKS = 4
+HUNT_REST = (0xCA, 0xD0)        # after the last look
+HUNT_CYCLES = 29
 
 
 def load_labels(path):
@@ -359,10 +362,11 @@ class Console:
                         self.nmi_depth -= 1
                         if not self.nmi_depth:
                             self.frame.nmi_cycles = mpu.processorCycles + 6 - self._nmi_at
-                elif opcode == HUNT[0]:
+                elif opcode == WAIT_VBLANK[0]:
                     if bus.code(pc, 5) == WAIT_VBLANK and not self.vblank_unread:
                         self._wait(limit)
                         continue
+                elif opcode == HUNT[0]:
                     if self._skip_hunt(pc, limit):
                         continue
             mpu.step()
@@ -388,8 +392,9 @@ class Console:
         it did."""
         if self.joy2_quiet_until is None:
             return False
-        code = self.bus.code(pc, 8)
-        if code[:5] != HUNT or tuple(code[6:]) != HUNT_REST:
+        code = self.bus.code(pc, 5 * HUNT_LOOKS + 2)
+        if (any(code[5 * look:5 * look + 4] != HUNT for look in range(HUNT_LOOKS))
+                or tuple(code[5 * HUNT_LOOKS:]) != HUNT_REST):
             return False
         mpu = self.mpu
         quiet = self.joy2_quiet_until(mpu.processorCycles)

@@ -82,8 +82,14 @@ net_reset:
     lda #$00
     sta net_boot
     sta CPU_GRAPHICS_BUFFER+$f0 ; no mark of an earlier game: the top score is the first one
+    ; Straight into a two-player game, with no title first: the players
+    ; have said what they want, in the menu. (The title is come back to
+    ; when the game ends, still in the session, and player 1's Start
+    ; begins another from there.)
     lda #$01
-    sta PLAYER_MODE             ; the title comes up at 2 PLAYERS
+    sta PLAYER_MODE
+    lda #$04
+    sta GAME_ROUTINE_INDEX      ; game_routine_04: a new game's scores and lives
     lda net_boot+1
     sta net_role
     lda net_boot+2

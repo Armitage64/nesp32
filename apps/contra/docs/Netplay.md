@@ -23,10 +23,11 @@ Pick 2 PLAYERS at the title and press Start. A menu comes up:
 | JOIN GAME | an address to edit, and Start calls it. It starts as the one last joined |
 | LOCAL GAME | the game as it always was, for a second controller on port 2 |
 
-When the two are connected both consoles start again from the title, at
-2 PLAYERS, and from there they are one game: player 1 presses Start. Player
-1 is the console that hosted. Only player 1 can pause, and only player 1
-answers CONTINUE, as in the original.
+When the two are connected both consoles go straight into a two-player
+game, at the screen that names the first stage, and from there they are
+one game. Player 1 is the console that hosted. Only player 1 can pause, and
+only player 1 answers CONTINUE, as in the original. When the game ends the
+title comes back, still joined, and player 1's Start begins another.
 
 1 PLAYER never shows the menu, and says nothing to a nesp32.
 
@@ -84,9 +85,9 @@ every NMI, tick or not, and its memory differs between the consoles.
 ### Starting alike
 
 A session starts with both consoles reset, so both begin from the state of
-one switched on for the first time, top score included. The title screen is
-already in lockstep. They need not start at the same moment: a tick is
-counted, not timed.
+one switched on for the first time, top score included, and then at a new
+two-player game in place of the title. They need not start at the same
+moment: a tick is counted, not timed.
 
 Ticks are counted from -5 on both consoles, and the first buttons either
 sends are tick 0's.
@@ -256,6 +257,14 @@ StickS3, and a real NES that joins, with a StickC Plus2.
   the same NMI when it hears no reply (`net_ask`). With that the NES asked
   again 374 times in 4400 frames, and the MiSTer waited 74 (1.7%), with
   the network's own lateness in that.
+- Then the receiver was made to look for each byte of a reply where it is
+  due, 6 cycles a look in place of 13 (nesp32's `docs/PROTOCOL.md`, section
+  7). With its samples aimed a little before the middle of the bit the NES
+  misheard 124 replies in 4650; with them aimed at the middle, and a
+  frame's first byte looked for more closely too, none in 4400.
+- What is left is the network. On a day when one packet in fourteen took
+  over 14 ms there and back, the delay kept to 1 and three frames in a
+  hundred waited.
 - It plays well. It slows when many enemies are on the screen: those are
   the frames with least to spare, where the exchange, and a second one
   when a reply is misheard, no longer fit (the table above).
@@ -269,12 +278,17 @@ on and its own leavings in memory, which the handler acted on.
 
 ## Not done, and not known
 
-- **Fewer replies misheard.** The receiver looks for a byte's start every
-  13 cycles, which with a sample's four leaves little of a bit to spare.
-  Looking more often would let fewer be spoiled, and each one spoiled now
-  costs a second exchange.
-- **Less of each frame for the exchange.** It is an eighth of a frame, in
-  a game that has that to spare only when the screen is quiet.
+- **The slowdown when the screen is crowded.** With many enemies on the
+  screen the game slows, where a local game does not. Those are the frames
+  with least to spare, and the exchange takes an eighth of every frame
+  (4012 cycles): what no longer fits runs over into the next. The serial
+  line is clean now and nothing is asked twice, so what is left to do is
+  make the exchange itself smaller. In the order of what each should save:
+  frames of five bytes out and four back in place of six and six (about
+  670 cycles); the check worked out in line, with no loop round it (about
+  240); the controller read once where the game's own read is known to be
+  good, and twice only while a sample plays (about 170). And to measure,
+  on the simulated console, how many frames of each level then overrun.
 - **The firmware's own end of the datagrams** (its `main/conn.c`) has run
   on hardware and has no tests of its own: what it does is tested through
   a computer's stand-in for it.
@@ -288,9 +302,6 @@ on and its own leavings in memory, which the handler acted on.
   one back to send with others; neither was seen to help.
 - **A way to meet without forwarding a port**: a server that introduces
   the two nesp32s.
-- **Straight to the game from the menu.** A session starts at the title,
-  where player 1 has to press Start again with 2 PLAYERS already picked.
-  Once a game has been hosted and joined it should go straight to stage 1.
 - **A message** when a session ends. The console goes back to the title
   and says nothing of why.
 - **Player 2 cannot pause.** The game reads only player 1's Start.
@@ -299,8 +310,6 @@ on and its own leavings in memory, which the handler acted on.
   they were read, which works only while the two consoles' frames happen to
   line up. And the game cannot be rolled back: there is nowhere to keep a
   copy of it.
-- **The cycles of the exchange** could come down a little more with frames
-  of five bytes out and four back.
 - **PAL**, and Probotector.
 
 ## Building and testing

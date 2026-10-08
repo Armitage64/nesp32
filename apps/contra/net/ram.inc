@@ -35,7 +35,7 @@ CHECK_AT        = CHECK_TICK - 8
 ; zero page to spare, so its memory is placed here, a byte at a time.
 NESP_RX_MASK    = $1F           ; the longest reply payload: 32 bytes
 NESP_TX_MAX     = 8             ; the longest request: a hello for one service
-NESP_TIMEOUT    = 2             ; passes of 1.86 ms waited for a reply
+NESP_TIMEOUT    = 1             ; passes of 4.15 ms waited for a reply
 NESP_NMI_ONLY   = 1             ; every exchange is made in an NMI
 NESP_OWN_MEMORY = 1
 NESP_CRC_TABLE  = 1
