@@ -203,8 +203,9 @@ The ROM tests need cc65 and skip without it.
   work, with the cartridge, and nothing was measured.
 - Figures from PEER on hardware. A full network game of nes-drmario's
   netplay ROM has been played; what the nesp32s' screens counted was not
-  recorded. nes-drmario's README has what could shorten the delay between
-  a button and the game.
+  recorded. That ROM has since taken nes-contra's exchange, with a delay
+  that sets itself, and its README has figures from a game on two
+  consoles.
 - The receiving nesp32 woken when a packet comes, in place of looking once
   a millisecond; and a way for two nesp32s to meet across the Internet
   without a port forwarded.

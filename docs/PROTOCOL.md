@@ -359,8 +359,8 @@ The reply is four bytes: one tick of the other console's buttons, if its
 `N` is 1. It names no ticks. That it comes at all says the nesp32 holds
 every tick it was sent, and the console counts them as held; if the nesp32
 could not take them all it makes no reply. An `N` of 3 is `LOST`. The two
-forms may be mixed in one session. nes-contra's ROM makes its exchange
-this way.
+forms may be mixed in one session. nes-contra's ROM and nes-drmario's make
+their exchange this way.
 
 #### Between the nesp32s
 
@@ -475,11 +475,6 @@ the console did not hear); the network's times behind the last advice, by
 the delay each would take; and the network's time there and back, the last,
 the least and the most, with how many took over 14 ms and over 40 ms.
 
-In nes-drmario's ROM an exchange is made inside the NMI, 9 to 11 bytes out
-and 10 to 12 back, with the receiver that gives up by counting (section
-7). The input delay is 3 ticks, which on the simulated consoles is a local
-network's: with 10 ms between the nesp32s nearly every frame is a tick.
-
 nes-contra's ROM makes its exchange before the game's work in each NMI,
 not after it, so that buttons leave as soon as they are read and the other
 console's are asked for at the last moment they can be used. Its input
@@ -487,6 +482,15 @@ delay is 1 tick by default: on the simulated consoles no frame waits for
 buttons with 5 ms between the nesp32s, and next to none with 7,
 whatever the two consoles' frames are to each other; 2 ticks do the same
 at 20 ms. Its `docs/Netplay.md` has the figures.
+
+nes-drmario's ROM does the same, where its game reads the controllers in
+its NMI, with the session's code and the library in its second bank: the
+game's own is full. It made its exchange after the game's work at first,
+9 to 11 bytes out and 10 to 12 back as ordinary frames, with a delay fixed
+at 3 ticks. On the simulated consoles its delay is now 1 tick with 5 or
+7 ms between the nesp32s, and no frame waits; on two real consoles on a
+home network it was 1 tick too, with under one frame in a hundred waiting
+and no reply misheard in 5000. Its README has the figures.
 
 ### DIAG `$05`
 
@@ -801,7 +805,8 @@ and has no `nesp_nmi_hook` and nothing kept for one. One in two banks has a
 copy of the library in each, at the same places in memory, and the bank
 that never says hello defines `NESP_NO_HELLO`. With `--pack` the two serial
 routines share a page, for a ROM with one to spare and no more.
-nes-drmario's netplay ROM is all three.
+nes-drmario's netplay ROM was all three, until its session's code went to
+its menu's bank, where the one copy of the library now is.
 
 The library keeps a dozen bytes of zero page and its two buffers in the
 `ZEROPAGE` and `BSS` segments. A game with no run of zero page to spare
