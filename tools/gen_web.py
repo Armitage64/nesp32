@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Put together the page that flashes a nesp32 from a browser.
+"""Put together the nesp32's web site: the product page, and the page that
+flashes a nesp32 from a browser.
 
     tools/gen_web.py build/web
 
-    index.html        web/index.html, as it is
-    manifest.json     what ESP Web Tools is to write, and where
-    s3-*.bin          the StickS3's firmware, from firmware/build-esp32s3
+    index.html            web/product/index.html, as it is
+    style.css             web/style.css, which both pages use
+    img/                  pictures of the programs, from their docs
+    flash/index.html      web/flash/index.html, as it is
+    flash/manifest.json   what ESP Web Tools is to write, and where
+    flash/s3-*.bin        the StickS3's firmware, from firmware/build-esp32s3
 
 The firmware's pieces go as they are, each to its own offset, and are not
 merged into one image: an image from 0 to the end of the firmware would
@@ -23,7 +27,12 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..")
-PAGE = os.path.join(ROOT, "web", "index.html")
+WEB = os.path.join(ROOT, "web")
+
+# The product page's pictures: (its name for one, where it is)
+PICTURES = [("cart-menu.png", "docs/cart-menu.png"),
+            ("reader.png", "apps/wiki/docs/reader.png"),
+            ("jukebox.png", "apps/jukebox/docs/screen.png")]
 
 # (ESP Web Tools' name for the chip, the build's directory, a prefix for its files)
 BOARDS = [("ESP32-S3", os.path.join(ROOT, "firmware", "build-esp32s3"), "s3")]
@@ -52,13 +61,15 @@ def build(family, directory, prefix, out):
 
 
 def main(out):
-    os.makedirs(out, exist_ok=True)
+    flash = os.path.join(out, "flash")
+    os.makedirs(flash, exist_ok=True)
+    os.makedirs(os.path.join(out, "img"), exist_ok=True)
     builds = []
     for family, directory, prefix in BOARDS:
         if not os.path.exists(os.path.join(directory, "flasher_args.json")):
             sys.exit("No firmware in %s: run firmware/deploy.sh build first."
                      % os.path.relpath(directory))
-        builds.append(build(family, directory, prefix, out))
+        builds.append(build(family, directory, prefix, flash))
     manifest = {
         "name": "nesp32",
         "version": version(),
@@ -67,10 +78,14 @@ def main(out):
         "new_install_prompt_erase": True,
         "builds": builds,
     }
-    with open(os.path.join(out, "manifest.json"), "w") as f:
+    with open(os.path.join(flash, "manifest.json"), "w") as f:
         json.dump(manifest, f, indent=2)
         f.write("\n")
-    shutil.copyfile(PAGE, os.path.join(out, "index.html"))
+    shutil.copyfile(os.path.join(WEB, "flash", "index.html"), os.path.join(flash, "index.html"))
+    shutil.copyfile(os.path.join(WEB, "product", "index.html"), os.path.join(out, "index.html"))
+    shutil.copyfile(os.path.join(WEB, "style.css"), os.path.join(out, "style.css"))
+    for name, path in PICTURES:
+        shutil.copyfile(os.path.join(ROOT, path), os.path.join(out, "img", name))
     print("%s: nesp32 %s" % (os.path.relpath(out), manifest["version"]))
 
 

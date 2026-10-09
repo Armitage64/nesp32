@@ -8,8 +8,9 @@
 #   make cart       build/nesp32.nes: the setup ROM and the four other
 #                   programs on one cartridge, with a menu. It builds them
 #                   from apps/.
-#   make web        build/web: the page that flashes a nesp32 from a browser,
-#                   with the firmware as firmware/deploy.sh build left it.
+#   make web        build/web: the product page, and under flash/ the page
+#                   that flashes a nesp32 from a browser, with the firmware
+#                   as firmware/deploy.sh build left it.
 #                   make web-serve serves it at http://localhost:8032
 #   make test
 #

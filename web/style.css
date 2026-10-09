@@ -1,0 +1,51 @@
+/* What the product page and the flashing page share. */
+:root {
+  --bg: #f4f1ea; --fg: #1d1b19; --dim: #6a645c; --line: #d8d2c6;
+  --accent: #c8102e; --card: #fffdf8;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141312; --fg: #ece8e1; --dim: #9a938a; --line: #34312d;
+    --accent: #ff4d5e; --card: #1c1b19;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 640px; margin: 0 auto; padding: 48px 16px 64px; }
+main.wide { max-width: 880px; }
+h1 { font: 700 40px/1.1 ui-monospace, "SF Mono", Menlo, monospace; margin: 0 0 8px; }
+h1 span { color: var(--accent); }
+h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .08em;
+     color: var(--dim); margin: 40px 0 8px; }
+h3 { font-size: 17px; margin: 0 0 4px; }
+p.lead { font-size: 18px; margin: 0 0 32px; }
+.card { background: var(--card); border: 1px solid var(--line);
+        border-radius: 10px; padding: 24px; }
+.card p { margin: 0 0 16px; }
+.card p:last-child { margin: 0; }
+ol, ul { padding-left: 22px; margin: 0; }
+li { margin: 6px 0; }
+a { color: var(--accent); }
+small, .dim { color: var(--dim); }
+.note { border-left: 3px solid var(--accent); padding-left: 12px; }
+.tbd { color: var(--dim); font-style: italic; }
+
+nav { display: flex; gap: 20px; flex-wrap: wrap; margin: 0 0 40px; font-size: 15px; }
+.button {
+  display: inline-block; background: var(--accent); color: #fff;
+  text-decoration: none; font-weight: 600; padding: 10px 18px; border-radius: 8px;
+}
+.button.quiet { background: none; color: var(--accent); border: 1px solid var(--line); }
+.actions { display: flex; gap: 12px; flex-wrap: wrap; margin: 0 0 40px; }
+
+.grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.grid .card { padding: 20px; }
+.grid .card p { margin: 0; color: var(--dim); }
+.shots { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.shots img { width: 100%; height: auto; display: block; border-radius: 6px;
+             border: 1px solid var(--line); image-rendering: pixelated; }
+footer { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--line);
+         font-size: 14px; color: var(--dim); }

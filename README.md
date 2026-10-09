@@ -95,10 +95,12 @@ Not started:
 - A fetch that drops partway made again; today what came is read, if it
   was a screenful.
 - Updates over Wi-Fi, and a way to put music on a nesp32 without a cable.
-- The page that flashes a nesp32 from a browser (`make web`) put on GitHub
-  Pages: an Action that builds the firmware and deploys `build/web`, for
-  when the repository is public. Until then the page is served from this
-  computer (`make web-serve`), and has not yet flashed a StickS3.
+- The web site (`make web`: a product page, and a page that flashes a
+  nesp32 from a browser) put on GitHub Pages: an Action that builds the
+  firmware and deploys `build/web`, for when the repository is public.
+  Until then it is served from this computer (`make web-serve`). The
+  product page is a stub, and the flashing page has not yet flashed a
+  StickS3.
 - PAL consoles.
 - A licence. A line-by-line comparison found no code of nes-radar's
   (GPL-3.0) here beyond idioms. The CRC routine without a table follows
