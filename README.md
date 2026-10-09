@@ -1,21 +1,21 @@
-# nesp32
+# NESP32
 
-A nesp32 is a small Wi-Fi computer that plugs into controller port 2 of a
-Nintendo Entertainment System and gives the console what it never had: the
-Internet, files, and another console to play against. It is an M5Stack
-StickS3 with a level-shifting hat and this firmware. The console needs no
-modification, and the games and programs that use it are ordinary ROMs.
+A network interface for the Nintendo Entertainment System (NES) based on
+the ESP32 S3 microcontroller. 
 
 ![The cartridge's menu](docs/cart-menu.png) ![The status screen](apps/setup/docs/status.png)
 
-Work in progress. Every program below has run on a StickS3, on a real NES
-and on the MiSTer's NES core; [To do](#to-do) has what has not.
-
 ## What it does
 
-One firmware serves every program. A ROM says which services it needs when
-it starts, and the nesp32 provides them; nothing is chosen on the nesp32,
-and nothing about it is ever set up from a computer.
+The device connects to controller port 2 and
+provides WiFi Internet access, streaming, and online gaming capabilities. 
+
+Extensible firmware on the ESP32 provides an API that any cartridge-based
+software can interface with. A setup program allows the wifi and USB storage 
+to be configured from the NES itself. 
+
+Work in progress. Every program below has run on a StickS3, on a real NES
+and on the MiSTer's NES core; [To do](#to-do) has what has not.
 
 | Service | What a ROM gets from it |
 |---|---|
