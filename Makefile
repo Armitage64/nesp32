@@ -8,6 +8,9 @@
 #   make cart       build/nesp32.nes: the setup ROM and the four other
 #                   programs on one cartridge, with a menu. It builds them
 #                   from apps/.
+#   make web        build/web: the page that flashes a nesp32 from a browser,
+#                   with the firmware as firmware/deploy.sh build left it.
+#                   make web-serve serves it at http://localhost:8032
 #   make test
 #
 # The Stick's firmware itself is built with ESP-IDF, from firmware/.
@@ -27,7 +30,7 @@ HOST_HEADERS := $(CORE)/include/nesp_core.h $(SERVICES)/include/nesp_services.h
 
 ROM := $(BUILD)/setup.nes
 
-.PHONY: all proto host rom timeout-rom verify cart verify-cart test clean FORCE
+.PHONY: all proto host rom timeout-rom verify cart verify-cart web web-serve test clean FORCE
 
 all: proto host rom
 
@@ -137,6 +140,12 @@ cart: $(CART)
 verify-cart: $(CART)
 	test "$$(wc -c < $(CART) | tr -d ' ')" = "$(strip $(CART_SIZE))"
 	printf 'NES\032\020\020\020\010' | cmp -n 8 - $(CART)
+
+web:
+	$(PYTHON) tools/gen_web.py $(BUILD)/web
+
+web-serve: web
+	$(PYTHON) -m http.server -d $(BUILD)/web -b localhost 8032
 
 FORCE:
 

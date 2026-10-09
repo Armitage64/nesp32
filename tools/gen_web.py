@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""Put together the page that flashes a nesp32 from a browser.
+
+    tools/gen_web.py build/web
+
+    index.html        web/index.html, as it is
+    manifest.json     what ESP Web Tools is to write, and where
+    s3-*.bin          the StickS3's firmware, from firmware/build-esp32s3
+
+The firmware's pieces go as they are, each to its own offset, and are not
+merged into one image: an image from 0 to the end of the firmware would
+cover the `nvs` partition between them, and writing it would take the
+nesp32's saved networks with every update.
+
+The firmware has to have been built first (firmware/deploy.sh build).
+"""
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.join(HERE, "..")
+PAGE = os.path.join(ROOT, "web", "index.html")
+
+# (ESP Web Tools' name for the chip, the build's directory, a prefix for its files)
+BOARDS = [("ESP32-S3", os.path.join(ROOT, "firmware", "build-esp32s3"), "s3")]
+
+
+def version():
+    """The commit the firmware was built from, as git names it."""
+    try:
+        return subprocess.check_output(
+            ["git", "-C", ROOT, "describe", "--always", "--dirty", "--tags"],
+            text=True).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"
+
+
+def build(family, directory, prefix, out):
+    """Copy one board's files to `out` and return its entry in the manifest."""
+    with open(os.path.join(directory, "flasher_args.json")) as f:
+        files = json.load(f)["flash_files"]
+    parts = []
+    for offset, path in sorted(files.items(), key=lambda item: int(item[0], 0)):
+        name = "%s-%s" % (prefix, os.path.basename(path))
+        shutil.copyfile(os.path.join(directory, path), os.path.join(out, name))
+        parts.append({"path": name, "offset": int(offset, 0)})
+    return {"chipFamily": family, "parts": parts}
+
+
+def main(out):
+    os.makedirs(out, exist_ok=True)
+    builds = []
+    for family, directory, prefix in BOARDS:
+        if not os.path.exists(os.path.join(directory, "flasher_args.json")):
+            sys.exit("No firmware in %s: run firmware/deploy.sh build first."
+                     % os.path.relpath(directory))
+        builds.append(build(family, directory, prefix, out))
+    manifest = {
+        "name": "nesp32",
+        "version": version(),
+        # The browser asks whether to erase first. Not erasing keeps the
+        # saved networks and the music.
+        "new_install_prompt_erase": True,
+        "builds": builds,
+    }
+    with open(os.path.join(out, "manifest.json"), "w") as f:
+        json.dump(manifest, f, indent=2)
+        f.write("\n")
+    shutil.copyfile(PAGE, os.path.join(out, "index.html"))
+    print("%s: nesp32 %s" % (os.path.relpath(out), manifest["version"]))
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        sys.exit(__doc__)
+    main(sys.argv[1])
