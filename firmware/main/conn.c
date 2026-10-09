@@ -32,6 +32,7 @@
 #include <sys/socket.h>
 
 #include "esp_log.h"
+#include "esp_netif.h"
 #include "esp_random.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -47,9 +48,12 @@
 #define CALL_MS 3000                /* how long a call is given to be answered */
 #define CALL_EVERY_MS 100           /* between two sendings of it */
 #define GONE_US 3000000             /* nothing heard for this long: the other end is gone */
-/* What every packet of a game says of itself to the network: class
- * selector 6, which Wi-Fi sends as voice. That class waits least for the
- * air, on this radio and on an access point that keeps to it. */
+/* What a game's packets say of themselves to the network when the other
+ * nesp32 is on this one: class selector 6, which Wi-Fi sends as voice. That
+ * class waits least for the air, on this radio and on an access point that
+ * keeps to it. Across the Internet they say nothing: the class is meant for
+ * what runs a network, and a network between the two may drop what claims
+ * it. */
 #define URGENT 0xC0
 #define SETTINGS "nesp32"
 #define SETTING_LAST "peer_last"
@@ -291,7 +295,6 @@ static int open_socket(uint16_t port)
         return -1;
     }
     struct sockaddr_in here;
-    int urgent = URGENT;
     memset(&here, 0, sizeof(here));
     here.sin_family = AF_INET;
     here.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -302,8 +305,22 @@ static int open_socket(uint16_t port)
         return -1;
     }
     fcntl(sock, F_SETFL, fcntl(sock, F_GETFL, 0) | O_NONBLOCK);
-    setsockopt(sock, IPPROTO_IP, IP_TOS, &urgent, sizeof(urgent));
     return sock;
+}
+
+/* Mark the socket's packets urgent if the other end is on this nesp32's
+ * own network, and not at all if it is not, or if that cannot be told. */
+static void mark(int sock, const struct sockaddr_in *other)
+{
+    esp_netif_ip_info_t here;
+    esp_netif_t *wifi = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    bool near = wifi != NULL && esp_netif_get_ip_info(wifi, &here) == ESP_OK
+                && here.netmask.addr != 0
+                && ((other->sin_addr.s_addr ^ here.ip.addr) & here.netmask.addr) == 0;
+    int class = near ? URGENT : 0;
+    setsockopt(sock, IPPROTO_IP, IP_TOS, &class, sizeof(class));
+    ESP_LOGI(TAG, "the other end is %s, %s this network", inet_ntoa(other->sin_addr),
+             near ? "on" : "not on");
 }
 
 /* Wait until something has come, for LOOK_MS at the most. */
@@ -346,9 +363,14 @@ static bool call(uint32_t began, int sock, nesp_arq_t *arq, const struct sockadd
 {
     uint8_t packet[NESP_ARQ_PACKET];
     nesp_arq_open(arq, esp_random() | 1);
+    ESP_LOGI(TAG, "calling %s, port %u", inet_ntoa(other->sin_addr),
+             (unsigned)ntohs(other->sin_port));
     for (int waited = 0; waited < CALL_MS && wanted(began); waited += CALL_EVERY_MS) {
         size_t length = nesp_arq_packet(arq, NESP_ARQ_CALL, clock_us(), packet);
-        sendto(sock, packet, length, 0, (const struct sockaddr *)other, sizeof(*other));
+        if (sendto(sock, packet, length, 0, (const struct sockaddr *)other, sizeof(*other)) < 0
+            && waited == 0) {
+            ESP_LOGW(TAG, "the call could not be sent: %d", errno);
+        }
         int64_t until = esp_timer_get_time() + CALL_EVERY_MS * 1000;
         while (esp_timer_get_time() < until) {
             int came = recv(sock, packet, sizeof(packet), 0);
@@ -519,9 +541,14 @@ static void conn_task(void *arg)
                 other.sin_family = AF_INET;
                 other.sin_port = htons(port);
                 memcpy(&other.sin_addr.s_addr, address, 4);
+                mark(sock, &other);
                 up = call(began, sock, &arq, &other);
             }
+            if (up && what == WANT_LISTEN) {
+                mark(sock, &other);         /* known only now that it has called */
+            }
             if (!up) {
+                ESP_LOGI(TAG, "%s", sock < 0 ? "no socket" : "no connection was made");
                 say(began, NESP_CONN_FAILED);
             } else if (say(began, what == WANT_LISTEN ? NESP_CONN_ANSWERED : NESP_CONN_CALLED)) {
                 ESP_LOGI(TAG, "connected: %s", what == WANT_LISTEN ? "it called" : "it answered");
