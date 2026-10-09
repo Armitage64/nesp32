@@ -6,7 +6,7 @@ needs (`../docs/PROTOCOL.md`).
 
 **Status: working on a StickS3**, on the MiSTer's NES core through a SNAC
 adapter ("On hardware", below). It works on a StickC Plus2 as well, and
-both boards on a real NES: the cartridge (`../README.md`), its menu and
+both boards on a real NES: the cartridge (`../docs/DEVELOPMENT.md`), its menu and
 all five programs, has been run on each board with each console. No
 figures were taken from those runs, and none has been of any length. The
 jukebox runs on the same

@@ -115,12 +115,42 @@ writes.
 
 ## Music on a nesp32
 
-The nesp32 holds the tracks, as files in its flash. Rips (`.vgm`, `.vgz`)
-need nothing from here any more: the nesp32 converts them itself, and a
-StickS3 takes them as a USB drive (the top [README](../../README.md),
-"Music for the jukebox"). What follows is for recordings, which are
-converted here, and for writing a whole playlist at once. With the nesp32
-on USB, and already running [nesp32's firmware](../../firmware/README.md):
+The tracks are files in the nesp32's flash, in a folder called `tracks`,
+and are played in the order of their names. Rips of NES games' music go
+there as they are, `.vgm` or `.vgz`: the next time the nesp32 starts it
+makes each into the stream the console plays, which its screen shows as
+`Converting 3/12`, and puts that in the rip's place as a `.jbs` file of the
+same name. So each is converted once, and the `.jbs` files on the drive are
+the music it has. A rip still there after a start is one that could not be
+played. There are about 3900 KB for them, and a track is a few kilobytes.
+
+**A StickS3** is given them as any USB drive is. Run
+[the setup ROM](../setup) with the StickS3 on controller port 2, choose
+Enable USB Drive on its status screen, and plug the StickS3 into a
+computer: a drive called `NESP32` appears. Copy the music into its `tracks`
+folder and eject the drive, and the nesp32 restarts with the music. (B on
+the console, or the nesp32's front button, also ends it; eject first.)
+While it is a drive its USB port is not the serial port it is flashed
+through, which comes back with the restart.
+
+**A StickC Plus2** cannot be a drive: its USB port is a serial port and
+nothing else. Its music is written from a computer, which needs ESP-IDF
+(the firmware's own build) to make the filing system:
+
+```sh
+pip install construct esptool
+../../tools/put_files.py music/      # .vgm, .vgz, .jbs and .pcm files: the playlist, in name order
+```
+
+This builds the whole filing system on the computer and writes it over
+whatever tracks the nesp32 had, so the files named are the playlist. It
+works for a StickS3 too.
+
+Sampled sound is not converted on the nesp32. Recordings are made into
+`.pcm` files here, and such a file copied to the drive plays: a minute of
+it is 465 to 1220 KB. `tools/deploy.py` converts recordings and writes a
+whole playlist at once. With the nesp32 on USB, and already running
+[nesp32's firmware](../../firmware/README.md):
 
 ```sh
 pip install construct esptool

@@ -4,7 +4,7 @@
 #   make proto      build/nesp_proto.h, .inc and .py from proto/nesp.toml
 #   make host       build/libnesp_host: the firmware's link and services for
 #                   this computer, which the tests load
-#   make rom        build/setup.nes: the setup ROM
+#   make rom        build/setup.nes: the setup ROM, from apps/setup
 #   make cart       build/nesp32.nes: the setup ROM and the four other
 #                   programs on one cartridge, with a menu. It builds them
 #                   from apps/.
@@ -26,7 +26,6 @@ HOST_SOURCES := $(CORE)/nesp_core.c $(wildcard $(SERVICES)/*.c) host/nesp_host.c
 HOST_HEADERS := $(CORE)/include/nesp_core.h $(SERVICES)/include/nesp_services.h
 
 ROM := $(BUILD)/setup.nes
-ROM_SIZE := 40976   # 16-byte header + 32 KB PRG + 8 KB CHR
 
 .PHONY: all proto host rom timeout-rom verify cart verify-cart test clean FORCE
 
@@ -53,56 +52,31 @@ host: $(HOST_LIB)
 
 # --- the setup ROM --------------------------------------------------------------
 
-$(BUILD)/link.inc: nes/lib/gen_link.py $(BUILD)/nesp_proto.py | $(BUILD)
-	$(PYTHON) nes/lib/gen_link.py $(BUILD) $@
+# Built by its own Makefile in apps/setup, into this build directory and
+# against this tree: the tests of the link are run on it, and it is one of
+# the cartridge's programs. That Makefile knows what of it is out of date.
+SETUP ?= apps/setup
+TIMEOUT_ROM := $(BUILD)/setup_timeout.nes
+SETUP_MAKE = $(MAKE) -s -C $(SETUP) BUILD=$(abspath $(BUILD)) NESP32=$(CURDIR) \
+	NESP_BUILD=$(abspath $(BUILD))
 
-SCREEN := $(BUILD)/chr.bin $(BUILD)/header.bin $(BUILD)/screen.inc
-
-$(BUILD)/screen.stamp: nes/setup/gen_screen.py $(BUILD)/nesp_proto.py | $(BUILD)
-	$(PYTHON) nes/setup/gen_screen.py $(BUILD)
-	touch $@
-
-$(SCREEN): $(BUILD)/screen.stamp ;
-
-SETUP_SOURCES := $(wildcard nes/setup/*.s nes/setup/*.inc) nes/lib/nesp.inc
-
-$(BUILD)/setup.o: $(SETUP_SOURCES) $(SCREEN) $(BUILD)/link.inc $(BUILD)/nesp_proto.inc
-	ca65 -g -I $(BUILD) -I nes/lib -I nes/setup --bin-include-dir $(BUILD) \
-		-o $@ nes/setup/setup.s
-
-$(ROM): $(BUILD)/setup.o nes/setup/nrom256.cfg
-	ld65 -C nes/setup/nrom256.cfg -o $@ -Ln $(BUILD)/setup.labels \
-		--dbgfile $(BUILD)/setup.dbg -m $(BUILD)/setup.map $<
+$(ROM): FORCE $(PROTO)
+	$(SETUP_MAKE) $(abspath $@)
 
 rom: $(ROM)
 
-# The same ROM on the library's other receiver, the one for exchanges made
-# inside an NMI, which gives up by counting, and with its CRC from a table.
-# Nothing ships it: the tests time that receiver in it, and run the ROM on
-# it.
-TIMEOUT_ROM := $(BUILD)/setup_timeout.nes
-
-$(BUILD)/timeout/link.inc: nes/lib/gen_link.py $(BUILD)/nesp_proto.py | $(BUILD)
-	mkdir -p $(BUILD)/timeout
-	$(PYTHON) nes/lib/gen_link.py $(BUILD) $@ --timeout
-
-$(BUILD)/setup_timeout.o: $(SETUP_SOURCES) $(SCREEN) $(BUILD)/timeout/link.inc $(BUILD)/nesp_proto.inc
-	ca65 -g -D TIMEOUT_BUILD -I $(BUILD)/timeout -I $(BUILD) -I nes/lib -I nes/setup \
-		--bin-include-dir $(BUILD) -o $@ nes/setup/setup.s
-
-$(TIMEOUT_ROM): $(BUILD)/setup_timeout.o nes/setup/nrom256.cfg
-	ld65 -C nes/setup/nrom256.cfg -o $@ -Ln $(BUILD)/setup_timeout.labels $<
+$(TIMEOUT_ROM): FORCE $(PROTO)
+	$(SETUP_MAKE) $(abspath $@)
 
 timeout-rom: $(TIMEOUT_ROM)
 
 verify: $(ROM)
-	test "$$(wc -c < $(ROM) | tr -d ' ')" = "$(strip $(ROM_SIZE))"
-	printf 'NES\032\002\001\001\000' | cmp -n 8 - $(ROM)
+	$(SETUP_MAKE) verify
 
 # --- the cartridge --------------------------------------------------------------
 
-# The other four programs, each built by its own Makefile in apps/,
-# into this build directory and against this tree. BUILD
+# The other four programs, each built by its own Makefile in apps/ as the
+# setup ROM is, into this build directory and against this tree. BUILD
 # is given to each by name: one given to this make would otherwise be
 # theirs too.
 # Dr. Mario's takes the game from its disassembly, a submodule in
@@ -141,7 +115,7 @@ $(THROUGHPUT_ROM): FORCE $(PROTO) $(HOST_LIB)
 # gen_cart.py rewrites only the files whose contents changed.
 CART_TABLES := $(CART_BUILD)/chr.bin $(CART_BUILD)/screen.bin $(CART_BUILD)/menu.inc
 
-$(CART_BUILD)/tables.stamp: nes/cart/gen_cart.py nes/setup/gen_screen.py $(CART_ROMS) $(ROM)
+$(CART_BUILD)/tables.stamp: nes/cart/gen_cart.py $(SETUP)/tools/gen_screen.py $(CART_ROMS) $(ROM)
 	$(PYTHON) nes/cart/gen_cart.py tables $(CART_BUILD) $(CART_ARGS)
 	touch $@
 

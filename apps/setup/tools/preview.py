@@ -1,22 +1,25 @@
 #!/usr/bin/env python3
 """Pictures of the setup ROM's screens, for the README.
 
-    tools/preview.py docs
+    tools/preview.py docs [CART_DOCS]
 
-Runs build/setup.nes on the tests' simulated console against the firmware's
-own link and services (build/libnesp_host), works it with the controller,
-and writes what the nametable and the sprites hold at each stop as a PNG.
-Needs `make` first. After `make cart` there is the cartridge's menu too.
+Runs nesp32's build/setup.nes on its tests' simulated console against the
+firmware's own link and services (build/libnesp_host), works it with the
+controller, and writes what the nametable and the sprites hold at each stop
+as a PNG. Needs `make` at the top of the repository first. With a second
+directory, and after `make cart` there, the cartridge's menu goes to it as
+cart-menu.png.
 """
 
 import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.join(HERE, "..")
+ROOT = os.path.join(HERE, "..", "..", "..")
 BUILD = os.environ.setdefault("NESP_BUILD", os.path.join(ROOT, "build"))
-for path in (BUILD, "host", "tests", os.path.join("nes", "setup")):
+for path in (BUILD, "host", "tests"):
     sys.path.insert(0, os.path.join(ROOT, path))
+sys.path.insert(0, HERE)
 
 import gen_screen as layout  # noqa: E402
 import nesp_proto as p  # noqa: E402
@@ -46,31 +49,31 @@ def main(argv):
 
     console = Console(os.path.join(BUILD, "setup.nes"), os.path.join(BUILD, "setup.labels"))
     console.run(60)
-    save("setup-no-stick", console)
+    save("no-stick", console)
 
     stick, port = link(console, Stick)
     setup = Setup(console, stick, port)
     stick.set_battery(83)
     console.run_until(lambda: console.byte("linked"), 300)
     setup.settle(80)
-    save("setup-status-new", console)
+    save("status-new", console)
 
     setup.scan(NETWORKS)
     setup.press(PAD_DOWN)
-    save("setup-list", console)
+    save("list", console)
 
     setup.choose(0)
     setup.wait_for(STATE_KEYS)
     setup.type("Tr0ub4dor&3")
     setup.settle(6)
-    save("setup-password", console)
+    save("password", console)
 
     setup.press(PAD_START)
     setup.wait_for(STATE_JOINING)
     stick.set_wifi(p.NESP_WIFI_FAILED, why=p.NESP_WHY_PASSWORD)
     setup.wait_for(STATE_FAILED)
     setup.settle(10)
-    save("setup-failed", console)
+    save("failed", console)
 
     setup.press(PAD_START)
     setup.wait_for(STATE_KEYS)
@@ -79,14 +82,14 @@ def main(argv):
     stick.set_wifi(p.NESP_WIFI_JOINED, rssi=-48, address=(192, 168, 1, 77))
     setup.wait_for(STATE_STATUS)
     setup.settle(80)
-    save("setup-status", console)
+    save("status", console)
 
     stick.note_turnaround(212)
     stick.note_turnaround(148)
     setup.menu(MENU_TEST)
     setup.wait_for(STATE_TEST)
     console.run(700)
-    save("setup-test", console)
+    save("test", console)
 
     setup.press(PAD_B)
     setup.wait_for(STATE_STATUS)
@@ -95,10 +98,12 @@ def main(argv):
     stick.set_drive(p.NESP_DRIVE_MOUNTED)
     setup.wait_for_message("THE USB DRIVE IS MOUNTED")
     setup.settle(10)
-    save("setup-usb", console)
+    save("usb", console)
 
     cart = os.path.join(BUILD, "nesp32.nes")
-    if os.path.exists(cart):
+    if len(argv) > 2 and os.path.exists(cart):
+        out = argv[2]
+        os.makedirs(out, exist_ok=True)
         console = Console(cart, os.path.join(BUILD, "cart", "menu.labels"))
         console.run(10)
         save("cart-menu", console)

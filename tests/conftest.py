@@ -24,7 +24,7 @@ os.environ["NESP_BUILD"] = BUILD
 sys.path.insert(0, BUILD)
 sys.path.insert(0, os.path.join(ROOT, "host"))
 sys.path.insert(0, os.path.join(ROOT, "nes", "lib"))
-sys.path.insert(0, os.path.join(ROOT, "nes", "setup"))
+sys.path.insert(0, os.path.join(ROOT, "apps", "setup", "tools"))
 sys.path.insert(0, os.path.join(ROOT, "nes", "cart"))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, HERE)

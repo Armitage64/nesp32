@@ -1,7 +1,7 @@
 """Work the setup ROM as a person with a controller would, for the tests.
 
 Buttons are pressed and let go a frame at a time. What is on the screen is
-read from the nametable, by the rows nes/setup/gen_screen.py lays out.
+read from the nametable, by the rows apps/setup/tools/gen_screen.py lays out.
 """
 
 import gen_screen as layout

@@ -51,7 +51,7 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(HERE, "..", "setup"))
+sys.path.insert(0, os.path.join(HERE, "..", "..", "apps", "setup", "tools"))
 
 import gen_screen as layout  # noqa: E402
 
