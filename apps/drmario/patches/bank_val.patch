@@ -1,0 +1,9 @@
+--- a/bank_val.inc
++++ b/bank_val.inc
+@@ -5,0 +6,4 @@
++; The netplay build (ca65 -D NETPLAY) changes code, so it sets it.
++.ifdef NETPLAY
++con_bzk_hack                            = $01
++.else
+@@ -6,0 +11 @@
++.endif

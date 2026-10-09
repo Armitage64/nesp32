@@ -1,0 +1,21 @@
+--- a/src/ines_header.asm
++++ b/src/ines_header.asm
+@@ -36,0 +37,12 @@
++.ifdef NETPLAY
++; The netplay ROM has an NES 2.0 header, which the MiSTer's core asks for:
++; the same mapper with no submapper, no memory on the cartridge but 8 KB of
++; CHR RAM, and NTSC timing.
++.byte $08                     ; NES console, NES 2.0 header
++.byte $00                     ; mapper high bits and submapper
++.byte $00                     ; PRG and CHR ROM size high bits
++.byte $00                     ; no PRG RAM
++.byte $07                     ; CHR RAM: 64 << 7 bytes
++.byte $00                     ; NTSC
++.byte $00,$00,$00
++.else
+@@ -38 +50,2 @@
+-.byte 00,00,00,00,00,00,00,00 ; 8 zeroes
+\ No newline at end of file
++.byte 00,00,00,00,00,00,00,00 ; 8 zeroes
++.endif
+\ No newline at end of file

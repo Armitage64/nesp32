@@ -1,0 +1,11 @@
+--- a/src/bank5.asm
++++ b/src/bank5.asm
+@@ -264 +264,6 @@
+-bank_5_unused_space:
+\ No newline at end of file
++bank_5_unused_space:
++
++.ifdef NETPLAY
++    .export menu_frame
++    .include "menu.inc"
++.endif

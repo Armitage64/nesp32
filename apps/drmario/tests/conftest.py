@@ -18,6 +18,9 @@ NESP32 = os.path.abspath(os.environ.get("NESP32", os.path.join(ROOT, "..", "..")
 NESP_BUILD = tempfile.mkdtemp(prefix="nes-drmario-nesp32-")
 atexit.register(shutil.rmtree, NESP_BUILD, ignore_errors=True)
 HAVE_NESP32 = os.path.isdir(NESP32)
+# The game's code, which is not here: cyneprepou4uk's disassembly, a submodule.
+DRMARIO_SRC = os.environ.get("DRMARIO_SRC", os.path.join(
+    NESP32, "third_party", "NES-Games-Disassembly", "Dr. Mario"))
 if HAVE_NESP32:
     subprocess.run(["make", "-s", "BUILD=%s" % NESP_BUILD, "proto", "host"], cwd=NESP32,
                    check=True)
@@ -34,6 +37,8 @@ def build(tmp_path_factory):
         pytest.skip("cc65 not installed")
     if not HAVE_NESP32:
         pytest.skip("no nesp32 checkout at %s" % NESP32)
+    if not os.path.isfile(os.path.join(DRMARIO_SRC, "bank_FF.asm")):
+        pytest.skip("no disassembly at %s: git submodule update --init" % DRMARIO_SRC)
     out = tmp_path_factory.mktemp("build")
     subprocess.run(["make", "-s", "BUILD=%s" % out, "NESP32=%s" % NESP32,
                     "NESP_BUILD=%s" % NESP_BUILD, "verify", "all"], cwd=ROOT, check=True)

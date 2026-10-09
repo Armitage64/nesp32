@@ -47,6 +47,9 @@ def cart_build(build):
     for name in ("jukebox", "wiki", "drmario"):
         if not os.path.isdir(os.path.join(ROOT, "apps", name)):
             pytest.skip("apps/%s is not here" % name)
+    if not os.path.isfile(os.path.join(ROOT, "third_party", "NES-Games-Disassembly",
+                                       "Dr. Mario", "bank_FF.asm")):
+        pytest.skip("Dr. Mario's disassembly is not here: git submodule update --init")
     subprocess.run(["make", "-s", "BUILD=%s" % BUILD, "verify-cart"], cwd=ROOT, check=True)
     return BUILD
 

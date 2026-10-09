@@ -345,16 +345,20 @@ make verify     check the original against its SHA-512
 make test       the simulation's tests
 ```
 
-`baserom.nes` has to be in the repository's root, as for `build.sh`, and
-nesp32 is the top of this repository (`NESP32=` says where else). The tests
-need `requirements-dev.txt` and take about a quarter of an hour.
+The game's code is vermiceli's disassembly, the submodule
+`third_party/nes-contra-us` (`git submodule update --init`), and
+`baserom.nes` has to be in this directory, as it has to be in the
+disassembly's for its own `build.sh`. nesp32 is the top of this repository
+(`NESP32=` says where else). The tests need `requirements-dev.txt` and take
+about a quarter of an hour.
 
 | | |
 |---|---|
 | `net/net.inc` | the session: bank 7 |
 | `net/menu.inc` | the menu: bank 5 |
 | `net/ram.inc` | the memory both use |
-| `net/contra_net.cfg` | `contra.cfg`, with room for the link's library |
+| `net/contra_net.cfg` | the disassembly's `contra.cfg`, with room for the link's library |
+| `patches/` | the lines that call these, for the disassembly's `bank5.asm`, `bank7.asm` and `ines_header.asm` |
 | `tests/console.py` | the simulated console |
 | `tests/netplay.py`, `tests/wire.py` | two of them, their nesp32s and the network |
 | `tests/test_console.py` | the original is not the same game on two consoles, and the netplay ROM is |

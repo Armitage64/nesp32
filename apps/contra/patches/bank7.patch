@@ -1,0 +1,66 @@
+--- a/src/bank7.asm
++++ b/src/bank7.asm
+@@ -226,0 +227,5 @@
++.ifdef NETPLAY
++    lda #$00    ; no NMI until the memory is cleared: a cartridge that starts the game from a
++    sta PPUCTRL ; menu of its own may leave it on, and the handler would act on what it found
++    sta PPUMASK ; (net_menu, net_stalled) before the reset had set it
++.endif
+@@ -249,0 +255,3 @@
++.ifdef NETPLAY
++    jsr net_reset            ; OUT0 to mark for the nesp32, and into a session if one was asked for
++.endif
+@@ -284,0 +293,3 @@
++.ifdef NETPLAY
++    jmp forever_loop  ; RANDOM_NUM is stirred once a frame instead (net_read_input)
++.else
+@@ -288,0 +300 @@
++.endif
+@@ -301,0 +314,6 @@
++.ifdef NETPLAY
++    lda net_menu                         ; the netplay menu has the console (net/net.inc)
++    beq :+
++    jmp net_menu_nmi
++:
++.endif
+@@ -305,0 +324,6 @@
++.ifdef NETPLAY
++    lda net_stalled                      ; the last NMI stopped short of the game, for want of the
++    beq :+                               ; other console's buttons: the PPU has had its writes
++    jmp net_nmi_stalled                  ; (net/net.inc)
++:
++.endif
+@@ -330,0 +355,5 @@
++.ifdef NETPLAY
++net_nmi_tick:
++    jsr net_read_input                 ; the same, or both consoles' buttons in a session (net/net.inc)
++    bcs net_nmi_end                    ; a session without the buttons for this tick: no game this NMI
++.else
+@@ -331,0 +361 @@
++.endif
+@@ -336,0 +367,3 @@
++.ifdef NETPLAY
++net_nmi_end:
++.endif
+@@ -1014,0 +1048,4 @@
++.ifdef NETPLAY
++    ldx #$00         ; the strobe rests high, which is mark to a nesp32 on port 2,
++    stx CONTROLLER_1 ; and is low only for the reads
++.else
+@@ -1018,0 +1056 @@
++.endif
+@@ -1045,0 +1084,4 @@
++.ifdef NETPLAY
++    ldx #$01
++    stx CONTROLLER_1 ; back to mark
++.endif
+@@ -1063,0 +1106,4 @@
++.ifdef NETPLAY
++    jsr net_title_start                      ; 2 PLAYERS goes to the netplay menu first (net/net.inc)
++    bcs timer_exit
++.endif
+@@ -10687,0 +10734,4 @@
++.ifdef NETPLAY
++    .include "net.inc"
++.endif
++

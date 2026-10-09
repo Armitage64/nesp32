@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """Cut the game's graphics and sound out of baserom.nes, as build.sh does.
 
-    extract_assets.py BASEROM ASSETS_LIST
+    extract_assets.py BASEROM ASSETS_LIST DIRECTORY
 
 Each line of the list is a file, where it starts in the ROM and how long it
-is. A file that is already there with the right length is left alone.
+is; the files are made under the directory. A file that is already there
+with the right length is left alone.
 """
 
 import os
 import sys
 
 
-def main(rom_path, list_path):
+def main(rom_path, list_path, root):
     with open(rom_path, "rb") as handle:
         rom = handle.read()
-    root = os.path.dirname(os.path.abspath(list_path))
     with open(list_path) as handle:
         for line in handle:
             if not line.strip():

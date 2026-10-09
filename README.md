@@ -60,6 +60,7 @@ Needs [cc65](https://cc65.github.io/) (`ca65`, `ld65`), a C compiler and
 Python 3.
 
 ```sh
+git submodule update --init    # for the cartridge and the two games only
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 make            # build/setup.nes, and the firmware's code for this computer
 make test       # about two and a half minutes
@@ -68,6 +69,17 @@ tools/preview.py docs    # the pictures above, from the ROM itself
 
 `build/setup.nes` is NROM-256 (mapper 0). The Stick's firmware is built
 with ESP-IDF, from `firmware/`.
+
+Neither game that has netplay is in this repository: only the netplay
+code, and the few lines that call it, as patches. The games' code comes
+from other people's disassemblies, which are submodules in `third_party/`
+kept at the commits the patches were made for:
+[nes-contra-us](https://github.com/vermiceli/nes-contra-us), vermiceli's,
+for [nes-contra](apps/contra), and
+[NES-Games-Disassembly](https://github.com/cyneprepou4uk/NES-Games-Disassembly),
+cyneprepou4uk's, for [nes-drmario](apps/drmario) and so for the cartridge.
+Contra's build also needs a copy of the game, which whoever builds it
+supplies. Nothing else here needs any of them.
 
 ## The cartridge
 
@@ -82,7 +94,7 @@ test and setup, and a menu that is up at power-on: Up and Down, and A or
 Start to run a program. Reset is the menu again. It is built from
 [nes-jukebox](apps/jukebox), [nes-wiki](apps/wiki) and
 [nes-drmario](apps/drmario) in `apps/`, each program with
-its own Makefile, into `build/cart/`.
+its own Makefile, into `build/cart/`. Dr. Mario's needs its submodule.
 
 It is an MMC1 (mapper 1) with 256 KB of PRG and 128 KB of CHR ROM and no
 memory, the mapper Dr. Mario has already. Set to 32 KB of PRG and 8 KB of

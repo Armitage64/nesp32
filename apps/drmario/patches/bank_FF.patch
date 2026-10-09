@@ -1,0 +1,121 @@
+--- a/bank_FF.asm
++++ b/bank_FF.asm
+@@ -3,0 +4,3 @@
++.ifdef NETPLAY
++.include "net/common.inc"   ; a session's numbers, and the code both banks share
++.endif
+@@ -26,0 +30,4 @@
++                                    .ifdef NETPLAY
++                                        JSR net_nmi_head
++                                        BCS bra_8030_skip
++                                    .endif
+@@ -39,0 +47,3 @@
++                                    .ifdef NETPLAY
++net_nmi_input:
++                                    .endif
+@@ -42,0 +53,3 @@
++                                    .ifdef NETPLAY
++bra_8030_skip:
++                                    .endif
+@@ -3684,0 +3698,9 @@
++                                    .ifdef NETPLAY
++                                        ; A session starts at the options of a two-player game.
++                                        LDA net_mode
++                                        BEQ bra_981C_no_session
++                                        LDA #$02
++                                        STA ram_plr_counter
++                                        JMP loc_990F
++bra_981C_no_session:
++                                    .endif
+@@ -3804,0 +3827,10 @@
++                                    .ifdef NETPLAY
++                                        ; Start on "2 PLAYER GAME": the menu asks how. It comes back
++                                        ; for a game on this console alone, and not at all for a session.
++                                        LDA net_mode
++                                        BNE loc_990F
++                                        LDA ram_plr_counter
++                                        CMP #$02
++                                        BNE loc_990F
++                                        JSR net_menu
++                                    .endif
+@@ -8744,0 +8777,2 @@
++                                    .ifndef NETPLAY
++                                    ; net_wait_nmi runs the sound engine, when there is no session.
+@@ -8745,0 +8780,4 @@
++                                    .endif
++                                    .ifdef NETPLAY
++                                        JSR net_wait_nmi
++                                    .else
+@@ -8750,0 +8789 @@
++                                    .endif
+@@ -8760,0 +8800,2 @@
++                                    .ifndef NETPLAY
++                                    ; net_wait_nmi runs the sound engine, when there is no session.
+@@ -8761,0 +8803,4 @@
++                                    .endif
++                                    .ifdef NETPLAY
++                                        JSR net_wait_nmi
++                                    .else
+@@ -8766,0 +8812 @@
++                                    .endif
+@@ -8989,0 +9036,6 @@
++                                    .ifdef NETPLAY
++                                        ; OUT0 is the line to the Stick and rests at mark, which keeps
++                                        ; the controllers loading their buttons. Low for the 8 reads.
++                                        LDX #$00
++                                        STX $4016
++                                    .else
+@@ -8994,0 +9047 @@
++                                    .endif
+@@ -9012,0 +9066,4 @@
++                                    .ifdef NETPLAY
++                                        INX ; 01
++                                        STX $4016
++                                    .endif
+@@ -9035,0 +9093,6 @@
++                                    .ifdef NETPLAY
++                                        LDA net_mode
++                                        BEQ bra_B7C7_local
++                                        JMP net_read_input
++bra_B7C7_local:
++                                    .endif
+@@ -21186,0 +21250,7 @@
++.ifdef NETPLAY
++.include "net/net.inc"
++.out .sprintf("netplay: %d bytes free before $FD00", $FD00 - *)
++.endif
++
++
++
+@@ -21188,0 +21259,6 @@
++.ifdef NETPLAY
++; The game never plays a sample (0x005A58 is not reached), so the netplay
++; build leaves them out, and this segment begins with the reset code. That
++; stays at FF00: its first byte is what resets the mapper.
++.org $FF00
++.else
+@@ -21203,0 +21280 @@
++.endif
+@@ -21207,0 +21285,5 @@
++                                    .ifdef NETPLAY
++                                        ; The menu's bank may be the one here at reset: see net_common.
++                                        net_common
++net_boot:
++                                    .endif
+@@ -21220,0 +21303,3 @@
++                                    .ifndef NETPLAY
++                                    ; net_common has done this, where both banks have the same code:
++                                    ; resetting the mapper puts the last bank at C000, the menu's.
+@@ -21223,0 +21309 @@
++                                    .endif
+@@ -21229,0 +21316,3 @@
++                                    .ifdef NETPLAY
++                                        JSR net_reset
++                                    .endif
+@@ -21232,0 +21322,4 @@
++.ifdef NETPLAY
++    .out .sprintf("netplay: %d bytes free before $FFD0", $FFD0 - *)
++    .res $FFD0 - *, $FF
++.else
+@@ -21243,0 +21337 @@
++.endif

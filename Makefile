@@ -105,6 +105,8 @@ verify: $(ROM)
 # into this build directory and against this tree. BUILD
 # is given to each by name: one given to this make would otherwise be
 # theirs too.
+# Dr. Mario's takes the game from its disassembly, a submodule in
+# third_party/, and says so if that is not there.
 JUKEBOX ?= apps/jukebox
 WIKI ?= apps/wiki
 DRMARIO ?= apps/drmario

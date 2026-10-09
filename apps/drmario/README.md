@@ -1,7 +1,7 @@
 # Dr. Mario, two consoles
 
-A disassembly of Dr. Mario (NES) and a netplay build of it: a two-player
-game split over two consoles, each with a nesp32 on controller port 2, the
+A netplay build of Dr. Mario (NES): a two-player game split over two
+consoles, each with a nesp32 on controller port 2, the
 nesp32s joined over Wi-Fi. The nesp32 is an M5Stack Stick with
 [nesp32](../..)'s firmware, the one firmware for every ROM that uses
 one; this ROM asks it for its PEER service.
@@ -29,13 +29,21 @@ On the title, choose **2 PLAYER GAME**. The console then asks how:
   nesp32's own.
 - **LOCAL GAME**: two controllers on this console, as the original.
 
+**The game is not in this repository.** What is here is the netplay code,
+its tests, and a few lines to be put into the game's own code. The rest,
+the game's code and its graphics, is the `Dr. Mario` directory of
+[NES-Games-Disassembly](https://github.com/cyneprepou4uk/NES-Games-Disassembly),
+cyneprepou4uk's disassemblies, a submodule at
+`third_party/NES-Games-Disassembly`.
+
 ```sh
+git submodule update --init third_party/NES-Games-Disassembly
 make            # build/drmario.nes (the original) and build/drmario_net.nes
 make verify     # the original still matches its SHA-1
 make test       # needs: python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 ```
 
-Needs cc65 (`ca65`, `ld65`), Python 3, and for the netplay ROM
+Needs cc65 (`ca65`, `ld65`), Python 3, `patch`, and for the netplay ROM
 [nesp32](../..), the top of this repository (or `NESP32=` where it is), and a C
 compiler: the link's library for the console comes from there, and the
 tests build its firmware's link and services for this computer. They take
@@ -45,13 +53,13 @@ about six minutes.
 
 | Path | Purpose |
 |---|---|
-| `bank_FF.asm`, `bank_ram.inc`, `bank_val.inc` | the disassembly. Everything netplay changes is under `.ifdef NETPLAY` |
+| `patches/` | the lines that call the netplay code, for the disassembly's `bank_FF.asm` and `bank_val.inc`. All are under `.ifdef NETPLAY` |
 | `net/net.inc` | the game's bank: ticks, stalls and lags, starting a session, and the way to the menu's bank |
 | `net/session.inc` | a session's frame, in the menu's bank: the buttons' rings, the delay, the exchange and the check |
 | `net/menu.s` | the menu, in a second PRG bank of its own: the hello, and PEER's lobby |
 | `net/common.inc`, `net/ram.inc` | a session's numbers, the code both banks share, and the memory they share |
 | `net/game.cfg`, `net/menu.cfg` | where each bank's code goes, and the link library's memory |
-| `tools/prepare.py` | strips the disassembly's left-hand columns for ca65 (a port of `preparations.lua`) |
+| `tools/prepare.py` | strips the disassembly's left-hand columns for ca65 (a port of its `preparations.lua`) |
 | `tests/console.py`, `tests/wire.py`, `tests/netplay.py` | a console on py65, the serial line, and two consoles with their nesp32s and a network between |
 | `docs/PROTOCOL.md` | how the two games are kept the same, and what the ROM asks of PEER |
 
@@ -59,8 +67,22 @@ The link itself is nesp32's: its `docs/PROTOCOL.md` has the line, the
 frames and the PEER service, `nes/lib/nesp.inc` there is the library the
 menu's bank includes, and `firmware/` there is what runs on the nesp32.
 
-`assemble.bat`, `assemble.sh` and `preparations.lua` are the disassembly's
-own build, for Windows; the Makefile replaces them here.
+## Changing the game's code
+
+The build copies what it needs of the disassembly to `build/upstream` and
+applies `patches/` there; the submodule is never written to. To change
+what netplay adds to the game's own files, edit the copies in
+`build/upstream`, then
+
+```sh
+make patches    # patches/ again, from build/upstream
+```
+
+A patch is made with no context, so it holds our lines and where they go
+and none of the disassembly. That is why the submodule is kept at one
+commit (`DRMARIO_COMMIT` in the Makefile): the patches are line numbers in
+that commit's files. `make clean` will not delete a `build/upstream` that
+has changes `patches/` has not.
 
 ## Where the netplay code sits
 
