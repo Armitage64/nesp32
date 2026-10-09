@@ -25,8 +25,11 @@ tool does, with esptool to write the image:
 
     pip install construct esptool
 
-That tool keeps a long name in small letters: "01 Title.vgz" is
-"01 title.vgz" on the nesp32. A rip's own title is what the jukebox shows.
+That tool keeps a long name in small letters: "01 Running About.vgz" is
+"01 running about.vgz" on the nesp32. And a short name with a space in it,
+"02 Title.vgz", it writes in a way the nesp32's filing system cannot open,
+so such a name's spaces go as underlines: "02_Title.vgz". A rip's own title
+is what the jukebox shows.
 
 The nesp32 must be running nesp32's firmware, and restarts when the image
 has been written. An image that would not fit says so before anything is
@@ -66,6 +69,17 @@ def suffix(name):
     return os.path.splitext(name)[1].lower()
 
 
+def stored_name(name):
+    """A file's name as it goes into the image. One short enough to be kept
+    without a long name (eight characters and three) is written by ESP-IDF's
+    tool with its spaces in it, and the nesp32's FatFs finds no such file:
+    it looks for a short name with the spaces left out."""
+    stem, dot, ending = name.rpartition(".")
+    if dot and len(stem) <= 8 and len(ending) <= 3 and " " in name:
+        return name.replace(" ", "_")
+    return name
+
+
 def tracks_in(paths):
     """The track files named, each directory's in the order of their names.
     Returns [(name on the nesp32, path)]; a name may be there once."""
@@ -78,7 +92,7 @@ def tracks_in(paths):
             found.append(path)
     out = []
     for path in found:
-        name = os.path.basename(path)
+        name = stored_name(os.path.basename(path))
         magic = MAGICS.get(suffix(name))
         if magic is None:
             raise ValueError("%s is not a .vgm, .vgz, .jbs or .pcm file" % path)

@@ -60,7 +60,7 @@ def test_a_directorys_tracks_are_taken_in_the_order_of_their_names(tmp_path):
     track(tmp_path, "._03.vgm", b"Vgm ....")     # what a Mac leaves beside a file
     track(tmp_path, "notes.txt", b"not a track")
     names = [name for name, _ in put_files.tracks_in([str(tmp_path)])]
-    assert names == ["00.jbs", "01 A Rip.VGZ", "02.pcm", "03.vgm"]
+    assert names == ["00.jbs", "01_A_Rip.VGZ", "02.pcm", "03.vgm"]     # a short name: no spaces
 
 
 @pytest.mark.parametrize("name, data", [
@@ -72,6 +72,15 @@ def test_a_directorys_tracks_are_taken_in_the_order_of_their_names(tmp_path):
 def test_a_file_the_stick_would_pass_over_is_refused(tmp_path, name, data):
     with pytest.raises(ValueError):
         put_files.tracks_in([track(tmp_path, name, data)])
+
+
+def test_a_short_name_with_a_space_goes_without_it(tmp_path):
+    # ESP-IDF's tool would write it as a name the nesp32 cannot open.
+    track(tmp_path, "02 Title.vgz", b"\x1f\x8b....")
+    track(tmp_path, "03 A Longer Name.vgz", b"\x1f\x8b....")
+    track(tmp_path, "04.jbs", b"JBS\x1a....")
+    names = [name for name, _ in put_files.tracks_in([str(tmp_path)])]
+    assert names == ["02_Title.vgz", "03 A Longer Name.vgz", "04.jbs"]
 
 
 def test_two_files_of_one_name_are_refused(tmp_path):
