@@ -1,6 +1,6 @@
 # NESP32
 
-Wireless network interface for the Nintendo Entertainment System (NES) based on
+An inexpensive, DIY wireless network interface for the Nintendo Entertainment System (NES) based on
 the ESP32 S3 microcontroller. 
 
 <p float="left">
@@ -8,49 +8,50 @@ the ESP32 S3 microcontroller.
   <img src="apps/setup/docs/status.png" width="49%" alt="The status screen" />
 </p>
 
-## Purpose
+## About
 
-The device connects to controller port 2 and
-provides WiFi Internet access, streaming, and online gaming capabilities. 
+The NESP32 is built using the M5 Stick S3. This 
+all-in-one IoT development kit includes a dual core processor,
+flash storage, audio, WiFi, color LCD screen, battery, USB interface, and buttons. 
+A small "hat" plugs into the top of the device and connects to controller port 2 of the NES. 
 
-Extensible firmware on the ESP32 provides an API that any cartridge-based
+Extensible firmware provides an API that any cartridge-based
 software can interface with. A setup program allows the wifi and USB storage 
 to be configured from the NES itself. 
 
+Once configured, the NESP32 provides Internet access, media streaming, and online 
+gaming capabilities to software.
+
 ## Quick Links
 
-Home Page
+[NESP32 Home Page](https://retrobits.tv/nesp32)
+
 Hardware | PCB
-Online Firmware Update
+
+[Online Firmware Update](https://retrobits.tv/nesp32/flash/)
 
 ## Status
 
-Work in progress. Every program below has run on a StickS3, on a real NES
-and on the MiSTer's NES core; [To do](#to-do) has what has not.
-
+The following 
 | Service | What it provides |
 |---|---|
-| Wi-Fi | Connect to an access point for local or Internet access |
-| Fetching | Retrieve pages via HTTP/S, reduced to plain text for display |
+| Wi-Fi | Connect to an access point from the NES |
+| Fetch | Retrieve pages via HTTP/S, reduced to plain text for display |
 | Music | Stream VGM/VGZ music to the NES's APU |
 | Sampled sound | Stream PCM audio at up to 20kHz |
 | Online Gaming | Host or join a 2-Player game over the network |
 | Files | Manage stored music files via USB drive mode |
 
-Apps currently available:
+Current NES Apps: 
 
 | Program | What it is |
 |---|---|
-| [nesp32 Setup](apps/setup) | the nesp32's own settings on the console: status, Wi-Fi, a link test, the USB drive |
-| [NESpedia](apps/wiki) | a Wikipedia reader: type a search on the console and read the article |
-| [NES Jukebox](apps/jukebox) | plays rips of NES games' music, and recordings, from the nesp32 |
-| [Dr. Mario, two consoles](apps/drmario) | Dr. Mario's two-player game over a network |
-| [Contra, two consoles](apps/contra) | Contra's two-player game over a network |
-
-`make cart` puts Setup, NESpedia, the Jukebox, Dr. Mario's netplay and a
-link speed test on one cartridge with a menu
-([how](docs/DEVELOPMENT.md#the-cartridge)). The two games are not in this
-repository: their netplay is, as patches to other people's disassemblies.
+| [Setup](apps/setup) | Configure the NESP32, status, Wi-Fi, link test, USB drive |
+| [NESpedia](apps/wiki) | Search and display Wikipedia articles |
+| [Jukebox](apps/jukebox) | Stream VGM/VGZ music files and PCM audio to the NES |
+| [Throughput](apps/jukebox/throughput) | Test the bandwidth of the NES<>ESP32 interface |
+| [Dr. Mario 2P](apps/drmario) | Dr. Mario two-player over a network |
+| [Contra, 2P](apps/contra) | Contra's two-player over a network |
 
 ## How it works
 
@@ -73,9 +74,6 @@ repository: their netplay is, as patches to other people's disassemblies.
 - **The same C runs on the nesp32 and under the tests.** The link and the
   services touch no hardware. Built for a computer, they answer the real
   ROMs on a simulated console, over a line that models every bit.
-
-[The protocol](docs/PROTOCOL.md) has all of it: the line, the frames, each
-service and its timing.
 
 ## To do
 
@@ -117,10 +115,7 @@ Not started:
   (GPL-3.0) here beyond idioms. The CRC routine without a table follows
   Greg Cook's on 6502.org, whose terms have not been checked.
 
-Each program has a list of its own in its README, and the firmware has one
-in [its README](firmware/README.md).
-
-## Documents
+## Further Reading
 
 | | |
 |---|---|
