@@ -22,6 +22,8 @@ to be configured from the NES itself.
 Once configured, the NESP32 provides Internet access, media streaming, and online 
 gaming capabilities to software.
 
+The NESP32 is an evolution of [NES Radar](https://github.com/k6lcm/nes-radar) which originally developed the controller port-based NES to Internet interface.
+
 ## Quick Links
 
 [NESP32 Home Page](https://retrobits.tv/nesp32)
