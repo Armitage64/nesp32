@@ -9,7 +9,7 @@ Needs [cc65](https://cc65.github.io/) (`ca65`, `ld65`), a C compiler and
 Python 3.
 
 ```sh
-git submodule update --init    # for the cartridge and the two games only
+git submodule update --init    # for the two games only
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 make            # build/setup.nes, and the firmware's code for this computer
 make cart       # build/nesp32.nes: the cartridge
@@ -27,25 +27,24 @@ kept at the commits the patches were made for:
 [nes-contra-us](https://github.com/vermiceli/nes-contra-us), vermiceli's,
 for [nes-contra](../apps/contra), and
 [NES-Games-Disassembly](https://github.com/cyneprepou4uk/NES-Games-Disassembly),
-cyneprepou4uk's, for [nes-drmario](../apps/drmario) and so for the
-cartridge. Contra's build also needs a copy of the game, which whoever
-builds it supplies. Nothing else here needs any of them.
+cyneprepou4uk's, for [nes-drmario](../apps/drmario). Contra's build also needs a copy of the game, which whoever
+builds it supplies. Nothing else here needs any of them, and neither game
+is on the cartridge.
 
 ## The cartridge
 
 ![The cartridge's menu](cart-menu.png)
 
-One ROM with the jukebox, NESpedia, Dr. Mario's netplay, the throughput
-test and setup, and a menu that is up at power-on: Up and Down, and A or
-Start to run a program. Reset is the menu again. It is built from [nesp32 Setup](../apps/setup),
-[nes-jukebox](../apps/jukebox), [nes-wiki](../apps/wiki) and
-[nes-drmario](../apps/drmario) in `apps/`, each program with
-its own Makefile, into `build/cart/`. Dr. Mario's needs its submodule.
+One ROM with the jukebox, NESpedia, the throughput test and setup, and a
+menu that is up at power-on: Up and Down, and A or Start to run a program.
+Reset is the menu again. It is built from [nesp32 Setup](../apps/setup),
+[nes-jukebox](../apps/jukebox) and [nes-wiki](../apps/wiki) in `apps/`,
+each program with its own Makefile, into `build/cart/`.
 
 It is an MMC1 (mapper 1) with 256 KB of PRG and 128 KB of CHR ROM and no
-memory, the mapper Dr. Mario has already. Set to 32 KB of PRG and 8 KB of
-CHR, an MMC1 is an NROM to a program that never writes to it, so the four
-NROM programs are on it as they were built, their serial routines on the
+memory. Set to 32 KB of PRG and 8 KB of CHR, an MMC1 is an NROM to a
+program that never writes to it, so the four programs, each an NROM, are
+on it as they were built, their serial routines on the
 pages they were timed on. `nes/cart/gen_cart.py` has where everything is
 and the few bytes that are not as built: six in each program's padding and
 its reset vector, which make reset the menu.
@@ -70,7 +69,7 @@ not would not start this cartridge.
 | The nesp32's files: the jukebox's tracks, in a FAT filing system (`firmware/main/store.c`, `tools/put_files.py`), with rips of games' music (`.vgm`, `.vgz`) made playable on the nesp32 itself (`firmware/components/nesp_services/vgm.c`) | builds for both boards, and the converter makes the same files as nes-jukebox's on a computer; not yet run on hardware. Before this the files were in LittleFS, and that worked on a StickS3 |
 | A StickS3 as a USB drive, for music to be copied to (`firmware/main/usb.c`, the setup ROM's USB screen) | builds, and the ROM's screen is tested on a simulated console; not yet run on hardware |
 | PEER, for two consoles playing one game: a lobby, and a lockstep relay of buttons between two nesp32s over datagrams (`firmware/main/conn.c`), with advice to each console on the delay it keeps | tested with nes-drmario's netplay ROM ([nes-drmario](../apps/drmario)) and nes-contra's ([nes-contra](../apps/contra), whose exchange is a short frame) on two simulated consoles, the game the same on both; the firmware builds for both boards with it. On hardware both ROMs have played network games, a real NES among the consoles; nes-contra's `docs/Netplay.md` has the figures taken from its sessions |
-| One cartridge (`nes/cart/`): the five programs and a menu, on an MMC1 | working on a real NES and on the MiSTer, with a StickC Plus2 and with a StickS3: the menu and every program. Tested on a simulated console: each program starts from the menu, and reset is the menu again |
+| One cartridge (`nes/cart/`): the four programs and a menu, on an MMC1 | working on a real NES and on the MiSTer, with a StickC Plus2 and with a StickS3: the menu and every program. Tested on a simulated console: each program starts from the menu, and reset is the menu again |
 | A service for the radar | a number reserved; not started |
 
 ## What is where
@@ -88,7 +87,7 @@ not would not start this cartridge.
 | `apps/setup/` | the setup ROM |
 | `apps/` | the other programs: the jukebox, NESpedia, and netplay for Dr. Mario and Contra |
 | `third_party/` | the two games' disassemblies, as submodules |
-| `nes/cart/` | the cartridge: its menu, and the tool that puts the five programs on it |
+| `nes/cart/` | the cartridge: its menu, and the tool that puts the four programs on it |
 | `host/nesp_host.c`, `host/nesp.py` | the firmware's code as a library for this computer, with a stand-in for the hardware |
 | `host/serial_host.py` | that, on a USB serial cable in place of a Stick |
 | `host/peer_net.py` | for it, PEER's connection to another nesp32 on this computer's sockets, and an opponent who never presses a button |

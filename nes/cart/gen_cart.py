@@ -1,29 +1,26 @@
 #!/usr/bin/env python3
-"""Put the five programs and a menu on one cartridge.
+"""Put the four programs and a menu on one cartridge.
 
     nes/cart/gen_cart.py tables build/cart --jukebox J.nes --wiki W.nes ...
     nes/cart/gen_cart.py rom build/nesp32.nes --menu menu.prg --chr chr.bin
                                               --jukebox J.nes --wiki W.nes ...
 
 The cartridge is an MMC1 with 256 KB of PRG and 128 KB of CHR ROM, and no
-memory of its own. Dr. Mario's netplay ROM is an MMC1's already. The other
-four are NROM, and the MMC1 set to 32 KB of PRG and 8 KB of CHR is an NROM
-to a program that never writes to it, so each goes in as it was built:
-nothing is linked again, and the serial routines keep their pages and
-their timing.
+memory of its own. The programs are NROM, and the MMC1 set to 32 KB of PRG
+and 8 KB of CHR is an NROM to a program that never writes to it, so each
+goes in as it was built: nothing is linked again, and the serial routines
+keep their pages and their timing.
 
     PRG, 16 KB banks            CHR, 8 KB banks
-    0-3    Dr. Mario            0-3   Dr. Mario
-    4-5    setup                4     setup
-    6-7    NESpedia             5     NESpedia
-    8-9    jukebox              6     jukebox
-    10-11  throughput test      7     throughput test
-    12-14  nothing              8     the menu
-    15     the menu             9-15  nothing
+    0-1    setup                0     setup
+    2-3    NESpedia             1     NESpedia
+    4-5    jukebox              2     jukebox
+    6-7    throughput test      3     throughput test
+    8-14   nothing              4     the menu
+    15     the menu             5-15  nothing
 
-Dr. Mario is first because the banks it asks its mapper for are numbers in
-its code. The menu is last because the last bank is the one an MMC1 has at
-$C000 when the power comes on.
+The menu is last because the last bank is the one an MMC1 has at $C000
+when the power comes on.
 
 `tables` writes what the menu is assembled from:
 
@@ -31,19 +28,12 @@ $C000 when the power comes on.
     screen.bin    the menu's screen, 960 tiles and their 64 attributes
     menu.inc      where things are, and what starts each program
 
-`rom` puts the file together. Three things in it are not as they were
-built, and each is checked against what it replaces:
-
-- Six bytes at RESET_STUB in every program's top bank, where each has
-  padding, and its reset vector pointed at them. They are the menu's own:
-  an `inc` that resets the mapper, which puts the menu's bank at $C000
-  under it, and a jump to the menu. So reset is the menu, whatever the
-  mapper held.
-- The menu's bank gets Dr. Mario's first bytes of reset code at the address
-  that game has them (DRMARIO_COMMON). The game resets the mapper there
-  too, and then runs on in the last bank, which in its own ROM is one of
-  its own with the same bytes; here it is the menu's. They end by putting
-  the game's bank back.
+`rom` puts the file together. Two things in it are not as they were built,
+and each is checked against what it replaces: six bytes at RESET_STUB in
+every program's top bank, where each has padding, and its reset vector
+pointed at them. They are the menu's own: an `inc` that resets the mapper,
+which puts the menu's bank at $C000 under it, and a jump to the menu. So
+reset is the menu, whatever the mapper held.
 """
 
 import argparse
@@ -62,7 +52,7 @@ CHR_PAGES = 16
 INES_HEADER = 16
 HEADER = b"NES\x1a" + bytes((PRG_BANKS, CHR_PAGES, 0x10, 0x08)) + bytes(8)   # NES 2.0, mapper 1
 MENU_BANK = PRG_BANKS - 1
-MENU_PAGE = 8
+MENU_PAGE = 4
 PRG_START = 0x8000
 TOP = 0xC000                        # where a 32 KB program's second bank is
 
@@ -70,40 +60,30 @@ TOP = 0xC000                        # where a 32 KB program's second bank is
 # mirroring an NROM's header asked for.
 CONTROL_VERTICAL = 0x02
 CONTROL_HORIZONTAL = 0x03
-CONTROL_DRMARIO = 0x10              # what the game sets it to itself
 
 RESET_STUB = 0xFFDA
 STUB_SIZE = 6
-INC_ABS, JMP_ABS, STA_ABS = 0xEE, 0x4C, 0x8D
+INC_ABS, JMP_ABS = 0xEE, 0x4C
 RESET_VECTOR = 0xFFFC
-
-# Dr. Mario's reset code up to the write that puts its bank back
-# (net_common in nes-drmario's net/common.inc).
-DRMARIO_COMMON = 0xFF00
-DRMARIO_COMMON_SIZE = 55
-DRMARIO_BEGINS = bytes((0xD8, 0x78, 0xA2, 0x00, 0x8E, 0x00, 0x20, 0x8E, 0x01, 0x20,
-                        INC_ABS, 0x00, 0xFF))
-DRMARIO_ENDS = bytes((STA_ABS, 0xF0, 0xFF))
 
 
 class Program:
-    def __init__(self, key, name, bank, page, banks=2, pages=1, mapper=0):
+    banks = 2                       # an NROM: 32 KB of PRG
+    pages = 1                       # and 8 KB of CHR
+
+    def __init__(self, key, name, bank, page):
         self.key = key              # the option that names its ROM
         self.name = name            # as the menu has it
         self.bank = bank
         self.page = page
-        self.banks = banks
-        self.pages = pages
-        self.mapper = mapper
 
 
 # In the menu's order.
 PROGRAMS = (
-    Program("jukebox", "Jukebox", 8, 6),
-    Program("wiki", "NESpedia", 6, 5),
-    Program("drmario", "Dr. Mario", 0, 0, banks=4, pages=4, mapper=1),
-    Program("throughput", "Throughput Test", 10, 7),
-    Program("setup", "NESP32 Setup", 4, 4),
+    Program("jukebox", "Jukebox", 4, 2),
+    Program("wiki", "NESpedia", 2, 1),
+    Program("throughput", "Throughput Test", 6, 3),
+    Program("setup", "Setup", 0, 0),
 )
 
 # --- the menu's screen, in tiles ------------------------------------------------
@@ -126,9 +106,9 @@ class Image:
         mapper = data[6] >> 4 | data[7] & 0xF0
         size = INES_HEADER + program.banks * BANK + program.pages * PAGE
         if (data[:4] != HEADER[:4] or data[4] != program.banks or data[5] != program.pages
-                or mapper != program.mapper or len(data) != size):
-            raise ValueError("%s is not %d KB of PRG and %d of CHR on mapper %d"
-                             % (path, program.banks * 16, program.pages * 8, program.mapper))
+                or mapper or len(data) != size):
+            raise ValueError("%s is not an NROM with %d KB of PRG and %d of CHR"
+                             % (path, program.banks * 16, program.pages * 8))
         self.vertical = data[6] & 1
         self.prg = data[INES_HEADER:INES_HEADER + program.banks * BANK]
         self.chr = data[INES_HEADER + program.banks * BANK:]
@@ -150,8 +130,6 @@ class Image:
 
     @property
     def control(self):
-        if self.program.mapper:
-            return CONTROL_DRMARIO
         return CONTROL_VERTICAL if self.vertical else CONTROL_HORIZONTAL
 
 
@@ -202,8 +180,6 @@ def include(screen, images):
     constant("TILE_ARROW", "$%02X" % screen.named["ARROW"])
     constant("MENU_CHR", "$%02X" % (2 * MENU_PAGE), "the menu's tiles, as the mapper counts")
     constant("RESET_STUB", "$%04X" % RESET_STUB)
-    constant("DRMARIO_COMMON", "$%04X" % DRMARIO_COMMON)
-    constant("DRMARIO_COMMON_SIZE", DRMARIO_COMMON_SIZE)
     lines += ["", "; The programs, in the menu's order: " + ", ".join(
         image.program.name for image in images) + "."]
     table("entry_control", [image.control for image in images], "the mapper's control register")
@@ -242,7 +218,7 @@ def expect(what, found, wanted):
 
 
 def build_rom(menu, tiles, images):
-    """The cartridge's file from the menu's bank, its tiles and the five
+    """The cartridge's file from the menu's bank, its tiles and the four
     programs."""
     if len(menu) != BANK or len(tiles) != PAGE:
         raise ValueError("the menu is one bank of PRG and one page of CHR")
@@ -273,23 +249,6 @@ def build_rom(menu, tiles, images):
                    b"\xFF" * STUB_SIZE)
             prg[at:at + STUB_SIZE] = stub
             prg[start + top - 4:start + top - 2] = vector
-
-    drmario = next(image for image in images if image.program.mapper)
-    if drmario.program.bank or drmario.program.page:
-        raise ValueError("Dr. Mario's banks are numbers in its code: it goes first")
-    expect("where Dr. Mario starts", (drmario.entry & 0xFF, drmario.entry >> 8),
-           (DRMARIO_COMMON & 0xFF, DRMARIO_COMMON >> 8))
-    common_at = DRMARIO_COMMON - TOP
-    copies = {bytes(drmario.prg[top - BANK + common_at:][:DRMARIO_COMMON_SIZE])
-              for top in drmario.tops()}
-    if len(copies) != 1:
-        raise ValueError("Dr. Mario's banks do not start with the same code")
-    common = copies.pop()
-    expect("Dr. Mario's reset code", common[:len(DRMARIO_BEGINS)], DRMARIO_BEGINS)
-    expect("the end of it", common[-len(DRMARIO_ENDS):], DRMARIO_ENDS)
-    expect("the menu's room for it", menu[common_at:common_at + DRMARIO_COMMON_SIZE],
-           b"\xFF" * DRMARIO_COMMON_SIZE)
-    prg[menu_at + common_at:menu_at + common_at + DRMARIO_COMMON_SIZE] = common
 
     return HEADER + bytes(prg) + bytes(chr_rom)
 

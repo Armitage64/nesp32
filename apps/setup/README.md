@@ -10,7 +10,7 @@ link, and lends a StickS3's files to a computer as a USB drive.
 ![The USB drive](docs/usb.png)
 
 It is also the first user of nesp32's link, and the ROM that the tests of
-the link are run on. It is one of the five programs on
+the link are run on. It is one of the four programs on
 [the cartridge](../../docs/DEVELOPMENT.md#the-cartridge).
 
 ## Status

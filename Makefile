@@ -5,7 +5,7 @@
 #   make host       build/libnesp_host: the firmware's link and services for
 #                   this computer, which the tests load
 #   make rom        build/setup.nes: the setup ROM, from apps/setup
-#   make cart       build/nesp32.nes: the setup ROM and the four other
+#   make cart       build/nesp32.nes: the setup ROM and the three other
 #                   programs on one cartridge, with a menu. It builds them
 #                   from apps/.
 #   make web        build/web: the product page, and under flash/ the page
@@ -79,15 +79,12 @@ verify: $(ROM)
 
 # --- the cartridge --------------------------------------------------------------
 
-# The other four programs, each built by its own Makefile in apps/ as the
+# The other three programs, each built by its own Makefile in apps/ as the
 # setup ROM is, into this build directory and against this tree. BUILD
 # is given to each by name: one given to this make would otherwise be
 # theirs too.
-# Dr. Mario's takes the game from its disassembly, a submodule in
-# third_party/, and says so if that is not there.
 JUKEBOX ?= apps/jukebox
 WIKI ?= apps/wiki
-DRMARIO ?= apps/drmario
 THROUGHPUT ?= $(JUKEBOX)/throughput
 
 CART := $(BUILD)/nesp32.nes
@@ -96,10 +93,9 @@ CART_BUILD := $(BUILD)/cart
 PARTS := $(abspath $(CART_BUILD))
 JUKEBOX_ROM := $(PARTS)/jukebox/jukebox_link.nes
 WIKI_ROM := $(PARTS)/wiki/nespedia_link.nes
-DRMARIO_ROM := $(PARTS)/drmario/drmario_net.nes
 THROUGHPUT_ROM := $(PARTS)/throughput/linktest.nes
-CART_ROMS := $(JUKEBOX_ROM) $(WIKI_ROM) $(DRMARIO_ROM) $(THROUGHPUT_ROM)
-CART_ARGS := --jukebox $(JUKEBOX_ROM) --wiki $(WIKI_ROM) --drmario $(DRMARIO_ROM) \
+CART_ROMS := $(JUKEBOX_ROM) $(WIKI_ROM) $(THROUGHPUT_ROM)
+CART_ARGS := --jukebox $(JUKEBOX_ROM) --wiki $(WIKI_ROM) \
 	--throughput $(THROUGHPUT_ROM) --setup $(ROM)
 PART = $(MAKE) -s -C $(1) BUILD=$(@D) NESP32=$(CURDIR) NESP_BUILD=$(abspath $(BUILD)) $@
 
@@ -109,9 +105,6 @@ $(JUKEBOX_ROM): FORCE $(PROTO) $(HOST_LIB)
 
 $(WIKI_ROM): FORCE $(PROTO) $(HOST_LIB)
 	$(call PART,$(WIKI))
-
-$(DRMARIO_ROM): FORCE $(PROTO) $(HOST_LIB)
-	$(call PART,$(DRMARIO))
 
 $(THROUGHPUT_ROM): FORCE $(PROTO) $(HOST_LIB)
 	$(call PART,$(THROUGHPUT))

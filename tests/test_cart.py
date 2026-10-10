@@ -20,17 +20,14 @@ from wire import link
 PROGRAMS = cart_layout.PROGRAMS
 ROMS = {"jukebox": ("cart", "jukebox", "jukebox_link.nes"),
         "wiki": ("cart", "wiki", "nespedia_link.nes"),
-        "drmario": ("cart", "drmario", "drmario_net.nes"),
         "throughput": ("cart", "throughput", "linktest.nes"),
         "setup": ("setup.nes",)}
-# What each says it is in its hello. Dr. Mario's is said from its own menu,
-# a few screens in.
+# What each says it is in its hello.
 APPS = {"jukebox": b"JUKE", "wiki": b"WIKI", "throughput": b"THRU", "setup": b"SETP"}
 RAM_END = 0x0800
 LAUNCH_WRITES = 15              # three registers, five writes each
 STUB = cart_layout.RESET_STUB & (BANK_SIZE - 1)
 VECTOR = cart_layout.RESET_VECTOR & (BANK_SIZE - 1)
-COMMON = cart_layout.DRMARIO_COMMON & (BANK_SIZE - 1)
 
 
 @pytest.fixture(scope="session")
@@ -103,13 +100,8 @@ def test_every_program_is_there_as_it_was_built(rom, images):
         assert tiles[program.page * CHR_SIZE:][:len(image.chr)] == image.chr, program.name
 
 
-def test_the_menu_has_dr_marios_first_bytes_where_that_game_has_them(rom, images, menu):
-    last = rom[INES_HEADER + 15 * BANK_SIZE:][:BANK_SIZE]
-    size = cart_layout.DRMARIO_COMMON_SIZE
-    drmario = next(image for image in images if image.program.mapper)
-    assert last[COMMON:COMMON + size] == drmario.prg[BANK_SIZE + COMMON:][:size]
-    assert last[:COMMON] == menu[:COMMON]
-    assert last[COMMON + size:] == menu[COMMON + size:]
+def test_the_menu_is_the_last_bank_as_it_was_built(rom, menu):
+    assert rom[INES_HEADER + 15 * BANK_SIZE:][:BANK_SIZE] == menu
 
 
 def test_a_program_with_no_room_for_the_stub_is_refused(images, menu, cart_build):
@@ -135,8 +127,7 @@ def test_power_on_is_the_menu(cart):
     c.run(4)
     assert at_menu(c)
     assert c.mapper[:2] == [0x0E, 2 * cart_layout.MENU_PAGE]
-    for index, name in enumerate(("Jukebox", "NESpedia", "Dr. Mario", "Throughput Test",
-                                  "NESP32 Setup")):
+    for index, name in enumerate(("Jukebox", "NESpedia", "Throughput Test", "Setup")):
         assert c.line(cart_layout.LIST_ROW + cart_layout.LIST_STEP * index) == name
     assert c.line(layout.HELP_ROW) == "A:RUN"
     assert c.sprite() == cart_layout.arrow(0) + (c.chr.index(
@@ -156,16 +147,16 @@ def test_the_header_says_main_menu(cart):
 def test_up_and_down_move_the_arrow_and_go_round(cart):
     c = cart()
     c.run(4)
-    for index in (1, 2, 3, 4, 0):
+    for index in (1, 2, 3, 0):
         c.press(PAD_DOWN)
         assert c.byte("choice") == index
         assert c.sprite() and c.sprite()[:2] == cart_layout.arrow(index)
-    for index in (4, 3):
+    for index in (3, 2):
         c.press(PAD_UP)
         assert c.byte("choice") == index
         assert c.sprite()[:2] == cart_layout.arrow(index)
     c.run(22, pad=PAD_UP)               # the press, and held, one repeat
-    assert c.byte("choice") == 1
+    assert c.byte("choice") == 0
     assert at_menu(c)
 
 
@@ -198,25 +189,17 @@ def test_a_program_starts_and_reset_is_the_menu_again(cart, images, index):
     assert all(pc < RAM_END for pc, _, _ in writes[:LAUNCH_WRITES])     # the menu's, from RAM
     assert not c.home
 
-    if key == "drmario":
-        # Its reset code has reset the mapper, run on in the menu's bank,
-        # and come back to its own; its title is up, on its own tiles.
-        c.run(150)
-        assert (c.mapper[0], c.mapper[3]) == (cart_layout.CONTROL_DRMARIO, 0)
-        assert c.mapper[1] < 8 and c.mapper[2] < 8
-        assert c.ctrl & PPUCTRL_NMI and any(c.vram[0x2000:0x23C0])
-    else:
-        assert (c.mapper[0], c.mapper[1], c.mapper[3]) == registers(image)
-        if key == "wiki":
-            c.run(60)
-            c.press(PAD_START)          # its hello is with its first search
-        c.run_until(lambda: stick.hellos, 300)
-        assert stick.app[0] == APPS[key]
-        c.run(30)
-        # An NROM's program, which the mapper has heard nothing from: one
-        # write would have changed the banks under it.
-        assert len(c.mapper_writes) == before + LAUNCH_WRITES
-        assert (c.mapper[0], c.mapper[1], c.mapper[3]) == registers(image)
+    assert (c.mapper[0], c.mapper[1], c.mapper[3]) == registers(image)
+    if key == "wiki":
+        c.run(60)
+        c.press(PAD_START)              # its hello is with its first search
+    c.run_until(lambda: stick.hellos, 300)
+    assert stick.app[0] == APPS[key]
+    c.run(30)
+    # An NROM's program, which the mapper has heard nothing from: one
+    # write would have changed the banks under it.
+    assert len(c.mapper_writes) == before + LAUNCH_WRITES
+    assert (c.mapper[0], c.mapper[1], c.mapper[3]) == registers(image)
 
     c.reset()
     c.strict = True
@@ -226,8 +209,4 @@ def test_a_program_starts_and_reset_is_the_menu_again(cart, images, index):
     other = (index + 1) % len(images)
     start(c, other)
     assert not c.home
-    if images[other].program.mapper:
-        c.run(10)
-        assert c.mapper[0] == cart_layout.CONTROL_DRMARIO
-    else:
-        assert (c.mapper[0], c.mapper[1], c.mapper[3]) == registers(images[other])
+    assert (c.mapper[0], c.mapper[1], c.mapper[3]) == registers(images[other])
