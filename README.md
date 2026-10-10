@@ -17,19 +17,27 @@ Extensible firmware on the ESP32 provides an API that any cartridge-based
 software can interface with. A setup program allows the wifi and USB storage 
 to be configured from the NES itself. 
 
+## Quick Links
+
+Home Page
+Hardware | PCB
+Online Firmware Update
+
+## Status
+
 Work in progress. Every program below has run on a StickS3, on a real NES
 and on the MiSTer's NES core; [To do](#to-do) has what has not.
 
-| Service | What a ROM gets from it |
+| Service | What it provides |
 |---|---|
-| Wi-Fi | the nesp32 put on a network from the controller, and kept there |
-| Fetching | a page from the Internet over HTTPS, laid out as lines of text for the screen |
-| Music | a playlist of NES music from the nesp32's files, streamed to the console's own sound chip |
-| Sampled sound | a recording, a byte a sample, at up to 223722 baud |
-| Two consoles | a lobby and a relay of buttons between two nesp32s, for one game on two consoles over a network |
-| Files | the nesp32's flash as a USB drive, for a computer to copy music to |
+| Wi-Fi | Connect to an access point for local or Internet access |
+| Fetching | Retrieve pages via HTTP/S, reduced to plain text for display |
+| Music | Stream VGM/VGZ music to the NES's APU |
+| Sampled sound | Stream PCM audio at up to 20kHz |
+| Online Gaming | Host or join a 2-Player game over the network |
+| Files | Manage stored music files via USB drive mode |
 
-The programs that use them, each in a directory of its own with a README:
+Apps currently available:
 
 | Program | What it is |
 |---|---|
