@@ -305,7 +305,17 @@ extern "C" void app_main(void)
             if (radio_watch(said)) {
                 conn_ping_t ping;
                 conn_ping(&ping);
+                // What it says of the console's buttons, from "; pad" on,
+                // is for a firmware built to log at the debug level.
+                char *pad = strstr(said, "; pad ");
+                if (pad != NULL) {
+                    *pad = 0;
+                    pad += 2;
+                }
                 ESP_LOGI(TAG, "peer: %s", said);
+                if (pad != NULL) {
+                    ESP_LOGD(TAG, "peer: %s", pad);
+                }
                 ESP_LOGI(TAG, "peer: network %lu us there and back, least %lu, most %lu; "
                          "of %lu, %lu over 14 ms and %lu over 40 ms",
                          (unsigned long)ping.last_us, (unsigned long)ping.least_us,

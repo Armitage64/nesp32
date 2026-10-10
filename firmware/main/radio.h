@@ -31,7 +31,7 @@ void radio_shown(uint8_t row, char *out);
 /* What the service in use last had to say for the log (nesp_hal_t's
  * watch), into out, which holds RADIO_WATCH_MAX bytes. False: nothing new
  * since the last call. */
-#define RADIO_WATCH_MAX 160
+#define RADIO_WATCH_MAX 256
 bool radio_watch(char *out);
 
 #ifdef __cplusplus

@@ -362,6 +362,7 @@ typedef struct {
  * what follows, and the application on their console with its version. */
 #define NESP_PEER_GREETING (4 + 1 + NESP_APP_ID + 1)
 #define NESP_PEER_HELD 64
+#define NESP_PEER_PADS 10           /* changes in a console's buttons kept for a line of the log */
 
 typedef struct {
     const nesp_hal_t *hal;
@@ -392,6 +393,12 @@ typedef struct {
     uint32_t spread[NESP_ARQ_NEEDS];    /* the network's times, as they stood at the last report */
     uint32_t since[NESP_ARQ_NEEDS];     /* and those the last report had come since the one before */
     uint32_t watched_at;
+    /* For the log: this console's buttons each time they changed, since the
+     * last line of it. */
+    uint8_t pad;                    /* as they last were */
+    uint8_t pads;                   /* how many changes are in pad_log */
+    uint32_t pad_changes;           /* how many there have been in the session */
+    uint8_t pad_log[NESP_PEER_PADS][2];     /* the tick's low byte, and the buttons */
     /* For the nesp32's screen. */
     uint32_t requests;
     uint32_t repeats;               /* requests that brought nothing new */

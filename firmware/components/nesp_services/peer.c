@@ -33,6 +33,7 @@ _Static_assert(1 + NESP_PEER_PER_FRAME <= NESP_SHORT_DATA, "TICKS does not fit a
 _Static_assert(NESP_PEER_PER_FRAME == 2, "a short frame's length is by counts of 2 and under");
 #define SHOW_MS 500
 #define WATCH_MS 2000
+#define RADIO_TEXT 256             /* a line of the log */
 _Static_assert(NESP_ARQ_NEEDS == 6, "watch() names six counts");
 
 static const char greeting_mark[4] = {'N', 'E', 'S', 'P'};
@@ -122,6 +123,9 @@ static void greet(nesp_peer_t *peer, uint8_t conn, uint32_t now)
         peer->delay = peer->want = 0;
         peer->up = peer->down = 0;
         peer->told = 0;
+        peer->pad = 0;
+        peer->pads = 0;
+        peer->pad_changes = 0;
         memset(peer->spread, 0, sizeof(peer->spread));
         memset(peer->since, 0, sizeof(peer->since));
         {
@@ -172,6 +176,23 @@ static uint8_t exchange(nesp_peer_t *peer, uint8_t first, uint8_t wanted,
     if (skip < count) {
         sent = peer->hal->peer_send(peer->hal->ctx, buttons + skip, (size_t)(count - skip));
         peer->local_next = (uint8_t)(peer->local_next + sent);
+        /* For the log: each change in them, and the tick it came at. The
+         * tick that carries a console's digest (its low byte FF) has no
+         * buttons. */
+        for (size_t index = 0; index < sent; index++) {
+            uint8_t tick = (uint8_t)(peer->local_next - sent + index);
+            uint8_t pad = buttons[skip + index];
+            if (tick == 0xFF || pad == peer->pad) {
+                continue;
+            }
+            peer->pad = pad;
+            peer->pad_changes++;
+            if (peer->pads < NESP_PEER_PADS) {
+                peer->pad_log[peer->pads][0] = tick;
+                peer->pad_log[peer->pads][1] = pad;
+                peer->pads++;
+            }
+        }
     }
     if (sent == 0) {
         /* With no buttons the console had none new: its game stood still
@@ -513,7 +534,7 @@ static void show(nesp_peer_t *peer, uint32_t now)
  * advice, by the delay each would take. */
 static void watch(nesp_peer_t *peer, uint32_t now)
 {
-    char text[160];
+    char text[RADIO_TEXT];
     if (peer->hal->watch == NULL || !in_session(peer) || now - peer->watched_at < WATCH_MS) {
         return;
     }
@@ -527,6 +548,16 @@ static void watch(nesp_peer_t *peer, uint32_t now)
              (unsigned long)peer->since[0], (unsigned long)peer->since[1],
              (unsigned long)peer->since[2], (unsigned long)peer->since[3],
              (unsigned long)peer->since[4], (unsigned long)peer->since[5]);
+    /* And this console's buttons at each change since the last line, as
+     * tick:buttons, of however many changes the session has had. */
+    size_t length = strlen(text);
+    length += (size_t)snprintf(text + length, sizeof(text) - length, "; pad %lu",
+                               (unsigned long)peer->pad_changes);
+    for (uint8_t index = 0; index < peer->pads && length < sizeof(text) - 8; index++) {
+        length += (size_t)snprintf(text + length, sizeof(text) - length, " %02x:%02x",
+                                   peer->pad_log[index][0], peer->pad_log[index][1]);
+    }
+    peer->pads = 0;
     peer->hal->watch(peer->hal->ctx, text);
 }
 

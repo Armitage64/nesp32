@@ -500,7 +500,11 @@ buttons at all ("late": the game stood still for want of the other
 console's) and those that brought buttons it already held ("again": a reply
 the console did not hear); the network's times behind the last advice, by
 the delay each would take; and the network's time there and back, the last,
-the least and the most, with how many took over 14 ms and over 40 ms.
+the least and the most, with how many took over 14 ms and over 40 ms. A
+firmware built to log at the debug level (`CONFIG_LOG_DEFAULT_LEVEL_DEBUG`)
+has a line more: this console's buttons at each change since the last one,
+as the tick's low byte and the buttons, after how many changes the session
+has had ("pad").
 
 nes-contra's ROM makes its exchange before the game's work in each NMI,
 not after it, so that buttons leave as soon as they are read and the other
