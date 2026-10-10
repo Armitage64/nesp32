@@ -3,20 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>nesp32</title>
-<meta name="description" content="Wi-Fi, files and a second console for a Nintendo Entertainment System, from controller port 2.">
+<title>NESP32</title>
+<meta name="description" content="Network interface for the Nintendo Entertainment System">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <main class="wide">
-  <h1>nesp<span>32</span></h1>
-  <p class="lead">A small Wi-Fi computer that plugs into controller port 2
-    of a Nintendo Entertainment System and gives the console what it never
-    had: the Internet, files, and another console to play against.</p>
+  <h1>NESP<span>32</span></h1>
+  <p class="lead">An inexpensive, DIY wireless network interface for the Nintendo Entertainment System (NES) based on the ESP32 S3 microcontroller.</p>
 
   <div class="actions">
     <a class="button" href="flash/">Install the firmware</a>
-    <a class="button quiet" href="https://github.com/Armitage64/nesp32">Source on GitHub</a>
+    <a class="button quiet" href="https://github.com/Armitage64/nesp32">Project on GitHub</a>
   </div>
 
   <div class="shots">
@@ -25,13 +23,15 @@
     <img src="img/jukebox.png" alt="The jukebox playing a track" width="512" height="480">
   </div>
 
-  <h2>What it is</h2>
-  <p>A nesp32 is an M5Stack StickS3 with a level-shifting hat and this
-    firmware. The console needs no modification, and the games and
-    programs that use it are ordinary ROMs. One firmware serves every
-    program: a ROM says what it needs when it starts, and the nesp32
-    provides it.</p>
-  <p class="tbd">To come: a photograph of a nesp32 in a console.</p>
+  <h2>About</h2>
+  <p>The NESP32 is built using the M5 Stick S3. This all-in-one IoT development kit includes a dual core processor,
+  flash storage, audio, WiFi, color LCD screen, battery, USB interface, and buttons. A small "hat" plugs into the
+  top of the device and connects to controller port 2 of the NES.</p>
+
+  <p>Extensible firmware provides an API that any cartridge-based software can interface with. A setup program allows
+  the wifi and USB storage to be configured from the NES itself.</p>
+
+  <p>Once configured, the NESP32 provides Internet access, media streaming, and online gaming capabilities to software.</p>
 
   <h2>What it does</h2>
   <div class="grid">
@@ -56,8 +56,7 @@
         <span class="tbd">To come: where the hat is had, or how it is
         made.</span></li>
       <li><strong>Install the firmware</strong> from
-        <a href="flash/">the firmware page</a>, in Chrome, Edge or Opera
-        on a computer.</li>
+        <a href="flash/">the firmware page</a>, in Chrome, Edge or Opera.</li>
       <li><strong>Get the cartridge.</strong> One ROM with a menu and all
         the programs, for a flash cartridge or the MiSTer.
         <span class="tbd">To come: where the ROM is downloaded.</span></li>

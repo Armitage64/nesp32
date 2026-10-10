@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Install nesp32</title>
+<title>Install NESP32</title>
 <link rel="stylesheet" href="../style.css">
 <style>
   esp-web-install-button {
@@ -17,14 +17,14 @@
 </head>
 <body>
 <main>
-  <nav><a href="../">&larr; nesp32</a></nav>
-  <h1>nesp<span>32</span></h1>
-  <p class="lead">This page puts the nesp32's firmware on an M5Stack
-    StickS3 from the browser.</p>
+  <nav><a href="../">&larr; NESP32</a></nav>
+  <h1>NESP<span>32</span></h1>
+  <p class="lead">Install NESP32 firmware on an M5Stack
+    StickS3 from your browser.</p>
 
   <div class="card">
-    <p>Connect the StickS3 to this computer with a USB cable that carries
-      data, and press the button.</p>
+    <p>Connect your StickS3 to this computer with a USB data cables
+       and press Connect.</p>
     <esp-web-install-button manifest="manifest.json">
       <span slot="unsupported" class="note">This browser cannot reach a
         USB serial port. Use Chrome, Edge or Opera on a computer.</span>
@@ -34,27 +34,24 @@
     <p><small id="version"></small></p>
   </div>
 
-  <h2>Before you do</h2>
+  <h2>Note</h2>
   <ul>
-    <li><strong>It replaces what is on the StickS3</strong>, UIFlow
-      included. M5Burner brings UIFlow back.</li>
+    <li><strong>Installing firmware replaces what is current on the StickS3</strong>, including UIFlow</li>
     <li>The browser asks whether to erase first. Answer no when updating
-      a nesp32, and it keeps its networks and its music.</li>
-    <li>If the StickS3 is not in the browser's list, it may be showing as
-      a USB drive: leave Setup's USB screen, or switch it off and on.</li>
+      an existing NESP32 install to retain WiFi and stored files.</li>
   </ul>
 
-  <h2>Afterwards</h2>
+  <h2>After Installation</h2>
   <ol>
-    <li>Fit the hat and plug the nesp32 into controller port 2.</li>
-    <li>Start the cartridge and join a network from Setup, with the
-      controller. Nothing else is set up from a computer.</li>
+    <li>Fit the hat and plug the NESP32 into controller port 2.</li>
+    <li>Ensure the StickS3 is powered on.</li>
+    <li>Boot the NESP32 cartridge ROM and run the Setup utility to join a WiFi network.</li>
   </ol>
 
   <h2>More</h2>
-  <p class="dim"><a href="../">What a nesp32 is</a>, and the hat, the
+  <p class="dim"><a href="../">What a NESP32 is</a>, and the hat, the
     cartridge and the source at
-    <a href="https://github.com/Armitage64/nesp32">github.com/Armitage64/nesp32</a>.</p>
+    <a href="https://github.com/Armitage64/NESP32">github.com/Armitage64/NESP32</a>.</p>
 </main>
 <script>
   fetch("manifest.json").then(r => r.json()).then(m => {
