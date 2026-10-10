@@ -1,11 +1,14 @@
 # NESP32
 
-A network interface for the Nintendo Entertainment System (NES) based on
+Wireless network interface for the Nintendo Entertainment System (NES) based on
 the ESP32 S3 microcontroller. 
 
-![The cartridge's menu](docs/cart-menu.png) ![The status screen](apps/setup/docs/status.png)
+<p float="left">
+  <img src="docs/cart-menu.png" width="49%" alt="The cartridge's menu" />
+  <img src="apps/setup/docs/status.png" width="49%" alt="The status screen" />
+</p>
 
-## What it does
+## Purpose
 
 The device connects to controller port 2 and
 provides WiFi Internet access, streaming, and online gaming capabilities. 
