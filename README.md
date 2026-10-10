@@ -28,9 +28,11 @@ The NESP32 is an evolution of [NES Radar](https://github.com/k6lcm/nes-radar) wh
 
 [NESP32 Home Page](https://retrobits.tv/nesp32)
 
-Hardware | PCB
+[Purchase the M5 StickS3](https://amzn.to/3TVUV0y)
 
-[Online Firmware Update](https://retrobits.tv/nesp32/flash/)
+PCB Gerber Files
+
+[Firmware Updates](https://retrobits.tv/nesp32/flash/)
 
 ## Status
 
