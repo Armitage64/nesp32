@@ -44,6 +44,13 @@ const uint32_t WATCH_MS = 2000;
 const uint32_t CONSOLE_GONE_MS = 2000;  // no request for this long: not there
 const int ROWS = 7;
 const uint32_t TITLE_BLUE = 0x40A0FFu;  // the top line and the rule under it
+// The battery's charge, by how much of it there is: over half, over a
+// tenth, and less.
+const uint32_t BATTERY_GREEN = 0x00FF40u;
+const uint32_t BATTERY_YELLOW = 0xFFD000u;
+const uint32_t BATTERY_RED = 0xFF3030u;
+const int BATTERY_WIDE = 20;            // the picture of it, without its terminal
+const int BATTERY_HIGH = 10;
 // The applications the screen has a name for. Any other is shown by the id
 // and version of its hello.
 const struct {
@@ -54,9 +61,11 @@ const struct {
 const char *const WIFI_STATES[] = {"not set up", "not joined", "joining", "joined", "failed"};
 
 char shown[ROWS][RADIO_SHOWN_MAX];
+int battery_level = -1; // 0 to 100, or -1 while the charge is not known
 
 // Write a line of the screen, if it has changed. The top one is the title:
-// in blue, with a rule under it.
+// in blue, with a rule under it and the battery's charge at its right, as
+// a number and a picture filled as far.
 void line(int row, const char *text)
 {
     if (std::strncmp(shown[row], text, sizeof(shown[row])) == 0) {
@@ -69,7 +78,35 @@ void line(int row, const char *text)
     M5.Display.setTextColor(row == 0 ? TITLE_BLUE : (uint32_t)0xFFFFFFu, (uint32_t)0x000000u);
     M5.Display.print(text);
     if (row == 0) {
+        if (battery_level >= 0) {
+            uint32_t colour = battery_level > 50 ? BATTERY_GREEN
+                              : battery_level > 10 ? BATTERY_YELLOW : BATTERY_RED;
+            char percent[16];
+            std::snprintf(percent, sizeof(percent), "%d%%", battery_level);
+            int x = M5.Display.width() - 4 - 2 - BATTERY_WIDE;
+            int y = 2 + (M5.Display.fontHeight() - BATTERY_HIGH) / 2;
+            M5.Display.drawRect(x, y, BATTERY_WIDE, BATTERY_HIGH, colour);
+            M5.Display.fillRect(x + BATTERY_WIDE, y + 3, 2, BATTERY_HIGH - 6, colour);
+            M5.Display.fillRect(x + 2, y + 2, (BATTERY_WIDE - 4) * battery_level / 100,
+                                BATTERY_HIGH - 4, colour);
+            M5.Display.setTextColor(colour, (uint32_t)0x000000u);
+            M5.Display.setCursor(x - 4 - M5.Display.textWidth(percent), 2);
+            M5.Display.print(percent);
+        }
         M5.Display.drawFastHLine(0, height - 2, M5.Display.width(), TITLE_BLUE);
+    }
+}
+
+// The battery's charge, 0 to 100, or anything else if not known. The title
+// is written again the next time, if what it shows of it has changed.
+void battery(int level)
+{
+    if (level < 0 || level > 100) {
+        level = -1;
+    }
+    if (level != battery_level) {
+        battery_level = level;
+        shown[0][0] = 0;
     }
 }
 
@@ -242,6 +279,7 @@ extern "C" void app_main(void)
             battery_at = now | 1;
             int level = M5.Power.getBatteryLevel();
             radio_set_battery(level >= 0 && level <= 100 ? (uint8_t)level : 0xFF);
+            battery(level);
         }
         if (now - report_at >= REPORT_MS) {
             // For whoever is watching the log: what the two busy tasks
