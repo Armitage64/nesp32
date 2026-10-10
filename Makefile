@@ -10,7 +10,8 @@
 #                   from apps/.
 #   make web        build/web: the product page, and under flash/ the page
 #                   that flashes a nesp32 from a browser, with the firmware
-#                   as firmware/deploy.sh build left it.
+#                   as firmware/deploy.sh build left it. It builds the
+#                   cartridge and puts it there to be downloaded.
 #                   make web-serve serves it at http://localhost:8032
 #   make test
 #
@@ -135,8 +136,8 @@ verify-cart: $(CART)
 	test "$$(wc -c < $(CART) | tr -d ' ')" = "$(strip $(CART_SIZE))"
 	printf 'NES\032\020\020\020\010' | cmp -n 8 - $(CART)
 
-web:
-	$(PYTHON) tools/gen_web.py $(BUILD)/web
+web: $(CART)
+	$(PYTHON) tools/gen_web.py $(BUILD)/web $(CART)
 
 web-serve: web
 	$(PYTHON) -m http.server -d $(BUILD)/web -b localhost 8032
