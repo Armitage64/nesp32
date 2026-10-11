@@ -11,19 +11,17 @@ the ESP32 S3 microcontroller.
 
 ## About
 
-The NESP32 provides Internet access, media streaming, and online 
+- Provides Internet access, media streaming, and online 
 gaming capabilities to NES software.
 
-The NESP32 is built using the M5 StickS3. The StickS3 is an
-all-in-one IoT development kit includes a dual core processor,
-flash storage, audio, WiFi, color LCD screen, battery, USB interface, and buttons. 
-A custom hat plugs into the top of the device and connects to controller port 2 of the NES. 
+- Built using the M5 StickS3. The StickS3 is an all-in-one IoT development kit includes a dual core processor, flash storage, audio, WiFi, color LCD screen, battery, USB interface, and buttons. 
 
-Extensible firmware provides an API that any cartridge-based
-software can interface with. A setup program allows the wifi and USB storage 
+- A custom hat plugs into the top of the device and connects to controller port 2 of the NES. 
+
+- Extensible firmware provides an API that any cartridge-based software can interface with. A setup program allows the wifi and USB storage 
 to be configured from the NES itself. 
 
-The NESP32 is an evolution of [NES Radar](https://github.com/k6lcm/nes-radar) where the controller port interface was originally conceived.
+- The NESP32 is an evolution of [NES Radar](https://github.com/k6lcm/nes-radar) where the controller port interface was originally conceived.
 
 ## Quick Links
 
