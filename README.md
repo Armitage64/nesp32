@@ -10,19 +10,19 @@ the ESP32 S3 microcontroller.
 
 ## About
 
-The NESP32 is built using the M5 Stick S3. This 
+The NESP32 provides Internet access, media streaming, and online 
+gaming capabilities to NES software.
+
+The NESP32 is built using the M5 StickS3. The StickS3 is an
 all-in-one IoT development kit includes a dual core processor,
 flash storage, audio, WiFi, color LCD screen, battery, USB interface, and buttons. 
-A small "hat" plugs into the top of the device and connects to controller port 2 of the NES. 
+A custom hat plugs into the top of the device and connects to controller port 2 of the NES. 
 
 Extensible firmware provides an API that any cartridge-based
 software can interface with. A setup program allows the wifi and USB storage 
 to be configured from the NES itself. 
 
-Once configured, the NESP32 provides Internet access, media streaming, and online 
-gaming capabilities to software.
-
-The NESP32 is an evolution of [NES Radar](https://github.com/k6lcm/nes-radar) which originally developed the controller port-based NES to Internet interface.
+The NESP32 is an evolution of [NES Radar](https://github.com/k6lcm/nes-radar) where the controller port interface was originally conceived.
 
 ## Quick Links
 
@@ -34,19 +34,19 @@ PCB Gerber Files
 
 [Firmware Updates](https://retrobits.tv/nesp32/flash/)
 
-## Status
+## Features
 
-The following 
+Current NESP32 capabilities:
 | Service | What it provides |
 |---|---|
 | Wi-Fi | Connect to an access point from the NES |
 | Fetch | Retrieve pages via HTTP/S, reduced to plain text for display |
 | Music | Stream VGM/VGZ music to the NES's APU |
 | Sampled sound | Stream PCM audio at up to 20kHz |
-| Online Gaming | Host or join a 2-Player game over the network |
+| Online Gaming | Host or join a 2-Player game over a LAN or WAN |
 | Files | Manage stored music files via USB drive mode |
 
-Current NES Apps: 
+Current NESP32 apps: 
 
 | Program | What it is |
 |---|---|
@@ -59,25 +59,13 @@ Current NES Apps:
 
 ## How it works
 
-- **It is a serial line on the controller port.** The console sends on the
-  strobe line and receives on a data line of port 2, at 85227 baud, each
-  bit timed by counting CPU cycles. The hat shifts the levels between the
-  console's 5 V and the nesp32's 3.3 V ([wiring](docs/WIRING.md)).
-- **The console asks, the nesp32 answers.** Every exchange is one request
-  and one reply, each with a check. A request names a service and an op. A
-  request sent again gets the same reply again and is not acted on twice.
-- **A ROM begins with a hello** that names the services it needs. The
-  nesp32 starts those and stops the rest, so one firmware serves whatever
-  cartridge is in.
-- **The nesp32 never keeps the console waiting.** One task on a core of its
-  own answers from what the services hold; joining a network, scanning and
-  fetching are done by other tasks and asked after.
-- **What cannot wait for a frame goes outside the frames.** For sampled
-  sound the two agree a rate in frames, and then the line is a run of bare
-  bytes at that rate until the sound is over.
-- **The same C runs on the nesp32 and under the tests.** The link and the
-  services touch no hardware. Built for a computer, they answer the real
-  ROMs on a simulated console, over a line that models every bit.
+- **Repurposes controller port 2 for serial I/O.** The console sends data to the NESP32 on the
+  shift register strobe line and receives on a data line of port 2. The custom hat shifts the levels between the
+  console's 5 V and the NESP32's 3.3 V ([wiring](docs/WIRING.md)).
+- **The NES asks, the NESP32 answers.** Every exchange is one request
+  and one reply, each with a check. A request names an API service and an operation.
+- **A ROM sends a hello** that names the services it needs. Unified firmware serves all supported
+  cartridge programs.
 
 ## To do
 
