@@ -32,8 +32,11 @@ original it is a CN-ROM (mapper 3) with 32 KB of PRG and 32 KB of CHR.
 `build/nes_radar.nes` is nes-radar's own ROM, for its own server and
 cable, built here only to show that the patch leaves it alone.
 
-**Not yet run on hardware.** It is tested on a simulated console against
-nesp32's own RADAR service, over a cycle-exact line.
+**It works on hardware** with nesp32's firmware: an airport is found, its
+aircraft are on the scope, and the nesp32 switched off and on begins at
+the same airport. It is also tested on a simulated console against
+nesp32's own RADAR service, over a cycle-exact line. No figures have been
+taken from a console, and no run has been of any length.
 
 ## Using it
 
@@ -93,12 +96,36 @@ so none of that is needed:
 - **A nesp32 switched off and on** is told who is on the console and
   which airport again, and the scope goes on.
 - **The nesp32 has no table of airports.** nes-radar's server has ten
-  thousand of them in a file; the nesp32 asks for the one it is given,
-  and keeps the last in its flash, letters and place, so that the same
-  airport next time needs no asking and the editor begins at it. Wikidata has most of nes-radar's and not all: of
-  60 taken at random it had 55, the rest small fields. It also puts some
+  thousand of them in a file; the nesp32 asks for the one it is given.
+  Wikidata has most of nes-radar's and not all: of 60 taken at random it
+  had 55, the rest small fields. It also puts some
   a little way from where nes-radar has them, so the same aircraft can be
   a point or two away on the two scopes.
+
+## The airport the nesp32 keeps
+
+The last airport found is kept in the nesp32's flash: its four letters and
+where it is, twelve bytes, in the same settings as the address the
+netplay games last joined (NVS, under `nesp32`). It is written when an
+airport is found that is not the one already kept, and by another task
+than the link's, so an exchange never waits on the flash.
+
+- **The editor begins at it.** Just after the splash the ROM says hello
+  and asks RADAR for the letters (`LAST`), and they take the place of
+  nes-radar's `KSBA`. That is at most eight frames of waiting with no
+  nesp32 there.
+- **Start on it asks Wikidata nothing.** The place is known, so the first
+  fetch is of the aircraft, and the scope comes up with Wikidata out of
+  reach.
+- **Only the one airport is kept.** Going between two asks after each
+  again. And a kept place is not asked after afresh while the airport
+  stays the same: if Wikidata's is corrected, choose another airport and
+  come back.
+
+Nothing on the console makes the nesp32 forget it: the next airport found
+takes its place.
+
+## The line
 
 The ROM keeps its NMI off but for the moment it waits for a vblank to
 write in, as nes-radar does. Every exchange is made with it off, just
@@ -136,7 +163,7 @@ commit's file. `make clean` will not delete a `build/src` that has changes
 
 ## Not done
 
-- A real NES, the MiSTer, any hardware at all.
+- Figures from hardware, and a long run.
 - A place on [the cartridge](../../docs/DEVELOPMENT.md): it has two
   pictures' worth of CHR, and the cartridge gives a program one.
 - PAL consoles.

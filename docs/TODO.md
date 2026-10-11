@@ -7,8 +7,6 @@ Built and tested on a computer, not yet run on hardware:
 - A StickS3 as a USB drive, from Setup's screen.
 - A computer in place of a nesp32, on a USB serial cable
   (`host/serial_host.py`).
-- NES Radar on a nesp32: the RADAR service, and nes-radar's ROM on the
-  link ([apps/nes-radar](../apps/nes-radar)).
 
 Not measured:
 

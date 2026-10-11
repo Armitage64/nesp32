@@ -17,7 +17,8 @@ implemented and tested the same way, with nes-drmario's netplay ROM on two
 simulated consoles (its `tests/`), and a network game has been played with
 that ROM on hardware. RADAR is implemented and tested the same way, with
 nes-radar's ROM as [nes-radar](../apps/nes-radar) builds it for the link
-(its `tests/`), and has not yet run on hardware.
+(its `tests/`), and has run on hardware with that ROM: an airport
+found, its aircraft on the scope, and the airport kept over power-off.
 The services marked *reserved* have a number and no ops.
 
 Every number in this document comes from `proto/nesp.toml`, from which
