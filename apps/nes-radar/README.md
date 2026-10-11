@@ -5,7 +5,8 @@ for the NES, with a [nesp32](../..) on controller port 2 in place of a
 computer and a serial cable. Four letters typed on the controller name an
 airport, and the aircraft within nine nautical miles of it are on the
 scope, from [adsb.fi](https://adsb.fi). The nesp32 fetches them itself,
-over Wi-Fi.
+over Wi-Fi, and asks [Wikidata](https://www.wikidata.org) where the
+airport is.
 
 **The program is not in this repository.** What is here is the code that
 puts it on nesp32's link, its tests, and a few lines to be put into the
@@ -44,8 +45,9 @@ among the aircraft, and Select is the editor again.
 
 | The editor says | |
 |---|---|
-| `REQUESTING` | the nesp32 is being asked |
-| `INVALID AIRPORT` | the nesp32 knows no airport with those letters |
+| `REQUESTING` | the nesp32 is being asked, and is asking where the airport is: a second or two |
+| `INVALID AIRPORT` | Wikidata knows no airport with those letters as its ICAO code |
+| `LOOKUP FAILED` | Wikidata did not answer. Start asks again |
 | `NO NESP32 ANSWER` | no nesp32 is there, or it is running something else |
 | `NESP32 NO WI-FI` | Setup has not been run, or the network is out of reach |
 | `UPDATE NESP32` | its firmware is older than this ROM, and has no RADAR |
@@ -88,6 +90,12 @@ so none of that is needed:
 - **Select is the editor at once.** There is nobody to ask.
 - **A nesp32 switched off and on** is told who is on the console and
   which airport again, and the scope goes on.
+- **The nesp32 has no table of airports.** nes-radar's server has ten
+  thousand of them in a file; the nesp32 asks for the one it is given,
+  and remembers the last. Wikidata has most of nes-radar's and not all: of
+  60 taken at random it had 55, the rest small fields. It also puts some
+  a little way from where nes-radar has them, so the same aircraft can be
+  a point or two away on the two scopes.
 
 The ROM keeps its NMI off but for the moment it waits for a vblank to
 write in, as nes-radar does. Every exchange is made with it off, just
@@ -105,7 +113,7 @@ the NMI on.
 | `nes/radar_link.inc` | the link's code: the hello, the airport, the scope's loop and its exchanges |
 | `nes/cnrom256_link.cfg` | nes-radar's linker configuration, with a place for the serial routines |
 | `patches/` | the lines that call it, for nes-radar's one source file. All are under `.ifdef NESP32` |
-| `tests/` | a console on py65, a nesp32 and the line between them, and the test in place of adsb.fi |
+| `tests/` | a console on py65, a nesp32 and the line between them, and the test in place of Wikidata and adsb.fi |
 
 ## Changing nes-radar's code
 
@@ -139,5 +147,5 @@ files in this directory are offered under the same licence. nesp32's
 RADAR service is written from nes-radar's documents of its records
 (`nes_radar/PROTOCOL.md`), not from its server's code, which the tests
 only run beside it. The aircraft are adsb.fi's, from its open data API,
-and the airports are [OurAirports](https://ourairports.com)', as
-nes-radar's server keeps them.
+and where an airport is comes from Wikidata, whose data is
+[CC0](https://creativecommons.org/publicdomain/zero/1.0/).

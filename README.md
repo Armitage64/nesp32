@@ -42,7 +42,7 @@ Current NESP32 capabilities:
 | Music | Stream VGM/VGZ music to the NES's APU |
 | Sampled sound | Stream PCM audio at up to 20kHz |
 | Online Gaming | Host or join a 2-Player game over a LAN or WAN |
-| Radar | Live air traffic round any airport, from adsb.fi |
+| Radar | Live air traffic round an airport named by its ICAO code, from adsb.fi |
 | Files | Manage stored music files via USB drive mode |
 
 Current NESP32 apps: 

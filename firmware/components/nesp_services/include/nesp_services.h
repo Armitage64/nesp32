@@ -81,10 +81,6 @@ typedef struct {
      * NULL if there is not that much. */
     void *(*alloc)(void *ctx, size_t bytes);
     void (*release)(void *ctx, void *memory);
-    /* May be NULL: a board with no table of them. Where the airport with
-     * these four capital letters is, in millionths of a degree (RADAR).
-     * False if there is none. */
-    bool (*airport)(void *ctx, const char *code, int32_t *latitude, int32_t *longitude);
     /* Round what a service's handler and a sink both touch. Held for a
      * few instructions, never across a call that could wait. */
     void (*lock)(void *ctx);
@@ -271,6 +267,7 @@ typedef struct {
  * (radar.c). */
 #define NESP_RADAR_ITEM 2048        /* the longest aircraft in a reply that is read */
 #define NESP_RADAR_KEY 12
+#define NESP_RADAR_SPOT 48          /* the longest place an airport is at, as it is written */
 
 typedef struct {
     double distance;                /* nautical miles from the airport */
@@ -287,11 +284,16 @@ typedef struct {
     uint8_t landed;                 /* 0, or how the fetch ended: 1 well, 2 badly */
     /* The link's task alone: the airport, the scene, and the clock. */
     bool chosen;
-    bool found;
+    uint8_t place;                  /* what is known of where it is */
     uint8_t airport_id;
     char code[4];
     int32_t latitude;               /* millionths of a degree */
     int32_t longitude;
+    /* The last airport found, which is not asked after twice. */
+    bool known;
+    char known_code[4];
+    int32_t known_latitude;
+    int32_t known_longitude;
     bool held;                      /* there is a scene */
     uint8_t serial;                 /* which scene: never 0 */
     uint8_t names_serial;           /* which names: never 0 */
@@ -308,8 +310,13 @@ typedef struct {
     bool good;                      /* and one has ended well, at good_at */
     uint32_t good_at;
     /* The fetch's task alone, until it says the fetch has landed: the reply
-     * being read, and the nearest aircraft in it. */
+     * being read, and the place or the nearest aircraft in it. */
+    bool lookup;                    /* the fetch is of where the airport is */
     uint32_t parsing;               /* the fetch the rest is in the middle of */
+    uint8_t matched;                /* characters of "Point(" that have come */
+    bool spotted;                   /* the place has come whole */
+    char spot[NESP_RADAR_SPOT];
+    uint8_t spot_len;
     double here[2];                 /* the airport, in degrees */
     uint8_t depth;
     bool in_string;
@@ -521,14 +528,6 @@ void nesp_peer_service(nesp_service_t *service, nesp_peer_t *peer, const nesp_sy
                        const nesp_hal_t *hal);
 
 void nesp_radar_service(nesp_service_t *service, nesp_radar_t *radar, const nesp_hal_t *hal);
-
-/* An airport in a table of them: records of four capital letters and two
- * numbers of four bytes, low byte first, its latitude and its longitude in
- * millionths of a degree, in the order of their letters. A port's `airport`
- * is this over the table it has. */
-#define NESP_AIRPORT_LEN 12
-bool nesp_radar_airport(const uint8_t *table, size_t count, const char *code,
-                        int32_t *latitude, int32_t *longitude);
 
 /* For a service with something to send as a run (JUKE's sampled sound).
  *

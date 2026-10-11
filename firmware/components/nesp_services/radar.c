@@ -1,9 +1,9 @@
 /* RADAR: the aircraft round an airport, for NES Radar's scope
  * (docs/PROTOCOL.md).
  *
- * The console names an airport by its four letters. The nesp32 finds where
- * it is, asks adsb.fi every few seconds for the aircraft near it, and keeps
- * the nearest eight as a scene: for each, nine bytes of where it is and how
+ * The console names an airport by its four letters. The nesp32 asks
+ * Wikidata where that is, once, then asks adsb.fi every few seconds for the
+ * aircraft near it, and keeps the nearest eight as a scene: for each, nine bytes of where it is and how
  * it moves, and twenty-five of its names, both as nes-radar's ROM has them.
  * The console asks for the scene, and is sent it only if it is not the one
  * it has; the names it asks for a slot at a time, when they have changed.
@@ -15,8 +15,8 @@
  *
  * Two tasks meet here. The link's task runs handle() and tick(), and the
  * scene the console is told of is its alone. The fetch's task runs body()
- * and done(), reads the reply as it comes and keeps the nearest aircraft in
- * it; when the reply has ended it says so (`landed`, under the hal's lock),
+ * and done(), reads the reply as it comes and keeps the place, or the
+ * nearest aircraft, in it; when the reply has ended it says so (`landed`, under the hal's lock),
  * and touches nothing more until the link's task has taken them and begun
  * another fetch. `generation` is which fetch is wanted: a new airport takes
  * a new one, and whatever an older fetch brings is dropped.
@@ -37,6 +37,14 @@
 #define NAMES NESP_RADAR_NAMES_LEN
 #define AGENT "nesp32-radar/0.1 (NES Radar on a nesp32; +https://github.com/Armitage64/nesp32)"
 #define SOURCE "https://opendata.adsb.fi/api/v3"
+/* Where an airport is: Wikidata's item with these letters as its ICAO code
+ * (P239), and that item's coordinates (P625). The query is
+ *   SELECT ?p WHERE { ?a wdt:P239 "KSBA"; wdt:P625 ?p } LIMIT 1
+ * and the answer has the place as "Point(longitude latitude)". */
+#define WHERE "https://query.wikidata.org/sparql?format=json&query=" \
+              "SELECT%20%3Fp%20WHERE%20%7B%20%3Fa%20wdt%3AP239%20%22"
+#define WHERE_END "%22%3B%20wdt%3AP625%20%3Fp%20%7D%20LIMIT%201"
+static const char point[] = "Point(";
 
 /* The scope: nine nautical miles to its edge, which is 71 points from its
  * middle at (72, 72). An aircraft slower than a landing one is on the
@@ -59,6 +67,12 @@
 #define LANDED_WELL 1
 #define LANDED_BADLY 2
 
+/* What is known of where the airport is. */
+#define PLACE_UNKNOWN 0             /* not asked yet, or being asked */
+#define PLACE_KNOWN 1
+#define PLACE_NONE 2                /* no airport has those letters */
+#define PLACE_FAILED 3              /* the asking failed */
+
 static void lock(nesp_radar_t *radar)
 {
     radar->hal->lock(radar->hal->ctx);
@@ -67,33 +81,6 @@ static void lock(nesp_radar_t *radar)
 static void unlock(nesp_radar_t *radar)
 {
     radar->hal->unlock(radar->hal->ctx);
-}
-
-bool nesp_radar_airport(const uint8_t *table, size_t count, const char *code,
-                        int32_t *latitude, int32_t *longitude)
-{
-    size_t low = 0;
-    size_t high = count;
-    while (low < high) {
-        size_t middle = low + (high - low) / 2;
-        const uint8_t *record = table + middle * NESP_AIRPORT_LEN;
-        int order = memcmp(record, code, 4);
-        if (order == 0) {
-            uint32_t north = (uint32_t)record[4] | (uint32_t)record[5] << 8
-                             | (uint32_t)record[6] << 16 | (uint32_t)record[7] << 24;
-            uint32_t east = (uint32_t)record[8] | (uint32_t)record[9] << 8
-                            | (uint32_t)record[10] << 16 | (uint32_t)record[11] << 24;
-            *latitude = (int32_t)north;
-            *longitude = (int32_t)east;
-            return true;
-        }
-        if (order < 0) {
-            low = middle + 1;
-        } else {
-            high = middle;
-        }
-    }
-    return false;
 }
 
 /* --- the fetch's task: one aircraft ------------------------------------------ */
@@ -448,6 +435,18 @@ static void take(nesp_radar_t *radar, const uint8_t *data, size_t len)
 {
     for (size_t index = 0; index < len; index++) {
         char letter = (char)data[index];
+        if (radar->lookup && !radar->spotted) {
+            /* The place is the first thing written as a point. */
+            if (radar->matched < sizeof(point) - 1) {
+                radar->matched = letter == point[radar->matched] ? (uint8_t)(radar->matched + 1)
+                                                                 : (uint8_t)(letter == point[0]);
+            } else if (letter == ')') {
+                radar->spot[radar->spot_len] = 0;
+                radar->spotted = true;
+            } else if (radar->spot_len < NESP_RADAR_SPOT - 1) {
+                radar->spot[radar->spot_len++] = letter;
+            }
+        }
         if (radar->taking) {
             if (radar->item_len < NESP_RADAR_ITEM) {
                 radar->item[radar->item_len++] = letter;
@@ -547,6 +546,9 @@ static bool body(void *ctx, uint32_t id, const uint8_t *data, size_t len)
         radar->key_len = 0;
         radar->total = 0;
         radar->near_count = 0;
+        radar->matched = 0;
+        radar->spotted = false;
+        radar->spot_len = 0;
     }
     take(radar, data, len);
     return true;
@@ -587,19 +589,25 @@ static uint8_t state(const nesp_radar_t *radar)
     if (!radar->chosen) {
         return NESP_SCOPE_IDLE;
     }
-    if (!radar->found) {
+    if (radar->place == PLACE_NONE) {
         return NESP_SCOPE_NOT_FOUND;
+    }
+    if (radar->place == PLACE_FAILED) {
+        return NESP_SCOPE_NO_LOOKUP;
     }
     if (radar->held) {
         return NESP_SCOPE_READY;
     }
-    return online(radar) ? NESP_SCOPE_WAITING : NESP_SCOPE_NO_WIFI;
+    if (!online(radar)) {
+        return NESP_SCOPE_NO_WIFI;
+    }
+    return radar->place == PLACE_KNOWN ? NESP_SCOPE_WAITING : NESP_SCOPE_LOOKING;
 }
 
 static void show(nesp_radar_t *radar)
 {
     char text[32];
-    if (!radar->chosen || !radar->found) {
+    if (!radar->chosen || radar->place != PLACE_KNOWN) {
         text[0] = 0;
     } else if (!radar->held) {
         snprintf(text, sizeof(text), "%.4s", radar->code);
@@ -669,25 +677,79 @@ static void publish(nesp_radar_t *radar, bool well, uint32_t now_ms)
     show(radar);
 }
 
-static void fetch(nesp_radar_t *radar, uint32_t now_ms)
+/* A fetch of this address, for the fetch's task to read as a place or as
+ * aircraft. False if it could not be started. */
+static bool begin(nesp_radar_t *radar, const char *url, bool lookup)
 {
-    char url[128];
-    radar->fetched = true;
-    radar->fetch_at = now_ms;
     lock(radar);
     radar->generation++;
     radar->landed = 0;
     uint32_t id = radar->generation;
     unlock(radar);
+    radar->lookup = lookup;         /* nothing is being read: the last fetch has landed */
+    radar->fetching = online(radar)
+                      && radar->hal->fetch(radar->hal->ctx, url, AGENT, id, &radar->sink);
+    return radar->fetching;
+}
+
+static void fetch(nesp_radar_t *radar, uint32_t now_ms)
+{
+    char url[128];
+    radar->fetched = true;
+    radar->fetch_at = now_ms;
     radar->here[0] = radar->latitude / 1e6;
     radar->here[1] = radar->longitude / 1e6;
     snprintf(url, sizeof(url), SOURCE "/lat/%.6f/lon/%.6f/dist/%d", radar->here[0],
              radar->here[1], ASKED_NM);
-    if (online(radar) && radar->hal->fetch(radar->hal->ctx, url, AGENT, id, &radar->sink)) {
-        radar->fetching = true;
-    } else {
+    if (!begin(radar, url, false)) {
         publish(radar, false, now_ms);
     }
+}
+
+/* Ask where the airport is. */
+static void look(nesp_radar_t *radar)
+{
+    char url[sizeof(WHERE) + 4 + sizeof(WHERE_END)];
+    memcpy(url, WHERE, sizeof(WHERE) - 1);
+    memcpy(url + sizeof(WHERE) - 1, radar->code, 4);
+    memcpy(url + sizeof(WHERE) + 3, WHERE_END, sizeof(WHERE_END));
+    if (!begin(radar, url, true)) {
+        radar->place = PLACE_FAILED;
+    }
+}
+
+/* The asking has ended: the place it brought, if it brought one that is a
+ * place on the earth. A whole answer with none is no such airport. */
+static void located(nesp_radar_t *radar, bool well)
+{
+    double east, north;
+    char *end;
+    if (!well) {
+        radar->place = PLACE_FAILED;
+        return;
+    }
+    radar->place = PLACE_NONE;
+    if (!radar->spotted) {
+        return;
+    }
+    east = strtod(radar->spot, &end);
+    if (end == radar->spot || *end != ' ') {
+        return;
+    }
+    const char *second = end;
+    north = strtod(second, &end);
+    if (end == second || *end != 0 || !(north >= -90.0 && north <= 90.0)
+        || !(east >= -180.0 && east <= 180.0)) {
+        return;
+    }
+    radar->latitude = (int32_t)nearbyint(north * 1e6);
+    radar->longitude = (int32_t)nearbyint(east * 1e6);
+    radar->place = PLACE_KNOWN;
+    radar->known = true;
+    memcpy(radar->known_code, radar->code, 4);
+    radar->known_latitude = radar->latitude;
+    radar->known_longitude = radar->longitude;
+    show(radar);
 }
 
 static bool tick(void *ctx, uint32_t now_ms)
@@ -698,7 +760,7 @@ static bool tick(void *ctx, uint32_t now_ms)
         radar->timed = true;
         radar->asked_at = now_ms;
     }
-    if (!radar->chosen || !radar->found) {
+    if (!radar->chosen) {
         return false;
     }
     if (radar->fetching) {
@@ -710,12 +772,21 @@ static bool tick(void *ctx, uint32_t now_ms)
             return false;
         }
         radar->fetching = false;
-        publish(radar, landed == LANDED_WELL, now_ms);
+        if (radar->lookup) {
+            located(radar, landed == LANDED_WELL);
+        } else {
+            publish(radar, landed == LANDED_WELL, now_ms);
+        }
     }
     if (now_ms - radar->asked_at >= NESP_RADAR_UNASKED_MS) {
         return false;               /* nobody is looking */
     }
-    if (!radar->fetched || now_ms - radar->fetch_at >= NESP_RADAR_POLL_MS) {
+    if (radar->place == PLACE_UNKNOWN) {
+        if (online(radar)) {
+            look(radar);
+        }
+    } else if (radar->place == PLACE_KNOWN
+               && (!radar->fetched || now_ms - radar->fetch_at >= NESP_RADAR_POLL_MS)) {
         fetch(radar, now_ms);
     }
     return false;
@@ -740,9 +811,12 @@ static void airport(nesp_radar_t *radar, const nesp_request_t *request, nesp_rep
         radar->chosen = true;
         radar->airport_id = request->data[0];
         memcpy(radar->code, code, 4);
-        radar->found = radar->hal->airport != NULL
-                       && radar->hal->airport(radar->hal->ctx, radar->code, &radar->latitude,
-                                              &radar->longitude);
+        radar->place = PLACE_UNKNOWN;
+        if (radar->known && memcmp(radar->known_code, code, 4) == 0) {
+            radar->latitude = radar->known_latitude;
+            radar->longitude = radar->known_longitude;
+            radar->place = PLACE_KNOWN;
+        }
         show(radar);
     }
     radar->asked = true;
@@ -830,7 +904,6 @@ static void activate(void *ctx)
     nesp_radar_t *radar = ctx;
     drop(radar);
     radar->chosen = false;
-    radar->found = false;
     radar->asked = false;
     radar->timed = false;
 }

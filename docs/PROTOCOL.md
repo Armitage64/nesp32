@@ -776,9 +776,10 @@ it lands with the Stick taking up to 4.25 ms.
 
 The aircraft within nine nautical miles of an airport, as
 [nes-radar](https://github.com/k6lcm/nes-radar)'s scope shows them. The
-console names the airport by its four letters. The nesp32 finds where it
-is in a table of its own, asks [adsb.fi](https://adsb.fi) for the aircraft
-near it every 8 seconds, and keeps the nearest eight as a scene.
+console names the airport by its four letters. The nesp32 asks
+[Wikidata](https://www.wikidata.org) where that is, once, then asks
+[adsb.fi](https://adsb.fi) for the aircraft near it every 8 seconds, and
+keeps the nearest eight as a scene.
 
 | `OP` | Name | Request | Reply |
 |---|---|---|---|
@@ -789,10 +790,12 @@ near it every 8 seconds, and keeps the nearest eight as a scene.
 | `STATE` | Name | Meaning |
 |---|---|---|
 | `$00` | IDLE | no airport is chosen, or not the one with the request's `ID` |
-| `$01` | NO_WIFI | the airport is known, and the nesp32 is not on a network |
+| `$01` | NO_WIFI | the nesp32 is not on a network, and holds no scene |
 | `$02` | NOT_FOUND | no airport has those letters |
-| `$03` | WAITING | the airport is known, and nothing has come of its aircraft yet |
+| `$03` | WAITING | where the airport is, is known, and nothing has come of its aircraft yet |
 | `$04` | READY | a scene is held |
+| `$05` | LOOKING | where the airport is, is being asked |
+| `$06` | NO_LOOKUP | and could not be: the asking failed. Chosen again, it is asked again |
 
 | `FLAGS` | Name | Meaning |
 |---|---|---|
@@ -807,6 +810,15 @@ request as often as it likes. The nesp32 chooses the airport when the id
 or the letters differ from the one it has, and otherwise only answers. The
 letters are capitals; anything else is BAD_ARG. No reply of RADAR's is
 held for a repeat: the same request again is a new question.
+
+**Where an airport is, the nesp32 asks.** It has no table of airports. A
+choice starts one fetch from Wikidata's query service, for the coordinates
+of the item whose ICAO code is those letters, and the state is LOOKING
+until it ends: a second or so. An answer with a place in it is the
+airport; a whole answer with none is NOT_FOUND; anything else is
+NO_LOOKUP, so that a site that is down is not taken for an airport that
+does not exist. The last airport found is kept, and is not asked after
+again when it is chosen again, or by a console that was reset.
 
 **A scene is sent only to a console that has not got it.** Every fetch
 that ends, well or badly, makes a scene with a new `SERIAL`, which is
@@ -846,9 +858,9 @@ seconds after its last request, and starts again with the next. A fetch
 is never begun while one is under way. Its reply is read as it arrives
 and never held whole: an aircraft of more than 2 KB is passed over.
 
-The airports are nes-radar's, from OurAirports: some ten thousand with a
-code of four letters, 12 bytes each, built into the firmware
-(`tools/gen_airports.py`).
+Wikidata had 55 of 60 airports taken at random from nes-radar's own ten
+thousand, the five it lacked being small fields; a table of them all in
+the firmware was 123 KB.
 
 ## 6. Timing
 

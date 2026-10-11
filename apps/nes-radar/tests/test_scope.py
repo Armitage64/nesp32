@@ -78,14 +78,40 @@ def test_the_targets_take_turns_in_front(scope):
 def test_an_airport_nobody_has_heard_of(scope):
     s = scope()
     s.start("KZZZ")
+    s.locate("KZZZ", found=False)
     s.c.run_until(lambda: s.message == "INVALID AIRPORT", 200)
-    assert s.stick.fetches == 0
-    # And then one it has.
+    assert s.stick.fetches == 1
+    # And then one there is.
     s.choose("KLAX")
     assert s.message == ""
     s.c.press(PAD_START)
-    s.c.run_until(lambda: s.stick.fetching, 200)
+    s.locate("KLAX")
+    s.c.run_until(lambda: "adsb.fi" in s.stick.fetch_url, 200)
+    s.c.run(30)
     assert s.airport == "KLAX" and "/lat/33.942501/" in s.stick.fetch_url
+
+
+def test_the_editor_waits_while_the_nesp32_asks_where_the_airport_is(scope):
+    s = scope()
+    s.start()
+    s.c.run_until(lambda: s.stick.fetching, 200)
+    s.c.run(400)                                # longer than it waits for a nesp32
+    assert s.message == "REQUESTING"
+    s.locate("KSBA")
+    s.land([plane(0.02, 0.0, flight="FOUND")])
+    assert s.calls()[0] == "FOUND"
+
+
+def test_an_asking_that_fails(scope):
+    s = scope()
+    s.start()
+    s.c.run_until(lambda: s.stick.fetching, 200)
+    s.stick.fetch_done(False, b"no route")
+    s.c.run_until(lambda: s.message == "LOOKUP FAILED", 200)
+    s.c.press(PAD_START)                        # the same letters once more
+    s.locate("KSBA")
+    s.land([plane(0.02, 0.0, flight="FOUND")])
+    assert s.calls()[0] == "FOUND" and s.link == "IDLE"
 
 
 def test_with_no_nesp32_the_editor_says_so(scope):
@@ -105,6 +131,7 @@ def test_a_nesp32_with_no_wifi(scope):
     # Start again, with the letters as they are and the message still up.
     s.stick.set_wifi(p.NESP_WIFI_JOINED, address=(10, 0, 0, 2))
     s.c.press(PAD_START)
+    s.locate("KSBA")
     s.land([plane(0.02, 0.0, flight="ONLINE")])
     assert s.calls()[0] == "ONLINE" and s.link == "IDLE"
 
@@ -128,6 +155,7 @@ def test_select_is_the_editor_again_and_another_airport(scope):
     assert s.message == ""
     s.choose("KLAX")
     s.c.press(PAD_START)
+    s.locate("KLAX")
     s.c.run(30)
     assert s.airport == "KLAX" and s.link == "WAITING" and s.count == 0 and s.calls() == [""] * 8
     s.land([plane(0.02, 0.0, PLACES["KLAX"], flight="LAX")])
@@ -188,6 +216,7 @@ def test_a_nesp32_switched_off_and_on_is_told_the_airport_again(scope):
     assert not s.stick.active(RADAR)
     s.c.run_until(lambda: s.stick.fetches > fetches, 200)
     assert s.stick.hellos == hellos + 2 and s.stick.app == (b"RADR", 1)
+    assert "adsb.fi" in s.stick.fetch_url       # where the airport is, it had kept
     s.land([plane(0.02, 0.0, flight="AFTER")])
     assert s.calls()[0] == "AFTER" and s.link == "IDLE" and s.airport == "KSBA"
 

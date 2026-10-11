@@ -228,18 +228,6 @@ static void hal_show(void *ctx, uint8_t row, const char *text)
     portEXIT_CRITICAL(&lock);
 }
 
-/* The airports, as tools/gen_airports.py packed them at the build. */
-extern const uint8_t airports_start[] asm("_binary_airports_bin_start");
-extern const uint8_t airports_end[] asm("_binary_airports_bin_end");
-
-static bool hal_airport(void *ctx, const char *code, int32_t *latitude, int32_t *longitude)
-{
-    (void)ctx;
-    return nesp_radar_airport(airports_start,
-                              (size_t)(airports_end - airports_start) / NESP_AIRPORT_LEN, code,
-                              latitude, longitude);
-}
-
 static void *hal_alloc(void *ctx, size_t bytes)
 {
     (void)ctx;
@@ -542,7 +530,6 @@ const nesp_hal_t *radio_hal(void)
     hal.fetch_stop = fetch_stop;
     hal.alloc = hal_alloc;
     hal.release = hal_release;
-    hal.airport = hal_airport;
     hal.lock = hal_lock;
     hal.unlock = hal_unlock;
     hal.line_rate = link_line_rate;

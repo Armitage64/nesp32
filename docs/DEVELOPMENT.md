@@ -9,7 +9,7 @@ Needs [cc65](https://cc65.github.io/) (`ca65`, `ld65`), a C compiler and
 Python 3.
 
 ```sh
-git submodule update --init    # the two games and nes-radar; the firmware needs the last
+git submodule update --init    # for the two games and nes-radar only
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 make            # build/setup.nes, and the firmware's code for this computer
 make cart       # build/nesp32.nes: the cartridge
@@ -29,9 +29,10 @@ for [nes-contra](../apps/contra), and
 [NES-Games-Disassembly](https://github.com/cyneprepou4uk/NES-Games-Disassembly),
 cyneprepou4uk's, for [nes-drmario](../apps/drmario). Contra's build also needs a copy of the game, which whoever
 builds it supplies. The third is [nes-radar](https://github.com/k6lcm/nes-radar),
-k6lcm's, for [nes-radar](../apps/nes-radar): its ROM's source, and the
-airports the firmware's RADAR service knows, which are packed into the
-firmware when it is built. None of the three is on the cartridge.
+k6lcm's, for [nes-radar](../apps/nes-radar): its ROM's source, and its
+server's code, which the tests of the firmware's RADAR service run beside
+it. Nothing else here needs any of them, and none of the three is on the
+cartridge.
 
 ## The cartridge
 
@@ -73,7 +74,7 @@ not would not start this cartridge.
 | A StickS3 as a USB drive, for music to be copied to (`firmware/main/usb.c`, the setup ROM's USB screen) | builds, and the ROM's screen is tested on a simulated console; not yet run on hardware |
 | PEER, for two consoles playing one game: a lobby, and a lockstep relay of buttons between two nesp32s over datagrams (`firmware/main/conn.c`), with advice to each console on the delay it keeps | tested with nes-drmario's netplay ROM ([nes-drmario](../apps/drmario)) and nes-contra's ([nes-contra](../apps/contra), whose exchange is a short frame) on two simulated consoles, the game the same on both; the firmware builds for both boards with it. On hardware both ROMs have played network games, a real NES among the consoles; nes-contra's `docs/Netplay.md` has the figures taken from its sessions |
 | One cartridge (`nes/cart/`): the four programs and a menu, on an MMC1 | working on a real NES and on the MiSTer, with a StickC Plus2 and with a StickS3: the menu and every program. Tested on a simulated console: each program starts from the menu, and reset is the menu again |
-| RADAR, NES Radar's service: an airport by its letters, and the aircraft round it from adsb.fi as scenes of the nearest eight (`firmware/components/nesp_services/radar.c`), with the airports built in | tested with nes-radar's ROM as [nes-radar](../apps/nes-radar) builds it for the link, on a simulated console, and its scenes held to the bytes nes-radar's own server makes; the firmware builds for both boards with it. Not yet run on hardware |
+| RADAR, NES Radar's service: an airport by its letters, and the aircraft round it from adsb.fi as scenes of the nearest eight (`firmware/components/nesp_services/radar.c`), with where the airport is asked of Wikidata | tested with nes-radar's ROM as [nes-radar](../apps/nes-radar) builds it for the link, on a simulated console, and its scenes held to the bytes nes-radar's own server makes; the firmware builds for both boards with it. Not yet run on hardware |
 
 ## What is where
 
@@ -84,7 +85,6 @@ not would not start this cartridge.
 | `firmware/components/nesp_core` | frames, CRC, services' registry |
 | `firmware/components/nesp_services` | SYS, NET, DIAG, WIKI, RAW, JUKE, PEER and RADAR, and the text code WIKI lays articles out with |
 | `firmware/main` | the Stick: UART and link task, Wi-Fi, HTTPS fetches, the connection to another nesp32, files, screen and buttons |
-| `tools/gen_airports.py` | packs nes-radar's airports into the table RADAR looks them up in |
 | `tools/put_files.py` | puts the jukebox's tracks on a nesp32, over USB, for a board that cannot be a drive |
 | `tools/lcd.py` | pictures of the nesp32's own screen, for trying a layout before flashing it |
 | `nes/lib/nesp.inc`, `nes/lib/gen_link.py` | the console's library, and its cycle-timed serial routines |
@@ -121,10 +121,10 @@ make test
   run against this code, on two consoles, in nes-drmario's tests.
 - `test_peer_net.py`: a computer's stand-in for that network, on real
   sockets on this machine.
-- `test_radar.py`: an airport found among ten thousand, a reply from
-  adsb.fi to a scene and its names, held to the bytes nes-radar's own
+- `test_radar.py`: where an airport is from Wikidata's answer, a reply
+  from adsb.fi to a scene and its names, held to the bytes nes-radar's own
   server makes of it and of 40 made up, and the fetches by the clock, with
-  the test as adsb.fi. nes-radar's ROM is run against this code in
+  the test as both sites. nes-radar's ROM is run against this code in
   nes-radar's tests.
 - `test_put_files.py`: the image of the tracks that goes over USB.
 - `test_vgm.py`: the converter of rips, held to the same bytes as

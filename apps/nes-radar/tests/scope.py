@@ -1,5 +1,6 @@
 """NES Radar's link ROM on a simulated console, with a nesp32 on port 2 and
-the test in place of adsb.fi, worked as a person with a controller would.
+the test in place of Wikidata and adsb.fi, worked as a person with a
+controller would.
 
 The console is nesp32's (its tests/console.py), with what this ROM does
 that the setup ROM does not: it keeps its NMI off but for the moment it
@@ -12,7 +13,6 @@ picture is on, and nothing heard on the line with the NMI on.
 import json
 import os
 
-import gen_airports
 import nesp_proto as p
 from console import (PAD_A, PAD_B, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_SELECT, PAD_START,
                      PAD_UP, PPUCTRL_NMI, PRG_START, RENDERING, VBLANK_CYCLES, Console)
@@ -20,7 +20,7 @@ from nesp import Stick, reply_frame
 from wire import link
 
 __all__ = ["Scope", "plane", "reply_of", "PLACES", "PAD_A", "PAD_B", "PAD_DOWN", "PAD_LEFT",
-           "PAD_RIGHT", "PAD_SELECT", "PAD_START", "PAD_UP", "reply_frame"]
+           "PAD_RIGHT", "PAD_SELECT", "PAD_START", "PAD_UP", "reply_frame", "where_reply"]
 
 PLACES = {"KSBA": (34.4262, -119.8404), "KLAX": (33.942501, -118.407997),
           "EGLL": (51.4706, -0.461941)}
@@ -49,6 +49,13 @@ def plane(north, east, place=PLACES["KSBA"], **more):
             "lat": place[0] + north, "lon": place[1] + east}
     item.update(more)
     return item
+
+
+def where_reply(place):
+    """Wikidata's answer to where an airport is: the place, or nothing."""
+    found = [] if place is None else [{"p": {"type": "literal",
+                                             "value": "Point(%r %r)" % (place[1], place[0])}}]
+    return json.dumps({"head": {"vars": ["p"]}, "results": {"bindings": found}}).encode("utf-8")
 
 
 def reply_of(aircraft):
@@ -114,15 +121,16 @@ class RadarConsole(Console):
 
 
 class Scope:
-    """A console on the link ROM, and a nesp32 that knows a few airports."""
+    """A console on the link ROM, a nesp32, and a Wikidata that knows a few
+    airports."""
 
     def __init__(self, rom_path, labels_path, stick=True, online=True, places=PLACES,
                  **port_options):
         self.c = RadarConsole(rom_path, labels_path)
         self.stick = self.port = None
+        self.places = places
         if stick:
             self.stick, self.port = link(self.c, Stick, **port_options)
-            self.stick.set_airports(gen_airports.pack(places))
             if online:
                 self.stick.set_wifi(p.NESP_WIFI_JOINED, address=(10, 0, 0, 2))
 
@@ -195,11 +203,22 @@ class Scope:
         self.choose(code)
         self.c.press(PAD_START)
 
-    def open(self, code="KSBA"):
+    def locate(self, code, found=True, frames=200):
+        """The nesp32 asks where the airport is, and is told, or told there
+        is none."""
+        self.c.run_until(lambda: self.stick.fetching, frames)
+        assert "wikidata" in self.stick.fetch_url and '%%22%s%%22' % code in self.stick.fetch_url
+        assert self.message == "REQUESTING"
+        assert self.stick.fetch_body(where_reply(self.places.get(code) if found else None))
+        self.stick.fetch_done(True)
+
+    def open(self, code="KSBA", known=False):
         """From power-on to the scope, with the fetch of its aircraft under
         way."""
         self.start(code)
-        self.c.run_until(lambda: self.stick.fetching, 200)
+        if not known:
+            self.locate(code)
+        self.c.run_until(lambda: self.stick.fetching and "adsb.fi" in self.stick.fetch_url, 200)
         self.c.run_until(lambda: self.link == "WAITING" and self.airport == code, 60)
 
     # --- adsb.fi -----------------------------------------------------------------
@@ -207,7 +226,7 @@ class Scope:
     def land(self, aircraft, frames=120):
         """The fetch under way brings these aircraft, and the scope shows
         them."""
-        self.c.run_until(lambda: self.stick.fetching, 600)
+        self.c.run_until(lambda: self.stick.fetching and "adsb.fi" in self.stick.fetch_url, 600)
         body = reply_of(aircraft)
         assert self.stick.fetch_body(body)
         self.stick.fetch_done(True)

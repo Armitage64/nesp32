@@ -19,8 +19,9 @@
 ; with --timeout).
 ;
 ;   AIRPORT    an id and the four letters. The same request is both "this
-;              airport" and "how does it stand", so it is sent until it is
-;              answered, and again whenever the nesp32 has forgotten it.
+;              airport" and "how does it stand", so it is sent until the
+;              nesp32 has found where the airport is, which it asks the
+;              Internet, and again whenever it has forgotten it.
 ;   SCENE      twice a second: the scene the console has, by its serial.
 ;              The reply has the aircraft only if they are others.
 ;   IDENTITY   a slot's names, one a frame, when a scene's reply says the
@@ -80,6 +81,7 @@ OPEN_INVALID = 1
 OPEN_SILENT  = 2                ; no answer
 OPEN_NO_WIFI = 3
 OPEN_UPDATE  = 4                ; a firmware with no RADAR, or another protocol
+OPEN_LOOKUP  = 5                ; where the airport is could not be asked
 OPEN_AGAIN   = $80              ; so far so good: there is more to ask
 OPEN_DONE    = $81              ; the nesp32 has the airport
 
@@ -116,7 +118,12 @@ radar_messages:
     .byte CHAR_A+('U'-'A'),CHAR_A+('P'-'A'),CHAR_A+('D'-'A'),CHAR_A+('A'-'A'),CHAR_A+('T'-'A'),CHAR_A+('E'-'A'),CHAR_SPACE
     .byte CHAR_A+('N'-'A'),CHAR_A+('E'-'A'),CHAR_A+('S'-'A'),CHAR_A+('P'-'A'),CHAR_0+3,CHAR_0+2
     .byte CHAR_SPACE,CHAR_SPACE
-.assert * - radar_messages = 3 * 16, error, "a message is sixteen characters"
+    ; LOOKUP FAILED
+    .byte CHAR_SPACE
+    .byte CHAR_A+('L'-'A'),CHAR_A+('O'-'A'),CHAR_A+('O'-'A'),CHAR_A+('K'-'A'),CHAR_A+('U'-'A'),CHAR_A+('P'-'A'),CHAR_SPACE
+    .byte CHAR_A+('F'-'A'),CHAR_A+('A'-'A'),CHAR_A+('I'-'A'),CHAR_A+('L'-'A'),CHAR_A+('E'-'A'),CHAR_A+('D'-'A')
+    .byte CHAR_SPACE,CHAR_SPACE
+.assert * - radar_messages = 4 * 16, error, "a message is sixteen characters"
 
 .segment "CODE"
 
@@ -252,11 +259,18 @@ radar_messages:
     lda REPLY_STATE
     cmp #NESP_SCOPE_IDLE
     beq @again
+    cmp #NESP_SCOPE_LOOKING     ; it is asking where the airport is
+    beq @again
     cmp #NESP_SCOPE_NOT_FOUND
     beq @invalid
     cmp #NESP_SCOPE_NO_WIFI
     beq @no_wifi
+    cmp #NESP_SCOPE_NO_LOOKUP
+    beq @no_lookup
     lda #OPEN_DONE
+    rts
+@no_lookup:
+    lda #OPEN_LOOKUP
     rts
 @silent:
     lda #OPEN_SILENT
@@ -315,7 +329,7 @@ radar_messages:
     jsr radar_heard
     bcs @done
     cmp #NESP_SCOPE_READY       ; no scene yet, or no Wi-Fi: the link's age says so
-    bne @done
+    bne radar_placeless
     jsr note_valid_packet
     lda nesp_reply_len
     cmp #SCENE_BRIEF
@@ -373,6 +387,23 @@ radar_messages:
 @no_names:
     lda #MAX_TARGETS
     sta radar_slot
+    rts
+.endproc
+
+; A state that is not READY: nothing to do, unless it is that the airport
+; the nesp32 was told of again has turned out to be nowhere. Then the
+; editor says so.
+.proc radar_placeless
+    cmp #NESP_SCOPE_NOT_FOUND
+    bne :+
+    lda #OPEN_INVALID
+    sta startup_error
+:
+    cmp #NESP_SCOPE_NO_LOOKUP
+    bne :+
+    lda #OPEN_LOOKUP
+    sta startup_error
+:
     rts
 .endproc
 

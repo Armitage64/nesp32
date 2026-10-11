@@ -1,5 +1,5 @@
 """RADAR, NES Radar's service, with no console: requests in, replies out,
-and the test in place of adsb.fi and of the clock.
+and the test in place of Wikidata, of adsb.fi and of the clock.
 
 What a scene is to hold is nes-radar's to say: where its server's own code
 is here (the submodule in third_party), the service's scenes are held to
@@ -11,20 +11,20 @@ import random
 import sys
 import types
 
-import gen_airports
 import nesp_proto as p
 import pytest
 
 RADAR = p.NESP_SVC_RADAR
 IDLE, NO_WIFI, NOT_FOUND = p.NESP_SCOPE_IDLE, p.NESP_SCOPE_NO_WIFI, p.NESP_SCOPE_NOT_FOUND
 WAITING, READY = p.NESP_SCOPE_WAITING, p.NESP_SCOPE_READY
+LOOKING, NO_LOOKUP = p.NESP_SCOPE_LOOKING, p.NESP_SCOPE_NO_LOOKUP
 STALE, TRUNCATED, DOWN = p.NESP_SCENE_STALE, p.NESP_SCENE_TRUNCATED, p.NESP_SCENE_DOWN
 TARGETS, MOTION, NAMES = p.NESP_RADAR_TARGETS_MAX, p.NESP_RADAR_MOTION_LEN, p.NESP_RADAR_NAMES_LEN
 POLL, STALE_MS, UNASKED = p.NESP_RADAR_POLL_MS, p.NESP_RADAR_STALE_MS, p.NESP_RADAR_UNASKED_MS
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURES = os.path.join(HERE, "fixtures")
 SERVER = os.path.join(HERE, "..", "third_party", "nes-radar", "server", "src")
-# Airports for the tests that need no more than a few.
+# Where Wikidata says a few airports are.
 PLACES = {"KLAX": (33.942501, -118.407997), "KSBA": (34.4262, -119.8404),
           "EGLL": (51.4706, -0.461941), "NZSP": (-90.0, 0.0), "AAAA": (0.0, 179.999)}
 BLANK = b" " * (NAMES - 1)
@@ -49,13 +49,28 @@ def reply_of(aircraft):
                       separators=(",", ":")).encode("utf-8")
 
 
+def where_reply(place):
+    """Wikidata's answer to where an airport is: the place, or nothing."""
+    found = [] if place is None else [{"p": {
+        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral", "type": "literal",
+        "value": "Point(%r %r)" % (place[1], place[0])}}]
+    return json.dumps({"head": {"vars": ["p"]}, "results": {"bindings": found}},
+                      indent=2).encode("utf-8")
+
+
+def where_url(code):
+    return ("https://query.wikidata.org/sparql?format=json&query=SELECT%%20%%3Fp%%20WHERE%%20"
+            "%%7B%%20%%3Fa%%20wdt%%3AP239%%20%%22%s%%22%%3B%%20wdt%%3AP625%%20%%3Fp%%20%%7D"
+            "%%20LIMIT%%201" % code)
+
+
 class Scope:
     """A console's side of the service, and the clock."""
 
     def __init__(self, stick, online=True, places=PLACES):
         self.stick = stick
+        self.places = places
         self.now = 1000
-        stick.set_airports(gen_airports.pack(places))
         if online:
             stick.set_wifi(p.NESP_WIFI_JOINED, address=(10, 0, 0, 2))
         assert stick.hello(app=b"RADR", services=[RADAR]).ok
@@ -113,11 +128,20 @@ class Scope:
         self.stick.fetch_done(False, b"no route")
         self.wait()
 
-    def watch(self, code=b"KLAX"):
-        """Choose an airport, and be at the fetch of its aircraft."""
-        assert self.airport(code) == WAITING
+    def look(self, code):
+        """Choose an airport nobody has asked after, and be at the fetch of
+        where it is."""
+        assert self.airport(code) == LOOKING
         self.wait()
-        assert self.stick.fetching
+        assert self.stick.fetching and self.stick.fetch_url == where_url(code.decode())
+
+    def watch(self, code=b"KLAX"):
+        """Choose an airport, be told where it is, and be at the fetch of
+        its aircraft."""
+        self.look(code)
+        self.land(where_reply(self.places[code.decode()]))
+        assert self.airport(code, new=False) == WAITING
+        assert self.stick.fetching and "adsb.fi" in self.stick.fetch_url
 
 
 @pytest.fixture
@@ -258,29 +282,75 @@ def test_an_airport_is_an_id_and_four_capitals(scope, payload):
 
 
 def test_an_airport_nobody_has_heard_of(scope):
-    assert scope.airport(b"KZZZ") == NOT_FOUND
+    scope.look(b"KZZZ")
+    scope.land(where_reply(None))
+    assert scope.airport(b"KZZZ", new=False) == NOT_FOUND
     scope.wait(POLL)
-    assert scope.stick.fetches == 0
+    assert scope.stick.fetches == 1 and not scope.stick.fetching
     assert scope.scene() == (NOT_FOUND, 0, 0)
-    assert scope.airport(b"KLAX") == WAITING
+    scope.watch(b"KLAX")
 
 
-def test_an_airport_is_found_among_ten_thousand(stick):
-    places = gen_airports.load() if os.path.isdir(gen_airports.DATA) else None
-    if places is None:
-        pytest.skip("no nes-radar in third_party")
-    scope = Scope(stick, places=places)
-    assert len(places) > 9000
-    codes = sorted(places)
-    for code in codes[:3] + codes[-3:] + codes[::997] + ["KSBA", "KCMA"]:
-        assert scope.airport(code.encode()) == WAITING
-        scope.wait()
-        latitude, longitude = places[code]
-        assert scope.stick.fetch_url == (
-            "https://opendata.adsb.fi/api/v3/lat/%.6f/lon/%.6f/dist/10" % (latitude, longitude))
-    for code in (b"AAAA", b"ZZZZ", b"KSBB", b"QQQQ"):
-        assert code.decode() not in places
-        assert scope.airport(code) == NOT_FOUND
+def test_where_an_airport_is_comes_however_it_is_cut_up(scope):
+    scope.look(b"EGLL")
+    scope.land(where_reply(PLACES["EGLL"]), pieces=3)
+    assert scope.airport(b"EGLL", new=False) == WAITING
+    assert scope.stick.fetch_url == "https://opendata.adsb.fi/api/v3/lat/51.470600/lon/-0.461941/dist/10"
+    assert scope.stick.shown(0) == "EGLL"
+
+
+@pytest.mark.parametrize("place", ["Point(1.5)", "Point(abc def)", "Point(1.5 2.5 3.5)",
+                                   "Point(181.0 2.0)", "Point(2.0 -90.5)", "Point(1,2)",
+                                   "Point(" + "1" * 60 + " 2)", "point(1.0 2.0)"])
+def test_a_place_that_is_not_one_is_no_airport(scope, place):
+    scope.look(b"KLAX")
+    scope.land(json.dumps({"results": {"bindings": [{"p": {"value": place}}]}}).encode())
+    assert scope.airport(b"KLAX", new=False) == NOT_FOUND
+
+
+@pytest.mark.parametrize("place, url", [
+    ("Point(-118.5 34)", "/lat/34.000000/lon/-118.500000/"),
+    ("Point(1.76914166666E2 -37.920555555)", "/lat/-37.920556/lon/176.914167/"),
+    ("PPoint(-180 90)", "/lat/90.000000/lon/-180.000000/")])
+def test_a_place_is_a_longitude_and_a_latitude(scope, place, url):
+    scope.look(b"KLAX")
+    scope.land(json.dumps({"results": {"bindings": [{"p": {"value": place}}]}}).encode())
+    assert scope.airport(b"KLAX", new=False) == WAITING and url in scope.stick.fetch_url
+
+
+@pytest.mark.parametrize("body", [b"", b"<html>429 Too Many Requests</html>",
+                                  b'{"results":{"bindings":[{"p":{"value":"Point(1.0 2.0)"}}]'])
+def test_an_asking_that_fails_is_not_no_such_airport(scope, body):
+    scope.look(b"KLAX")
+    scope.land(body)
+    assert scope.airport(b"KLAX", new=False) == NO_LOOKUP
+    assert scope.scene() == (NO_LOOKUP, 0, 0)
+    scope.wait(POLL)
+    assert scope.stick.fetches == 1         # nothing more until it is chosen again
+    scope.watch(b"KLAX")
+
+
+def test_a_site_that_does_not_answer(scope):
+    scope.look(b"KLAX")
+    scope.stick.fetch_done(False, b"no route")
+    scope.wait()
+    assert scope.airport(b"KLAX", new=False) == NO_LOOKUP
+    scope.stick.refuse_fetches()
+    assert scope.airport(b"KSBA") == LOOKING
+    scope.wait()
+    assert scope.airport(b"KSBA", new=False) == NO_LOOKUP
+
+
+def test_the_last_airport_found_is_not_asked_after_again(scope):
+    scope.watch(b"KSBA")
+    scope.land(reply_of([plane(0.01, 0.0, PLACES["KSBA"])]))
+    fetches = scope.stick.fetches
+    assert scope.airport(b"KSBA") == WAITING            # chosen again: Select, and Start
+    scope.wait()
+    assert scope.stick.fetches == fetches + 1 and "adsb.fi" in scope.stick.fetch_url
+    assert scope.stick.hello(app=b"RADR", services=[RADAR]).ok
+    assert scope.airport(b"KSBA") == WAITING            # and by a console that was reset
+    scope.look(b"KLAX")                                 # but another is
 
 
 def test_the_fetch_is_the_one_nes_radar_makes(scope, theirs):
@@ -293,15 +363,20 @@ def test_the_fetch_is_the_one_nes_radar_makes(scope, theirs):
 def test_with_no_wifi_it_says_so_and_fetches_nothing(stick):
     scope = Scope(stick, online=False)
     assert scope.airport(b"KLAX") == NO_WIFI
-    scope.wait()
-    assert stick.fetches == 0
-    # A fetch that could not be made is a failed one: a scene with nothing
-    # in it, and flags that say why.
-    assert scope.scene()[3:] == (STALE | DOWN, [])
+    scope.wait(POLL)
+    assert stick.fetches == 0 and scope.scene() == (NO_WIFI, 0, 0)
+    # When there is a network the asking begins.
     stick.set_wifi(p.NESP_WIFI_JOINED, address=(10, 0, 0, 2))
+    assert scope.airport(b"KLAX", new=False) == LOOKING
+    scope.wait()
+    scope.land(where_reply(PLACES["KLAX"]))
+    # A fetch of the aircraft that cannot be made is a failed one: the scene
+    # that was, or one with nothing in it, and flags that say why.
+    scope.land(reply_of([plane(0.01, 0.0)]))
+    stick.set_wifi(p.NESP_WIFI_IDLE)
     scope.scene()
     scope.wait(POLL)
-    assert stick.fetching
+    assert stick.fetches == 2 and len(scope.scene()[4]) == 1 and scope.scene()[3] == DOWN
 
 
 def test_the_same_airport_again_only_asks_how_it_stands(scope):
@@ -309,8 +384,9 @@ def test_the_same_airport_again_only_asks_how_it_stands(scope):
     scope.land(reply_of([plane(0.01, 0.01)]))
     assert scope.airport(b"KLAX", new=False) == READY
     scope.wait()
-    assert scope.stick.fetches == 1 and scope.scene()[0] == READY
-    # The same letters under a new id are a new choice.
+    assert scope.stick.fetches == 2 and scope.scene()[0] == READY     # where, and what
+    # The same letters under a new id are a new choice, of an airport whose
+    # place is known.
     assert scope.airport(b"KLAX") == WAITING
     assert scope.scene() == (WAITING, 0, 0)
 
@@ -326,7 +402,6 @@ def test_a_request_about_another_airport_is_told_so(scope):
 
 
 def test_a_console_that_takes_short_replies_is_refused_a_scene(stick):
-    stick.set_airports(gen_airports.pack(PLACES))
     assert stick.hello(app=b"RADR", reply_max=63, services=[RADAR]).ok
     assert stick.ask(RADAR, p.NESP_RADAR_AIRPORT, b"\1KLAX").ok
     assert stick.ask(RADAR, p.NESP_RADAR_SCENE, b"\1\0").status == p.NESP_ST_BAD_ARG
@@ -424,9 +499,9 @@ def test_a_reply_that_is_not_a_whole_one_is_a_failed_fetch(scope, body):
 
 
 def test_a_fetch_that_cannot_start_is_a_failed_one(scope):
+    scope.look(b"KLAX")
     scope.stick.refuse_fetches()
-    assert scope.airport(b"KLAX") == WAITING
-    scope.wait()
+    scope.land(where_reply(PLACES["KLAX"]))
     assert scope.scene()[3:] == (STALE | DOWN, [])
 
 
@@ -452,7 +527,8 @@ def test_a_fetch_every_few_seconds_while_the_console_asks(scope):
     scope.watch()
     stick = scope.stick
     scope.land(reply_of([]))
-    for fetch in range(2, 6):
+    first = stick.fetches
+    for fetch in range(first + 1, first + 5):
         scope.scene()
         scope.wait(POLL - 1)
         assert stick.fetches == fetch - 1 and not stick.fetching
@@ -466,9 +542,9 @@ def test_a_slow_fetch_is_not_replaced_and_the_next_follows_it(scope):
     for _ in range(3):
         scope.scene()
         scope.wait(POLL)
-    assert scope.stick.fetches == 1
+    assert scope.stick.fetches == 2
     scope.land(reply_of([]))
-    assert scope.stick.fetches == 2 and scope.stick.fetching
+    assert scope.stick.fetches == 3 and scope.stick.fetching
 
 
 def test_no_fetch_for_a_console_that_has_stopped_asking(scope):
@@ -503,12 +579,22 @@ def test_an_old_airports_aircraft_never_reach_a_new_ones_scene(scope):
     scope.watch()
     old = scope.stick.fetch_id
     assert scope.stick.fetch_body(b'{"ac":[' + json.dumps(plane(0.01, 0.0)).encode(), fetch=old)
-    assert scope.airport(b"KSBA") == WAITING
+    assert scope.airport(b"KSBA") == LOOKING
     assert scope.stick.fetch_stops >= 1
     assert not scope.stick.fetch_body(b"]}", fetch=old)
     scope.stick.fetch_done(True, fetch=old)
     scope.wait()
-    assert scope.scene() == (WAITING, 0, 0)
+    assert scope.scene() == (LOOKING, 0, 0)
+    # Nor does where the old one is, if that is what was still on its way.
+    late = scope.stick.fetch_id
+    assert scope.airport(b"EGLL") == LOOKING
+    scope.stick.fetch_body(where_reply(PLACES["KSBA"]), fetch=late)
+    scope.stick.fetch_done(True, fetch=late)
+    scope.wait()
+    assert scope.airport(b"EGLL", new=False) == LOOKING
+    assert scope.airport(b"KSBA") == LOOKING
+    scope.wait()
+    scope.land(where_reply(PLACES["KSBA"]))
     assert scope.stick.fetching and "34.426200" in scope.stick.fetch_url
     scope.land(reply_of([plane(0.01, 0.0, PLACES["KSBA"], flight="SBA")]))
     assert scope.names(0)[2][:8] == b"SBA     "
@@ -521,6 +607,6 @@ def test_a_new_hello_forgets_the_airport(scope):
     assert scope.stick.hello(app=b"RADR", services=[RADAR]).ok
     assert scope.scene() == (IDLE, 0, 0)
     scope.wait(POLL)
-    assert scope.stick.fetches == 1
+    assert scope.stick.fetches == 2
     assert scope.stick.hello(app=b"WIKI", services=[]).ok
     assert scope.stick.shown(0) == ""

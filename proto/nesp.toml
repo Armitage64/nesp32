@@ -166,9 +166,11 @@ NO_LINE = 0x80          # on a LINE reply: no such line is held
 [enums.SCOPE]           # RADAR: how it stands with the airport and its aircraft
 IDLE = 0                # no airport chosen, or not the one the request is about
 NO_WIFI = 1
-NOT_FOUND = 2           # no airport has that code
+NOT_FOUND = 2           # no airport has those letters
 WAITING = 3             # the airport is known, and nothing has come of its aircraft yet
 READY = 4               # a scene is held
+LOOKING = 5             # where the airport is, is being asked
+NO_LOOKUP = 6           # and could not be: the asking failed
 
 [enums.SCENE]           # RADAR SCENE's flags, which are nes-radar's
 STALE = 0x01            # nothing good has come for RADAR_STALE_MS

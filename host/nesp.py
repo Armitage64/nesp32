@@ -84,8 +84,6 @@ def library():
                                         ctypes.c_size_t]
         lib.host_fetch_done.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_bool,
                                         ctypes.c_char_p]
-        lib.host_set_airports.restype = ctypes.c_bool
-        lib.host_set_airports.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t]
         lib.host_to_ascii.restype = ctypes.c_int
         lib.host_to_ascii.argtypes = [ctypes.c_uint32, ctypes.c_char_p]
         lib.host_vgm_to_jbs.restype = ctypes.c_size_t
@@ -661,11 +659,6 @@ class Stick:
     def alloc_most(self, size):
         """The most memory a service can have in one piece; 0 for any."""
         self._lib.host_set_alloc_most(self._host, size)
-
-    def set_airports(self, table):
-        """The airports there are, as tools/gen_airports.py packs them."""
-        table = bytes(table)
-        assert self._lib.host_set_airports(self._host, table, len(table))
 
     def fetch_body(self, data, fetch=None):
         """More of a fetch's reply: the last fetch's, or the one with this

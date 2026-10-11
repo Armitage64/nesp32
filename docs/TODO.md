@@ -38,7 +38,6 @@ Not started:
 - PAL consoles.
 - A licence. A line-by-line comparison found no code of nes-radar's
   (GPL-3.0) here beyond idioms; since then [apps/nes-radar](../apps/nes-radar)
-  has a patch to its ROM, which is under that licence, and its airports
-  are built into the firmware. The CRC routine without a table follows
+  has a patch to its ROM, which is under that licence. The CRC routine without a table follows
   Greg Cook's on 6502.org, whose terms have not been checked.
 
