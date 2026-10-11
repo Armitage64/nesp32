@@ -15,7 +15,9 @@ are tested with nes-throughput's test ROM (its
 `tests/`), and have run on that hardware with it. PEER is
 implemented and tested the same way, with nes-drmario's netplay ROM on two
 simulated consoles (its `tests/`), and a network game has been played with
-that ROM on hardware.
+that ROM on hardware. RADAR is implemented and tested the same way, with
+nes-radar's ROM as [nes-radar](../apps/nes-radar) builds it for the link
+(its `tests/`), and has not yet run on hardware.
 The services marked *reserved* have a number and no ops.
 
 Every number in this document comes from `proto/nesp.toml`, from which
@@ -209,7 +211,7 @@ nothing done on the Stick.
 | `$05` | DIAG | the link's counters and test patterns | done |
 | `$10` | JUKE | the jukebox: the playlist as a stream, the buttons, sampled sound | done |
 | `$11` | WIKI | NESpedia: a search, and the article it finds as numbered lines | done |
-| `$12` | RADAR | NES Radar: airport, scenes and identities | reserved |
+| `$12` | RADAR | NES Radar: an airport, and the aircraft round it | done |
 | `$80`-`$FF` | | experiments and other people's | |
 
 Multi-byte numbers are low byte first, except the CRC.
@@ -769,6 +771,84 @@ A reply that stops partway is still READY if a screenful of it had come.
 In NESpedia, a line's exchange is 9 bytes out and 40 back, made after the
 header's split, about 10600 cycles into the frame. On the simulated console
 it lands with the Stick taking up to 4.25 ms.
+
+### RADAR `$12`: NES Radar
+
+The aircraft within nine nautical miles of an airport, as
+[nes-radar](https://github.com/k6lcm/nes-radar)'s scope shows them. The
+console names the airport by its four letters. The nesp32 finds where it
+is in a table of its own, asks [adsb.fi](https://adsb.fi) for the aircraft
+near it every 8 seconds, and keeps the nearest eight as a scene.
+
+| `OP` | Name | Request | Reply |
+|---|---|---|---|
+| `$00` | AIRPORT | `ID`, `LETTERS[4]` | `STATE`, `ID` |
+| `$01` | SCENE | `ID`, `HAVE` | `STATE`, `ID`, `SERIAL`, `NAMES`, and with a scene that `HAVE` is not the serial of: `FLAGS`, `COUNT`, `MOTION[9]` for each aircraft |
+| `$02` | IDENTITY | `ID`, `SLOT` | `STATE`, `ID`, `NAMES`, and with a scene held: `RECORD[25]` |
+
+| `STATE` | Name | Meaning |
+|---|---|---|
+| `$00` | IDLE | no airport is chosen, or not the one with the request's `ID` |
+| `$01` | NO_WIFI | the airport is known, and the nesp32 is not on a network |
+| `$02` | NOT_FOUND | no airport has those letters |
+| `$03` | WAITING | the airport is known, and nothing has come of its aircraft yet |
+| `$04` | READY | a scene is held |
+
+| `FLAGS` | Name | Meaning |
+|---|---|---|
+| `$01` | STALE | nothing good has come from adsb.fi for 30 seconds |
+| `$02` | TRUNCATED | there were more than eight aircraft |
+| `$04` | DOWN | the last fetch failed: the scene is the one before, or empty |
+| `$08`, `$10` | | nes-radar's for bad data and a bad place; never set |
+
+**AIRPORT is both "this airport" and "how does it stand".** The console
+gives each choice an id, one more than the last, and may send the same
+request as often as it likes. The nesp32 chooses the airport when the id
+or the letters differ from the one it has, and otherwise only answers. The
+letters are capitals; anything else is BAD_ARG. No reply of RADAR's is
+held for a repeat: the same request again is a new question.
+
+**A scene is sent only to a console that has not got it.** Every fetch
+that ends, well or badly, makes a scene with a new `SERIAL`, which is
+never 0: a console with nothing says it has 0. `HAVE` is the serial of the
+scene on the console's screen, and a reply to a console that has the
+newest stops after `NAMES`, at four bytes. One with a scene is 6 bytes and
+9 for each aircraft, 78 at the most, so a ROM that asks for it takes
+replies of 127 (a shorter `REPLY_MAX` is BAD_ARG). That exchange is 9
+bytes out and 85 back, about 21500 cycles: it fits in a frame, with the
+scene whole or not there at all.
+
+**The names change less often than the aircraft move**, so they are apart.
+`NAMES` is a serial of their own, which changes only when some slot's
+names do, and is never 0. A console that sees one it has not got asks for
+the eight slots with IDENTITY, checks that each reply has the same
+`NAMES`, and then asks for the scene again and takes it: the names before
+the scene they belong to, as nes-radar's server sends them. A slot with no
+aircraft has a record of spaces.
+
+`MOTION` and `RECORD` are nes-radar's, byte for byte
+(`third_party/nes-radar/nes_radar/PROTOCOL.md`): the slot and what is not
+known, x and y on the scope, track, altitude, speed, rate of climb and
+distance; and the slot, callsign, type, registration, squawk and category,
+in capitals, digits, spaces and hyphens. The aircraft are in the order of
+their distance, the nearest in slot 0. An aircraft on the ground, or
+slower than 40 knots, or with no position, is left out. `tests/test_radar.py`
+holds every byte to what nes-radar's own server makes of the same reply.
+
+**A request about another airport is told so.** SCENE and IDENTITY carry
+the airport's id, and the answer to one the nesp32 has not chosen is IDLE:
+the console chooses it again. After a nesp32 has been switched off and on
+the answer is INACTIVE, as from any service, and the console says hello
+first.
+
+**The nesp32 stops fetching for a console that has stopped asking**, 30
+seconds after its last request, and starts again with the next. A fetch
+is never begun while one is under way. Its reply is read as it arrives
+and never held whole: an aircraft of more than 2 KB is passed over.
+
+The airports are nes-radar's, from OurAirports: some ten thousand with a
+code of four letters, 12 bytes each, built into the firmware
+(`tools/gen_airports.py`).
 
 ## 6. Timing
 

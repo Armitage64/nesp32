@@ -7,6 +7,8 @@ Built and tested on a computer, not yet run on hardware:
 - A StickS3 as a USB drive, from Setup's screen.
 - A computer in place of a nesp32, on a USB serial cable
   (`host/serial_host.py`).
+- NES Radar on a nesp32: the RADAR service, and nes-radar's ROM on the
+  link ([apps/nes-radar](../apps/nes-radar)).
 
 Not measured:
 
@@ -18,8 +20,8 @@ Not measured:
 
 Not started:
 
-- A service for [nes-radar](https://github.com/Armitage64/nes-radar), and its ROM moved to it. It is
-  the last of the programs that still has a firmware of its own.
+- NES Radar on the cartridge. Its ROM is a CN-ROM with two pictures'
+  worth of CHR, and the cartridge gives each program one.
 - The receiving nesp32 woken when a packet comes, in place of looking once
   a millisecond.
 - A way for two nesp32s to meet across the Internet without a port
@@ -35,6 +37,8 @@ Not started:
   StickS3.
 - PAL consoles.
 - A licence. A line-by-line comparison found no code of nes-radar's
-  (GPL-3.0) here beyond idioms. The CRC routine without a table follows
+  (GPL-3.0) here beyond idioms; since then [apps/nes-radar](../apps/nes-radar)
+  has a patch to its ROM, which is under that licence, and its airports
+  are built into the firmware. The CRC routine without a table follows
   Greg Cook's on 6502.org, whose terms have not been checked.
 

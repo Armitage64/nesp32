@@ -42,6 +42,7 @@ Current NESP32 capabilities:
 | Music | Stream VGM/VGZ music to the NES's APU |
 | Sampled sound | Stream PCM audio at up to 20kHz |
 | Online Gaming | Host or join a 2-Player game over a LAN or WAN |
+| Radar | Live air traffic round any airport, from adsb.fi |
 | Files | Manage stored music files via USB drive mode |
 
 Current NESP32 apps: 
@@ -54,6 +55,7 @@ Current NESP32 apps:
 | [Throughput](apps/throughput) | Test the bandwidth of the NES<>ESP32 interface |
 | [Dr. Mario 2P](apps/drmario) | Dr. Mario two-player over a network |
 | [Contra, 2P](apps/contra) | Contra's two-player over a network |
+| [NES Radar](apps/nes-radar) | k6lcm's live air traffic scope, with the nesp32 in place of a computer |
 
 ## How it works
 
@@ -73,5 +75,5 @@ Current NESP32 apps:
 | [docs/PROTOCOL.md](docs/PROTOCOL.md) | the link: the line, frames, the hello, every service, timing, and the console's library |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | building, the cartridge, what is where in the repository, the tests, and how far each part has got |
 | [firmware/README.md](firmware/README.md) | the nesp32's firmware: building and flashing it, how it keeps time, and what was seen on hardware |
-| [apps/setup](apps/setup), [apps/wiki](apps/wiki), [apps/jukebox](apps/jukebox), [apps/throughput](apps/throughput), [apps/drmario](apps/drmario), [apps/contra](apps/contra) | each program |
+| [apps/setup](apps/setup), [apps/wiki](apps/wiki), [apps/jukebox](apps/jukebox), [apps/throughput](apps/throughput), [apps/drmario](apps/drmario), [apps/contra](apps/contra), [apps/nes-radar](apps/nes-radar) | each program |
 | [apps/contra/docs/Netplay.md](apps/contra/docs/Netplay.md) | how two consoles are kept in the same game, with figures from sessions on hardware |
