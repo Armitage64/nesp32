@@ -4,8 +4,9 @@ An inexpensive, DIY wireless network interface for the Nintendo Entertainment Sy
 the ESP32 S3 microcontroller. 
 
 <p float="left">
-  <img src="docs/cart-menu.png" width="49%" alt="The cartridge's menu" />
-  <img src="apps/setup/docs/status.png" width="49%" alt="The status screen" />
+  <img src="apps/setup/docs/status.png" width="32%" alt="The status screen" />
+  <img src="apps/wiki/docs/search.png" width="32%" alt="The wikipedia app" />
+  <img src="apps/jukebox/docs/screen.png" width="32%" alt="The jukebox app" />
 </p>
 
 ## About
