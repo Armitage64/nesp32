@@ -127,6 +127,7 @@ id = 0x12
 AIRPORT = 0x00          # an id, then four letters: choose it, or say how it stands
 SCENE = 0x01            # the aircraft round the airport, if they are not the ones the console has
 IDENTITY = 0x02         # one aircraft's names, by its slot
+LAST = 0x03             # the letters of the last airport found, if one is kept
 
 [enums.WIFI]            # the state of the Stick's Wi-Fi
 NONE = 0                # no network has been set up

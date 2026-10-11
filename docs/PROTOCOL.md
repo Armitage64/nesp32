@@ -786,6 +786,7 @@ keeps the nearest eight as a scene.
 | `$00` | AIRPORT | `ID`, `LETTERS[4]` | `STATE`, `ID` |
 | `$01` | SCENE | `ID`, `HAVE` | `STATE`, `ID`, `SERIAL`, `NAMES`, and with a scene that `HAVE` is not the serial of: `FLAGS`, `COUNT`, `MOTION[9]` for each aircraft |
 | `$02` | IDENTITY | `ID`, `SLOT` | `STATE`, `ID`, `NAMES`, and with a scene held: `RECORD[25]` |
+| `$03` | LAST | | `LETTERS[4]` of the last airport found, or nothing if none is kept |
 
 | `STATE` | Name | Meaning |
 |---|---|---|
@@ -817,8 +818,14 @@ of the item whose ICAO code is those letters, and the state is LOOKING
 until it ends: a second or so. An answer with a place in it is the
 airport; a whole answer with none is NOT_FOUND; anything else is
 NO_LOOKUP, so that a site that is down is not taken for an airport that
-does not exist. The last airport found is kept, and is not asked after
-again when it is chosen again, or by a console that was reset.
+does not exist.
+
+**The last airport found is kept, over power-off too**: its letters and
+where it is, in the nesp32's flash, written when they are news and not
+otherwise. Chosen again, it is not asked after again, by a console that
+was reset or a nesp32 that was switched off; so the airport a scope is
+most often at needs Wikidata once. LAST is its letters, for a ROM to
+begin its editor with. It chooses nothing and starts no fetch.
 
 **A scene is sent only to a console that has not got it.** Every fetch
 that ends, well or badly, makes a scene with a new `SERIAL`, which is

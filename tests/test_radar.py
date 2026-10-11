@@ -610,3 +610,44 @@ def test_a_new_hello_forgets_the_airport(scope):
     assert scope.stick.fetches == 2
     assert scope.stick.hello(app=b"WIKI", services=[]).ok
     assert scope.stick.shown(0) == ""
+
+
+# --- the airport kept over power-off -------------------------------------------
+
+def test_the_last_airport_found_is_kept_and_only_when_it_is_news(scope):
+    stick = scope.stick
+    assert stick.airport is None
+    assert stick.ask(RADAR, p.NESP_RADAR_LAST).payload == b""
+    scope.look(b"KZZZ")
+    scope.land(where_reply(None))
+    assert stick.airport is None and stick.airport_keeps == 0     # not one that is nowhere
+    scope.watch(b"KSBA")
+    assert stick.airport == (b"KSBA", 34426200, -119840400) and stick.airport_keeps == 1
+    assert stick.ask(RADAR, p.NESP_RADAR_LAST).payload == b"KSBA"
+    assert scope.airport(b"KSBA") == WAITING            # chosen again: nothing to write
+    scope.wait()
+    assert stick.airport_keeps == 1
+    scope.watch(b"EGLL")
+    assert stick.airport == (b"EGLL", 51470600, -461941) and stick.airport_keeps == 2
+    assert stick.ask(RADAR, p.NESP_RADAR_LAST).payload == b"EGLL"
+    assert stick.ask(RADAR, p.NESP_RADAR_LAST, b"\0").status == p.NESP_ST_BAD_ARG
+
+
+def test_a_nesp32_switched_on_knows_the_airport_it_kept(stick):
+    stick.airport = (b"KLAX", 33942501, -118407997)
+    scope = Scope(stick)
+    assert stick.ask(RADAR, p.NESP_RADAR_LAST).payload == b"KLAX"
+    assert scope.airport(b"KLAX") == WAITING            # with nothing asked of Wikidata
+    scope.wait()
+    assert stick.fetch_url == "https://opendata.adsb.fi/api/v3/lat/33.942501/lon/-118.407997/dist/10"
+    assert stick.airport_keeps == 0
+    scope.look(b"KSBA")                                 # another airport is asked after
+
+
+def test_asking_for_the_last_airport_does_not_start_anything(stick):
+    stick.airport = (b"KLAX", 33942501, -118407997)
+    scope = Scope(stick)
+    for _ in range(5):
+        assert stick.ask(RADAR, p.NESP_RADAR_LAST).ok
+        scope.wait(POLL)
+    assert stick.fetches == 0 and scope.scene() == (IDLE, 0, 0)

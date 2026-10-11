@@ -139,6 +139,12 @@ typedef struct {
      * anything. False: none has been kept. */
     bool (*peer_last)(void *ctx, uint8_t *address);
     void (*peer_keep)(void *ctx, const uint8_t *address);
+    /* Either may be NULL: a board that keeps nothing. An airport kept over
+     * power-off, the last that RADAR found: its four letters, and where it
+     * is in millionths of a degree. False: none has been kept. Keeping one
+     * never waits: the writing of it is another task's. */
+    bool (*airport_last)(void *ctx, char *code, int32_t *latitude, int32_t *longitude);
+    void (*airport_keep)(void *ctx, const char *code, int32_t latitude, int32_t longitude);
     /* How long the network takes to the other nesp32 and back, in
      * microseconds, smoothed. 0: not known. */
     uint32_t (*peer_rtt)(void *ctx);
@@ -289,7 +295,8 @@ typedef struct {
     char code[4];
     int32_t latitude;               /* millionths of a degree */
     int32_t longitude;
-    /* The last airport found, which is not asked after twice. */
+    /* The last airport found, which is not asked after twice, and is
+     * kept over power-off where the board can. */
     bool known;
     char known_code[4];
     int32_t known_latitude;

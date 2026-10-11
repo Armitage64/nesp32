@@ -2,7 +2,7 @@
  * (docs/PROTOCOL.md).
  *
  * The console names an airport by its four letters. The nesp32 asks
- * Wikidata where that is, once, then asks adsb.fi every few seconds for the
+ * Wikidata where that is, once, and keeps the answer over power-off; then asks adsb.fi every few seconds for the
  * aircraft near it, and keeps the nearest eight as a scene: for each, nine bytes of where it is and how
  * it moves, and twenty-five of its names, both as nes-radar's ROM has them.
  * The console asks for the scene, and is sent it only if it is not the one
@@ -745,10 +745,18 @@ static void located(nesp_radar_t *radar, bool well)
     radar->latitude = (int32_t)nearbyint(north * 1e6);
     radar->longitude = (int32_t)nearbyint(east * 1e6);
     radar->place = PLACE_KNOWN;
-    radar->known = true;
-    memcpy(radar->known_code, radar->code, 4);
-    radar->known_latitude = radar->latitude;
-    radar->known_longitude = radar->longitude;
+    if (!radar->known || memcmp(radar->known_code, radar->code, 4) != 0
+        || radar->known_latitude != radar->latitude
+        || radar->known_longitude != radar->longitude) {
+        radar->known = true;
+        memcpy(radar->known_code, radar->code, 4);
+        radar->known_latitude = radar->latitude;
+        radar->known_longitude = radar->longitude;
+        if (radar->hal->airport_keep != NULL) {
+            radar->hal->airport_keep(radar->hal->ctx, radar->code, radar->latitude,
+                                     radar->longitude);
+        }
+    }
     show(radar);
 }
 
@@ -880,10 +888,28 @@ static void identity(nesp_radar_t *radar, const nesp_request_t *request, nesp_re
     reply->len = 3 + NAMES;
 }
 
+/* The letters of the last airport found, for the console to begin with:
+ * four bytes, or none if nothing is kept. */
+static void last(nesp_radar_t *radar, const nesp_request_t *request, nesp_reply_t *reply)
+{
+    if (request->len != 0) {
+        reply->status = NESP_ST_BAD_ARG;
+        return;
+    }
+    if (radar->known) {
+        memcpy(reply->data, radar->known_code, 4);
+        reply->len = 4;
+    }
+    reply->once = true;
+}
+
 static void handle(void *ctx, const nesp_request_t *request, nesp_reply_t *reply)
 {
     nesp_radar_t *radar = ctx;
     switch (request->op) {
+    case NESP_RADAR_LAST:
+        last(radar, request, reply);
+        break;
     case NESP_RADAR_AIRPORT:
         airport(radar, request, reply);
         break;
@@ -905,6 +931,12 @@ static void activate(void *ctx)
     drop(radar);
     radar->chosen = false;
     radar->asked = false;
+    if (!radar->known && radar->hal->airport_last != NULL) {
+        /* Nothing found since the power came on: what was kept from before. */
+        radar->known = radar->hal->airport_last(radar->hal->ctx, radar->known_code,
+                                                &radar->known_latitude,
+                                                &radar->known_longitude);
+    }
     radar->timed = false;
 }
 

@@ -24,6 +24,9 @@
 ;              Internet, and again whenever it has forgotten it.
 ;   SCENE      twice a second: the scene the console has, by its serial.
 ;              The reply has the aircraft only if they are others.
+;   LAST       once, before the editor: the letters of the last airport
+;              the nesp32 found, which it keeps over power-off. The
+;              editor begins with them in place of nes-radar's KSBA.
 ;   IDENTITY   a slot's names, one a frame, when a scene's reply says the
 ;              names are not the ones the console has. They are fetched
 ;              before the scene they belong to is taken, as nes-radar's
@@ -73,6 +76,7 @@ NAMES_HEAD    = 3
 POLL_FRAMES   = 30              ; between one SCENE and the next
 MISS_LIMIT    = 8               ; exchanges in a row unanswered before the scope says so
 ANSWER_FRAMES = 120             ; and frames the editor waits for a nesp32
+RECALL_FRAMES = 8               ; and the splash, for the airport it kept
 
 ; What radar_open made of its exchange. The ones under $80 are why there
 ; will be no scope, and the editor's startup_error: 1 is nes-radar's own
@@ -126,6 +130,59 @@ radar_messages:
 .assert * - radar_messages = 4 * 16, error, "a message is sixteen characters"
 
 .segment "CODE"
+
+; Before the editor is first shown: the letters of the airport the nesp32
+; kept, into icao_code. With no nesp32, or one that kept none, they stay as
+; they are; the wait for one is RECALL_FRAMES at the most.
+.proc radar_recall
+    lda #RECALL_FRAMES
+    sta radar_tries
+@try:
+    jsr wait_vblank
+    lda radar_greeted
+    bne @ask
+    lda #NESP_SVC_RADAR
+    sta nesp_request + NESP_HELLO_FIXED
+    ldy #1
+    jsr nesp_hello
+    bcs @silent
+    cmp #NESP_ST_OK
+    bne @done                   ; a firmware with no RADAR: Start will say so
+    inc radar_greeted
+    bne @try
+@ask:
+    lda #NESP_SVC_RADAR
+    ldx #NESP_RADAR_LAST
+    ldy #0
+    jsr nesp_call
+    bcs @silent
+    cmp #NESP_ST_OK
+    bne @done
+    lda nesp_reply_len
+    cmp #4
+    bne @done                   ; it has kept none
+    ldx #3
+@check:
+    lda nesp_reply,x
+    cmp #'A'
+    bcc @done
+    cmp #'Z' + 1
+    bcs @done
+    dex
+    bpl @check
+    ldx #3
+@letter:
+    lda nesp_reply,x
+    sta icao_code,x
+    dex
+    bpl @letter
+@done:
+    rts
+@silent:
+    dec radar_tries
+    bne @try
+    rts
+.endproc
 
 ; The editor's Start: ask the nesp32 for the airport in icao_code, and go
 ; to the scope if it knows it, or back to the editor with the reason.

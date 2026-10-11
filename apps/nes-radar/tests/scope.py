@@ -125,12 +125,15 @@ class Scope:
     airports."""
 
     def __init__(self, rom_path, labels_path, stick=True, online=True, places=PLACES,
-                 **port_options):
+                 kept=None, **port_options):
         self.c = RadarConsole(rom_path, labels_path)
         self.stick = self.port = None
         self.places = places
         if stick:
             self.stick, self.port = link(self.c, Stick, **port_options)
+            if kept is not None:    # an airport from before it was switched on
+                self.stick.airport = (kept.encode(), round(places[kept][0] * 1e6),
+                                      round(places[kept][1] * 1e6))
             if online:
                 self.stick.set_wifi(p.NESP_WIFI_JOINED, address=(10, 0, 0, 2))
 
@@ -185,8 +188,10 @@ class Scope:
     # --- the controller ----------------------------------------------------------
 
     def past_splash(self):
-        self.c.run(SPLASH_FRAMES)
-        assert self.c.latch == 1
+        """To the editor: two seconds of splash, and the moment after it in
+        which the nesp32 is asked for the airport it kept."""
+        self.c.run_until(lambda: self.c.latch == 1, SPLASH_FRAMES + 20)
+        self.c.run(2)
 
     def choose(self, code):
         """Set the editor's four letters."""

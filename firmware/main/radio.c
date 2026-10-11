@@ -47,7 +47,9 @@
 
 static const char *TAG = "radio";
 
-typedef enum { ORDER_SCAN, ORDER_JOIN, ORDER_FORGET } order_kind_t;
+typedef enum { ORDER_SCAN, ORDER_JOIN, ORDER_FORGET, ORDER_AIRPORT } order_kind_t;
+#define SETTINGS "nesp32"           /* conn.c's too */
+#define SETTING_AIRPORT "airport"
 
 typedef struct {
     order_kind_t kind;
@@ -57,7 +59,17 @@ typedef struct {
     char password[NESP_PASSWORD_MAX];
 } order_t;
 
+/* RADAR's last airport, as it is kept in flash: its letters, and where it
+ * is. */
+typedef struct {
+    char code[4];
+    int32_t latitude;
+    int32_t longitude;
+} airport_t;
+
 static portMUX_TYPE lock = portMUX_INITIALIZER_UNLOCKED;
+static airport_t airport;                   /* under lock */
+static bool have_airport;                   /* under lock */
 static nesp_wifi_t wifi;                    /* under lock */
 static uint8_t scan_state = NESP_SCAN_IDLE; /* under lock */
 static uint8_t scan_count;                  /* under lock */
@@ -387,9 +399,49 @@ static void begin_join(void)
     esp_wifi_connect();
 }
 
+static bool hal_airport_last(void *ctx, char *code, int32_t *latitude, int32_t *longitude)
+{
+    (void)ctx;
+    portENTER_CRITICAL(&lock);
+    bool have = have_airport;
+    if (have) {
+        memcpy(code, airport.code, sizeof(airport.code));
+        *latitude = airport.latitude;
+        *longitude = airport.longitude;
+    }
+    portEXIT_CRITICAL(&lock);
+    return have;
+}
+
+static void hal_airport_keep(void *ctx, const char *code, int32_t latitude, int32_t longitude)
+{
+    (void)ctx;
+    order_t order = {.kind = ORDER_AIRPORT};
+    portENTER_CRITICAL(&lock);
+    memcpy(airport.code, code, sizeof(airport.code));
+    airport.latitude = latitude;
+    airport.longitude = longitude;
+    have_airport = true;
+    portEXIT_CRITICAL(&lock);
+    xQueueSend(orders, &order, 0);  /* the flash is the worker's to write */
+}
+
 static void do_order(order_t *order)
 {
     switch (order->kind) {
+    case ORDER_AIRPORT: {
+        airport_t kept;
+        nvs_handle_t settings;
+        portENTER_CRITICAL(&lock);
+        kept = airport;
+        portEXIT_CRITICAL(&lock);
+        if (nvs_open(SETTINGS, NVS_READWRITE, &settings) == ESP_OK) {
+            nvs_set_blob(settings, SETTING_AIRPORT, &kept, sizeof(kept));
+            nvs_commit(settings);
+            nvs_close(settings);
+        }
+        break;
+    }
     case ORDER_SCAN:
         if (esp_wifi_scan_start(NULL, false) != ESP_OK) {
             portENTER_CRITICAL(&lock);
@@ -471,6 +523,13 @@ void radio_start(void)
         err = nvs_flash_init();
     }
     ESP_ERROR_CHECK(err);
+    nvs_handle_t settings;
+    if (nvs_open(SETTINGS, NVS_READONLY, &settings) == ESP_OK) {
+        size_t size = sizeof(airport);
+        have_airport = nvs_get_blob(settings, SETTING_AIRPORT, &airport, &size) == ESP_OK
+                       && size == sizeof(airport);
+        nvs_close(settings);
+    }
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     esp_netif_create_default_wifi_sta();
@@ -549,6 +608,8 @@ const nesp_hal_t *radio_hal(void)
     hal.peer_recv = conn_recv;
     hal.peer_last = conn_last;
     hal.peer_keep = conn_keep;
+    hal.airport_last = hal_airport_last;
+    hal.airport_keep = hal_airport_keep;
     hal.peer_rtt = conn_rtt;
     hal.peer_note = conn_note;
     hal.peer_noted = conn_noted;

@@ -260,3 +260,48 @@ def test_with_the_nesp32s_clock_out(scope, clock_error):
     s.open()
     s.land([plane(0.01 * (number + 1), 0.0, flight="N%d" % number) for number in range(8)])
     assert s.calls() == ["N%d" % number for number in range(8)] and s.link == "IDLE"
+
+
+def test_the_editor_begins_at_the_airport_the_nesp32_kept(scope):
+    s = scope(kept="EGLL")
+    s.past_splash()
+    assert s.code == "EGLL" and s.stick.app == (b"RADR", 1)
+    s.c.press(PAD_START)                        # and where it is, the nesp32 kept too
+    s.c.run_until(lambda: s.stick.fetching, 200)
+    assert s.stick.fetches == 1 and "/lat/51.470600/lon/-0.461941/" in s.stick.fetch_url
+    s.land([plane(0.02, 0.0, PLACES["EGLL"], flight="LHR")])
+    assert s.airport == "EGLL" and s.calls()[0] == "LHR" and s.link == "IDLE"
+
+
+def test_an_airport_found_is_where_the_editor_begins_next_time(scope, build):
+    s = scope()
+    s.past_splash()
+    assert s.code == "KSBA"                     # nothing kept: nes-radar's own
+    s.choose("KLAX")
+    s.c.press(PAD_START)
+    s.locate("KLAX")
+    s.land([plane(0.02, 0.0, PLACES["KLAX"])])
+    assert s.stick.airport == (b"KLAX", 33942501, -118407997)
+    s.c.reset()                                 # the console's reset button
+    s.past_splash()
+    assert s.code == "KLAX"
+    assert s.c.late_writes == [] and s.c.heard_in_nmi == 0
+
+
+def test_with_no_nesp32_the_editor_is_hardly_later(scope):
+    s = scope(stick=False)
+    s.c.run(150)
+    assert s.code == "KSBA" and s.message == ""
+    s.c.press(PAD_UP)
+    assert s.code == "LSBA"
+
+
+def test_the_airport_kept_comes_through_lost_replies(scope):
+    count = [0]
+
+    def lossy(data):
+        count[0] += 1
+        return None if count[0] % 2 else data
+    s = scope(kept="KLAX", to_console=lossy)
+    s.past_splash()
+    assert s.code == "KLAX"

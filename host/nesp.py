@@ -183,6 +183,13 @@ def library():
         lib.host_arq_unsaid.argtypes = [ctypes.c_void_p]
         lib.host_arq_note.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
         lib.host_arq_noted.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        lib.host_set_airport.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int32,
+                                         ctypes.c_int32]
+        lib.host_airport.restype = ctypes.c_bool
+        lib.host_airport.argtypes = [ctypes.c_void_p, ctypes.c_char_p,
+                                     ctypes.POINTER(ctypes.c_int32)]
+        lib.host_airport_keeps.restype = ctypes.c_uint32
+        lib.host_airport_keeps.argtypes = [ctypes.c_void_p]
         lib.host_last.restype = ctypes.c_bool
         lib.host_last.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
         lib.host_checks.argtypes = [ctypes.c_char_p, ctypes.c_size_t, _u8p]
@@ -519,6 +526,28 @@ class Stick:
     @last.setter
     def last(self, address):
         self._lib.host_set_last(self._host, None if address is None else bytes(address))
+
+    @property
+    def airport(self):
+        """The airport the nesp32 keeps over power-off: (its letters, its
+        latitude, its longitude), the two in millionths of a degree. None
+        if it keeps none."""
+        code = ctypes.create_string_buffer(4)
+        place = (ctypes.c_int32 * 2)()
+        if not self._lib.host_airport(self._host, code, place):
+            return None
+        return code.raw, place[0], place[1]
+
+    @airport.setter
+    def airport(self, kept):
+        if kept is None:
+            self._lib.host_set_airport(self._host, None, 0, 0)
+        else:
+            self._lib.host_set_airport(self._host, bytes(kept[0]), kept[1], kept[2])
+
+    @property
+    def airport_keeps(self):
+        return self._lib.host_airport_keeps(self._host)
 
     @property
     def listens(self):

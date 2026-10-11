@@ -48,6 +48,11 @@ typedef struct {
     bool fetch_refused;             /* set by the caller: the next fetch cannot start */
     uint32_t fetches;
     uint32_t fetch_stops;
+    /* The airport kept over power-off, and how often one was written. */
+    bool have_airport;
+    char airport[4];
+    int32_t airport_place[2];       /* latitude and longitude, in millionths of a degree */
+    uint32_t airport_keeps;
     size_t alloc_most;              /* set by the caller: no more than this at once; 0 for any */
     uint32_t allocated;             /* blocks handed out and not given back */
     int locked;
@@ -399,6 +404,27 @@ static void hal_peer_spread(void *ctx, uint32_t *counts)
     memcpy(counts, ((host_t *)ctx)->spread, sizeof(((host_t *)ctx)->spread));
 }
 
+static bool hal_airport_last(void *ctx, char *code, int32_t *latitude, int32_t *longitude)
+{
+    host_t *host = ctx;
+    if (host->have_airport) {
+        memcpy(code, host->airport, 4);
+        *latitude = host->airport_place[0];
+        *longitude = host->airport_place[1];
+    }
+    return host->have_airport;
+}
+
+static void hal_airport_keep(void *ctx, const char *code, int32_t latitude, int32_t longitude)
+{
+    host_t *host = ctx;
+    host->have_airport = true;
+    memcpy(host->airport, code, 4);
+    host->airport_place[0] = latitude;
+    host->airport_place[1] = longitude;
+    host->airport_keeps++;
+}
+
 static bool hal_peer_last(void *ctx, uint8_t *address)
 {
     host_t *host = ctx;
@@ -456,6 +482,8 @@ host_t *host_new(void)
     host->hal.peer_recv = hal_peer_recv;
     host->hal.peer_last = hal_peer_last;
     host->hal.peer_keep = hal_peer_keep;
+    host->hal.airport_last = hal_airport_last;
+    host->hal.airport_keep = hal_airport_keep;
     host->hal.peer_rtt = hal_peer_rtt;
     host->hal.peer_note = hal_peer_note;
     host->hal.peer_noted = hal_peer_noted;
@@ -637,6 +665,27 @@ size_t host_conn_give(host_t *host, const uint8_t *data, size_t len)
     host->conn_in_len += len;
     return len;
 }
+
+/* The airport a nesp32 has kept from before it was switched on, if any. */
+void host_set_airport(host_t *host, const char *code, int32_t latitude, int32_t longitude)
+{
+    host->have_airport = code != NULL;
+    if (code != NULL) {
+        memcpy(host->airport, code, 4);
+        host->airport_place[0] = latitude;
+        host->airport_place[1] = longitude;
+    }
+}
+
+bool host_airport(const host_t *host, char *code, int32_t *place)
+{
+    memcpy(code, host->airport, 4);
+    place[0] = host->airport_place[0];
+    place[1] = host->airport_place[1];
+    return host->have_airport;
+}
+
+uint32_t host_airport_keeps(const host_t *host) { return host->airport_keeps; }
 
 /* The address a nesp32 has kept from before it was switched on, if any. */
 void host_set_last(host_t *host, const uint8_t *address)

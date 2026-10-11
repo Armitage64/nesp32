@@ -41,7 +41,9 @@ Flash nesp32's firmware ([its README](../../firmware/README.md)) and put
 the nesp32 on Wi-Fi with [Setup](../setup). Then, as with nes-radar's own
 ROM: Up and Down change a letter, Left and Right move along the four,
 Start asks for the airport. On the scope the direction buttons choose
-among the aircraft, and Select is the editor again.
+among the aircraft, and Select is the editor again. The editor begins at
+the last airport the nesp32 found, which it keeps when it is switched
+off; with none kept, or no nesp32, at nes-radar's `KSBA`.
 
 | The editor says | |
 |---|---|
@@ -92,7 +94,8 @@ so none of that is needed:
   which airport again, and the scope goes on.
 - **The nesp32 has no table of airports.** nes-radar's server has ten
   thousand of them in a file; the nesp32 asks for the one it is given,
-  and remembers the last. Wikidata has most of nes-radar's and not all: of
+  and keeps the last in its flash, letters and place, so that the same
+  airport next time needs no asking and the editor begins at it. Wikidata has most of nes-radar's and not all: of
   60 taken at random it had 55, the rest small fields. It also puts some
   a little way from where nes-radar has them, so the same aircraft can be
   a point or two away on the two scopes.
