@@ -33,8 +33,9 @@ WEB = os.path.join(ROOT, "web")
 
 # The product page's pictures: (its name for one, where it is)
 PICTURES = [("cart-menu.png", "docs/cart-menu.png"),
-            ("reader.png", "apps/wiki/docs/reader.png"),
-            ("jukebox.png", "apps/jukebox/docs/screen.png")]
+            ("search.png", "apps/wiki/docs/search.png"),
+            ("jukebox.png", "apps/jukebox/docs/screen.png"),
+            ("status.png", "apps/setup/docs/status.png")]
 
 # (ESP Web Tools' name for the chip, the build's directory, a prefix for its files)
 BOARDS = [("ESP32-S3", os.path.join(ROOT, "firmware", "build-esp32s3"), "s3")]
