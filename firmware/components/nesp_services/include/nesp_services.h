@@ -81,6 +81,10 @@ typedef struct {
      * NULL if there is not that much. */
     void *(*alloc)(void *ctx, size_t bytes);
     void (*release)(void *ctx, void *memory);
+    /* May be NULL: a board with no table of them. Where the airport with
+     * these four capital letters is, in millionths of a degree (RADAR).
+     * False if there is none. */
+    bool (*airport)(void *ctx, const char *code, int32_t *latitude, int32_t *longitude);
     /* Round what a service's handler and a sink both touch. Held for a
      * few instructions, never across a call that could wait. */
     void (*lock)(void *ctx);
@@ -263,6 +267,70 @@ typedef struct {
     nesp_wrap_t wrap;
 } nesp_wiki_t;
 
+/* RADAR: the aircraft round an airport, as NES Radar's scope shows them
+ * (radar.c). */
+#define NESP_RADAR_ITEM 2048        /* the longest aircraft in a reply that is read */
+#define NESP_RADAR_KEY 12
+
+typedef struct {
+    double distance;                /* nautical miles from the airport */
+    uint8_t motion[NESP_RADAR_MOTION_LEN];  /* its slot not yet in it */
+    uint8_t names[NESP_RADAR_NAMES_LEN];    /* nor here */
+} nesp_radar_target_t;
+
+typedef struct {
+    const nesp_hal_t *hal;
+    nesp_sink_t sink;
+    /* What the link's task and the fetch's both touch, under the hal's
+     * lock: which fetch is wanted, and that it has ended. */
+    uint32_t generation;
+    uint8_t landed;                 /* 0, or how the fetch ended: 1 well, 2 badly */
+    /* The link's task alone: the airport, the scene, and the clock. */
+    bool chosen;
+    bool found;
+    uint8_t airport_id;
+    char code[4];
+    int32_t latitude;               /* millionths of a degree */
+    int32_t longitude;
+    bool held;                      /* there is a scene */
+    uint8_t serial;                 /* which scene: never 0 */
+    uint8_t names_serial;           /* which names: never 0 */
+    uint8_t flags;                  /* NESP_SCENE_* */
+    uint8_t count;
+    uint8_t motion[NESP_RADAR_TARGETS_MAX][NESP_RADAR_MOTION_LEN];
+    uint8_t names[NESP_RADAR_TARGETS_MAX][NESP_RADAR_NAMES_LEN];
+    bool asked;                     /* the console has asked since the last tick */
+    bool timed;                     /* the three below have been set */
+    uint32_t asked_at;
+    uint32_t fetch_at;              /* when the last fetch began */
+    bool fetching;
+    bool fetched;                   /* a fetch has begun for this airport */
+    bool good;                      /* and one has ended well, at good_at */
+    uint32_t good_at;
+    /* The fetch's task alone, until it says the fetch has landed: the reply
+     * being read, and the nearest aircraft in it. */
+    uint32_t parsing;               /* the fetch the rest is in the middle of */
+    double here[2];                 /* the airport, in degrees */
+    uint8_t depth;
+    bool in_string;
+    bool escaped;
+    bool rooted;                    /* the reply is an object */
+    bool listed;                    /* inside the list of aircraft */
+    bool whole;                     /* the reply's last brace has come */
+    bool taking;                    /* inside one aircraft */
+    bool long_item;                 /* which is longer than is read */
+    uint8_t item_depth;
+    char word[NESP_RADAR_KEY];      /* the last string at the top */
+    uint8_t word_len;
+    char key[NESP_RADAR_KEY];
+    uint8_t key_len;
+    char item[NESP_RADAR_ITEM];
+    uint16_t item_len;
+    uint16_t total;                 /* aircraft within range */
+    uint8_t near_count;
+    nesp_radar_target_t near[NESP_RADAR_TARGETS_MAX];
+} nesp_radar_t;
+
 /* RAW: the line with framing off (raw.c). A run is a stretch of bytes at a
  * rate of its own, one way: the test pattern, or whatever another service
  * has to send. */
@@ -418,7 +486,8 @@ typedef struct {
     nesp_raw_t raw;
     nesp_juke_t juke;
     nesp_peer_t peer;
-    nesp_service_t services[7];
+    nesp_radar_t radar;
+    nesp_service_t services[8];
 } nesp_stick_t;
 
 void nesp_stick_init(nesp_stick_t *stick, const nesp_hal_t *hal);
@@ -450,6 +519,16 @@ void nesp_juke_service(nesp_service_t *service, nesp_juke_t *juke, nesp_link_t *
                        nesp_raw_t *raw, const nesp_hal_t *hal);
 void nesp_peer_service(nesp_service_t *service, nesp_peer_t *peer, const nesp_sys_t *sys,
                        const nesp_hal_t *hal);
+
+void nesp_radar_service(nesp_service_t *service, nesp_radar_t *radar, const nesp_hal_t *hal);
+
+/* An airport in a table of them: records of four capital letters and two
+ * numbers of four bytes, low byte first, its latitude and its longitude in
+ * millionths of a degree, in the order of their letters. A port's `airport`
+ * is this over the table it has. */
+#define NESP_AIRPORT_LEN 12
+bool nesp_radar_airport(const uint8_t *table, size_t count, const char *code,
+                        int32_t *latitude, int32_t *longitude);
 
 /* For a service with something to send as a run (JUKE's sampled sound).
  *

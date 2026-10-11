@@ -222,6 +222,7 @@ void nesp_stick_init(nesp_stick_t *stick, const nesp_hal_t *hal)
     nesp_raw_service(&stick->services[4], &stick->raw, &stick->link, hal);
     nesp_juke_service(&stick->services[5], &stick->juke, &stick->link, &stick->raw, hal);
     nesp_peer_service(&stick->services[6], &stick->peer, &stick->sys, hal);
+    nesp_radar_service(&stick->services[7], &stick->radar, hal);
     for (size_t index = 0; index < sizeof(stick->services) / sizeof(stick->services[0]);
          index++) {
         nesp_link_register(&stick->link, &stick->services[index]);

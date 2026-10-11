@@ -10,3 +10,8 @@ The text is from the English Wikipedia article
 [Nintendo Entertainment System](https://en.wikipedia.org/wiki/Nintendo_Entertainment_System),
 by its contributors, under
 [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
+
+`klax_adsbfi.json` is a reply from [adsb.fi](https://adsb.fi)'s open data
+API for the aircraft within ten nautical miles of Los Angeles
+International, as RADAR asks for them: 43 aircraft, some of them on the
+ground, some with no callsign and some with no altitude.

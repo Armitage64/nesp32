@@ -124,6 +124,9 @@ LINE = 0x01             # a line of the article, by its number
 [services.RADAR]
 id = 0x12
 [services.RADAR.ops]
+AIRPORT = 0x00          # an id, then four letters: choose it, or say how it stands
+SCENE = 0x01            # the aircraft round the airport, if they are not the ones the console has
+IDENTITY = 0x02         # one aircraft's names, by its slot
 
 [enums.WIFI]            # the state of the Stick's Wi-Fi
 NONE = 0                # no network has been set up
@@ -159,6 +162,20 @@ ERROR = 5               # the last search failed; the reply says how
 STATE = 0x3F            # the state's bits
 MORE = 0x40             # with READY: the article is still arriving
 NO_LINE = 0x80          # on a LINE reply: no such line is held
+
+[enums.SCOPE]           # RADAR: how it stands with the airport and its aircraft
+IDLE = 0                # no airport chosen, or not the one the request is about
+NO_WIFI = 1
+NOT_FOUND = 2           # no airport has that code
+WAITING = 3             # the airport is known, and nothing has come of its aircraft yet
+READY = 4               # a scene is held
+
+[enums.SCENE]           # RADAR SCENE's flags, which are nes-radar's
+STALE = 0x01            # nothing good has come for RADAR_STALE_MS
+TRUNCATED = 0x02        # there were more aircraft than a scene holds
+DOWN = 0x04             # the last fetch failed
+BAD_DATA = 0x08
+BAD_PLACE = 0x10
 
 [enums.RUN]             # RAW: the state of a run
 IDLE = 0                # none yet
@@ -244,6 +261,12 @@ JUKE_TITLE_MAX = 28     # characters in a name on the console's screen
 JUKE_SOUND_RATES = 6    # the rates a sound may have: 21, 16, 14, 12, 10 and 8 cycles a bit
 JUKE_SOUND_REFUSED = 0xFF   # JUKE SOUND's rate from a console that cannot play it
 JUKE_SOUND_LAST = 0xFC  # the byte that ends a sound and leaves the console's DAC at 0
+RADAR_TARGETS_MAX = 8   # aircraft in a scene, the nearest first
+RADAR_MOTION_LEN = 9    # bytes of one in a scene
+RADAR_NAMES_LEN = 25    # and of its names
+RADAR_POLL_MS = 8000    # between one fetch of the aircraft and the next
+RADAR_STALE_MS = 30000  # a scene is stale when nothing good has come for this long
+RADAR_UNASKED_MS = 30000    # no fetch for a console that has not asked for this long
 PEER_PORT = 6502        # UDP, on the nesp32 that hosts
 PEER_VERSION = 1        # of what two nesp32s say to each other
 PEER_PER_FRAME = 2      # ticks of buttons a TICKS frame may carry, each way

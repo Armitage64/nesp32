@@ -51,7 +51,7 @@ proto: $(PROTO)
 
 $(HOST_LIB): $(HOST_SOURCES) $(HOST_HEADERS) $(BUILD)/nesp_proto.h
 	$(CC) $(CFLAGS) -shared -I $(BUILD) -I $(CORE)/include -I $(SERVICES)/include \
-		-o $@ $(HOST_SOURCES)
+		-o $@ $(HOST_SOURCES) -lm
 
 host: $(HOST_LIB)
 

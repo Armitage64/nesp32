@@ -48,6 +48,9 @@ typedef struct {
     bool fetch_refused;             /* set by the caller: the next fetch cannot start */
     uint32_t fetches;
     uint32_t fetch_stops;
+    /* The airports the caller gave, as nesp_radar_airport reads them. */
+    uint8_t *airports;
+    size_t airport_count;
     size_t alloc_most;              /* set by the caller: no more than this at once; 0 for any */
     uint32_t allocated;             /* blocks handed out and not given back */
     int locked;
@@ -228,6 +231,12 @@ static void hal_release(void *ctx, void *memory)
     host_t *host = ctx;
     host->allocated--;
     free(memory);
+}
+
+static bool hal_airport(void *ctx, const char *code, int32_t *latitude, int32_t *longitude)
+{
+    host_t *host = ctx;
+    return nesp_radar_airport(host->airports, host->airport_count, code, latitude, longitude);
 }
 
 /* One task here, so there is nothing to keep out; but a lock taken twice,
@@ -439,6 +448,7 @@ host_t *host_new(void)
     host->hal.fetch_stop = hal_fetch_stop;
     host->hal.alloc = hal_alloc;
     host->hal.release = hal_release;
+    host->hal.airport = hal_airport;
     host->hal.lock = hal_lock;
     host->hal.unlock = hal_unlock;
     host->hal.line_rate = hal_line_rate;
@@ -474,6 +484,7 @@ void host_free(host_t *host)
     for (uint16_t index = 0; index < host->track_count; index++) {
         free(host->tracks[index].data);
     }
+    free(host->airports);
     free(host);
 }
 
@@ -796,6 +807,21 @@ void host_fetch_done(host_t *host, uint32_t id, bool ok, const char *why)
     if (id == host->fetch_id) {
         host->fetching = false;
     }
+}
+
+/* The airports there are: records of NESP_AIRPORT_LEN bytes, in order. */
+bool host_set_airports(host_t *host, const uint8_t *table, size_t len)
+{
+    uint8_t *copy = malloc(len == 0 ? 1 : len);
+    if (copy == NULL || len % NESP_AIRPORT_LEN != 0) {
+        free(copy);
+        return false;
+    }
+    memcpy(copy, table, len);
+    free(host->airports);
+    host->airports = copy;
+    host->airport_count = len / NESP_AIRPORT_LEN;
+    return true;
 }
 
 /* --- the text code, without a Stick round it ---------------------------------- */
