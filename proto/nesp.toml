@@ -13,7 +13,7 @@ PROTOCOL = 1            # what a hello says it speaks
 CPU_HZ = 1789773        # NTSC: 21.477272 MHz / 12
 # A rate is a whole number of CPU cycles a bit, so the console's bit-banged
 # routines hit every bit exactly. 21 is 85227 baud: nes-wiki and nes-drmario
-# ran at it on hardware, and nes-jukebox's throughput test passed it both
+# ran at it on hardware, and nes-throughput's test passed it both
 # ways with rates to spare.
 PERIOD = 21
 TO_NES_BITS = 11        # the Stick sends 8N2

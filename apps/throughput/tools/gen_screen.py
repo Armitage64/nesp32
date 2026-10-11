@@ -5,7 +5,7 @@ where on that screen the ROM writes.
     tools/gen_screen.py build
     tools/gen_screen.py build --preview screen.png
 
-The tiles are the jukebox's (../tools/gen_ui.py): its 5 x 7 font with each
+The tiles are the jukebox's (../jukebox/tools/gen_ui.py): its 5 x 7 font with each
 character at its ASCII code, its palettes, and its header, the name in the
 big letters over the credit line, with what this ROM is between the two in
 the credit line's blue. The font has capitals only.
@@ -21,7 +21,7 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(HERE, "..", "..", "tools"))
+sys.path.insert(0, os.path.join(HERE, "..", "..", "jukebox", "tools"))
 
 import gen_ui  # noqa: E402
 

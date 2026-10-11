@@ -3,7 +3,7 @@
 The nesp32's end is its own firmware: the link and the RAW service, built
 for this computer (conftest.py) and driven through nesp32's host/nesp.py.
 Only the hardware under them is a stand-in: its UART is the Port of the
-jukebox's line model (../../tests/wire.py), which carries a run of RAW's at
+jukebox's line model (../jukebox/tests/wire.py), which carries a run of RAW's at
 whatever rate the nesp32 set.
 
 Time is in NES CPU cycles. Every $4017 read returns the line's level on the

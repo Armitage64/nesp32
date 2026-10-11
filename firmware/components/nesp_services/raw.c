@@ -45,7 +45,7 @@ enum {
 };
 
 /* An ESP32's UART leaves a byte of junk in its receiver when its rate is
- * changed (nes-jukebox's throughput test found it). The console sends
+ * changed (nes-throughput's test found it). The console sends
  * nothing until well after this. */
 #define JUNK_MS 20
 

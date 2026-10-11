@@ -86,7 +86,7 @@ verify: $(ROM)
 # theirs too.
 JUKEBOX ?= apps/jukebox
 WIKI ?= apps/wiki
-THROUGHPUT ?= $(JUKEBOX)/throughput
+THROUGHPUT ?= apps/throughput
 
 CART := $(BUILD)/nesp32.nes
 CART_SIZE := 393232   # 16-byte header + 256 KB PRG + 128 KB CHR

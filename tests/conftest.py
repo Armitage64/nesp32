@@ -44,7 +44,7 @@ def build():
 def cart_build(build):
     """The build directory, with the cartridge in it. The other programs on
     it are built from apps/."""
-    for name in ("jukebox", "wiki"):
+    for name in ("jukebox", "wiki", "throughput"):
         if not os.path.isdir(os.path.join(ROOT, "apps", name)):
             pytest.skip("apps/%s is not here" % name)
     subprocess.run(["make", "-s", "BUILD=%s" % BUILD, "verify-cart"], cwd=ROOT, check=True)

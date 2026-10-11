@@ -29,7 +29,7 @@ NAMETABLE = 0x2000
 
 # --- layout, in tiles ---------------------------------------------------------
 
-# The header, which the throughput test's ROM has too (throughput/) and
+# The header, which the throughput test's ROM has too (../throughput/) and
 # nesp32's setup ROM has to the pixel: the name, what this ROM is, and the
 # credit line.
 LOGO_ROW = 2

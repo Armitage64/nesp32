@@ -14,7 +14,7 @@
 > its script for the Stick, the protocol the two spoke and
 > `tools/gen_crc_table.py` are gone with the rest. See
 > [`README.md`](README.md), [`docs/PROTOCOL.md`](docs/PROTOCOL.md) and
-> [`throughput/README.md`](throughput/README.md) for how things are now.
+> [`../throughput/README.md`](../throughput/README.md) for how things are now.
 
 Stream NES music from `.vgm` files to a stock NTSC NES over the controller-2
 serial link proven in `../../../nes-radar`, and play it on the console's own APU.
@@ -474,7 +474,7 @@ serial hardware.
    Plus2.** It measures the highest rate at which the link stays reliable,
    so the margin over what music needs (about 3-5 bytes per frame) is a
    number and not an estimate. It lives by itself in
-   [`throughput/`](throughput/README.md): a test ROM with receive and send
+   [`../throughput/`](../throughput/README.md): a test ROM with receive and send
    routines for a ladder of rates from 9622 baud up, and a Stick script
    that climbs them in each direction, backs off to the fastest rate that
    passes a long trial, and shows the trial in progress on both screens.

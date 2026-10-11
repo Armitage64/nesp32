@@ -7,8 +7,8 @@
     header.bin    the top HEADER_ROWS rows of the screen, which never change
     screen.inc    layout constants and tables for nes/*.s
 
-The header is the throughput test's (throughput/tools/gen_screen.py in
-nes-jukebox), to the pixel but for the word under the name: the name in
+The header is the throughput test's (tools/gen_screen.py in
+nes-throughput), to the pixel but for the word under the name: the name in
 letters of 2 x 2 tiles, three blues with a shadow; what this ROM is, in the
 5 x 7 font and the credit line's blue; and the credit line in a 3 x 5 font.
 The 5 x 7 font is nes-jukebox's, with nes-wiki's small letters.

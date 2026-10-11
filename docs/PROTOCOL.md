@@ -11,8 +11,8 @@ line (`tests/`), and have run on a StickS3 with the MiSTer's NES core
 (`firmware/README.md`, "On hardware"). RAW and JUKE are implemented and
 tested the same way, JUKE with nes-jukebox's ROM (its `tests/`), and run
 on the same hardware with that ROM. RAW's runs of the pattern, both ways,
-are tested with nes-jukebox's throughput test ROM (its
-`throughput/tests/`), and have run on that hardware with it. PEER is
+are tested with nes-throughput's test ROM (its
+`tests/`), and have run on that hardware with it. PEER is
 implemented and tested the same way, with nes-drmario's netplay ROM on two
 simulated consoles (its `tests/`), and a network game has been played with
 that ROM on hardware.
@@ -531,7 +531,7 @@ and no reply misheard in 5000. Its README has the figures.
 | `$01` | PATTERN | `SEED[2]`, `COUNT` | `COUNT` bytes of the pattern |
 | `$02` | SINK | `SEED[2]`, bytes | how many of them differ from the pattern, and how many came |
 
-The pattern is nes-jukebox's throughput test's: a 16-bit xorshift (7, 9,
+The pattern is nes-throughput's: a 16-bit xorshift (7, 9,
 8) from the seed, a byte a step, the same on both sides (`nesp_pattern` in
 `nesp_core.c` and in `nes/lib/nesp.inc`). A seed of 0 is BAD_ARG. The
 counts stop at 65535.
@@ -607,7 +607,7 @@ Another service may have something to send as a run, and agrees to it
 with a reply of its own in place of SEND's: JUKE's SOUND does. The clock
 and the rules are the same, and the hello must have asked for RAW.
 
-nes-jukebox's throughput test (`throughput/` there) is the ROM that asks
+nes-throughput (`apps/throughput/`) is the ROM that asks
 for runs of the pattern: a block of 256 bytes a run, at each rate of a
 ladder in turn, and RESULT after every one. Its fast receiver waits for
 each start bit, and at a rate that is failing may pass over two bytes for

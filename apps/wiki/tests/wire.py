@@ -3,7 +3,7 @@
 Time is in NES CPU cycles. Every $4017 read returns the line's level on the
 cycle the lda samples it, and every $4016 write reaches the Stick's receiver
 on the cycle the sta makes it (console.py passes both on). This is
-nes-jukebox's line model (throughput/tests/thru_sim.py), at one bit length.
+nes-jukebox's line model (nes-throughput's tests/thru_sim.py), at one bit length.
 
 Wire is the Stick's transmitter as D0 sees it; Tap is OUT0 as the Stick's
 UART receives it. Port is the UART that the Stick's code (nesp32's

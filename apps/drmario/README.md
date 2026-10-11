@@ -238,7 +238,7 @@ None of it has been measured again since the move to nesp32:
   the receiving nesp32 woken by what comes instead of looking once a
   millisecond.
 - **A faster exchange.** The line runs three times faster than the link's
-  rate (nes-jukebox's throughput test), which is about 1.5 ms of every
+  rate (nes-throughput's test), which is about 1.5 ms of every
   exchange. And no wait for a reply in a frame whose buttons from the
   other console are already here.
 - **No delay at all on a player's own bottle.** The two bottles only meet

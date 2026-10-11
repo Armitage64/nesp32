@@ -12,8 +12,8 @@
 ## Context
 
 `../jukebox` proved the controller-port-2 link between a stock NTSC NES
-and an M5Stack Stick (UIFlow 2.0 MicroPython, NPN level-shifter hat), and its
-`throughput/` test put numbers on it. This project uses that same hat and
+and an M5Stack Stick (UIFlow 2.0 MicroPython, NPN level-shifter hat), and the
+`../throughput/` test put numbers on it. This project uses that same hat and
 wiring for a different job: type a search term on the NES, have the Stick
 fetch the Wikipedia article over Wi-Fi, strip it to plain text, and read it
 on the NES with smooth scrolling.
@@ -28,7 +28,7 @@ choice, take the safer and simpler one over the faster one.**
 
 ### What the throughput data says, and what it decides
 
-Measured on a real NES with a StickC Plus2 (`../jukebox/throughput/README.md`):
+Measured on a real NES with a StickC Plus2 (`../throughput/README.md`):
 
 | Direction | Fastest stable | Limit |
 |---|---|---|
@@ -187,7 +187,7 @@ Stick -> NES, 8N2   $A5, STATE, LINE_LO, LINE_HI, TOTAL_LO, TOTAL_HI,
 - **`serial_link.inc`**: send a request, receive 36 bytes, check.
   `tools/gen_link.py` writes the cycle-timed routines at the shared period
   (`build/link.inc`), from the generators in
-  `../jukebox/throughput/tools/gen_rates.py` (`receiver`, `sender`,
+  `../throughput/tools/gen_rates.py` (`receiver`, `sender`,
   `delay`, `one_page`), with the receive made a fixed-count block: 25
   cycles from a byte's last sample to the next hunt. The NMI ends an
   exchange that runs late by returning to `rx_abort`, as in
@@ -325,12 +325,12 @@ Each ends with something runnable; 1 to 3 need no serial hardware.
 
 - `make` builds `build/nespedia.nes` (standalone) and
   `build/nespedia_link.nes`; `make verify` checks size and header as
-  `throughput/Makefile` does.
+  `../throughput/Makefile` does.
 - `make test` (pytest):
   - **Serial timing**: every `$4017` read and `$4016` write of the generated
     routines against ideal bit centers at their linked addresses, across
     start-bit phases and host clock error (pattern:
-    `throughput/tests/test_thru_rates.py`), reporting the margin.
+    `../throughput/tests/test_thru_rates.py`), reporting the margin.
   - **Text**: escapes, surrogate pairs, UTF-8 split across chunk boundaries,
     transliteration, long words, headings, not-found; one trimmed recorded
     API response as a fixture.
@@ -340,7 +340,7 @@ Each ends with something runnable; 1 to 3 need no serial hardware.
     the same cycle after the hit every frame.
   - **Whole system**: the link ROM and the real `server.py` joined by a
     cycle-exact line with NMIs a fixed frame apart (adapted from
-    `throughput/tests/thru_sim.py` and `../jukebox/tests/link_harness.py`):
+    `../throughput/tests/thru_sim.py` and `../jukebox/tests/link_harness.py`):
     search, load, scroll through an article; then with dropped and damaged
     bytes, replies up to and past the budget, a Stick that goes silent
     mid-fetch, and a NES reset mid-article.

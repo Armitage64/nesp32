@@ -38,7 +38,8 @@ is on the cartridge.
 One ROM with the jukebox, NESpedia, the throughput test and setup, and a
 menu that is up at power-on: Up and Down, and A or Start to run a program.
 Reset is the menu again. It is built from [nesp32 Setup](../apps/setup),
-[nes-jukebox](../apps/jukebox) and [nes-wiki](../apps/wiki) in `apps/`,
+[nes-jukebox](../apps/jukebox), [nes-wiki](../apps/wiki) and
+[nes-throughput](../apps/throughput) in `apps/`,
 each program with its own Makefile, into `build/cart/`.
 
 It is an MMC1 (mapper 1) with 256 KB of PRG and 128 KB of CHR ROM and no
@@ -64,7 +65,7 @@ not would not start this cartridge.
 | The Stick's firmware (`firmware/main/`): UART, Wi-Fi, screen | working on a StickS3 and on a StickC Plus2, with the MiSTer and with a real NES |
 | A computer in place of a Stick (`host/serial_host.py`) | written, not run on a cable |
 | WIKI, NESpedia's service: an HTTPS fetch, the text laid out in lines | working on a StickS3 with the NESpedia ROM ([nes-wiki](../apps/wiki)) |
-| RAW: a run of bytes with framing off, at a rate of its own, either way | working on a StickS3 with the MiSTer: a run to the console as the jukebox's sampled sound, and runs of the pattern both ways with the throughput test's ROM ([nes-jukebox](../apps/jukebox/throughput)), to 298296 baud to the console and 223722 from it |
+| RAW: a run of bytes with framing off, at a rate of its own, either way | working on a StickS3 with the MiSTer: a run to the console as the jukebox's sampled sound, and runs of the pattern both ways with the throughput test's ROM ([nes-throughput](../apps/throughput)), to 298296 baud to the console and 223722 from it |
 | JUKE, the jukebox's service: the playlist as a stream, the buttons, sampled sound through RAW | working on a StickS3 with the jukebox's ROM ([nes-jukebox](../apps/jukebox)) on the MiSTer; tested with that ROM on a simulated console |
 | The nesp32's files: the jukebox's tracks, in a FAT filing system (`firmware/main/store.c`, `tools/put_files.py`), with rips of games' music (`.vgm`, `.vgz`) made playable on the nesp32 itself (`firmware/components/nesp_services/vgm.c`) | builds for both boards, and the converter makes the same files as nes-jukebox's on a computer; not yet run on hardware. Before this the files were in LittleFS, and that worked on a StickS3 |
 | A StickS3 as a USB drive, for music to be copied to (`firmware/main/usb.c`, the setup ROM's USB screen) | builds, and the ROM's screen is tested on a simulated console; not yet run on hardware |
@@ -85,7 +86,7 @@ not would not start this cartridge.
 | `tools/lcd.py` | pictures of the nesp32's own screen, for trying a layout before flashing it |
 | `nes/lib/nesp.inc`, `nes/lib/gen_link.py` | the console's library, and its cycle-timed serial routines |
 | `apps/setup/` | the setup ROM |
-| `apps/` | the other programs: the jukebox, NESpedia, and netplay for Dr. Mario and Contra |
+| `apps/` | the other programs: the jukebox, NESpedia, the throughput test, and netplay for Dr. Mario and Contra |
 | `third_party/` | the two games' disassemblies, as submodules |
 | `nes/cart/` | the cartridge: its menu, and the tool that puts the four programs on it |
 | `host/nesp_host.c`, `host/nesp.py` | the firmware's code as a library for this computer, with a stand-in for the hardware |

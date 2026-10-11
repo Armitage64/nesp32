@@ -6,17 +6,19 @@
 #   make test     the ROM against nesp32's firmware, on a simulated console
 #
 # The ROM's host is a nesp32, whose firmware is at the top of this
-# repository (../Makefile has the same arrangement). From it come the link's
-# library for the console and the numbers the two ends share; its link and
-# services are built for this computer, for the tests to run the ROM
-# against. The font, the header and the palette come from the jukebox's
-# tools in ../tools.
+# repository (two directories up; the jukebox's Makefile has the same
+# arrangement). From it come the link's library for the console and the
+# numbers the two ends share; its link and services are built for this
+# computer, for the tests to run the ROM against. The font, the header and
+# the palette come from the jukebox's tools in ../jukebox/tools.
 
-PYTHON ?= $(if $(wildcard ../.venv/bin/python),../.venv/bin/python,python3)
 BUILD ?= build
-NESP32 ?= ../../..
+NESP32 ?= ../..
 NESP_BUILD ?= $(abspath $(BUILD))/nesp
 export NESP32 NESP_BUILD
+# Its Python, when it has one: the tools and the tests are run from there.
+PYTHON ?= $(firstword $(wildcard $(abspath .venv/bin/python $(NESP32)/.venv/bin/python)) python3)
+JUKEBOX ?= ../jukebox
 NESP := $(NESP_BUILD)/nesp.stamp
 ROM := $(BUILD)/linktest.nes
 ROM_SIZE := 40976   # 16-byte header + 32 KB PRG + 8 KB CHR
@@ -44,7 +46,7 @@ $(BUILD)/rates.inc: tools/gen_rates.py tools/rates.py $(NESP)
 # gen_screen.py rewrites only the files whose contents changed.
 SCREEN := $(BUILD)/chr.bin $(BUILD)/screen.bin $(BUILD)/palette.bin $(BUILD)/screen.inc
 
-$(BUILD)/screen.stamp: tools/gen_screen.py ../tools/gen_ui.py | $(BUILD)
+$(BUILD)/screen.stamp: tools/gen_screen.py $(JUKEBOX)/tools/gen_ui.py | $(BUILD)
 	$(PYTHON) tools/gen_screen.py $(BUILD)
 	touch $@
 

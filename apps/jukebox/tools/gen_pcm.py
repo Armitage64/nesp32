@@ -9,7 +9,7 @@ read of $4017 is on its exact cycle. Each routine starts on its own page
 and must end on it, so no branch pays the page-crossing cycle;
 tests/test_sound.py measures them all on py65.
 
-They are the fast receiver of the throughput test (throughput/README.md),
+They are the fast receiver of the throughput test (../throughput/README.md),
 which ran on a real console at each of these rates, with a write to $4011
 where that one stores the byte. A sample is asl / eor $4017 with the byte
 in A, 6 cycles, which leaves the byte scrambled in a way the host allows

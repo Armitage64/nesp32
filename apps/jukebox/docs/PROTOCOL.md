@@ -227,7 +227,7 @@ clip at rate 1 (10169 samples a second) and at rate 5 (20338), sent by a
 StickC Plus2 under the MicroPython firmware the jukebox used to have. From
 a nesp32, a clip at rate 5 sounded right on the MiSTer's NES core, and all
 six rates play on the simulated console. The receive routines are the throughput test's fast receiver
-(`throughput/README.md`), which passed on that console at every rate used
+(`../../throughput/README.md`), which passed on that console at every rate used
 here.
 
 ### Rates

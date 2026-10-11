@@ -6,11 +6,11 @@ rate that is stable in each direction, for whichever nesp32, hat and cable
 are plugged in, so the margin over 85227 is a number.
 
 It is a ROM for the console, and the nesp32 needs nothing but its
-firmware: [nesp32](../../..) is one firmware for every ROM, and this
+firmware: [nesp32](../..) is one firmware for every ROM, and this
 one asks it for its RAW service, which carries a run of bytes at any rate
 with framing off. Nothing is copied to the nesp32 and nothing is run on a
-computer. The test is kept apart from the jukebox, and nothing here is
-part of the player.
+computer. The test began in the jukebox's tree and is a program of its
+own now; it still has the jukebox's font and header.
 
 **Status: run on a StickS3 with the MiSTer's NES core**, where it reached
 298296 baud to the console, the last rate the console's CPU can do, and
@@ -93,7 +93,7 @@ and waiting, and then its bytes.
 
 ## Running it
 
-Needs cc65 to build, [nesp32](../../..), the top of this
+Needs cc65 to build, [nesp32](../..), the top of this
 repository, and a nesp32 with that firmware on it.
 
 ```sh
@@ -204,7 +204,7 @@ On a line with no limit of its own, the upper half ends like this:
 
 The console is in charge, as everywhere on nesp32's link: it asks in
 frames at 85227 baud, and the nesp32 answers. The ROM says hello as `THRU`
-and asks for the RAW service ([nesp32's protocol](../../../docs/PROTOCOL.md),
+and asks for the RAW service ([nesp32's protocol](../../docs/PROTOCOL.md),
 "RAW"). A block is one run of RAW's:
 
 | | The console asks | Then |
@@ -250,10 +250,11 @@ back to saying hello.
 | `tests/thru_sim.py` | the ROM on py65, joined to nesp32's firmware by a cycle-exact line |
 | `tests/` | pytest: every routine's timing, and whole tests against that firmware |
 
-It borrows at build time: the font in `../tools/gen_ui.py`, and from
+It borrows at build time: the font in `../jukebox/tools/gen_ui.py`, and from
 nesp32 the link's library for the console (`nes/lib/`) and the numbers the
 two ends share. The tests also build nesp32's link and services for this
-computer.
+computer, and join the ROM to them with the jukebox's line model
+(`../jukebox/tests/wire.py`).
 
 ```sh
 make test                 # these tests only; the top-level `make test` runs them too
