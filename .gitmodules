@@ -6,3 +6,7 @@
 	path = third_party/NES-Games-Disassembly
 	url = https://github.com/cyneprepou4uk/NES-Games-Disassembly.git
 	shallow = true
+[submodule "third_party/nes-radar"]
+	path = third_party/nes-radar
+	url = https://github.com/k6lcm/nes-radar.git
+	shallow = true
