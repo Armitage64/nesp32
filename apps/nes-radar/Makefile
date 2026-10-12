@@ -2,6 +2,9 @@
 #
 #   make            build/nes_radar.nes, the original, and
 #                   build/nes_radar_link.nes, for a nesp32
+#   make cart CART_CHR=n    build/nes_radar_cart.nes, the link ROM as a part
+#                   of nesp32's cartridge, with its tiles at the mapper's n.
+#                   nesp32's own `make cart` asks for it
 #   make verify     check the original against its SHA-256 and with
 #                   nes-radar's own verifiers, and the link ROM's size
 #   make test       the simulation's tests (needs requirements-dev.txt)
@@ -28,6 +31,7 @@ NESP := $(NESP_BUILD)/nesp.stamp
 NESP_LIB := $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/gen_link.py
 ROM := $(BUILD)/nes_radar.nes
 LINK_ROM := $(BUILD)/nes_radar_link.nes
+CART_ROM := $(BUILD)/nes_radar_cart.nes
 ROM_SIZE := 65552   # 16-byte header + 32 KB PRG + 32 KB CHR
 SHA256_ORIGINAL := 0c08c2bd7ad6f50474b8e56f1814d12570b9b2e7d2789050dcc0d2c8179ba47a
 # nes-radar, and the commit of it that patches/ was made against: a patch
@@ -48,7 +52,7 @@ LINK_SOURCES := nes/radar_link.inc $(BUILD)/link.inc $(NESP_LIB) $(NESP)
 LINK_INCLUDES := -I $(HERE)/nes -I $(abspath $(BUILD)) -I $(NESP_BUILD) \
 	-I $(abspath $(NESP32))/nes/lib
 
-.PHONY: all verify test patches clean FORCE
+.PHONY: all cart verify test patches clean FORCE
 
 all: $(ROM) $(LINK_ROM)
 
@@ -97,6 +101,25 @@ $(BUILD)/nes_radar.o: $(SOURCE) $(METASPRITES)
 $(BUILD)/nes_radar_link.o: $(SOURCE) $(METASPRITES) $(LINK_SOURCES)
 	cd $(SRC) && ca65 -g -D NESP32 -I build -I assets/ldv $(LINK_INCLUDES) \
 		-o $(abspath $@) nes/$(NAME).s
+
+# The cartridge's part: the link ROM with CART defined, which asks the
+# cartridge's MMC1 for its tiles where a CN-ROM's latch would be written,
+# and has each page of them once. Where they are on the cartridge is
+# nesp32's to say, and is written down so that another answer builds it
+# again.
+$(BUILD)/cart.inc: FORCE | $(BUILD)
+	@test -n "$(CART_CHR)" || { echo "CART_CHR=: where on the cartridge the tiles are"; exit 1; }
+	@echo "CART_CHR = $(CART_CHR)" | cmp -s - $@ || echo "CART_CHR = $(CART_CHR)" > $@
+
+$(BUILD)/nes_radar_cart.o: $(SOURCE) $(METASPRITES) $(LINK_SOURCES) $(BUILD)/cart.inc
+	cd $(SRC) && ca65 -g -D NESP32 -D CART -I build -I assets/ldv $(LINK_INCLUDES) \
+		-o $(abspath $@) nes/$(NAME).s
+
+$(CART_ROM): $(BUILD)/nes_radar_cart.o nes/mmc1_cart.cfg
+	ld65 -C nes/mmc1_cart.cfg -o $@ -Ln $(BUILD)/nes_radar_cart.labels \
+		-m $(BUILD)/nes_radar_cart.map --dbgfile $(BUILD)/nes_radar_cart.dbg $<
+
+cart: $(CART_ROM)
 
 $(ROM): $(BUILD)/nes_radar.o
 	ld65 -C $(SRC)/nes/cnrom256.cfg -o $@ -m $(BUILD)/nes_radar.map \

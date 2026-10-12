@@ -615,6 +615,29 @@ radar_messages:
     jmp commit_display
 .endproc
 
+.ifdef CART
+; On nesp32's cartridge the ROM's two pages of tiles are among the others'
+; on an MMC1, where the build says (cart.inc: CART_CHR, as the mapper
+; counts them, in halves of a page). A = the page of its own that it
+; wants, 0 or 1. The mapper's register is written a bit at a time, five
+; writes; the menu left the mapper with none begun.
+.include "cart.inc"
+MMC1_CHR0 = $A000
+
+.proc radar_cart_chr
+    asl a
+    clc
+    adc #CART_CHR
+    ldx #5
+:
+    sta MMC1_CHR0
+    lsr a
+    dex
+    bne :-
+    rts
+.endproc
+.endif
+
 ; The editor's message for startup_error: why there was no scope.
 .proc radar_show_error
     lda startup_error

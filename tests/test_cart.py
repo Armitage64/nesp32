@@ -4,7 +4,8 @@ the line, and reset.
 
 The programs are not this tree's but the setup ROM, and are tested where
 they come from. What is asked here is that each one is on the cartridge as
-it was built, starts, and can be left.
+it was built, starts, and can be left; and of NES Radar, the one that
+writes to the mapper, that it asks it for its own tiles and nothing else.
 """
 
 import os
@@ -21,9 +22,13 @@ PROGRAMS = cart_layout.PROGRAMS
 ROMS = {"jukebox": ("cart", "jukebox", "jukebox_link.nes"),
         "wiki": ("cart", "wiki", "nespedia_link.nes"),
         "throughput": ("cart", "throughput", "linktest.nes"),
+        "radar": ("cart", "radar", "nes_radar_cart.nes"),
         "setup": ("setup.nes",)}
 # What each says it is in its hello.
-APPS = {"jukebox": b"JUKE", "wiki": b"WIKI", "throughput": b"THRU", "setup": b"SETP"}
+APPS = {"jukebox": b"JUKE", "wiki": b"WIKI", "throughput": b"THRU", "radar": b"RADR",
+        "setup": b"SETP"}
+MMC1_CHR0 = 1                   # the mapper's registers, as the console numbers them
+CHR_WRITES = 5                  # to set one
 RAM_END = 0x0800
 LAUNCH_WRITES = 15              # three registers, five writes each
 STUB = cart_layout.RESET_STUB & (BANK_SIZE - 1)
@@ -66,7 +71,7 @@ def start(c, index, button=PAD_A):
 def registers(image):
     """The mapper's control, CHR and PRG registers as the menu leaves them
     for a program."""
-    return image.control, 2 * image.program.page, image.program.bank
+    return image.control, cart_layout.mapper_page(image.program), image.program.bank
 
 
 def at_menu(c):
@@ -127,7 +132,8 @@ def test_power_on_is_the_menu(cart):
     c.run(4)
     assert at_menu(c)
     assert c.mapper[:2] == [0x0E, 2 * cart_layout.MENU_PAGE]
-    for index, name in enumerate(("Jukebox", "NESpedia", "Throughput Test", "Setup")):
+    for index, name in enumerate(("Jukebox", "NESpedia", "NES Radar", "Throughput Test",
+                                  "Setup")):
         assert c.line(cart_layout.LIST_ROW + cart_layout.LIST_STEP * index) == name
     assert c.line(layout.HELP_ROW) == "A:RUN"
     assert c.sprite() == cart_layout.arrow(0) + (c.chr.index(
@@ -147,11 +153,11 @@ def test_the_header_says_main_menu(cart):
 def test_up_and_down_move_the_arrow_and_go_round(cart):
     c = cart()
     c.run(4)
-    for index in (1, 2, 3, 0):
+    for index in (1, 2, 3, 4, 0):
         c.press(PAD_DOWN)
         assert c.byte("choice") == index
         assert c.sprite() and c.sprite()[:2] == cart_layout.arrow(index)
-    for index in (3, 2):
+    for index in (4, 3, 2):
         c.press(PAD_UP)
         assert c.byte("choice") == index
         assert c.sprite()[:2] == cart_layout.arrow(index)
@@ -196,10 +202,19 @@ def test_a_program_starts_and_reset_is_the_menu_again(cart, images, index):
     c.run_until(lambda: stick.hellos, 300)
     assert stick.app[0] == APPS[key]
     c.run(30)
-    # An NROM's program, which the mapper has heard nothing from: one
-    # write would have changed the banks under it.
-    assert len(c.mapper_writes) == before + LAUNCH_WRITES
-    assert (c.mapper[0], c.mapper[1], c.mapper[3]) == registers(image)
+    if image.program.mapper:
+        # Built for the cartridge: it has asked the mapper for its tiles,
+        # whole registers at a time, and for nothing else.
+        own = c.mapper_writes[before + LAUNCH_WRITES:]
+        assert own and len(own) % CHR_WRITES == 0
+        assert {address >> 13 & 3 for _, address, _ in own} == {MMC1_CHR0}
+        assert all(value < 0x80 for _, _, value in own)
+        assert (c.mapper[0], c.mapper[3]) == (image.control, image.program.bank)
+    else:
+        # An NROM's program, which the mapper has heard nothing from: one
+        # write would have changed the banks under it.
+        assert len(c.mapper_writes) == before + LAUNCH_WRITES
+        assert (c.mapper[0], c.mapper[1], c.mapper[3]) == registers(image)
 
     c.reset()
     c.strict = True
@@ -210,3 +225,44 @@ def test_a_program_starts_and_reset_is_the_menu_again(cart, images, index):
     start(c, other)
     assert not c.home
     assert (c.mapper[0], c.mapper[1], c.mapper[3]) == registers(images[other])
+
+
+def test_nes_radar_has_its_splash_and_then_its_scopes_tiles(cart, images):
+    index = next(index for index, image in enumerate(images) if image.program.key == "radar")
+    image = images[index]
+    splash, scope = image.chr[:CHR_SIZE], image.chr[CHR_SIZE:]
+    assert splash != scope
+    c = cart()
+    stick, _ = link(c, Stick)
+    c.run(4)
+    start(c, index)
+    c.run(20)
+    first = cart_layout.mapper_page(image.program)
+    assert c.mapper[1] == first and c.chr == splash
+    c.run_until(lambda: stick.hellos, 300)      # the splash is over: its editor is next
+    c.run(10)
+    assert c.mapper[1] == first + 2 and c.chr == scope
+    # Nothing of another program's is under it, whatever it asks for.
+    assert not any(c.rom_chr[page * CHR_SIZE:][:CHR_SIZE] in (splash, scope)
+                   for page in range(16) if page not in (image.program.page,
+                                                         image.program.page + 1))
+    c.reset()
+    c.strict = True
+    c.run(6)
+    assert at_menu(c) and c.mapper[1] == 2 * cart_layout.MENU_PAGE
+
+
+def test_two_programs_cannot_have_the_same_tiles(images, menu, cart_build):
+    with open(os.path.join(cart_build, "cart", "chr.bin"), "rb") as handle:
+        tiles = handle.read()
+    radar = next(image for image in images if image.program.key == "radar")
+    was = radar.program.page
+    try:
+        radar.program.page = 3          # its second page is the menu's
+        with pytest.raises(ValueError, match="tiles"):
+            cart_layout.build_rom(menu, tiles, images)
+        radar.program.page = 2          # and here its first is the jukebox's
+        with pytest.raises(ValueError, match="tiles"):
+            cart_layout.build_rom(menu, tiles, images)
+    finally:
+        radar.program.page = was

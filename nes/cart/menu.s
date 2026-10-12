@@ -1,6 +1,6 @@
 ; nesp32 cartridge: the menu.
 ;
-; One cartridge has the four programs that use a nesp32, and this, which is
+; One cartridge has the five programs that use a nesp32, and this, which is
 ; what comes up at power-on and at reset: their names, an arrow, and A or
 ; Start to run the one it is at. nes/cart/gen_cart.py has where each of
 ; them is on the cartridge, and what it does to make reset come here.
@@ -9,7 +9,8 @@
 ; mapper has at $C000 when the power comes on, and keeps there while this
 ; runs. A program is started from RAM, since the bank changes under
 ; anything in ROM: the mapper is set as the program wants it, an NROM,
-; and the program is entered where its own reset vector pointed.
+; and the program is entered where its own reset vector pointed. (NES
+; Radar, which has two pages of tiles, then asks the mapper for each itself.)
 ;
 ; The menu says nothing to the nesp32. Each program begins with its own
 ; hello, which is what tells the nesp32 what to run.

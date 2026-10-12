@@ -19,6 +19,7 @@ itself and what is on it.
 git submodule update --init third_party/nes-radar
 make            # build/nes_radar.nes (the original) and build/nes_radar_link.nes
 make verify     # the original still matches its SHA-256, and passes nes-radar's own checks
+make cart CART_CHR=10    # build/nes_radar_cart.nes, for nesp32's cartridge, which asks for it itself
 make test       # needs: python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 ```
 
@@ -32,11 +33,21 @@ original it is a CN-ROM (mapper 3) with 32 KB of PRG and 32 KB of CHR.
 `build/nes_radar.nes` is nes-radar's own ROM, for its own server and
 cable, built here only to show that the patch leaves it alone.
 
+It is also on [nesp32's cartridge](../../docs/DEVELOPMENT.md), from the
+menu. A CN-ROM changes its tiles by a write to the ROM, which the
+cartridge's MMC1 would take for itself, so the cartridge has a third
+build, `nes_radar_cart.nes`: the link ROM, asking the MMC1's CHR register
+for the splash's tiles and the scope's, with each page once in place of
+the CN-ROM's four. It is a part of that cartridge and not a ROM to run by
+itself: it counts on the menu having set the mapper, and is built for the
+place on the cartridge its tiles have (`CART_CHR`).
+
 **It works on hardware** with nesp32's firmware: an airport is found, its
 aircraft are on the scope, and the nesp32 switched off and on begins at
 the same airport. It is also tested on a simulated console against
 nesp32's own RADAR service, over a cycle-exact line. No figures have been
-taken from a console, and no run has been of any length.
+taken from a console, and no run has been of any length. The cartridge's
+build has not been run on hardware.
 
 ## Using it
 
@@ -142,7 +153,8 @@ the NMI on.
 |---|---|
 | `nes/radar_link.inc` | the link's code: the hello, the airport, the scope's loop and its exchanges |
 | `nes/cnrom256_link.cfg` | nes-radar's linker configuration, with a place for the serial routines |
-| `patches/` | the lines that call it, for nes-radar's one source file. All are under `.ifdef NESP32` |
+| `nes/mmc1_cart.cfg` | the same for the cartridge's build, with two pages of CHR |
+| `patches/` | the lines that call it, for nes-radar's one source file. All are under `.ifdef NESP32`, or `CART` for the cartridge's |
 | `tests/` | a console on py65, a nesp32 and the line between them, and the test in place of Wikidata and adsb.fi |
 
 ## Changing nes-radar's code
@@ -164,8 +176,7 @@ commit's file. `make clean` will not delete a `build/src` that has changes
 ## Not done
 
 - Figures from hardware, and a long run.
-- A place on [the cartridge](../../docs/DEVELOPMENT.md): it has two
-  pictures' worth of CHR, and the cartridge gives a program one.
+- The cartridge's build on hardware.
 - PAL consoles.
 
 ## Licence

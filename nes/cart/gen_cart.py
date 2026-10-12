@@ -1,23 +1,31 @@
 #!/usr/bin/env python3
-"""Put the four programs and a menu on one cartridge.
+"""Put the five programs and a menu on one cartridge.
 
     nes/cart/gen_cart.py tables build/cart --jukebox J.nes --wiki W.nes ...
     nes/cart/gen_cart.py rom build/nesp32.nes --menu menu.prg --chr chr.bin
                                               --jukebox J.nes --wiki W.nes ...
+    nes/cart/gen_cart.py page radar
 
 The cartridge is an MMC1 with 256 KB of PRG and 128 KB of CHR ROM, and no
-memory of its own. The programs are NROM, and the MMC1 set to 32 KB of PRG
-and 8 KB of CHR is an NROM to a program that never writes to it, so each
-goes in as it was built: nothing is linked again, and the serial routines
-keep their pages and their timing.
+memory of its own. Four of the programs are NROM, and the MMC1 set to 32 KB
+of PRG and 8 KB of CHR is an NROM to a program that never writes to it, so
+each goes in as it was built: nothing is linked again, and the serial
+routines keep their pages and their timing.
 
     PRG, 16 KB banks            CHR, 8 KB banks
     0-1    setup                0     setup
     2-3    NESpedia             1     NESpedia
     4-5    jukebox              2     jukebox
     6-7    throughput test      3     throughput test
-    8-14   nothing              4     the menu
-    15     the menu             5-15  nothing
+    8-9    NES Radar            4     the menu
+    10-14  nothing              5-6   NES Radar
+    15     the menu             7-15  nothing
+
+NES Radar has two pages of tiles, one for its splash and one for its
+scope, and is the one program that writes to the mapper: to its CHR
+register and no other, for the page it wants. It is built for that
+(apps/nes-radar, `make cart`), and has to know where on the cartridge its
+pages are, which `page` prints as the mapper counts them.
 
 The menu is last because the last bank is the one an MMC1 has at $C000
 when the power comes on.
@@ -67,24 +75,35 @@ INC_ABS, JMP_ABS = 0xEE, 0x4C
 RESET_VECTOR = 0xFFFC
 
 
-class Program:
-    banks = 2                       # an NROM: 32 KB of PRG
-    pages = 1                       # and 8 KB of CHR
+MAPPER_NROM, MAPPER_MMC1 = 0, 1
 
-    def __init__(self, key, name, bank, page):
+
+class Program:
+    banks = 2                       # 32 KB of PRG
+
+    def __init__(self, key, name, bank, page, pages=1, mapper=MAPPER_NROM):
         self.key = key              # the option that names its ROM
         self.name = name            # as the menu has it
         self.bank = bank
         self.page = page
+        self.pages = pages          # of CHR: an NROM has one
+        self.mapper = mapper        # what its header says: the MMC1 for one built for it
 
 
 # In the menu's order.
 PROGRAMS = (
     Program("jukebox", "Jukebox", 4, 2),
     Program("wiki", "NESpedia", 2, 1),
+    Program("radar", "NES Radar", 8, 5, pages=2, mapper=MAPPER_MMC1),
     Program("throughput", "Throughput Test", 6, 3),
     Program("setup", "Setup", 0, 0),
 )
+
+
+def mapper_page(program):
+    """Where a program's tiles begin, as the mapper's CHR register counts:
+    in halves of a page."""
+    return 2 * program.page
 
 # --- the menu's screen, in tiles ------------------------------------------------
 
@@ -106,9 +125,10 @@ class Image:
         mapper = data[6] >> 4 | data[7] & 0xF0
         size = INES_HEADER + program.banks * BANK + program.pages * PAGE
         if (data[:4] != HEADER[:4] or data[4] != program.banks or data[5] != program.pages
-                or mapper or len(data) != size):
-            raise ValueError("%s is not an NROM with %d KB of PRG and %d of CHR"
-                             % (path, program.banks * 16, program.pages * 8))
+                or mapper != program.mapper or len(data) != size):
+            raise ValueError("%s is not %s with %d KB of PRG and %d of CHR"
+                             % (path, "the cartridge's part" if program.mapper else "an NROM",
+                                program.banks * 16, program.pages * 8))
         self.vertical = data[6] & 1
         self.prg = data[INES_HEADER:INES_HEADER + program.banks * BANK]
         self.chr = data[INES_HEADER + program.banks * BANK:]
@@ -183,7 +203,7 @@ def include(screen, images):
     lines += ["", "; The programs, in the menu's order: " + ", ".join(
         image.program.name for image in images) + "."]
     table("entry_control", [image.control for image in images], "the mapper's control register")
-    table("entry_chr", [2 * image.program.page for image in images], "its tiles")
+    table("entry_chr", [mapper_page(image.program) for image in images], "its tiles")
     table("entry_prg", [image.program.bank for image in images], "its code")
     table("entry_lo", [image.entry & 0xFF for image in images], "where it starts")
     table("entry_hi", [image.entry >> 8 for image in images], "")
@@ -218,7 +238,7 @@ def expect(what, found, wanted):
 
 
 def build_rom(menu, tiles, images):
-    """The cartridge's file from the menu's bank, its tiles and the four
+    """The cartridge's file from the menu's bank, its tiles and the
     programs."""
     if len(menu) != BANK or len(tiles) != PAGE:
         raise ValueError("the menu is one bank of PRG and one page of CHR")
@@ -242,7 +262,11 @@ def build_rom(menu, tiles, images):
         if prg[start:start + len(image.prg)].strip(b"\xFF"):
             raise ValueError("%s is where another program is" % image.path)
         prg[start:start + len(image.prg)] = image.prg
-        chr_rom[program.page * PAGE:program.page * PAGE + len(image.chr)] = image.chr
+        tiles_at = program.page * PAGE
+        if tiles_at <= MENU_PAGE * PAGE < tiles_at + len(image.chr) or any(
+                chr_rom[tiles_at:tiles_at + len(image.chr)]):
+            raise ValueError("%s has its tiles where others are" % image.path)
+        chr_rom[tiles_at:tiles_at + len(image.chr)] = image.chr
         for top in image.tops():
             at = start + top - (0x10000 - RESET_STUB)
             expect("%s at $%04X" % (image.path, RESET_STUB), prg[at:at + STUB_SIZE],
@@ -264,9 +288,17 @@ def rom(args):
     return 0
 
 
+def page(args):
+    print(mapper_page(next(program for program in PROGRAMS if program.key == args.program)))
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     steps = parser.add_subparsers(dest="step", required=True)
+    step = steps.add_parser("page")
+    step.set_defaults(run=page)
+    step.add_argument("program", choices=[program.key for program in PROGRAMS])
     for name, run, out in (("tables", tables, "directory for chr.bin, screen.bin and menu.inc"),
                            ("rom", rom, "the cartridge's file")):
         step = steps.add_parser(name)

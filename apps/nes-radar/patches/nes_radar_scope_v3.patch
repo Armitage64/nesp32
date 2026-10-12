@@ -1,6 +1,13 @@
 --- a/nes/nes_radar_scope_v3.s
 +++ b/nes/nes_radar_scope_v3.s
-@@ -263,0 +264,8 @@
+@@ -244,0 +245,4 @@
++.ifdef CART
++    .byte 2                       ; the splash's tiles and the scope's, once each
++    .byte $10, $00                ; a part of nesp32's cartridge, which is an MMC1
++.else
+@@ -246,0 +251 @@
++.endif
+@@ -263,0 +269,8 @@
 +.ifdef NESP32
 +    stx radar_id                  ; no airport chosen, and no hello said
 +    stx radar_greeted
@@ -9,55 +16,65 @@
 +    sta JOY1
 +.endif
 +
-@@ -298,0 +307,3 @@
+@@ -298,0 +312,3 @@
 +.ifdef NESP32
 +    jsr radar_recall              ; the editor begins at the airport the nesp32 kept
 +.endif
-@@ -299,0 +311,3 @@
+@@ -299,0 +316,3 @@
 +.ifdef NESP32
 +radar_editor:                     ; nes/radar_link.inc comes back here
 +.endif
-@@ -309,0 +324,3 @@
+@@ -309,0 +329,3 @@
 +.ifdef NESP32
 +    jsr radar_show_error          ; which of the reasons there was no scope
 +.else
-@@ -311,0 +329 @@
+@@ -311,0 +334 @@
 +.endif
-@@ -385,0 +404,3 @@
+@@ -385,0 +409,3 @@
 +.ifdef NESP32
 +    jmp radar_submit              ; the airport and the scope, over the nesp32's link
 +.else
-@@ -692,0 +714 @@
+@@ -692,0 +719 @@
 +.endif
-@@ -694,0 +717 @@
+@@ -694,0 +722 @@
 +.ifndef NESP32                    ; nes-radar's own receiver, to the next .endif
-@@ -994,0 +1018 @@
+@@ -994,0 +1023 @@
 +.endif
-@@ -1445,0 +1470 @@
+@@ -1445,0 +1475 @@
 +.ifndef NESP32                    ; the host's heartbeat and its quiet window
-@@ -1526,0 +1552 @@
+@@ -1526,0 +1557 @@
 +.endif
-@@ -1970,0 +1997,5 @@
+@@ -1970,0 +2002,5 @@
 +.ifdef NESP32
 +    lda #0                        ; OUT0 rests at mark, which holds the pad's
 +    sta JOY1                      ; latch open: dropping it takes the buttons
 +    sta controller_current
 +.else
-@@ -1975,0 +2007 @@
+@@ -1975,0 +2012 @@
 +.endif
-@@ -1983,0 +2016,4 @@
+@@ -1983,0 +2021,4 @@
 +.ifdef NESP32
 +    lda #OUT0_MARK
 +    sta JOY1
 +.endif
-@@ -2108,0 +2145 @@
+@@ -2108,0 +2150 @@
 +.ifndef NESP32                    ; nes-radar's own sender, to the next .endif
-@@ -2308,0 +2346 @@
+@@ -2308,0 +2351 @@
 +.endif
-@@ -3107,0 +3146,3 @@
+@@ -2976,0 +3020,3 @@
++.ifdef CART
++    jmp radar_cart_chr            ; the cartridge's mapper is asked another way
++.else
+@@ -2979,0 +3026 @@
++.endif
+@@ -3107,0 +3155,3 @@
 +.ifdef NESP32
 +.include "radar_link.inc"
 +.else
-@@ -3124,0 +3166,2 @@
+@@ -3124,0 +3175,2 @@
 +.endif
 +
+@@ -3261,0 +3314 @@
++.ifndef CART                      ; the cartridge has the scope's tiles once
+@@ -3268,0 +3322 @@
++.endif

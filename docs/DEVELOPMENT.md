@@ -12,7 +12,7 @@ Python 3.
 git submodule update --init    # for the two games and nes-radar only
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 make            # build/setup.nes, and the firmware's code for this computer
-make cart       # build/nesp32.nes: the cartridge
+make cart       # build/nesp32.nes: the cartridge (needs the nes-radar submodule)
 make test       # about three and a half minutes
 ```
 
@@ -31,17 +31,19 @@ cyneprepou4uk's, for [nes-drmario](../apps/drmario). Contra's build also needs a
 builds it supplies. The third is [nes-radar](https://github.com/k6lcm/nes-radar),
 k6lcm's, for [nes-radar](../apps/nes-radar): its ROM's source, and its
 server's code, which the tests of the firmware's RADAR service run beside
-it. Nothing else here needs any of them, and none of the three is on the
-cartridge.
+it. Neither game is on the cartridge; NES Radar is, so the cartridge's
+build needs that submodule, and `patch`. Nothing else here needs any of
+the three.
 
 ## The cartridge
 
 ![The cartridge's menu](cart-menu.png)
 
-One ROM with the jukebox, NESpedia, the throughput test and setup, and a
-menu that is up at power-on: Up and Down, and A or Start to run a program.
-Reset is the menu again. It is built from [nesp32 Setup](../apps/setup),
-[nes-jukebox](../apps/jukebox), [nes-wiki](../apps/wiki) and
+One ROM with the jukebox, NESpedia, NES Radar, the throughput test and
+setup, and a menu that is up at power-on: Up and Down, and A or Start to
+run a program. Reset is the menu again. It is built from
+[nesp32 Setup](../apps/setup), [nes-jukebox](../apps/jukebox),
+[nes-wiki](../apps/wiki), [nes-radar](../apps/nes-radar) and
 [nes-throughput](../apps/throughput) in `apps/`,
 each program with its own Makefile, into `build/cart/`.
 
@@ -52,6 +54,15 @@ on it as they were built, their serial routines on the
 pages they were timed on. `nes/cart/gen_cart.py` has where everything is
 and the few bytes that are not as built: six in each program's padding and
 its reset vector, which make reset the menu.
+
+NES Radar is the fifth, and not an NROM: it has two pages of tiles, its
+splash's and its scope's, and changes between them. By itself it is a
+CN-ROM, whose latch is a write to the ROM, and on an MMC1 that write would
+go to the mapper and move the banks from under it. So the cartridge has a
+build of its own (`make cart` in [nes-radar](../apps/nes-radar)), which
+asks the MMC1's CHR register for the page it wants, five writes, and is
+told when it is built where its two pages are. It is the one program the
+mapper hears from, and the tests hold it to that register and no other.
 
 The menu is in the last bank, which is the one an MMC1 has at `$C000` when
 the power comes on. Emulators do that, and most of the chips; one that did
@@ -73,7 +84,7 @@ not would not start this cartridge.
 | The nesp32's files: the jukebox's tracks, in a FAT filing system (`firmware/main/store.c`, `tools/put_files.py`), with rips of games' music (`.vgm`, `.vgz`) made playable on the nesp32 itself (`firmware/components/nesp_services/vgm.c`) | builds for both boards, and the converter makes the same files as nes-jukebox's on a computer; not yet run on hardware. Before this the files were in LittleFS, and that worked on a StickS3 |
 | A StickS3 as a USB drive, for music to be copied to (`firmware/main/usb.c`, the setup ROM's USB screen) | builds, and the ROM's screen is tested on a simulated console; not yet run on hardware |
 | PEER, for two consoles playing one game: a lobby, and a lockstep relay of buttons between two nesp32s over datagrams (`firmware/main/conn.c`), with advice to each console on the delay it keeps | tested with nes-drmario's netplay ROM ([nes-drmario](../apps/drmario)) and nes-contra's ([nes-contra](../apps/contra), whose exchange is a short frame) on two simulated consoles, the game the same on both; the firmware builds for both boards with it. On hardware both ROMs have played network games, a real NES among the consoles; nes-contra's `docs/Netplay.md` has the figures taken from its sessions |
-| One cartridge (`nes/cart/`): the four programs and a menu, on an MMC1 | working on a real NES and on the MiSTer, with a StickC Plus2 and with a StickS3: the menu and every program. Tested on a simulated console: each program starts from the menu, and reset is the menu again |
+| One cartridge (`nes/cart/`): the five programs and a menu, on an MMC1 | with four programs, working on a real NES and on the MiSTer, with a StickC Plus2 and with a StickS3: the menu and every program. NES Radar is the fifth, and the cartridge has not been run on hardware since it was added. Tested on a simulated console: each program starts from the menu, NES Radar has its own tiles from the mapper, and reset is the menu again |
 | RADAR, NES Radar's service: an airport by its letters, and the aircraft round it from adsb.fi as scenes of the nearest eight (`firmware/components/nesp_services/radar.c`), with where the airport is asked of Wikidata and the last one kept in flash | tested with nes-radar's ROM as [nes-radar](../apps/nes-radar) builds it for the link, on a simulated console, and its scenes held to the bytes nes-radar's own server makes; the firmware builds for both boards with it. Working on hardware with that ROM, the airport kept over power-off among the rest |
 
 ## What is where
@@ -91,7 +102,7 @@ not would not start this cartridge.
 | `apps/setup/` | the setup ROM |
 | `apps/` | the other programs: the jukebox, NESpedia, the throughput test, netplay for Dr. Mario and Contra, and NES Radar |
 | `third_party/` | the two games' disassemblies and nes-radar, as submodules |
-| `nes/cart/` | the cartridge: its menu, and the tool that puts the four programs on it |
+| `nes/cart/` | the cartridge: its menu, and the tool that puts the five programs on it |
 | `host/nesp_host.c`, `host/nesp.py` | the firmware's code as a library for this computer, with a stand-in for the hardware |
 | `host/serial_host.py` | that, on a USB serial cable in place of a Stick |
 | `host/peer_net.py` | for it, PEER's connection to another nesp32 on this computer's sockets, and an opponent who never presses a button |
@@ -133,7 +144,8 @@ make test
 - `test_setup.py`: every screen of the setup ROM worked with the
   controller, to a network joined with a password of every character.
 - `test_cart.py`: the cartridge on a console with its mapper: every
-  program on it as built, started from the menu, and left by reset. It
-  skips without the other programs in `apps/`.
+  program on it as built, started from the menu, and left by reset, and
+  NES Radar's tiles as it asks the mapper for them. It skips without the
+  other programs in `apps/`, or without nes-radar in `third_party/`.
 
 The ROM tests need cc65 and skip without it.
