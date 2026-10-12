@@ -152,7 +152,7 @@ def test_a_pause_in_the_samples_holds_the_level_and_loses_nothing(link_rom):
 
 
 def test_filler_at_the_links_rate_ends_a_stream_at_every_rate(link_rom):
-    """What a nesp32 sends when it starts: four zero bytes at the link's
+    """What a nesp32 sends when it starts: twelve zero bytes at the link's
     rate, which is the slowest of a sound's."""
     for rate in RATES:
         machine = at_rest(link_rom)

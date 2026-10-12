@@ -125,9 +125,12 @@ def library():
         lib.host_track_cut.argtypes = [ctypes.c_void_p, ctypes.c_uint16, ctypes.c_size_t]
         lib.host_juke_set.argtypes = [ctypes.c_void_p, ctypes.c_uint8, ctypes.c_bool]
         for name in ("host_track_reads", "host_juke_resent", "host_juke_underruns",
-                     "host_tuner_held", "host_tuner_dropped", "host_tuner_dry"):
+                     "host_tuner_held", "host_tuner_dropped", "host_tuner_dry",
+                     "host_tuner_page"):
             getattr(lib, name).restype = ctypes.c_uint32
             getattr(lib, name).argtypes = [ctypes.c_void_p]
+        lib.host_tuner_turn.restype = None
+        lib.host_tuner_turn.argtypes = [ctypes.c_void_p]
         lib.host_shown.restype = ctypes.c_char_p
         lib.host_shown.argtypes = [ctypes.c_void_p, ctypes.c_uint8]
         lib.host_juke_index.restype = ctypes.c_uint16
@@ -618,6 +621,15 @@ class Stick:
     @property
     def tuner_dry(self):
         return self._lib.host_tuner_dry(self._host)
+
+    @property
+    def tuner_page(self):
+        """The headline that is on the console's screen, or going there."""
+        return self._lib.host_tuner_page(self._host)
+
+    def tuner_turn(self):
+        """Have the station send its next page of headlines now."""
+        self._lib.host_tuner_turn(self._host)
 
     @property
     def scan_state(self):

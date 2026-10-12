@@ -25,6 +25,16 @@ OFF, NO_WIFI, TUNING = p.NESP_TUNER_OFF, p.NESP_TUNER_NO_WIFI, p.NESP_TUNER_TUNI
 READY, FAILED, PAUSED = p.NESP_TUNER_READY, p.NESP_TUNER_FAILED, p.NESP_TUNER_PAUSED
 WAIT, GO, GONE = p.NESP_SOUND_WAIT, p.NESP_SOUND_GO, p.NESP_SOUND_GONE
 PERIOD = p.NESP_TUNER_PERIOD
+NEWS_URL = "https://feeds.npr.org/1001/rss.xml"
+STATION_URL = "https://npr-ice.streamguys1.com/live.mp3"
+HIGH, NEWS = p.NESP_TUNER_MODE_HIGH, p.NESP_TUNER_MODE_NEWS
+NEWS_PERIOD = p.NESP_TUNER_NEWS_PERIOD
+NEWS_RATE = pcm.sample_rate(NEWS_PERIOD)
+HOME, SHOW, END, IDLE = (p.NESP_TUNER_NEWS_HOME, p.NESP_TUNER_NEWS_SHOW, p.NESP_TUNER_NEWS_END,
+                         p.NESP_TUNER_NEWS_IDLE)
+ROWS, COLUMNS = p.NESP_TUNER_NEWS_ROWS, p.NESP_TUNER_NEWS_COLUMNS
+with open(os.path.join(os.path.dirname(__file__), "fixtures", "npr_news.xml"), "rb") as _handle:
+    FEED = _handle.read()
 RATE = pcm.sample_rate(PERIOD)              # samples a second on the wire
 RAMP = int(RATE) // 50                      # 20 ms
 LAST = p.NESP_JUKE_SOUND_LAST
@@ -46,12 +56,12 @@ def heard(sent):
     return [2 * wav2pcm.DAC[level] / wav2pcm.DAC[-1] - 1 for level in levels(sent)]
 
 
-def tone_in(samples, hertz=TONE_HZ):
+def tone_in(samples, hertz=TONE_HZ, rate=RATE):
     """(the amplitude of a tone of this pitch in the samples, the RMS of
     everything else)."""
     count = len(samples)
     mean = sum(samples) / count
-    angle = 2 * math.pi * hertz / RATE
+    angle = 2 * math.pi * hertz / rate
     cosine = sum((s - mean) * math.cos(angle * n) for n, s in enumerate(samples)) * 2 / count
     sine = sum((s - mean) * math.sin(angle * n) for n, s in enumerate(samples)) * 2 / count
     rest = [s - mean - cosine * math.cos(angle * n) - sine * math.sin(angle * n)
@@ -460,3 +470,259 @@ def test_another_rom_takes_its_memory_back(radio):
     assert radio.stick.allocated == held - 1    # the ring; the decoder's is kept
     assert not radio.air(TONE[:4096], fetch=old)
     assert radio.stick.shown(0) == "" and radio.stick.shown(1) == ""
+
+
+# --- the two modes, and the headlines --------------------------------------------------------
+
+def characters(sent):
+    """What a console makes of the eighth bit of a run's samples. Nothing
+    is 1s; the first 0 after it begins a character, and eight bits make
+    one, back to back until one is nothing again. Returns the characters
+    that were not nothing, each run of them as bytes."""
+    bits = [pcm.raw_byte(byte) >> 7 for byte in sent]
+    out = []
+    at = 0
+    while at < len(bits):
+        if bits[at]:
+            at += 1
+            continue
+        burst = bytearray()
+        while at + 8 <= len(bits):
+            char = int("".join(map(str, bits[at:at + 8])), 2)
+            at += 8
+            if char >= 0x80:
+                break
+            burst.append(char)
+        else:
+            at = len(bits)
+        out.append(bytes(burst))
+    return out
+
+
+def pages(bursts):
+    """The pages in a run's characters, a list of lines each, and whatever
+    else there was."""
+    out, rest = [], []
+    for burst in bursts:
+        if burst[:1] == bytes((HOME,)) and burst[-1:] == bytes((SHOW,)):
+            text = burst[1:-1]
+            assert len(text) == ROWS * COLUMNS and all(0x20 <= char < 0x60 for char in text)
+            out.append([text[row * COLUMNS:(row + 1) * COLUMNS].decode("ascii").rstrip()
+                        for row in range(ROWS)])
+        else:
+            rest.append(burst)
+    return out, rest
+
+
+class NewsSet(Set):
+    """A console that asks for the station with the headlines."""
+
+    def __init__(self, stick):
+        super().__init__(stick)
+        stick.line.room = 12        # about what leaves in a millisecond at this rate
+
+    def play(self, feed=FEED, fed=True):
+        """PLAY with the headlines, and unless told not to, what becomes of
+        their fetch: the feed, or none to be had."""
+        state = self.ask(p.NESP_TUNER_PLAY, bytes((NEWS,)))[0]
+        if fed and self.stick.fetching and self.stick.fetch_url == NEWS_URL:
+            if feed is None:
+                self.stick.fetch_done(False, b"THE SITE DID NOT ANSWER")
+            else:
+                for start in range(0, len(feed), 1024):
+                    if not self.stick.fetch_body(feed[start:start + 1024]):
+                        break
+                self.stick.fetch_done()
+            self.wait()
+        return state
+
+    def on_air(self, feed=FEED):
+        assert self.play(feed) == TUNING
+        self.air()
+        assert self.state() == READY
+        assert self.sound(p.NESP_TUNER_NEWS_RATE) == GO
+
+    def hear(self, ms):
+        """Sit through this much of a run, from the reply that agreed to
+        it or from where the last of these left off. Returns what came:
+        every byte, since the characters are counted from the run's
+        first."""
+        self.wait(ms)
+        sent = bytes(self.stick.line.sent)
+        self.stick.line.sent.clear()
+        return sent
+
+
+@pytest.fixture
+def news(stick):
+    return NewsSet(stick)
+
+
+FIRST = ["A CONSOLE FROM 1985 LEARNS", "TO READ THE NEWS", "",
+         "ENGINEERS SAY THE MACHINE'S", "2 KILOBYTES OF MEMORY HOLD", "FOUR STORIES AT A TIME,",
+         "\"WHICH IS PLENTY,\" ONE SAID", "& LAUGHED.", ""]
+STORIES = [
+    FIRST,                  # entities, in a text that is not CDATA; the story itself left out
+    # CDATA, with tags and UTF-8 in it; a headline of more than three lines.
+    ["CAFE OWNERS WEIGH A LONGER", "HEADLINE THAN THREE LINES OF", "TWENTY-EIGHT CHARACTERS...",
+     "", "THE CAFE - A FIXTURE OF THE", "NEIGHBORHOOD - REOPENED. IT", "IS SHORT.", "", ""],
+    # The item with no headline was passed over; this one has no summary.
+    ["SHORT ONE", "", "", "", "", "", "", "", ""],
+    # A summary cut where the page ends.
+    ["A SUMMARY THAT RUNS ON AND", "ON", "",
+     "THIS SUMMARY IS FAR TOO LONG", "FOR THE SIX OR SEVEN LINES", "THAT A PAGE HAS LEFT UNDER",
+     "ITS HEADLINE, SO IT HAS TO", "BE CUT SOMEWHERE, AND WHERE", "IT IS CUT IT ENDS WITH..."],
+    ["A FIFTH STORY THAT IS NOT", "WANTED", "", "THERE ARE FOUR PAGES.", "", "", "", "", ""],
+]
+assert all(len(story) == ROWS for story in STORIES)
+
+
+def test_play_with_no_mode_or_the_first_is_the_station_alone(radio):
+    for payload in (b"", bytes((HIGH,))):
+        assert radio.ask(p.NESP_TUNER_PLAY, payload)[0] == TUNING
+        assert radio.stick.fetch_url == STATION_URL
+        radio.stop()
+    assert radio.stick.fetches == 2
+    for payload in (b"\x02", b"\x00\x00"):
+        assert radio.stick.ask(TUNER, p.NESP_TUNER_PLAY, payload).status == p.NESP_ST_BAD_ARG
+
+
+def test_with_the_headlines_their_feed_is_fetched_and_then_the_station(news):
+    assert news.play(fed=False) == TUNING
+    assert news.stick.fetches == 1 and news.stick.fetch_url == NEWS_URL
+    assert "nesp32" in news.stick.fetch_agent
+    assert news.play(fed=False) == TUNING       # asked again, it is the same fetch
+    news.wait(500)
+    assert news.stick.fetches == 1              # and the station waits for it
+    news.stick.fetch_body(FEED)
+    news.stick.fetch_done()
+    news.wait()
+    assert news.stick.fetches == 2 and news.stick.fetch_url == STATION_URL
+    assert news.state() == TUNING
+    news.air()
+    assert news.state() == READY
+
+
+def test_the_station_with_the_headlines_goes_at_its_own_rate(news):
+    news.play()
+    news.air()
+    assert news.sound(p.NESP_TUNER_RATE) == GONE        # the other mode's
+    assert news.why() == (FAILED, b"THIS NES CANNOT PLAY IT")
+    news.play()
+    news.air()
+    assert news.sound(p.NESP_TUNER_NEWS_RATE) == GO
+    news.hear(p.NESP_RAW_START_MS)
+    sent = news.hear(1000)
+    assert news.stick.line.rates == [NEWS_PERIOD]
+    assert 0.9 * NEWS_RATE < len(sent) < 1.15 * NEWS_RATE
+
+
+def test_the_first_page_goes_as_the_run_begins_in_the_samples_eighth_bit(news):
+    news.on_air()
+    sent = news.hear(p.NESP_RAW_START_MS + 1500)
+    chars = characters(sent)
+    got, rest = pages(chars)
+    assert got == [FIRST] and rest == []
+    first = [pcm.raw_byte(byte) >> 7 for byte in sent].index(0)
+    assert first == 8 * 8                               # after a few characters of nothing
+    # And the sound is the sound: seven bits of every byte, as without.
+    amplitude, noise = tone_in(heard(sent)[2000:], rate=NEWS_RATE)
+    assert amplitude == pytest.approx(TONE_LEVEL, abs=0.02)
+
+
+def test_a_page_every_half_minute_and_round_again(news):
+    news.on_air()
+    sent = news.hear(p.NESP_RAW_START_MS + 5 * p.NESP_TUNER_NEWS_TURN_MS + 3000)
+    got, rest = pages(characters(sent))
+    assert got == STORIES + [STORIES[0]] and rest == []
+    # Half a minute from the start of one to the start of the next.
+    bits = [pcm.raw_byte(byte) >> 7 for byte in sent]
+    starts = [at for at in range(8, len(bits)) if not bits[at] and all(bits[at - 8:at])]
+    gaps = {later - sooner for sooner, later in zip(starts, starts[1:])}
+    assert len(starts) == 6 and all(0 <= gap - int(NEWS_RATE) * 30 < 8 for gap in gaps)
+
+
+def test_the_feed_may_come_in_pieces_of_any_size(stick):
+    whole = None
+    for size in (1024, 1, 7, 100):
+        news = NewsSet(stick)
+        news.play(fed=False)
+        for start in range(0, len(FEED), size):
+            news.stick.fetch_body(FEED[start:start + size])
+        news.stick.fetch_done()
+        news.wait()
+        news.air()
+        assert news.sound(p.NESP_TUNER_NEWS_RATE) == GO
+        got, _ = pages(characters(news.hear(p.NESP_RAW_START_MS + 1500)))
+        whole = whole or got
+        assert got == whole == [FIRST]
+        stick.event(p.NESP_EVENT_BUTTON_A)      # off, for the next
+        news.wait(400)
+
+
+@pytest.mark.parametrize("feed", [None, b"", b"<html>Not found</html>"])
+def test_with_no_feed_there_are_no_headlines_and_the_station_plays(news, feed):
+    news.on_air(feed)
+    assert news.stick.fetches == 2
+    sent = news.hear(p.NESP_RAW_START_MS + 2000)
+    assert characters(sent) == [] and len(sent) > 1.5 * NEWS_RATE
+
+
+def test_one_story_is_shown_once(news):
+    news.on_air(FEED[:FEED.index(b"<item>", FEED.index(b"<item>") + 1)] + b"</channel></rss>")
+    got, rest = pages(characters(news.hear(p.NESP_RAW_START_MS + p.NESP_TUNER_NEWS_TURN_MS + 3000)))
+    assert got == [FIRST, FIRST] and rest == []        # sent again: it is all there is
+
+
+def test_the_button_ends_the_sound_with_a_character_at_the_dacs_rest(news):
+    news.on_air()
+    news.wait(p.NESP_RAW_START_MS + 100)        # in the middle of the first page
+    news.stick.event(p.NESP_EVENT_BUTTON_A)
+    sent = news.hear(400)
+    assert news.stick.line.rates == [NEWS_PERIOD, p.NESP_PERIOD]
+    bursts = characters(sent)
+    # The page was cut short, at a character, and the one after says so.
+    assert len(bursts) == 1 and bursts[0][0] == HOME and bursts[0][-1] == END
+    assert SHOW not in bursts[0] and len(bursts[0]) < ROWS * COLUMNS
+    # It came after the ramp, with the DAC at rest, and a few samples
+    # follow it: the console takes each bit a sample late.
+    bits = [pcm.raw_byte(byte) >> 7 for byte in sent]
+    levels = [raw & 0x7F for raw in map(pcm.raw_byte, sent)]
+    last = max(at for at, bit in enumerate(bits) if not bit)
+    assert levels[last - 7:] == [0] * (len(levels) - last + 7) and len(levels) - last > 2
+    assert news.state() == OFF and not news.stick.fetching
+
+
+def test_a_stream_that_is_lost_ends_with_the_character_too(news):
+    news.on_air()
+    news.stick.fetch_done(False, b"THE CONNECTION DROPPED")
+    sent = news.hear(p.NESP_RAW_START_MS + 5000)
+    assert characters(sent)[-1] == bytes((END,))
+    assert news.why() == (FAILED, b"THE CONNECTION DROPPED")
+
+
+def test_played_again_after_a_pause_the_page_goes_again_and_has_its_half_minute(news):
+    news.on_air()
+    news.hear(p.NESP_RAW_START_MS + p.NESP_TUNER_NEWS_TURN_MS + 2000)   # the second page is up
+    assert news.stick.feed(b"\xfc" * p.NESP_SOUND_SAY) == b""
+    news.wait(100)
+    assert news.state() == PAUSED
+    assert news.ask(p.NESP_TUNER_PLAY, bytes((NEWS,)))[0] == READY
+    assert news.stick.fetches == 2
+    assert news.sound(p.NESP_TUNER_NEWS_RATE) == GO
+    news.stick.line.sent.clear()
+    got, rest = pages(characters(news.hear(p.NESP_RAW_START_MS + p.NESP_TUNER_NEWS_TURN_MS + 2000)))
+    assert got == [STORIES[1], STORIES[2]] and rest == []
+
+
+def test_tuned_in_again_the_headlines_are_fetched_again_from_the_first(news):
+    news.on_air()
+    news.hear(p.NESP_RAW_START_MS + p.NESP_TUNER_NEWS_TURN_MS + 2000)
+    news.stick.event(p.NESP_EVENT_BUTTON_A)
+    news.wait(400)
+    assert news.state() == OFF
+    news.stick.line.sent.clear()
+    news.on_air(FEED.replace(b"A console from 1985", b"Another one from 1990"))
+    assert news.stick.fetches == 4
+    got, _ = pages(characters(news.hear(p.NESP_RAW_START_MS + 1500)))
+    assert got[0][0] == "ANOTHER ONE FROM 1990 LEARNS"

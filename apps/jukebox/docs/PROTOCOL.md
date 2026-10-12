@@ -346,7 +346,7 @@ cannot play one if they do not.
 The receive routines have no timeout: an NMI would take cycles from them,
 and there is nothing else to count with. A console whose nesp32 went away
 in the middle of a sound waits for the rest until it is reset, or until a
-nesp32 starts up: its firmware sends four zero bytes at the link's rate
+nesp32 starts up: its firmware sends twelve zero bytes at the link's rate
 when it opens its UART. Those are long lows, which the routines take for
 last bytes at any rate, and which the link at rest passes over as noise.
 

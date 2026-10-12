@@ -182,9 +182,11 @@ void link_open(void)
     };
     /* A console left waiting for the rest of a sound, by a nesp32 that was
      * switched off in the middle of one, takes these for its end: long
-     * lows, which its routines read as a last sample at any rate. To any
-     * other console they are noise. */
-    static const uint8_t filler[4] = {0, 0, 0, 0};
+     * lows, which its routines read as a last sample at any rate. NPR's
+     * with the headlines wants a character's worth of them, eight samples
+     * with their eighth bit clear, and gets two from each of these. To
+     * any other console they are noise. */
+    static const uint8_t filler[12] = {0};
 
     ESP_ERROR_CHECK(uart_driver_install(LINK_UART, RX_BUFFER, TX_BUFFER, UART_EVENTS,
                                         &uart_events, 0));

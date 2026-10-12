@@ -39,10 +39,14 @@ NESP_LIB := $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/gen_link.py
 $(BUILD)/link.inc: $(NESP_LIB) $(NESP)
 	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $@
 
-# The routines that play sampled sound, one per rate; this ROM uses the
-# fastest.
+# The routines that play sampled sound, one per rate; this ROM uses one,
+# when it has no headlines to show.
 $(BUILD)/pcm_rates.inc: $(JUKEBOX)/tools/gen_pcm.py $(JUKEBOX)/tools/pcm.py | $(BUILD)
 	$(PYTHON) $(JUKEBOX)/tools/gen_pcm.py $@
+
+# The routine that plays the station and turns the headlines' pages.
+$(BUILD)/news.inc: tools/gen_news.py $(JUKEBOX)/tools/gen_pcm.py $(JUKEBOX)/tools/pcm.py | $(BUILD)
+	$(PYTHON) tools/gen_news.py $@
 
 # gen_screen.py rewrites only the files whose contents changed.
 SCREEN := $(BUILD)/chr.bin $(BUILD)/screen.bin $(BUILD)/palette.bin $(BUILD)/screen.inc
@@ -53,7 +57,8 @@ $(BUILD)/screen.stamp: tools/gen_screen.py $(JUKEBOX)/tools/gen_ui.py | $(BUILD)
 
 $(SCREEN): $(BUILD)/screen.stamp ;
 
-$(BUILD)/npr.o: nes/npr.s $(NESP_LIB) $(BUILD)/link.inc $(BUILD)/pcm_rates.inc $(SCREEN) $(NESP)
+$(BUILD)/npr.o: nes/npr.s $(NESP_LIB) $(BUILD)/link.inc $(BUILD)/pcm_rates.inc $(BUILD)/news.inc \
+		$(SCREEN) $(NESP)
 	ca65 -g -I $(BUILD) -I $(NESP_BUILD) -I $(NESP32)/nes/lib --bin-include-dir $(BUILD) \
 		-o $@ $<
 

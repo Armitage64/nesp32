@@ -15,10 +15,15 @@
 ;   SYS HELLO       until the nesp32 has answered it, and again whenever it
 ;                   says the service is not in use
 ;   TUNER PLAY      Start or A was pressed, and nothing is being fetched,
-;                   or the station is paused;
+;                   or the station is paused: with the mode the menu has
 ;   TUNER STOP      or something is. Sent again until it is answered
 ;   TUNER SOUND     the station is ready, the screen says so, and A is up
 ;   TUNER STATE     otherwise: how it stands, for the status line
+;
+; There are two modes, and a menu in the middle of the screen to choose
+; between them for as long as no station is tuned in: the station at 20338
+; samples a second and nothing else, or at 11622 with the news headlines.
+; Up, Down and Select move between them.
 ;
 ; When SOUND is answered with GO the console does nothing but receive: the
 ; NMI is off, the screen stands still, and of the controller only button A
@@ -28,9 +33,17 @@
 ; byte that says it was the last; so does a stream that is lost. Then the
 ; NMI goes back on and STATE says what happened.
 ;
-; The NMI reads the controller and draws the status line when it has
-; changed, and nothing else: the exchange's request goes out at a fixed
-; point after it.
+; With the headlines, the sound's routine is news_stream (news.inc, which
+; tools/gen_news.py writes, and which says how): the nesp32 sends a page
+; in the samples themselves, and the routine keeps it, draws it where it
+; cannot be seen, on the other of the two nametables, and changes the two
+; over. So the header and the status line are on both, and news_ctrl says
+; which is shown. The menu, and the blank that takes its place when a
+; station is tuned in, are drawn on the first, by the NMI, a line a frame.
+;
+; The NMI reads the controller, draws the status line when it has changed
+; or a line of the middle of the screen when one is due, and nothing else: the
+; exchange's request goes out at a fixed point after it.
 
 PPUCTRL   = $2000
 PPUMASK   = $2001
@@ -49,10 +62,12 @@ PPUCTRL_NMI = $80
 PPUMASK_BACKGROUND = $0A        ; background on, left column included
 FRAME_IRQ_INHIBIT = $40
 NAMETABLE = $2000
+NAMETABLE_2 = $2800             ; the other one: the mirroring is horizontal
 PALETTE   = $3F00
 
 PAD_START = $10
 PAD_A     = $80
+PAD_MOVE  = $2C                 ; Select, Up and Down: the menu's other choice
 
 OUT0_MARK = $01
 
@@ -60,6 +75,8 @@ NESP_RX_MASK = $1F              ; replies of up to 31 bytes: a state, and why
 NESP_TX_MAX  = 9                ; the hello, with its two services
 .define NESP_APP "NPR "
 NESP_APP_VERSION = 1
+
+AREA_BLANK = 2                  ; area: 0 and 1 are the menu, with that mode chosen
 
 TUNER_UNKNOWN = $FF             ; tuner: the nesp32 has not said how it stands
 PRESS_TRIES = 30                ; frames a press is sent for before it is given up
@@ -77,6 +94,12 @@ frame_count:  .res 1            ; NMIs, for the main loop
 served_frame: .res 1
 text_ptr:     .res 2            ; the status line's text, for the NMI
 pad:          .res 1            ; A B Select Start Up Down Left Right
+news_shift:   .res 1            ; the sound's routine: a character as its bits come,
+news_bits:    .res 1            ; how many it still wants,
+news_at:      .res 1            ; and where in the page the next one goes
+news_ctrl:    .res 1            ; PPUCTRL's bits for the nametable that is shown
+news_nt:      .res 1            ; the other one, 0 or 1: where the next page is drawn
+area_ptr:     .res 2            ; the NMI's: the line of the middle it draws
 
 .segment "BSS"
 pad_prev:     .res 1
@@ -91,15 +114,23 @@ link_missed:  .res 1            ; exchanges in a row with no reply, up to MISSED
 link_failed:  .res 2            ; every exchange with none, for a debugger's watch list
 sounds:       .res 1            ; times the sound has played, likewise
 why_buf:      .res 28           ; the nesp32's words for a station that failed
+mode:         .res 1            ; NESP_TUNER_MODE_*: the menu's choice
+moved:        .res 1            ; Select, Up or Down went down: the main loop's to act on
+area:         .res 1            ; what the middle of the screen is to show: AREA_*
+area_row:     .res 1            ; lines of it that are on the screen: NEWS_ROWS is all
 
 .include "screen.inc"
 .include "nesp.inc"
 .include "pcm_rates.inc"
+.include "news.inc"
 
 .assert NESP_TX_MAX = NESP_HELLO_FIXED + 2, error, "the hello names two services"
 .assert STATUS_WIDTH = NESP_TUNER_TEXT_MAX, error, "why_buf holds what the nesp32 may say"
 .assert NESP_TUNER_TEXT_MAX + 1 <= NESP_RX_MASK, error, "a reply must fit its buffer"
-.assert NESP_TUNER_RATE = 5, error, "sound_go calls pcm_stream_5"
+.assert NESP_TUNER_NEWS_RATE = NEWS_RATE, error, "news_stream is at the headlines' rate"
+.assert NEWS_ROWS = NESP_TUNER_NEWS_ROWS && NEWS_COLUMNS = NESP_TUNER_NEWS_COLUMNS, error, "a page is the nesp32's"
+.assert NESP_TUNER_MODE_HIGH = 0 && NESP_TUNER_MODE_NEWS = 1, error, "mode is the menu's line"
+pcm_stream = .ident(.sprintf("pcm_stream_%d", NESP_TUNER_RATE))    ; the station alone
 
 ; wait_unit is 2306 cycles. A run of RAW's is listened for from
 ; NESP_RAW_SETTLE_MS after the reply that agreed to it, while the nesp32
@@ -172,6 +203,9 @@ state_status:
     bpl @vblank2
 
     jsr screen_init             ; rendering is off; the first NMI turns it on
+    lda #NESP_TUNER_MODE_HIGH   ; the menu, with its first line chosen
+    sta mode
+    jsr show_area
     lda #TUNER_UNKNOWN
     sta tuner
     sta status                  ; nothing is on the status line yet
@@ -201,7 +235,8 @@ main_wait:
     jsr link_service
     jmp main_loop
 
-; Load the palette and the screen. Rendering must be off.
+; Load the palette and the screen, which is on both nametables. Rendering
+; must be off.
 .proc screen_init
     lda #>PALETTE
     sta PPUADDR
@@ -216,6 +251,9 @@ main_wait:
     bne @palette
 
     lda #>NAMETABLE
+    jsr @screen
+    lda #>NAMETABLE_2
+@screen:
     sta PPUADDR
     lda #<NAMETABLE
     sta PPUADDR
@@ -273,6 +311,17 @@ main_wait:
     bne @greeted
     jmp say_hello
 @greeted:
+    lda moved
+    beq @no_move
+    lda #0
+    sta moved
+    lda area                    ; only while the menu is on the screen
+    cmp #AREA_BLANK
+    beq @no_move
+    eor #1
+    sta mode
+    jsr show_area
+@no_move:
     lda pressed
     beq @no_press
     lda #0
@@ -298,7 +347,10 @@ main_wait:
     cmp #NESP_TUNER_READY
     bne @state
     lda status_dirty            ; the screen will not be drawn again until the
-    bne @idle                   ; sound is over: it says so first
+    bne @idle                   ; sound is over: it says so first,
+    lda area_row                ; and the menu is off it
+    cmp #NEWS_ROWS
+    bne @state
     lda pad                     ; A still down would end the sound as it began
     and #PAD_A
     bne @state
@@ -389,9 +441,15 @@ main_wait:
 ; The press, as PLAY or STOP, until it is answered. Either done twice is
 ; done once.
 .proc send_press
-    lda #NESP_SVC_TUNER
-    ldx press_op
     ldy #0
+    ldx press_op
+    cpx #NESP_TUNER_PLAY
+    bne @send
+    lda mode                    ; PLAY says which
+    sta nesp_request
+    iny
+@send:
+    lda #NESP_SVC_TUNER
     jsr nesp_call
     bcc @came
     dec press_tries
@@ -421,15 +479,20 @@ main_wait:
     cmp #NESP_TUNER_PAUSED
     bne @done                   ; a state this ROM has not heard of
     sta tuner
+    jsr tuned_or_not
     lda #STATUS_PAUSED
     jmp set_status
 @plain:
     sta tuner
+    pha
+    jsr tuned_or_not
+    pla
     tax
     lda state_status,x
     jmp set_status
 @failed:
     sta tuner
+    jsr tuned_or_not
     lda status
     cmp #STATUS_WHY
     beq @done                   ; its words are on the screen
@@ -470,12 +533,54 @@ main_wait:
     rts
 .endproc
 
+; The middle of the screen follows the station: the menu while none is
+; tuned in, and nothing while one is, where the headlines then go. A =
+; NESP_TUNER_*, as the nesp32 has just said.
+.proc tuned_or_not
+    ldx #AREA_BLANK
+    cmp #NESP_TUNER_TUNING
+    beq @want
+    cmp #NESP_TUNER_READY
+    beq @want
+    cmp #NESP_TUNER_PAUSED
+    beq @want
+    ldx mode
+@want:
+    txa
+    eor area
+    cmp #AREA_BLANK             ; the menu for the blank, or the blank for the menu?
+    bcc @done                   ; neither: a paused station's page stays, and the menu
+    txa
+    jmp show_area
+@done:
+    rts
+.endproc
+.assert AREA_BLANK = 2, error, "tuned_or_not tells the menu's two from the blank by bit 1"
+
+; The middle of the screen is to show A (AREA_*), from its first line, on
+; the first nametable, which is the one shown from now on.
+.proc show_area
+    ldx #NEWS_ROWS
+    stx area_row                ; the NMI draws nothing while it is changed
+    sta area
+    lda #0
+    sta news_ctrl
+    sta area_row
+    lda #1
+    sta news_nt
+    rts
+.endproc
+
 ; The station is ready, and the screen says it is on the air. Ask for the
 ; sound, at the one rate there is; or say that this console cannot play it,
 ; if its port does not read as the routines count on (the line is at rest
 ; here: the nesp32 only sends when asked).
 .proc ask_sound
     ldx #NESP_TUNER_RATE
+    lda mode
+    beq @high
+    ldx #NESP_TUNER_NEWS_RATE
+@high:
     lda JOY2
     cmp #PORT_IDLE
     beq @rate
@@ -517,13 +622,21 @@ main_wait:
 ; down. The nesp32 is told (pcm_hush), and pauses the station. The press
 ; was this, and is not to be taken for another by the NMI's next read.
 .proc sound_go
-    lda #0
+    lda news_ctrl               ; the NMI off, and the nametable as it was
     sta PPUCTRL
+    lda #0
     sta APU_STATUS
     inc sounds
     ldx #SOUND_SETTLE
     jsr wait_units
-    jsr pcm_stream_5            ; until a byte that says it is the last, or A
+    lda mode
+    bne @news
+    jsr pcm_stream              ; until a byte that says it is the last, or A
+    jmp @over
+@news:
+    ldx #$FF                    ; a sample whose eighth bit is nothing
+    jsr news_stream             ; the same, with the headlines as they come
+@over:
     bcc @ended
     jsr pcm_hush
     lda pad_prev
@@ -536,6 +649,7 @@ main_wait:
 @back:
     bit PPUSTATUS               ; a vblank that came and went is not an NMI now
     lda #PPUCTRL_NMI
+    ora news_ctrl
     sta PPUCTRL
     rts
 .endproc
@@ -589,28 +703,58 @@ main_wait:
     and pad                     ; buttons that went down this frame
     ldx pad
     stx pad_prev
+    tax
     and #PAD_START | PAD_A
     beq @no_press
     lda #1
     sta pressed
 @no_press:
+    txa
+    and #PAD_MOVE
+    beq @no_move
+    lda #1
+    sta moved
+@no_move:
     lda status_dirty
     beq @drawn
-    lda #>STATUS_ADDR
-    sta PPUADDR
-    lda #<STATUS_ADDR
-    sta PPUADDR
-    ldy #0
-@char:
-    lda (text_ptr),y
-    sta PPUDATA
-    iny
-    cpy #STATUS_WIDTH
-    bne @char
+    lda #>STATUS_ADDR           ; on both nametables: either may be the one shown
+    jsr @status
+    lda #>(STATUS_ADDR - NAMETABLE + NAMETABLE_2)
+    jsr @status
     lda #0
     sta status_dirty
+    beq @done                   ; a line of the headlines waits for the next frame
 @drawn:
+    ; The middle of the screen, a line a frame, when it is to change.
+    ldx area_row
+    cpx #NEWS_ROWS
+    beq @done
+    lda area                    ; its line: NEWS_ROWS of them to each
+    asl a
+    asl a
+    asl a
+    adc area                    ; times 9, and carry is clear
+    adc area_row
+    tay
+    lda area_lo,y
+    sta area_ptr
+    lda area_hi,y
+    sta area_ptr + 1
+    lda area_screen_hi,x
+    sta PPUADDR
+    lda area_screen_lo,x
+    sta PPUADDR
+    ldy #0
+@area:
+    lda (area_ptr),y
+    sta PPUDATA
+    iny
+    cpy #NEWS_COLUMNS
+    bne @area
+    inc area_row
+@done:
     lda #PPUCTRL_NMI
+    ora news_ctrl
     sta PPUCTRL
     lda #0
     sta PPUSCROLL
@@ -625,6 +769,18 @@ main_wait:
     tax
     pla
     rti
+@status:
+    sta PPUADDR
+    lda #<STATUS_ADDR
+    sta PPUADDR
+    ldy #0
+@char:
+    lda (text_ptr),y
+    sta PPUDATA
+    iny
+    cpy #STATUS_WIDTH
+    bne @char
+    rts
 .endproc
 
 .proc irq

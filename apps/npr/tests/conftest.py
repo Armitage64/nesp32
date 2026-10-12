@@ -48,3 +48,10 @@ def tone():
     """The station's stream: nesp32's MP3 of a tone (its tests/fixtures)."""
     with open(os.path.join(NESP32, "tests", "fixtures", "tone_1khz.mp3"), "rb") as handle:
         return handle.read()
+
+
+@pytest.fixture(scope="session")
+def feed():
+    """The headlines' feed: nesp32's fixture of one (its tests/fixtures)."""
+    with open(os.path.join(NESP32, "tests", "fixtures", "npr_news.xml"), "rb") as handle:
+        return handle.read()

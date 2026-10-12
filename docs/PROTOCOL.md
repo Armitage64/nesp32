@@ -592,7 +592,7 @@ saying it did not hear.
 knows the end is the run's own business: a count, for the pattern, or a
 byte that says so, for sound. Its receivers have no timeout, so a console
 whose nesp32 lost its power partway through a run waits for the rest. A
-nesp32 that starts sends four zero bytes at the link's rate, long lows
+nesp32 that starts sends twelve zero bytes at the link's rate, long lows
 that a receiver at any rate takes for bytes, and that the link at rest
 passes over as noise.
 
@@ -904,7 +904,7 @@ add ops to this one.
 | `OP` | Name | Request | Reply |
 |---|---|---|---|
 | `$00` | STATE | | `STATE`, and with FAILED the words for why |
-| `$01` | PLAY | | the same |
+| `$01` | PLAY | `MODE`, or nothing | the same |
 | `$02` | STOP | | the same |
 | `$03` | SOUND | `RATE` | `STATE`, `ANSWER` |
 
@@ -924,17 +924,51 @@ one channel, brought from its own rate to the run's by a windowed sinc
 (the one nes-jukebox's `tools/wav2pcm.py` has, worked out once for 64
 places between two samples), and each sample made the level whose output
 from the console's DAC is nearest, through the DAC's curve. Levels go into
-a ring of 256 KB, about twelve seconds. The run takes them from there and
+a ring of 256 KB, about twelve seconds, or 22 at the lower rate. The run takes them from there and
 sends each as the byte the console's receiver turns into it.
 
 - **PLAY** starts the fetch, unless one is under way, and makes a station
   that is PAUSED READY; **STOP** ends the fetch and empties the ring. Both
   are safe to send again. The nesp32's front button does one or the other,
   and turns a station that is paused off.
-- **SOUND** is JUKE's, with no epoch: `RATE` is 5, the one rate there is
-  (8 CPU cycles a bit, 223722 baud, 20338 samples a second), or `$FF` from
+- **PLAY's `MODE`** is `$00`, the station alone at its best rate, or `$01`,
+  the station with the headlines at a rate that leaves the console the
+  cycles to draw them. With no `MODE` it is `$00`, as it was before there
+  were two. A station that is PAUSED is made READY in the mode it has.
+- **SOUND** is JUKE's, with no epoch: `RATE` is the mode's, 5 (8 CPU cycles
+  a bit, 223722 baud, 20338 samples a second) or with the headlines 2 (14
+  cycles, 127841 baud, 11622 samples a second), or `$FF` from
   a console that cannot play it. The answer is WAIT while TUNING, GO when
   READY, and GONE otherwise. After GO the run is RAW's in every way.
+- **With the headlines, their feed comes first.** PLAY fetches NPR's news
+  feed (`https://feeds.npr.org/1001/rss.xml`, RSS) before the station,
+  since the nesp32 fetches one thing at a time and a station's stream
+  never ends, and the state is TUNING through both. Its items with a
+  title, up to sixteen, are laid out as a page each, 9 lines of 28
+  characters, in capitals: the title on up to three lines, a blank line,
+  and as much of the description as the rest holds, either ending in `...`
+  where it was cut. Tags go, and entities and UTF-8 become the nearest
+  ASCII. A feed that cannot be had is no headlines, and the station plays.
+- **The headlines go in the samples.** The console's DAC takes seven bits
+  of a byte. In this mode the eighth is a line of its own, a bit a sample:
+  1 at rest, and characters of eight bits, the first bit first, with
+  nothing between those sent together. A character begins with a 0, so
+  the first 0 after rest is a character's first bit, and one of `$80` up
+  is rest again: the console finds its place anew with every page.
+
+  | Character | Meaning |
+  |---|---|
+  | `$20` to `$5F` | a character of the page, which has 252, a line after a line |
+  | `$15` | HOME: a page follows, from its first character |
+  | `$1A` | SHOW: the page is whole. The console draws it and shows it, and nothing but rest may be sent for the 0.2 seconds that takes |
+  | any other below `$20` | the sound is over, and the console leaves it. `$00` is what the nesp32 sends |
+
+  A page goes eight characters into every run, the one that was on the
+  screen if the run is a paused station played again, and the next every
+  30 seconds from then, round and round. The run ends, where the other
+  mode's ends with `$FC`, with `$00` when the character under way is done,
+  at the DAC's rest, and four samples more: the console takes each bit a
+  sample late.
 - **The sound rises from the DAC's rest over 20 ms and falls back to it
   over 20 ms** before the byte that ends it, `$FC`, which leaves the DAC
   at 0.
@@ -953,7 +987,7 @@ sends each as the byte the console's receiver turns into it.
   station off.
 - **Paused, the station is fetched still.** The ring loses its oldest
   second as it fills, so what PLAY has ready is what was on the air up to
-  twelve seconds before, and a station lost while it is paused is FAILED.
+  twelve seconds before (or 22), and a station lost while it is paused is FAILED.
 - After the run the console asks for STATE, and is told OFF, PAUSED or
   FAILED.
 

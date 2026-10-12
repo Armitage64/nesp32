@@ -75,8 +75,9 @@ LAST_BYTE = bytes((sample_byte(0, last=True),))     # ends a stream, leaving the
 # A console left in the middle of a stream waits for the rest with no
 # timeout. A nesp32 sends this at the link's rate when it starts: long
 # lows, which the stream routines take for last bytes at any rate, and
-# which the link passes over as noise.
-FILLER = bytes(4)
+# which the link passes over as noise. Twelve, since NPR's routine with
+# the headlines wants eight samples in a row to say so.
+FILLER = bytes(12)
 assert all(not raw_byte(byte) & MORE for byte in FILLER)
 
 

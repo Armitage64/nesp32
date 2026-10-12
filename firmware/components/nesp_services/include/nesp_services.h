@@ -504,6 +504,27 @@ typedef struct {
 } nesp_peer_t;
 
 /* TUNER: a radio station as sampled sound (tuner.c). */
+/* Headlines out of an RSS feed, a page each for a console's screen
+ * (news.c). */
+typedef struct {
+    uint8_t rows[NESP_TUNER_NEWS_PAGES][NESP_TUNER_NEWS_ROWS][NESP_TUNER_NEWS_COLUMNS];
+    uint8_t count;                  /* pages laid out */
+    /* Where the feed has got to. */
+    uint8_t mode;
+    uint8_t field;                  /* which of an item's texts is being kept */
+    bool in_item;
+    uint8_t closing;                /* of "]]>" that have come */
+    uint8_t tag_len;
+    uint8_t tag[16];
+    uint16_t title_len;
+    uint16_t summary_len;
+    uint8_t title[256];
+    uint8_t summary[768];
+} nesp_news_t;
+
+void nesp_news_init(nesp_news_t *news);
+void nesp_news_feed(nesp_news_t *news, const uint8_t *data, size_t len);
+
 struct nesp_tuner_work;             /* the decoder's memory, which the fetch's task has */
 
 typedef struct {
@@ -532,6 +553,25 @@ typedef struct {
     bool ended;
     bool lost;                      /* the stream ended, and all of it has been played */
     bool hushed;                    /* the console left the sound: paused */
+    /* The headlines, which are fetched before the station is. The fetch's
+     * task has `news` until it says, under the lock, that they have
+     * landed. */
+    nesp_sink_t news_sink;
+    nesp_news_t news;
+    bool news_wanted;               /* their fetch is the one under way */
+    bool news_landed;
+    uint8_t mode;                   /* NESP_TUNER_MODE_*, as PLAY chose */
+    uint8_t period;                 /* and its rate, in CPU cycles a bit */
+    uint8_t page;                   /* the headline that is on the console's screen, or going there */
+    /* Where the run's eighth bit has got to (tuner.c). */
+    uint8_t chan;
+    uint8_t chan_char;              /* what is left of the character being sent, */
+    uint8_t chan_bits;              /* and how many bits that is */
+    uint16_t chan_at;               /* characters of the page that have gone */
+    uint32_t chan_sent;             /* bits, since the run began */
+    uint32_t chan_turn;             /* the count at which the next page goes */
+    bool chan_fresh;                /* no page has gone in this run */
+    uint8_t chan_trail;
     bool holding;                   /* the ring ran dry: the DAC is held until more has come */
     uint8_t last;                   /* the level last sent */
     uint32_t rise;                  /* samples of the ramp from the DAC's rest so far */

@@ -10,8 +10,11 @@ each character at its ASCII code, its palettes, and its header, the name in
 the big letters over the credit line, with what this ROM is between the two.
 The font has capitals only.
 
-Under the header are the station, a status line that the ROM writes, and
-how to turn it on and off. screen.bin is the nametable and its attributes
+Under the header are a status line that the ROM writes, the middle of the
+screen, which it also writes, and at the foot what button A does. The
+middle is the menu, with one of its two lines chosen, while no station is
+tuned in; then nothing, and where the headlines go (tools/gen_news.py says
+where, and how). screen.bin is the nametable and its attributes
 with all of that on it; screen.inc tells the ROM where the status line is
 and holds what it may say.
 """
@@ -22,15 +25,15 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "jukebox", "tools"))
+sys.path.insert(0, HERE)
 
+import gen_news  # noqa: E402
 import gen_ui  # noqa: E402
 
 SUBTITLE = "NATIONAL PUBLIC RADIO"
-STATION_ROW = 11
-STATION = "NPR PROGRAM STREAM"
 # The status line: as wide as what the nesp32 may say of a station that
 # failed (NESP_TUNER_TEXT_MAX), which the ROM writes there as it comes.
-STATUS_ROW = 15
+STATUS_ROW = 8
 STATUS_WIDTH = 28
 STATUS_COLUMN = (gen_ui.SCREEN_COLUMNS - STATUS_WIDTH) // 2
 # In the order of the ROM's STATUS_* numbers; the one after the last is the
@@ -39,17 +42,43 @@ STATUS_TEXT = (("WAITING", "WAITING FOR LINK"), ("OFF", "PRESS START"),
                ("NO_WIFI", "NO WI-FI"), ("TUNING", "TUNING"), ("ON_AIR", "ON THE AIR"),
                ("PAUSED", "PAUSED"),
                ("OLD", "UPDATE NESP32"))
-HELP_ROW = 23
-HELP = ("START: PLAY   A: PAUSE", "TO STOP: THE NESP32'S BUTTON")
+HELP = "A=PLAY/PAUSE"            # as the jukebox's foot says it
+
+
+# The menu, in the order of the nesp32's modes, and the rows of the middle
+# its lines are on.
+MENU = ("HIGH QUALITY, NO HEADLINES", "MED QUALITY, HEADLINE NEWS")
+MENU_ROWS = (2, 4)
+CURSOR = "> "
+
+
+def areas():
+    """What the middle of the screen may show, as lines of text: the menu
+    with each of its lines chosen, and nothing."""
+    out = []
+    for chosen in range(len(MENU)):
+        lines = [""] * gen_news.ROWS
+        for index, (row, words) in enumerate(zip(MENU_ROWS, MENU)):
+            lines[row] = (CURSOR if index == chosen else " " * len(CURSOR)) + words
+        out.append(lines)
+    out.append([""] * gen_news.ROWS)
+    for lines in out:
+        assert all(len(line) <= gen_news.COLUMNS for line in lines)
+    return out
+
+
+# A page of headlines, for the preview: what the nesp32 makes of a story.
+SAMPLE = ("A CONSOLE FROM 1985 LEARNS", "TO READ THE NEWS", "",
+          "ENGINEERS SAY THE MACHINE'S", "2 KILOBYTES OF MEMORY HOLD",
+          "FOUR STORIES AT A TIME,", "\"WHICH IS PLENTY,\" ONE SAID", "& LAUGHED.")
+assert STATUS_ROW < gen_news.NEWS_ROW and gen_news.NEWS_ROW + gen_news.ROWS <= gen_ui.HELP_ROW
 
 
 def build_screen():
     screen = gen_ui.Screen()
     screen.names[:] = b" " * len(screen.names)  # the ROM writes text over text
     gen_ui.header(screen, SUBTITLE)
-    screen.centered(STATION_ROW, STATION)
-    for index, text in enumerate(HELP):
-        screen.centered(HELP_ROW + 2 * index, text)
+    screen.centered(gen_ui.HELP_ROW, HELP)
     return screen
 
 
@@ -73,6 +102,22 @@ def screen_include():
     lines += ["STATUS_WHY = %d          ; the nesp32's own words" % len(STATUS_TEXT),
               "", '.segment "RODATA"']
     lines += gen_ui.byte_lines("status_text", text, per_line=STATUS_WIDTH)
+    # The middle of the screen: where each of its lines is, in the ROM and
+    # on the first nametable.
+    middle = []
+    for area in areas():
+        for line in area:
+            middle += list(line.ljust(gen_news.COLUMNS).encode("ascii"))
+    count = len(areas()) * gen_news.ROWS
+    lines += ["area_lo: .byte " + ", ".join(
+                  "<(area_text + %d)" % (index * gen_news.COLUMNS) for index in range(count)),
+              "area_hi: .byte " + ", ".join(
+                  ">(area_text + %d)" % (index * gen_news.COLUMNS) for index in range(count))]
+    places = [gen_ui.address(gen_news.NEWS_COLUMN, gen_news.NEWS_ROW + row)
+              for row in range(gen_news.ROWS)]
+    lines += ["area_screen_lo: .byte " + ", ".join("$%02X" % (place & 0xFF) for place in places),
+              "area_screen_hi: .byte " + ", ".join("$%02X" % (place >> 8) for place in places)]
+    lines += gen_ui.byte_lines("area_text", middle, per_line=gen_news.COLUMNS)
     return "\n".join(lines) + "\n"
 
 
@@ -90,7 +135,19 @@ def main(argv=None):
     gen_ui.write_if_changed(os.path.join(args.out_dir, "screen.inc"),
                             screen_include().encode())
     if args.preview:
-        gen_ui.write_png(args.preview, gen_ui.render(screen.chr(), screen.nametable()))
+        # As it is when it starts: the status line, and the menu.
+        menu = screen.copy()
+        menu.centered(STATUS_ROW, "PRESS START")
+        for row, text in enumerate(areas()[0]):
+            menu.text(gen_news.NEWS_COLUMN, gen_news.NEWS_ROW + row, text)
+        gen_ui.write_png(args.preview, gen_ui.render(menu.chr(), menu.nametable()))
+        # And with the station playing in the second mode: a page.
+        screen.centered(STATUS_ROW, "ON THE AIR")
+        for row, text in enumerate(SAMPLE):
+            screen.text(gen_news.NEWS_COLUMN, gen_news.NEWS_ROW + row, text)
+        base, extension = os.path.splitext(args.preview)
+        gen_ui.write_png(base + "-news" + extension,
+                         gen_ui.render(screen.chr(), screen.nametable()))
     return 0
 
 

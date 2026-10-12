@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:npr="https://www.npr.org/rss/" xmlns:content="http://purl.org/rss/1.0/modules/content/" version="2.0">
+  <channel>
+    <title>NPR Topics: News</title>
+    <link>https://www.npr.org/sections/news/</link>
+    <description>NPR news, audio, and podcasts. Coverage of breaking stories, national and world news.</description>
+    <language>en</language>
+    <image>
+      <url>https://media.npr.org/images/podcasts/primary/npr_generic_image_300.jpg</url>
+      <title>NPR Topics: News</title>
+      <link>https://www.npr.org/sections/news/</link>
+    </image>
+    <item>
+      <title>A console from 1985 learns to read the news</title>
+      <description>Engineers say the machine&#8217;s 2 kilobytes of memory hold four stories at a time, &quot;which is plenty,&quot; one said &amp; laughed.</description>
+      <pubDate>Mon, 12 Oct 2026 08:00:00 -0400</pubDate>
+      <link>https://www.npr.org/2026/10/12/1/console</link>
+      <guid>https://www.npr.org/2026/10/12/1/console</guid>
+      <content:encoded><![CDATA[<p>Not this: it is the whole story, with <b>tags</b> in it.</p>]]></content:encoded>
+    </item>
+    <item>
+      <title><![CDATA[Café owners weigh a longer headline than three lines of twenty-eight characters can possibly hold on a screen like this one]]></title>
+      <description><![CDATA[<p>The caf&eacute; — a <em>fixture</em> of the neighborhood — reopened.</p> It is short.]]></description>
+      <pubDate>Mon, 12 Oct 2026 07:30:00 -0400</pubDate>
+    </item>
+    <item>
+      <title></title>
+      <description>An item with no headline is passed over.</description>
+    </item>
+    <item>
+      <title>Short one</title>
+      <description></description>
+    </item>
+    <item>
+      <title>A summary that runs on and on</title>
+      <description>This summary is far too long for the six or seven lines that a page has left under its headline, so it has to be cut somewhere, and where it is cut it ends with three dots to say that there was more of it than the screen of a console from the nineteen eighties could show at once, which is true of most things.</description>
+    </item>
+    <item>
+      <title>A fifth story that is not wanted</title>
+      <description>There are four pages.</description>
+    </item>
+  </channel>
+</rss>

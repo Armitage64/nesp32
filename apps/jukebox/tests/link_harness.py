@@ -137,13 +137,13 @@ class LinkConsole(Console):
     def power_cycle(self, tracks=None):
         """A new nesp32 on the same port, which knows nothing of the
         console. Its UART is at the link's rate, and it says what one says
-        when it starts: four zero bytes."""
+        when it starts: a dozen zero bytes."""
         tracks = self._tracks if tracks is None else tracks
         self.port.line_rate(p.NESP_PERIOD)
         self.stick = nesp.Stick(self.port)
         for track in tracks:
             self.stick.add_track(track)
-        self.port.wire.send(bytes(4), self.now, self.port.bit)
+        self.port.wire.send(pcm.FILLER, self.now, self.port.bit)
 
     def at(self, cycle, action):
         """Do something when the clock reaches a cycle, wherever the ROM

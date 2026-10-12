@@ -282,8 +282,25 @@ JUKE_SOUND_REFUSED = 0xFF   # JUKE SOUND's rate from a console that cannot play 
 JUKE_SOUND_LAST = 0xFC  # the byte that ends a sound and leaves the console's DAC at 0
 JUKE_HEARD = 4          # bytes from the console during a sound that pause it
 SOUND_SAY = 8           # bytes a console sends, at the link's rate, to say it has left a sound
+TUNER_MODE_HIGH = 0     # TUNER PLAY's mode: the station at its best rate, and nothing else
+TUNER_MODE_NEWS = 1     # at a rate that leaves the console time to draw, with the headlines
 TUNER_RATE = 5          # the rate a station is sent at, as JUKE's sounds count them: 8 cycles a bit
 TUNER_PERIOD = 8        # which is 20338 samples a second
+TUNER_NEWS_RATE = 2     # and with the headlines: 14 cycles a bit,
+TUNER_NEWS_PERIOD = 14  # which is 11622
+TUNER_NEWS_PAGES = 16   # headlines kept, a page each
+TUNER_NEWS_ROWS = 9     # lines to a page: the headline, a blank line, and of its summary what fits
+TUNER_NEWS_COLUMNS = 28 # characters to a line
+TUNER_NEWS_TURN_MS = 30000  # a page is shown this long
+# The headlines go to the console in the eighth bit of the station's samples,
+# which its DAC has no use for, a character to eight of them, the first
+# bit first. A character of a page is ASCII, $20 to $5F; the rest are:
+TUNER_NEWS_END = 0x00   # the sound is over (as is any below $20 but the next two)
+# These two have three 1s each: a nesp32 that starts up frees a console left
+# in a sound with long lows, which must not be taken for either.
+TUNER_NEWS_HOME = 0x15  # a page follows, from its first character
+TUNER_NEWS_SHOW = 0x1A  # the page is whole: draw it, and show it
+TUNER_NEWS_IDLE = 0xFF  # nothing: what the bit is at rest
 TUNER_TEXT_MAX = 28     # characters in why a station failed, for the console's screen
 TUNER_READY_MS = 2000   # this much of a station is held before it is offered
 TUNER_HEARD = 4         # bytes from the console during a station's sound that pause it
