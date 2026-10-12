@@ -91,8 +91,11 @@ The cartridge is full, so the netplay ROM has a second 32 KB PRG bank
 session's frame with the link's library and its table: the game's NMI goes
 to that bank and back once a frame, about 110 cycles for the two changes.
 What is left in the game's bank is small, and sits in the 512 bytes of
-padding before `$FD00`. The sample data after it (the game never plays a
-sample) is left out and its two pages are empty. It needs a flashcart or
+padding before `$FD00`. The two pages after it are the samples of the
+music's drums, and the netplay ROM leaves them out: that was done in the
+belief that the game never plays a sample, which is wrong (see "What has
+been learned"). The pages are empty, the music still plays them, and so
+the netplay ROM's drums are not the original's. It needs a flashcart or
 an emulator.
 
 ## The nesp32
@@ -154,8 +157,6 @@ From the simulation:
   the game's work with no rearrangement: it is made where the game reads,
   and an NMI that has no buttons for its tick ends there, to be taken up
   from there in the next frame.
-- **The game never plays a sample**, so nothing takes cycles from the
-  bit-banged serial routines, and the sample data's space is free.
 - **The disassembly's edit mode** (`con_bzk_hack`) skips the copy
   protection's checksum, which is a frame of work at the title. The
   netplay ROM is one frame ahead of the original from there, and
@@ -213,6 +214,29 @@ that joined, and the figures from the nesp32s' logs (nesp32's
   console whose count was kept to the end, and the delay was 1 for most
   of it, 2 for 17 seconds at a time when more than one packet in ten
   called for it, and 3 and 4 for a while on a network at its worst.
+
+From hardware, on 2026-10-12, a StickS3 on a real NES that joined
+(nesp32's `docs/PHANTOM-RIGHT.md` has the whole of it):
+
+- **The game does play samples: the music's drums.** The sound engine
+  starts the sample channel at `bra_DFEF`, for the two samples at `$FD00`
+  and `$FD80`. It had been read as never playing one because the other
+  place that starts the channel, a sound effect at 0x005A58, is not
+  reached.
+- **A sample's fetch spoils a controller read made once.** On a real NES
+  the fetch of a sample's byte that falls on a read of `$4016` reads it
+  once more: a button is lost, the ones after it come a place early, and
+  Right is pressed behind them. A session read its controller once, and a
+  player had a press of Right that nobody made about once in 300 frames.
+  The game's own routine reads twice and compares, which is why a local
+  game never showed it; the MiSTer did not show it either.
+- **A session now reads twice while a sample has bytes to fetch**, and
+  keeps the buttons of the last time both reads were alike if they differ
+  (`session_read_pad`, net/session.inc). In 10,766 frames with the music
+  on there was no such press.
+- **The fetches take cycles from the bit-banged serial routines too.**
+  Nothing has been done about that. It may be what the few misheard
+  replies above are, and that has not been looked into.
 
 From hardware, with the prototype's own firmware and protocol (a real NES
 with a flashcart, a StickC Plus2 on MicroPython, an FT232 cable on a Mac).

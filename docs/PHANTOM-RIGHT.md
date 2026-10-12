@@ -1,104 +1,118 @@
-# Open issue: a Right that nobody pressed, in a netplay session
+# A Right that nobody pressed, in a netplay session
 
-**Status: open, cause unknown.** Put aside on 2026-10-10 until the PCBs
-arrive and a StickS3 can be moved freely between consoles. Nothing in the
-games or the firmware was changed to work around it.
+**Status: found and mended in `apps/drmario` on 2026-10-12. `apps/contra`
+is still to be looked at.** The music's drums are samples, and on a real
+NES the fetch of a sample's byte that falls on a read of the controller
+reads it once more. A session read its controller once, and took what it
+was given.
 
-## What is seen
+## What was seen
 
 In a netplay session of `apps/drmario` or `apps/contra`, one player's
-character takes a press of Right on the d-pad now and again with the
-controller untouched. Both consoles show it, the session goes on, and it
-never stops: about one press in 500 frames, with no rhythm to it (two in a
-second, then none for ten).
+character took a press of Right on the d-pad now and again with the
+controller untouched. Both consoles showed it, the session went on, and it
+never stopped: about one press in 300 frames, with no rhythm to it (two in
+a second, then none for ten).
 
-## What is known
+## The cause
 
-Every session so far has had the same two setups, so the first three lines
-below cannot yet be told apart:
+The NES's sample channel takes each byte of a sample from the cartridge by
+stopping the CPU for a few cycles. If the CPU is stopped in the cycle that
+reads `$4016`, the read is made again when it goes on, and the controller
+has been clocked twice for the one bit the game takes. That button is
+lost, every button after it comes a place early, and Right, the last one
+read, is whatever the controller's register has behind its eight buttons:
+pressed.
 
-| | The setup with the presses | The setup without |
-|---|---|---|
-| Console | a real NES (two of them tried) | a MiSTer |
-| nesp32 | the StickC Plus2, on its breadboard hat | the StickS3 |
-| Controller | a real controller (two tried) | whatever the MiSTer has |
+Dr. Mario's music has drums, and they are samples (`bra_DFEF` and
+`bra_DA58` in the disassembly's bank FF start the channel). The game's
+own routine reads the controllers twice and compares them, for this. A
+session's read, `session_read_pad` in `apps/drmario/net/session.inc`, read
+once: its comment, and the README, say the game never plays a sample.
 
-- **It follows that setup, not the role.** With the Plus2's console
-  joining, player 2 has the presses; with it hosting, player 1 has them.
-  The other console sent no change of buttons at all in either role.
-- **The console sends them.** The firmware's log of the buttons it is
-  given (below) has each press as one tick of exactly `01`, Right alone,
-  and then `00`. So the relay and the network pass on what they are
-  given, and the press is in the console's own buttons before they leave.
-- **Two reads running agree on it.** The log was taken with a Dr. Mario
-  ROM that read the controller twice in each tick and kept the last value
-  on which both reads agreed. The presses came through as before: both
-  reads, about 150 CPU cycles apart, had Right.
-- **It is not the protocol's timetable.** The presses' ticks are not the
-  delay report's (`40`, `c0`) nor the check tick (`ff`).
-- **The link is sound.** No reply went unheard on either nesp32 ("0
-  again"), and each heard one byte of noise a frame, which is the
-  controller read and no more.
-- **A local game on the same real NES has none**, with the nesp32 still
-  in port 2.
+So it was never the nesp32, the hat, the radio or the network. It needed a
+real NES, music with drums, and a routine that reads once.
 
-A press that is exactly `01` is what a controller gives when its shift
-register is one place further on than it should be: Right is the last
-button read, and the register fills behind it with "pressed". With nothing
-held that is all there is to see.
+## What showed it
 
-## What was ruled out
+- **It followed the real NES, not the nesp32 and not the role.** With the
+  StickC Plus2 and the StickS3 exchanged, the presses stayed on the real
+  NES. Two real NES consoles and two controllers had it; the MiSTer, with
+  a real controller on its SNAC port, never did.
+- **The console sent them.** The firmware's log of the buttons it is given
+  (below) had each press as one tick and then the true buttons again.
+- **The register was clocked once too often.** With nothing held a press
+  was `01`. With Left held it was `05`, fifteen times of fifteen: Left
+  where Down should be, and Right filled in behind. Never `03`, so Right
+  was not set on its own.
+- **The clock too many came at no fixed place in the read.** With A held,
+  five presses were `81` and one was `01`. A is the first button read, so
+  it is lost only when the first read is the one made twice.
+- **With the music off there were none**: 7,244 frames of a session and
+  not one, where there would have been about 24.
+- **With the controller read twice while a sample plays there are none**,
+  music on: 10,766 frames and not one, where there would have been about
+  35.
 
-- **The games' session code and the firmware's relay.** Read through for
-  anything that could put a button in the stream, or that differs between
-  the two roles: nothing. The consoles' lockstep check would also end a
-  session whose two games had different buttons, and it does not.
-- **The serial routines.** They never read `$4016`, so they cannot clock
-  the controller.
-- **A single spoiled read**, a stray clock in one read of eight. Reading
-  twice would have taken those out, and did not.
-- **The hat pulling the strobe down for good**, as the 10 kΩ base resistor
-  once did ([WIRING.md](WIRING.md)). That would show in a local game too.
+## What misled
+
+- **"A local game on the same real NES has none."** It has none because
+  the game's own routine reads twice. It was taken to mean that a session
+  did something to the console that a local game did not, and the radio
+  and the serial exchange were suspected on the strength of it.
+- **"Two reads running agreed on it."** A Dr. Mario ROM that read twice in
+  each tick of a session was tried on 2026-10-10 and reported to make no
+  difference. That does not agree with what is now known, and it is not
+  known what went wrong with that test: it was not tried for long.
+- **The rate.** One transmission of the radio in each frame, falling
+  anywhere in it, would land in the controller read about once in 200
+  frames. That was near enough to one press in 300 to look like evidence.
+- **The transmit power.** A StickS3 at 2 dBm had one press in 7,109 frames
+  and then 13 in 7,125. The power had nothing to do with either.
+- **A test that could not fail.** A firmware that kept the radio as busy
+  as a session, in a local game, had no presses. The local game reads
+  twice, so it would have had none whatever the radio did.
+
+## What was done
+
+`session_read_pad` asks the sample channel whether it has bytes still to
+fetch (`$4015`, bit 4). If it has, the controller is read twice, and if
+the reads differ the buttons are as they were the last time both were
+alike. If it has not, it is read once, as before. The two reads are done
+in less time than there is between two fetches at the fastest rate the
+game uses, so no more than one of them is spoiled. The channel is asked
+before the first read and not after it, because the fetch that spoils a
+read may be the sample's last.
+
+When the reads differ, that tick has the buttons of the tick before. A
+press that begins in such a tick is a frame late.
 
 ## What is left
 
-A session has two things a local game has not: the nesp32's radio busy
-with sixty packets a second each way, beside the console and the
-controller's cable, and the serial exchange on the strobe line in every
-frame. The exchange never falls in the same time as the controller read.
-So the radio is the suspect that is left, most likely by way of the
-Plus2's breadboard and its long wires, and it is no more than a suspect:
-noise that came and went would be expected to move the register two
-places some of the time, and give `03`, and every press logged was `01`.
-
-It is not known whether a StickS3 on a real NES has the presses, nor
-whether the Plus2 on the MiSTer has.
-
-## What to do next
-
-1. **The StickS3 on the real NES and the Plus2 on the MiSTer**, in a
-   session, both controllers untouched for a minute, with the log running.
-   Presses on the real NES with the StickS3: it is the console in a
-   session, with any nesp32. Presses on the MiSTer, or none anywhere: it
-   is the Plus2's breadboard hat.
-2. **The same with the PCB hat** in place of the breadboard, on whichever
-   setup still has them.
-3. **Hold Left on the controller that has the presses**, for a minute. A
-   press logged as `05` is every button a place on (Left where Down
-   should be, and Right filled in): the register was clocked once too
-   often. One logged as `03` is Right set on its own, and not a shift at
-   all.
-4. If it is the console: OUT0 and the port's clock on a scope during the
-   controller read, in a session and in a local game.
+- **Contra.** Its session already reads twice while a sample plays
+  (`net_read_pad` in `apps/contra/net/net.inc`), and was said to have the
+  presses all the same. It asks the channel after the first read, which
+  misses a read spoiled by a sample's last fetch, and that would be rare.
+  Nothing on 2026-10-12 was tried with Contra: a session with the log
+  running, nothing held, is the first thing to do.
+- **The MiSTer** did not show it, with a real controller on its SNAC
+  port. Why is not known, and it is not a console to look for this kind of
+  thing on.
+- **Dr. Mario's drums.** The netplay ROM leaves the samples' data out
+  for the room, in the belief that the game never plays a sample, so its
+  drums play two empty pages. The README says so now; two comments, in
+  `net/session.inc` (the exchange) and `patches/bank_FF.patch`, still say
+  the game plays none.
+- **The serial exchange** loses cycles to the same fetches, which the
+  README says it does not. A reply that is misheard is not asked for again
+  in the same frame, on the same belief.
 
 ## The log
 
 The buttons are logged only by a firmware built to log at the debug
 level: `CONFIG_LOG_DEFAULT_LEVEL_DEBUG=y` in the board's `sdkconfig`
 (`idf.py -B build-esp32s3 menuconfig`, Component config, Log, Default log
-verbosity), which makes the rest of the log much longer too. The sessions
-below were logged before that was so, when every firmware had it, as the
-end of the line before.
+verbosity), which makes the rest of the log much longer too.
 
 With it, `firmware/deploy.sh watch` prints a line for each nesp32 every
 two seconds of a session, after the one that begins `peer: player`:
@@ -114,25 +128,15 @@ Down, `08` Up, `10` Start, `20` Select, `40` B, `80` A). A console nobody
 touches has `pad 0` and no pairs. The tick that carries a console's digest
 is left out.
 
-From the session of 2026-10-10, the Plus2 joining:
+From the sessions of 2026-10-12, the StickS3 on the real NES and joining,
+with nothing held, with Left held and with A held:
 
 ```text
-StickC Plus2  peer: player 2, delay 1, ... 714 frames, 7 late, 0 again; ... pad 4 b7:01 b8:00
-StickS3       peer: player 1, delay 1, ... 722 frames, 15 late, 0 again; ... pad 0
-StickC Plus2  peer: player 2, delay 1, ... 835 frames, 7 late, 0 again; ... pad 6 d1:01 d2:00
+StickS3  peer: pad 2 76:01 77:00
+StickS3  peer: pad 37 65:05 66:02 c3:05 c4:02
+StickS3  peer: pad 107 9a:81 9b:80
+StickS3  peer: pad 109 48:01 49:80
 ```
 
-and hosting:
-
-```text
-StickC Plus2  peer: player 1 ... pad 4 a0:01 a1:00 c9:01 ca:00
-StickS3       peer: player 2, ... 2730 frames, 253 late, 0 again; ... pad 0
-```
-
-## What was tried and taken out
-
-Both games were changed to read the controller twice in each tick of a
-session and to keep the last value on which the reads agreed, as Contra's
-session already does while a sample plays. It made no difference on the
-consoles, for the reason above, and was taken out again: neither game has
-it.
+In about 18,900 frames there were 58 presses: 37 with nothing held, all
+`01`; 15 with Left held, all `05`; 6 with A held, five `81` and one `01`.

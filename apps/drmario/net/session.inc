@@ -190,22 +190,55 @@ session_digest:
 
 
 
-; This console's controller into A and net_pad. OUT0 is low for the reads
-; and no longer: the nesp32 takes it for a byte of noise. The game reads
-; twice, for the samples it never plays; once does.
+; This console's controller into A and net_pad. The music's drums are
+; samples, and on a console the fetch of a sample's byte that falls on a
+; read of the controller reads it once more: a button is lost and the ones
+; after it come a place early, with Right pressed behind them
+; (nesp32's docs/PHANTOM-RIGHT.md). So while a sample has bytes to fetch
+; the controller is read twice, as the game's own routine reads it, and if
+; a fetch spoiled one of the reads the buttons are as they were the last
+; time both were alike. The two reads are done in less time than there is
+; between two fetches, so no more than one of them is spoiled. Whether a
+; sample plays is asked before the first read and not after it: the fetch
+; that spoils a read may be the sample's last.
 session_read_pad:
+    LDA $4015
+    AND #$10                    ; a sample has bytes still to fetch
+    PHA
+    JSR session_read_port
+    PLA
+    BEQ @once
+    LDA net_temp
+    PHA
+    JSR session_read_port
+    PLA
+    CMP net_temp
+    BEQ @good
+    LDA net_pad
+@good:
+    STA net_pad
+    RTS
+@once:
+    LDA net_temp
+    STA net_pad
+    RTS
+
+
+
+; The controller into net_temp. OUT0 is low for the reads and no longer:
+; the nesp32 takes it for a byte of noise.
+session_read_port:
     LDX #$00
     STX JOY1
     LDY #$08
 @bit:
     LDA JOY1
     LSR
-    ROL net_pad
+    ROL net_temp
     DEY
     BNE @bit
     LDX #OUT0_MARK
     STX JOY1
-    LDA net_pad
     RTS
 
 
