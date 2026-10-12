@@ -190,8 +190,9 @@ isolating one thing:
 
 TUNER plays a radio station on the console ([NPR](../apps/npr)'s ROM): the
 fetch task decodes the station's MP3 as it arrives, which is the first
-thing this firmware does that is heavy and never stops. **It has not run
-on hardware.** With it the StickS3's image is 1.30 MB, 29 KB more than
+thing this firmware does that is heavy and never stops. **The decoding
+has been measured on a StickS3; the service and the ROM have not run
+there.** With it the StickS3's image is 1.30 MB, 29 KB more than
 before: 20 KB of that is the decoder. The fetch task's stack went from 12
 to 32 KB, since the decoder keeps 16 KB there while it works, and the
 ring of samples is 256 KB of PSRAM.
@@ -208,9 +209,20 @@ idf.py -B build-spike -p /dev/cu.usbmodemXXXX flash monitor
 Once the nesp32 has joined its network it fetches the station, decodes
 it, throws the samples away, and logs every ten seconds: how much sound
 came in how long, the share of a core the decoding took, the slowest
-piece, and what the fetch task's stack has left. The share should be well
-under 100%; the CPU is at its default 160 MHz
-(`CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240` would raise it).
+piece, and what the fetch task's stack has left.
+
+On a StickS3, over 70 seconds of NPR's stream (32 kHz, two channels, 96
+kbps), with the CPU at its default 160 MHz and the decoder's memory in
+PSRAM:
+
+| | |
+|---|---|
+| Decoding | 11.5% of a core: a second of sound in 115 ms |
+| The slowest piece of the stream (1 KB, two or three frames) | 15.3 ms |
+| The fetch task's stack | 14952 bytes of 32768 never used |
+| On connecting | 14 seconds of sound in the first 10: the station sends some four seconds at once |
+| Frames decoded, and bytes that were no frame's | 2074, and none |
+| Free memory | 113 KB internal, 8.3 MB of PSRAM |
 
 ## Two consoles
 

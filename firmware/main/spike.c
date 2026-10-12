@@ -112,23 +112,25 @@ void spike_poll(void)
     uint32_t bytes_now = bytes;
     uint64_t samples_now = samples;
     int64_t busy_now = busy_us;
-    /* In whole numbers: this firmware's printf has no floating point. */
+    /* In whole numbers of 32 bits: this firmware's printf has neither
+     * floating point nor long long. */
     int64_t wall_us = now - reported_at;
     int64_t audio_us = (int64_t)((samples_now - samples_then) * 1000000 / (uint64_t)rate);
     int64_t busy = busy_now - busy_then;
+    uint32_t core = (uint32_t)(busy * 1000 / wall_us);          /* tenths of a percent */
+    uint32_t share = audio_us > 0 ? (uint32_t)(busy * 1000 / audio_us) : 0;
     uint32_t cpu_hz = 0;
     esp_clk_tree_src_get_freq_hz(SOC_MOD_CLK_CPU, ESP_CLK_TREE_SRC_FREQ_PRECISION_CACHED, &cpu_hz);
-    ESP_LOGI(TAG, "%d Hz x%d, CPU at %" PRIu32 " MHz: in %lld ms, %" PRIu32 " bytes and %lld ms "
-             "of sound (%lld ms in all, in %lld ms); decoding took %lld.%lld%% of a core, "
-             "%lld.%lld%% of the sound's length; slowest piece %lld us; %" PRIu32 " frames, %"
+    ESP_LOGI(TAG, "%d Hz x%d, CPU at %" PRIu32 " MHz: in %" PRIu32 " ms, %" PRIu32
+             " bytes and %" PRIu32 " ms of sound (%" PRIu32 " ms in all, in %" PRIu32 " ms)",
+             rate, channels, cpu_hz / 1000000, (uint32_t)(wall_us / 1000),
+             bytes_now - bytes_then, (uint32_t)(audio_us / 1000),
+             (uint32_t)(samples_now * 1000 / (uint64_t)rate), (uint32_t)((now - began_at) / 1000));
+    ESP_LOGI(TAG, "decoding took %" PRIu32 ".%" PRIu32 "%% of a core, %" PRIu32 ".%" PRIu32
+             "%% of the sound's length; slowest piece %" PRIu32 " us; %" PRIu32 " frames, %"
              PRIu32 " bytes skipped; fetch stack left %" PRIu32,
-             rate, channels, cpu_hz / 1000000, (long long)(wall_us / 1000),
-             bytes_now - bytes_then, (long long)(audio_us / 1000),
-             (long long)(samples_now * 1000 / (uint64_t)rate), (long long)((now - began_at) / 1000),
-             (long long)(busy * 100 / wall_us), (long long)(busy * 1000 / wall_us % 10),
-             (long long)(audio_us > 0 ? busy * 100 / audio_us : 0),
-             (long long)(audio_us > 0 ? busy * 1000 / audio_us % 10 : 0),
-             (long long)slowest_us, mp3->frames, mp3->skipped, fetch_stack_left());
+             core / 10, core % 10, share / 10, share % 10, (uint32_t)slowest_us, mp3->frames,
+             mp3->skipped, fetch_stack_left());
     reported_at = now;
     bytes_then = bytes_now;
     samples_then = samples_now;

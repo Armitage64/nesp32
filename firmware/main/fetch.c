@@ -124,8 +124,9 @@ static void fetch(const order_t *order, uint32_t began)
         snprintf(why, sizeof(why), "THE SITE SAID %d", esp_http_client_get_status_code(client));
         failed(order, began, why);
     } else {
-        ESP_LOGI(TAG, "fetch %lu: answered in %lld ms", (unsigned long)order->id,
-                 (long long)((esp_timer_get_time() - started) / 1000));
+        /* In longs: this firmware's printf has no long long. */
+        ESP_LOGI(TAG, "fetch %lu: answered in %lu ms", (unsigned long)order->id,
+                 (unsigned long)((esp_timer_get_time() - started) / 1000));
         for (;;) {
             int count = esp_http_client_read(client, (char *)chunk, sizeof(chunk));
             if (!wanted(began)) {
@@ -152,8 +153,8 @@ static void fetch(const order_t *order, uint32_t began)
                 break;
             }
         }
-        ESP_LOGI(TAG, "fetch %lu: %u bytes in %lld ms", (unsigned long)order->id,
-                 (unsigned)total, (long long)((esp_timer_get_time() - started) / 1000));
+        ESP_LOGI(TAG, "fetch %lu: %u bytes in %lu ms", (unsigned long)order->id,
+                 (unsigned)total, (unsigned long)((esp_timer_get_time() - started) / 1000));
     }
     esp_http_client_close(client);
     esp_http_client_cleanup(client);

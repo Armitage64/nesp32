@@ -13,7 +13,8 @@ its TUNER service, in [nesp32's `docs/PROTOCOL.md`](../../docs/PROTOCOL.md).
 
 ## Status
 
-**Not yet run on hardware.** On a simulated console the ROM plays the
+**Not yet played on hardware**; only the nesp32's decoding has been
+measured there. On a simulated console the ROM plays the
 station from nesp32's own firmware code, over a line that models every
 bit: each sample the nesp32 sends reaches the DAC, once and in order.
 
@@ -21,7 +22,7 @@ bit: each sample the nesp32 sends reaches the DAC, once and in order.
 |---|---|
 | TUNER on the nesp32: the stream fetched, decoded (MP3), resampled and made into levels for the DAC | tested on a computer, with the test as the Internet. The StickS3's firmware builds with it |
 | The ROM (`build/npr.nes`) | tested on py65 against that code, over the simulated line |
-| A nesp32 decoding the stream as fast as it arrives | not measured: [nesp32's firmware](../../firmware/README.md), "The radio", has a build that does |
+| A nesp32 decoding the stream as fast as it arrives | measured on a StickS3, with no console: 11.5% of one core ([nesp32's firmware](../../firmware/README.md), "The radio") |
 | How it sounds | by `tools/npr_preview.py` only, which leaves out the console's analog side |
 
 ## Building
