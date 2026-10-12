@@ -57,7 +57,7 @@ BAR_ROWS = 8
 BAR_MAX = 8 * BAR_ROWS              # a bar's height in pixels
 BASELINE_ROW = BAR_ROW + BAR_ROWS
 HELP_ROW = 26
-HELP_LINK = "START=PLAY/PAUSE  </>=TRACK"
+HELP_LINK = "A=PLAY/PAUSE  </>=TRACK"
 HELP_STANDALONE = "START=PAUSE"
 
 # Indexed by ui_status in nes/ui.inc. Playing shows nothing: the clock

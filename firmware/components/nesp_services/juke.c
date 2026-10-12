@@ -30,6 +30,13 @@
  * (SOUND); the samples then go as a run of RAW's, and the music after them
  * begins a new epoch.
  *
+ * A console can leave a sound: button A of its controller, which is all of
+ * it that it looks at then. It says so on a line that is the run's, where
+ * nothing it sends can be read, so any NESP_JUKE_HEARD bytes heard in a
+ * run mean that. The run is ended, the music is paused, and the sound is
+ * due again, from as near as can be told to where the console stopped
+ * listening; it asks for it when the music is played again.
+ *
  * handle answers from `pending` and never reads a file. tick, which runs
  * after the reply has gone, reads ahead.
  */
@@ -66,6 +73,8 @@ enum {
 #define PCM_HEADER 8
 #define TITLE_FILE_MAX 255
 #define FRAMES_PER_SECOND 60
+#define MORE 0x80               /* in what the console holds of every sample but the last */
+#define RAMPS_PER_SECOND 50     /* a sound that was paused rises from the DAC's rest in 20 ms */
 
 /* The stream's records (nes-jukebox's docs/PROTOCOL.md, part 1). */
 #define OP_CONTROL 0x80
@@ -308,24 +317,60 @@ static void press(nesp_juke_t *juke, uint8_t buttons)
 
 /* --- a sound, as a run of RAW's ------------------------------------------------ */
 
+static uint8_t mirror(uint8_t byte)
+{
+    uint8_t out = 0;
+    for (int bit = 0; bit < 8; bit++) {
+        out = (uint8_t)(out << 1 | (byte >> bit & 1));
+    }
+    return out;
+}
+
+/* A sample on the wire, less loud. The console's receiver ends up with a
+ * byte's bits reversed and inverted, and with the $40 its port's unused
+ * bits read left in from its last two reads (the jukebox's tools/pcm.py). */
+static uint8_t quieter(uint8_t byte, uint32_t part, uint32_t whole)
+{
+    uint32_t level = (uint32_t)((mirror(byte) ^ 0x3F) & 0x7F) * part / whole;
+    return mirror((uint8_t)((level | MORE) ^ 0x3F));
+}
+
+/* Samples a second at the sound's rate: the nesp32 sends a byte as 11 bits. */
+static uint32_t sound_hz(const nesp_juke_t *juke)
+{
+    return (NESP_CPU_HZ + juke->sound_period / 2u) / juke->sound_period / NESP_TO_NES_BITS;
+}
+
 /* A file is already what goes on the wire, a byte a sample. A button on
- * the nesp32 ends it early; either way it ends with the byte that leaves
- * the console's DAC at 0. */
+ * the nesp32 ends it early, and so does a console that is heard, which is
+ * then not listening; either way it ends with the byte that leaves the
+ * console's DAC at 0. A sound that was paused begins again from the DAC's
+ * rest, where the console left it. */
 static size_t sound_read(void *ctx, uint8_t *out, size_t max)
 {
     nesp_juke_t *juke = ctx;
     const nesp_hal_t *hal = juke->hal;
+    if (juke->sound != S_PLAYING) {
+        juke->sound_from = juke->sound_at;
+        juke->sound_fresh = true;
+    }
     juke->sound = S_PLAYING;
     if (juke->sound_ended) {
         return 0;
     }
-    if (juke->sound_press == 0 && juke->sound_at < juke->sound_end) {
+    if (juke->sound_spoke >= NESP_JUKE_HEARD) {
+        juke->sound_hushed = true;
+    }
+    if (juke->sound_press == 0 && !juke->sound_hushed && juke->sound_at < juke->sound_end) {
         size_t want = juke->sound_end - juke->sound_at;
         if (want > max) {
             want = max;
         }
         size_t got = hal->track_read(hal->ctx, juke->index, juke->sound_at, out, want);
         if (got != 0) {
+            for (size_t index = 0; index < got && juke->sound_rise < juke->sound_ramp; index++) {
+                out[index] = quieter(out[index], juke->sound_rise++, juke->sound_ramp);
+            }
             juke->sound_at += (uint32_t)got;
             return got;
         }
@@ -333,6 +378,27 @@ static size_t sound_read(void *ctx, uint8_t *out, size_t max)
     juke->sound_ended = true;
     out[0] = NESP_JUKE_SOUND_LAST;
     return 1;
+}
+
+/* The console sent something while the sound had the line. */
+static void sound_heard(void *ctx, size_t len)
+{
+    nesp_juke_t *juke = ctx;
+    if (juke->sound_spoke == 0) {
+        juke->sound_spoke_ms = juke->now;
+    }
+    juke->sound_spoke += (uint32_t)len;
+}
+
+/* Where in its file a sound was when the console was first heard. What
+ * has been read is further on by all that the UART had not yet sent, so
+ * this goes by the clock: a byte a sample since the run's first. */
+static uint32_t hushed_at(const nesp_juke_t *juke)
+{
+    uint32_t played = (uint32_t)((uint64_t)(juke->sound_spoke_ms - juke->sound_began)
+                                 * sound_hz(juke) / 1000u);
+    uint32_t read = juke->sound_at - juke->sound_from;
+    return juke->sound_from + (played < read ? played : read);
 }
 
 static void sound_done(void *ctx, bool sent)
@@ -357,7 +423,15 @@ static void sound_done(void *ctx, bool sent)
     if (pressed & (NESP_PRESS_NEXT | NESP_PRESS_PREVIOUS)) {
         press(juke, pressed);
     } else if (pressed & NESP_PRESS_PLAY) {
-        stop(juke);             /* a sound cannot be paused: Play stops it */
+        stop(juke);             /* the nesp32's own button does not pause a sound: it stops it */
+    } else if (juke->sound_hushed && hushed_at(juke) < juke->sound_end) {
+        /* The console left it, and holds no more of the stream than it
+         * did: the sound is due again, from where it stopped listening. */
+        juke->sound_at = hushed_at(juke);
+        juke->sound_ramp = sound_hz(juke) / RAMPS_PER_SECOND;
+        juke->sound_rise = 0;
+        juke->sound = S_DUE;
+        juke->state = NESP_PLAYER_PAUSED;
     } else {
         /* The music after a sound starts from a full buffer, as a change
          * of track does. */
@@ -381,6 +455,7 @@ static bool open_track(nesp_juke_t *juke)
     juke->loop_at = track.loop_at;
     juke->passes_left = track.loop_at != 0 ? juke->loops : 1;
     juke->sound = S_NONE;
+    juke->sound_ramp = juke->sound_rise = 0;
     if (track.sound) {
         juke->sound_rate = track.rate;
         juke->sound_period = periods[track.rate];
@@ -493,6 +568,11 @@ static bool tick(void *ctx, uint32_t now)
 {
     nesp_juke_t *juke = ctx;
     bool soon = false;
+    juke->now = now;
+    if (juke->sound_fresh) {
+        juke->sound_fresh = false;
+        juke->sound_began = now;    /* RAW's tick, which sent them, was this one */
+    }
     if (juke->state == NESP_PLAYER_PLAYING) {
         soon = fill(juke);
     } else if (juke->state != NESP_PLAYER_NO_TRACKS && juke->named != juke->index) {
@@ -596,6 +676,9 @@ static void sound(nesp_juke_t *juke, const nesp_request_t *request, nesp_reply_t
             juke->run.ctx = juke;
             juke->run.read = sound_read;
             juke->run.done = sound_done;
+            juke->run.heard = sound_heard;
+            juke->sound_ended = juke->sound_hushed = false;
+            juke->sound_spoke = 0;
             if (request->data[1] == juke->sound_rate
                 && nesp_raw_arm(juke->raw, juke->sound_period, &juke->run)) {
                 juke->sound = S_ARMED;

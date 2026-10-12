@@ -4,8 +4,9 @@
     tools/gen_pcm.py build/pcm_rates.inc
 
 For every rate in pcm.PERIODS this writes a routine that receives bytes and
-writes each to $4011 as it arrives, until one comes without bit 7. Every
-read of $4017 is on its exact cycle. Each routine starts on its own page
+writes each to $4011 as it arrives, until one comes without bit 7, or
+until button A of controller 1 is down. Every read of $4017 is on its exact
+cycle. Each routine starts on its own page
 and must end on it, so no branch pays the page-crossing cycle;
 tests/test_sound.py measures them all on py65.
 
@@ -26,6 +27,20 @@ the last data bit is over, or a 0 there is taken for a start bit.
 From 13 cycles a bit up the padding is long enough to need a loop, which
 counts in Y. The hunt then compares with A, and since a byte's code is
 longer than a branch reaches, its ways out are jumps.
+
+Button A is looked at once a byte, in the stop bits. The line to the nesp32
+is OUT0, which is at rest for as long as a sound plays, and at rest it
+keeps the controller loading its buttons: a read of $4016 then gives A as
+it is now, as PORT_START if it is down, with nothing put on the line. The
+look is cpy $4016 / beq, 6 cycles, and Y has PORT_START already where the
+hunt compares with it. That is 3 cycles more than the padding it took the
+place of in the three fastest routines, whose hunt begins that much later,
+still before the next start bit can fall; the others had the room. A
+routine left this way returns with carry set and the last byte in A, and
+pcm_hush is what its caller does next: it tells the nesp32, which is still
+sending, and waits for it to stop. The other buttons are behind the
+controller's shift register, which is clocked only with OUT0 held low, and
+are not read.
 """
 
 import os
@@ -41,6 +56,7 @@ MEAN_EDGE = 3.1         # cycles from the start edge to the look that sees it
 HUNT_TO_CODE = 6        # from that look to the byte's code
 ROOMY_HUNT_TO_CODE = 9  # where the ways out are jumps
 WRITE = 9               # sta abs, bpl not taken, and 3 of padding
+LOOK = 6                # cpy abs, beq not taken: button A
 ROOMY_TAIL = 15         # from the last sample to the hunt's first look, at least
 
 # Ways to pass time: (cycles, bytes, lines). pha / pla puts A back.
@@ -96,8 +112,16 @@ def stream_routine(name, period):
     # sample left.
     lines += ["    sta APU_DMC_LEVEL   ; the sample; bit 7 is not the DAC's",
               "    bpl @done           ; and clear in the last byte"]
-    lines += delay(WRITE - 6 + rest)
+    # Button A. The fast routines have 3 cycles of padding to give it and
+    # no more; the others give it what it takes, or a cycle less where
+    # that would leave one, which cannot be passed.
     if roomy:
+        spare = WRITE - 6 + rest - LOOK - 2
+        lines.append("    ldy #PORT_START")
+    lines += ["    cpy JOY1            ; button A, with the line at rest",
+              "    beq @pressed"]
+    if roomy:
+        lines += delay(2 if spare == 1 else spare)
         lines += ["@arm:", "    lda #PORT_START"]
     lines.append("@hunt:")
     lines += ["    %s JOY2" % compare, "    beq @found"] * 3
@@ -105,9 +129,72 @@ def stream_routine(name, period):
     if roomy:
         lines += ["    bit $00         ; evens out the two ways out", "    jmp @byte",
                   "@found:", "    nop"]
-    lines += ["    jmp @byte", "@done:", "    rts",
+    lines += ["    jmp @byte", "@done:", "    clc", "    rts", "@pressed:", "    sec", "    rts",
               '    .assert >(%s) = >(* - 1), error, "%s crosses a page"' % (name, name)]
     return lines
+
+
+# A look is 13 cycles, and 256 of them a pass.
+HUSH = """
+; A routine above came back with carry set: button A is down, and the
+; nesp32 is still sending. A = the byte the DAC was last given.
+;
+; The nesp32 is told with NESP_SOUND_SAY bytes at the link's rate, which
+; its UART, at the sound's rate, hears as that many of some kind; any bytes
+; at all from a console in the middle of a sound mean that it has stopped
+; listening. Then the DAC is brought to its rest, over some 20 ms, and the
+; line is watched until it has been quiet for NESP_RAW_REST_MS: what the
+; nesp32 had already given its UART goes by unheard. If it is still sending
+; after half a second or so it is told again. Uses nesp_count and
+; nesp_index, which no exchange is using, and destroys A, X and Y.
+HUSH_PASSES = NESP_RAW_REST_MS * (NESP_CPU_HZ / 1000) / (13 * 256) + 1
+HUSH_PATIENCE = 100
+.proc pcm_hush
+    and #$7F
+    sta nesp_index              ; the DAC's level
+@say:
+    ldx #NESP_SOUND_SAY
+@word:
+    lda #$FF                    ; a start bit and nothing more: one byte heard
+    jsr nesp_tx_byte            ; for each, at any rate. Preserves X
+    dex
+    bne @word
+@fall:
+    lda nesp_index
+    beq @down
+    dec nesp_index
+    lda nesp_index
+    sta APU_DMC_LEVEL
+    ldy #50
+:   dey
+    bne :-
+    beq @fall
+@down:
+    lda #HUSH_PATIENCE
+    sta nesp_index
+    lda #0
+    sta nesp_count
+@listen:
+    ldx #HUSH_PASSES
+    ldy #0
+@look:
+    lda JOY2
+    cmp #PORT_IDLE
+    bne @busy
+    dey
+    bne @look
+    dex
+    bne @look
+    rts
+@busy:
+    dec nesp_count
+    bne @listen
+    dec nesp_index
+    bne @listen
+    beq @say
+.endproc
+.assert HUSH_PASSES < 256, error, "the passes are counted in X"
+"""
 
 
 def include():
@@ -119,6 +206,7 @@ def include():
     names = ["pcm_stream_%d" % index for index in range(len(pcm.PERIODS))]
     for name, period in zip(names, pcm.PERIODS):
         lines += stream_routine(name, period)
+    lines += HUSH.splitlines()
     lines += ["", '.segment "RODATA"',
               "pcm_stream_lo: .byte " + ", ".join("<" + name for name in names),
               "pcm_stream_hi: .byte " + ", ".join(">" + name for name in names)]

@@ -37,9 +37,10 @@ STATUS_COLUMN = (gen_ui.SCREEN_COLUMNS - STATUS_WIDTH) // 2
 # nesp32's own words.
 STATUS_TEXT = (("WAITING", "WAITING FOR LINK"), ("OFF", "PRESS START"),
                ("NO_WIFI", "NO WI-FI"), ("TUNING", "TUNING"), ("ON_AIR", "ON THE AIR"),
+               ("PAUSED", "PAUSED"),
                ("OLD", "UPDATE NESP32"))
 HELP_ROW = 23
-HELP = ("START: PLAY", "TO STOP: THE NESP32'S BUTTON")
+HELP = ("START: PLAY   A: PAUSE", "TO STOP: THE NESP32'S BUTTON")
 
 
 def build_screen():

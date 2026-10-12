@@ -10,10 +10,14 @@
  * a byte a sample, for as long as the station is wanted. That is JUKE's
  * sampled sound with no file behind it and no end.
  *
- * The console is deaf while a sound plays, so the way to stop one is the
- * nesp32's front button. A console that is reset says hello, at the
- * link's rate, into a line that is the run's: RAW tells of anything heard
- * during a run, and a few bytes of it end the station.
+ * The console looks at nothing but button A of its controller while a
+ * sound plays, and that pauses: it leaves the sound and says so, into a
+ * line that is the run's, where nothing it sends can be read. RAW tells of
+ * anything heard during a run, and a few bytes of it end the run and pause
+ * the station: it is fetched still, the ring losing its oldest as it
+ * fills, and PLAY has it ready again at once. A console that is reset
+ * says hello into the run in the same way, and then again when the run is
+ * over, which turns the station off. The nesp32's front button stops it.
  *
  * Nothing keeps the station's clock and the console's together. The ring
  * is the slack: when the station runs ahead and the ring fills, its oldest
@@ -422,6 +426,7 @@ static size_t run_read(void *ctx, uint8_t *out, size_t max)
     size_t count = 0;
     if (spoken) {
         tuner->fall = RAMP_SAMPLES; /* nobody is listening */
+        tuner->hushed = !tuner->press && !tuner->lost;
     }
     while (count < max && tuner->fall < RAMP_SAMPLES) {
         tuner->fall++;
@@ -458,6 +463,8 @@ static void run_done(void *ctx, bool sent)
         memcpy(why, tuner->landed_why, sizeof(why));
         unlock(tuner);
         fail(tuner, why);
+    } else if (tuner->hushed) {
+        tuner->state = NESP_TUNER_PAUSED;
     } else {
         stop(tuner);
     }
@@ -478,7 +485,8 @@ static void run_heard(void *ctx, size_t len)
 static void settle(nesp_tuner_t *tuner)
 {
     if (tuner->sound != S_NONE
-        || (tuner->state != NESP_TUNER_TUNING && tuner->state != NESP_TUNER_READY)) {
+        || (tuner->state != NESP_TUNER_TUNING && tuner->state != NESP_TUNER_READY
+            && tuner->state != NESP_TUNER_PAUSED)) {
         return;
     }
     char why[sizeof(tuner->why)];
@@ -521,7 +529,7 @@ static void sound(nesp_tuner_t *tuner, const nesp_request_t *request, nesp_reply
             tuner->run.read = run_read;
             tuner->run.done = run_done;
             tuner->run.heard = run_heard;
-            tuner->ended = tuner->lost = tuner->holding = false;
+            tuner->ended = tuner->lost = tuner->holding = tuner->hushed = false;
             tuner->last = 0;
             tuner->rise = tuner->fall = 0;
             tuner->spoke = tuner->sent = 0;
@@ -546,7 +554,10 @@ static void handle(void *ctx, const nesp_request_t *request, nesp_reply_t *reply
     settle(tuner);
     switch (request->op) {
     case NESP_TUNER_PLAY:
-        if (tuner->state != NESP_TUNER_TUNING && tuner->state != NESP_TUNER_READY) {
+        if (tuner->state == NESP_TUNER_PAUSED) {
+            tuner->state = NESP_TUNER_READY;    /* what the ring holds, from where it is */
+            tuner->show = true;
+        } else if (tuner->state != NESP_TUNER_TUNING && tuner->state != NESP_TUNER_READY) {
             play(tuner);
         }
         break;
@@ -601,10 +612,10 @@ static void show(nesp_tuner_t *tuner, uint32_t now)
         snprintf(text, sizeof(text), "ON THE AIR %us dry %u cut %u", (unsigned)(held / RATE),
                  (unsigned)tuner->dry, (unsigned)(dropped / DROP_SAMPLES));
     } else {
-        static const char *const states[] = {"OFF", "NO WI-FI", "TUNING", "READY"};
+        static const char *const states[] = {"OFF", "NO WI-FI", "TUNING", "READY", NULL, "PAUSED"};
         snprintf(text, sizeof(text), "%s",
-                 tuner->state < sizeof(states) / sizeof(states[0]) ? states[tuner->state]
-                                                                   : tuner->why);
+                 tuner->state < sizeof(states) / sizeof(states[0]) && states[tuner->state] != NULL
+                     ? states[tuner->state] : tuner->why);
     }
     tuner->hal->show(tuner->hal->ctx, 0, STATION_NAME);
     tuner->hal->show(tuner->hal->ctx, 1, text);
@@ -629,7 +640,8 @@ static bool event(void *ctx, uint8_t code, uint8_t arg)
     }
     if (tuner->sound != S_NONE) {
         tuner->press = true;
-    } else if (tuner->state == NESP_TUNER_TUNING || tuner->state == NESP_TUNER_READY) {
+    } else if (tuner->state == NESP_TUNER_TUNING || tuner->state == NESP_TUNER_READY
+               || tuner->state == NESP_TUNER_PAUSED) {
         stop(tuner);
     } else {
         play(tuner);

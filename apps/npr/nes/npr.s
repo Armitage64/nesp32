@@ -14,16 +14,19 @@
 ;
 ;   SYS HELLO       until the nesp32 has answered it, and again whenever it
 ;                   says the service is not in use
-;   TUNER PLAY      Start or A was pressed, and nothing is being fetched;
+;   TUNER PLAY      Start or A was pressed, and nothing is being fetched,
+;                   or the station is paused;
 ;   TUNER STOP      or something is. Sent again until it is answered
-;   TUNER SOUND     the station is ready, and the screen says so
+;   TUNER SOUND     the station is ready, the screen says so, and A is up
 ;   TUNER STATE     otherwise: how it stands, for the status line
 ;
 ; When SOUND is answered with GO the console does nothing but receive: the
-; NMI is off, the screen stands still, and the controller is not read. It
-; cannot be told to stop from here. The button on the nesp32 ends the
-; sound, with a byte that says it was the last; so does a stream that is
-; lost. Then the NMI goes back on and STATE says what happened.
+; NMI is off, the screen stands still, and of the controller only button A
+; is looked at, which pauses: the console leaves the sound and tells the
+; nesp32 so (pcm_hush, with the sound's routines), which holds the station
+; where it is until PLAY. The button on the nesp32 ends the sound, with a
+; byte that says it was the last; so does a stream that is lost. Then the
+; NMI goes back on and STATE says what happened.
 ;
 ; The NMI reads the controller and draws the status line when it has
 ; changed, and nothing else: the exchange's request goes out at a fixed
@@ -296,6 +299,9 @@ main_wait:
     bne @state
     lda status_dirty            ; the screen will not be drawn again until the
     bne @idle                   ; sound is over: it says so first
+    lda pad                     ; A still down would end the sound as it began
+    and #PAD_A
+    bne @state
     jmp ask_sound
 @state:
     lda #NESP_SVC_TUNER
@@ -411,7 +417,13 @@ main_wait:
     lda nesp_reply
     cmp #NESP_TUNER_FAILED
     beq @failed
-    bcs @done                   ; a state this ROM has not heard of
+    bcc @plain
+    cmp #NESP_TUNER_PAUSED
+    bne @done                   ; a state this ROM has not heard of
+    sta tuner
+    lda #STATUS_PAUSED
+    jmp set_status
+@plain:
     sta tuner
     tax
     lda state_status,x
@@ -500,6 +512,10 @@ main_wait:
 ; both. An NMI would take cycles from the receiver, so it is off until the
 ; sound is over, and with it the controller's read: the line is silent,
 ; which is how the nesp32 knows that the console heard.
+;
+; The routine comes back with carry set if it was left because button A is
+; down. The nesp32 is told (pcm_hush), and pauses the station. The press
+; was this, and is not to be taken for another by the NMI's next read.
 .proc sound_go
     lda #0
     sta PPUCTRL
@@ -507,9 +523,17 @@ main_wait:
     inc sounds
     ldx #SOUND_SETTLE
     jsr wait_units
-    jsr pcm_stream_5            ; until a byte that says it is the last
+    jsr pcm_stream_5            ; until a byte that says it is the last, or A
+    bcc @ended
+    jsr pcm_hush
+    lda pad_prev
+    ora #PAD_A
+    sta pad_prev
+    bne @back
+@ended:
     ldx #SOUND_REST
     jsr wait_units
+@back:
     bit PPUSTATUS               ; a vblank that came and went is not an NMI now
     lda #PPUCTRL_NMI
     sta PPUCTRL

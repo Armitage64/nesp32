@@ -22,7 +22,7 @@ import wav2pcm  # noqa: E402
 
 TUNER, RAW = p.NESP_SVC_TUNER, p.NESP_SVC_RAW
 OFF, NO_WIFI, TUNING = p.NESP_TUNER_OFF, p.NESP_TUNER_NO_WIFI, p.NESP_TUNER_TUNING
-READY, FAILED = p.NESP_TUNER_READY, p.NESP_TUNER_FAILED
+READY, FAILED, PAUSED = p.NESP_TUNER_READY, p.NESP_TUNER_FAILED, p.NESP_TUNER_PAUSED
 WAIT, GO, GONE = p.NESP_SOUND_WAIT, p.NESP_SOUND_GO, p.NESP_SOUND_GONE
 PERIOD = p.NESP_TUNER_PERIOD
 RATE = pcm.sample_rate(PERIOD)              # samples a second on the wire
@@ -379,14 +379,59 @@ def test_the_button_starts_and_stops_the_station(radio):
     assert bytes(reply.payload)[:1] == bytes((p.NESP_EVENT_BUTTON_B,))
 
 
-def test_a_console_heard_during_the_sound_ends_it(radio):
-    """A console that was reset says hello into a line that is the run's."""
+def test_a_console_heard_during_the_sound_pauses_the_station(radio):
+    """A console that left the sound for a press of its button A says so,
+    at the link's rate, into a line that is the run's."""
     radio.on_air()
     radio.wait(200)
-    assert radio.stick.feed(b"\xf8\xe0\xf8\x80\xfe") == b""     # a hello, at the wrong rate
+    assert radio.stick.feed(b"\xfc" * p.NESP_SOUND_SAY) == b""
     sent = radio.hear(100)
     assert sent[-1] == LAST and len(sent) < 300         # no ramp: nobody is listening
     assert radio.stick.line.rates == [PERIOD, p.NESP_PERIOD]
+    assert radio.state() == PAUSED and radio.stick.fetching and radio.stick.fetches == 1
+    held = radio.stick.tuner_held
+    assert held > RATE
+    # It is fetched still, and the sound is not to be had until PLAY.
+    assert radio.air(TONE[:len(TONE) // 4])
+    assert radio.stick.tuner_held > held and radio.state() == PAUSED
+    assert radio.sound() == GONE
+    assert radio.play() == READY and radio.stick.fetches == 1
+    assert radio.sound() == GO
+    again = radio.hear(p.NESP_RAW_START_MS + 300)
+    assert LAST not in again and len(again) > 0.25 * RATE
+    assert levels(again[:1]) == [0]                     # from the DAC's rest, as the first time
+
+
+def test_stop_and_the_button_turn_a_paused_station_off(radio):
+    for off in (radio.stop, lambda: radio.stick.event(p.NESP_EVENT_BUTTON_A)):
+        radio.on_air()
+        radio.stick.feed(b"\xfc" * p.NESP_SOUND_SAY)
+        radio.wait(100)
+        assert radio.state() == PAUSED
+        off()
+        assert radio.state() == OFF and not radio.stick.fetching
+        assert radio.stick.tuner_held == 0
+
+
+def test_a_station_lost_while_it_is_paused_fails(radio):
+    radio.on_air()
+    radio.stick.feed(b"\xfc" * p.NESP_SOUND_SAY)
+    radio.wait(100)
+    assert radio.state() == PAUSED
+    radio.stick.fetch_done(False, b"THE CONNECTION DROPPED")
+    radio.wait()
+    assert radio.why() == (FAILED, b"THE CONNECTION DROPPED")
+
+
+def test_a_console_that_was_reset_in_the_sound_turns_the_station_off(radio):
+    """Its hello, at the wrong rate, pauses; said again when the line is
+    the link's, it starts the service from nothing."""
+    radio.on_air()
+    radio.wait(200)
+    assert radio.stick.feed(b"\xf8\xe0\xf8\x80\xfe") == b""
+    radio.wait(100)
+    assert radio.stick.line.rates == [PERIOD, p.NESP_PERIOD]
+    assert radio.stick.hello(app=b"NPR ", services=(RAW, TUNER)).ok
     assert radio.state() == OFF and not radio.stick.fetching
 
 

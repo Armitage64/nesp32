@@ -86,7 +86,7 @@ Controller 1:
 
 | Button | Link ROM | Standalone ROM |
 |---|---|---|
-| **Start** or **A** | pause, resume; from stopped, play the current track from its start | pause, resume |
+| **Start** or **A** | pause, resume; from stopped, play the current track from its start. During sampled sound only **A** is looked at, and pauses | pause, resume |
 | **Right** | next track, and play it | |
 | **Left** | previous track, and play it | |
 
@@ -237,36 +237,37 @@ rate is 610 KB of the nesp32's 3968: `--seconds` on the converters keeps a
 clip short.
 
 While a sound plays the console does nothing else: its screen stands still,
-with the bars down and the clock at 0:00, and its controller is not read.
+with the bars down and the clock at 0:00, and of its controller only
+button A is looked at. **A pauses the sound**: the console leaves it, the
+clock flashes as it does when music is paused, and the whole controller
+works again, so Left and Right change the track from there. Start or A
+plays the sound on from where it was left, to within a few hundredths of
+a second. This is tested on the simulated console at all six rates, and
+**has not been tried on hardware**: every sample of the three fastest
+rates is looked for 3 CPU cycles later than it was, which wants hearing.
+
 A button on the nesp32 ends the sound and then does what it always does,
-except that A stops: a sound cannot be paused, and A again plays it from
-its start. See [`docs/PROTOCOL.md`](docs/PROTOCOL.md), part 4.
+except that A stops: the nesp32's own button does not pause a sound, and
+A again plays it from its start. See [`docs/PROTOCOL.md`](docs/PROTOCOL.md),
+part 4.
 
 A NES left in the middle of a sound (the nesp32 lost its power) waits for
 the rest. Starting the nesp32 again frees it; so does Reset.
 
 ## Not done
 
-- **The controller during a sound.** The console is deaf to it while a
-  sound plays; only the nesp32's own buttons end one. Two ways to change
-  that, neither begun:
-  1. *A stops the sound.* With the line to the nesp32 at rest the
-     controller keeps loading its buttons, and a plain read of `$4016`
-     gives A as it is now: about 8 cycles a sample, and nothing on the
-     line. The console then leaves the sound and pulls its line low, which
-     it never does during a run otherwise, and the nesp32 takes anything
-     it hears in the middle of one for "stop" (a small change to nesp32's
-     RAW and JUKE). The controller works as always from there, so Left
-     and Right are one more press away. Whether 8 cycles fit at 10 and at
-     8 cycles a bit has not been worked out.
-  2. *Every button.* Start, Left and Right are behind the controller's
-     shift register, which is clocked only with that same line held low.
-     The console would hold it low across eight samples and read a button
-     with each, over and over: some 11 cycles a sample, the sound routines
-     written again, and another way to say "stop", since the line would
-     never be quiet. It probably does not fit at the fastest rate or two.
-  Either moves every sample by a few cycles, and wants hearing again on a
-  console.
+- **The rest of the controller during a sound.** Only A is looked at,
+  which pauses; Start, Left and Right work once it has. They are behind
+  the controller's shift register, which is clocked only with the line to
+  the nesp32 held low. A console could hold it low across eight samples
+  and read a button in the stop bits of each, over and over, at the same 3
+  cycles a sample that A costs; the line would then never be quiet, and
+  the nesp32 would have to take the pulses stopping, not starting, for a
+  console that has left. At 14 CPU cycles a bit and slower there looks to
+  be room to read all eight inside one sample. Neither is begun, and
+  neither has been worked out further than on paper.
+- A sound paused and played again on hardware, and the sound's new timing
+  heard there.
 - A real NES, the StickC Plus2 and a long run with nesp32's firmware, and
   sound at the five slower rates.
 - The throughput test ([`../throughput/`](../throughput)) on a real NES with nesp32's

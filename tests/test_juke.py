@@ -543,7 +543,7 @@ def test_a_request_for_the_stream_in_the_wait_leaves_the_sound_due(tape):
 
 
 @pytest.mark.parametrize("button, state, track", [
-    (p.NESP_EVENT_BUTTON_A, STOPPED, 1),        # a sound cannot be paused
+    (p.NESP_EVENT_BUTTON_A, STOPPED, 1),        # the nesp32's button does not pause one
     (p.NESP_EVENT_BUTTON_B, PLAYING, 0),
     (p.NESP_EVENT_BUTTON_POWER, PLAYING, 2),
 ])
@@ -569,6 +569,97 @@ def test_a_button_on_the_stick_ends_a_sound_early(tape, button, state, track):
         line.room = None
         assert tape.sound(1) == GO
         assert tape.hear() == SAMPLES + LAST
+
+
+def sample_levels(sent):
+    """What the console's DAC makes of bytes on the wire."""
+    return [(int("{:08b}".format(byte)[::-1], 2) ^ 0x3F) & 0x7F for byte in sent]
+
+
+def hush(tape, after=30):
+    """A console takes GO, plays this many ms of the sound, and says that
+    it has left it. Returns what the nesp32 sent."""
+    line = tape.stick.line
+    line.room = 10                              # about what leaves in a millisecond
+    assert tape.sound(1) == GO
+    line.sent.clear()
+    tape.wait(p.NESP_RAW_START_MS + after)
+    assert tape.stick.feed(b"\xfc" * p.NESP_SOUND_SAY) == b""
+    tape.wait(40)
+    line.room = None
+    return bytes(line.sent)
+
+
+def test_a_console_heard_during_a_sound_pauses_it_where_it_was(tape):
+    """A console that left the sound for a press of its button A says so,
+    at the link's rate, into a line that is the run's."""
+    flushes = tape.flushes
+    sent = hush(tape)
+    # It stops at a sample, with the byte that leaves the DAC at 0.
+    assert sent[-1:] == LAST and SAMPLES.startswith(sent[:-1]) and len(sent) < len(SAMPLES)
+    assert tape.stick.line.rates == [16, p.NESP_PERIOD]
+    # Paused, in the same epoch, with the sound still due.
+    assert tape.ask() == b"" and tape.state == PAUSED and tape.flushes == flushes
+    assert tape.sound(1) == p.NESP_SOUND_WAIT and tape.stick.juke_index == 1
+    assert tape.press(PLAY) == PLAYING
+    assert tape.ask() == b"" and tape.drained and tape.flushes == flushes
+    assert tape.sound(1) == GO
+    rest = tape.hear()
+    # From where it was when the console was heard, 30 ms in at ten samples
+    # a millisecond, and not from where the UART had got to; and from the
+    # DAC's rest, over 20 ms.
+    at = len(SAMPLES) + 1 - len(rest)
+    assert abs(at - 305) <= 20 and at < len(sent) - 1
+    ramp = 10169 // 50
+    assert rest[ramp:] == SAMPLES[at + ramp:] + LAST
+    rise, whole = sample_levels(rest[:ramp]), sample_levels(SAMPLES[at:at + ramp])
+    assert rise[0] == 0 and all(got <= level for got, level in zip(rise, whole))
+    assert rise[-1] >= whole[-1] - 1
+    # And then the music after it, in a new epoch.
+    tape.ask()
+    assert tape.state == PLAYING and tape.stick.juke_index == 2 and tape.flushes == flushes + 1
+
+
+def test_a_sound_paused_twice_goes_on_from_the_second_place(tape):
+    hush(tape, after=10)
+    tape.press(PLAY)
+    again = hush(tape, after=10)
+    assert again[-1:] == LAST
+    tape.press(PLAY)
+    assert tape.sound(1) == GO
+    rest = tape.hear()
+    at = len(SAMPLES) + 1 - len(rest)
+    assert abs(at - 2 * 102) <= 30 and rest[-100:] == SAMPLES[-99:] + LAST
+
+
+@pytest.mark.parametrize("button, track", [(NEXT, 2), (PREVIOUS, 0)])
+def test_the_track_can_be_changed_while_a_sound_is_paused(tape, button, track):
+    flushes = tape.flushes
+    hush(tape)
+    assert tape.press(button) == PLAYING and tape.stick.juke_index == track
+    assert tape.sound(1) == GONE                # asked for from before the jump
+    tape.ask()
+    assert tape.flushes == flushes + 1 and tape.stick.line.rates == [16, p.NESP_PERIOD]
+
+
+def test_a_sound_changed_away_from_and_back_to_plays_from_its_start(tape):
+    hush(tape)
+    tape.press(NEXT)
+    tape.press(PREVIOUS)
+    assert tape.pull(len(NOISE_STREAM)) == NOISE_STREAM
+    assert tape.sound(1) == GO
+    assert tape.hear() == SAMPLES + LAST
+
+
+def test_a_stray_byte_during_a_sound_does_not_pause_it(tape):
+    assert tape.sound(1) == GO
+    tape.stick.line.sent.clear()
+    tape.wait(p.NESP_RAW_START_MS)
+    tape.stick.feed(b"\x00\x00\x00")
+    tape.wait(100)
+    assert bytes(tape.stick.line.sent) == SAMPLES + LAST
+    tape.ask()
+    assert tape.state == PLAYING and tape.stick.juke_index == 2
 
 
 def test_a_button_on_the_stick_in_the_wait_is_kept_for_the_sound(tape):

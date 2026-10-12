@@ -35,6 +35,12 @@
 ; a rate several times the link's own, until a byte marked as the last.
 ; Then the NMI goes back on and the link carries on where it was.
 ;
+; Button A is all of the controller that is looked at during a sound, and
+; it pauses: the console leaves the sound, tells the nesp32 so, and is back
+; with the NMI on and the whole controller read. The sound is still wanted,
+; and the nesp32 says the music is paused, so the stream is asked for until
+; it says otherwise; then the sound is, and goes on from where it was left.
+;
 ; The nesp32 knows this ROM by its hello, which goes out before anything
 ; else and again whenever the nesp32 says it has no such service in use: it
 ; was switched off and on, and has forgotten the hello.
@@ -149,6 +155,11 @@ link_failed: .res 2             ; every exchange with none, for a debugger's wat
 @no_button:
     lda sound_wanted
     beq @music
+    lda paused                  ; held: the stream's reply says when it is not
+    bne @music
+    lda pad                     ; A still down would end the sound as it began
+    and #PAD_A
+    bne @music
     jmp ask_sound
 @music:
     jmp ask_stream
@@ -435,6 +446,11 @@ link_failed: .res 2             ; every exchange with none, for a debugger's wat
 ; NMI would take cycles from the receiver, so it is off until the sound is
 ; over, and with it the controller's read: the line is silent, which is how
 ; the nesp32 knows that the console heard.
+;
+; A routine that comes back with carry set was left because button A is
+; down. The nesp32 is told (pcm_hush), and pauses; the sound is still
+; wanted, for when it is played again. The press was this, and is not to
+; be taken for another by the NMI's next read.
 .proc sound_go
     ldx sound_wanted
     dex
@@ -443,7 +459,6 @@ link_failed: .res 2             ; every exchange with none, for a debugger's wat
     lda #0
     sta PPUCTRL
     sta APU_STATUS
-    sta sound_wanted
     lda pcm_stream_lo,x
     sta sound_vector
     lda pcm_stream_hi,x
@@ -451,8 +466,18 @@ link_failed: .res 2             ; every exchange with none, for a debugger's wat
     ldx #SOUND_SETTLE
     jsr wait_units
     jsr @play
+    bcc @ended
+    jsr pcm_hush
+    lda pad_prev
+    ora #PAD_A
+    sta pad_prev
+    bne @back
+@ended:
+    lda #0
+    sta sound_wanted
     ldx #SOUND_REST
     jsr wait_units
+@back:
     bit PPUSTATUS               ; a vblank that came and went is not an NMI now
     lda #PPUCTRL_NMI
     sta PPUCTRL

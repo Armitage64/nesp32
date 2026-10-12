@@ -49,13 +49,22 @@ screen calls the program `NPR`.
 | | |
 |---|---|
 | **Start** or **A** on the controller | tune in: `TUNING`, and a second or two later `ON THE AIR`. Pressed again while it is tuning, give it up |
-| **A** (front) on the nesp32 | the same; and while the station plays, turn it off |
+| **A** on the controller, while the station plays | pause: `PAUSED`. Start or A plays it again, at once |
+| **A** (front) on the nesp32 | tune in; and while the station plays or is paused, turn it off |
 
-**While the station plays, only the nesp32's button stops it.** A console
-playing sampled sound does nothing else: its screen stands still and its
-controller is not read (the jukebox's README, "Not done", has two ways
-that might change). Reset works too: the nesp32 hears the console say
-hello and ends the sound.
+**While the station plays, A on the controller pauses it and the nesp32's
+button stops it.** A console playing sampled sound does nothing else: its
+screen stands still, and of its controller it looks at button A alone,
+once a sample (the jukebox's `docs/PROTOCOL.md`, part 4, has how). Start
+is not seen until the station is paused. Reset works too: the nesp32
+hears the console say hello and ends the sound.
+
+A paused station is fetched still, so that it plays again without tuning:
+the nesp32 holds its last twelve seconds, and goes on from the oldest of
+them. Paused for longer than that, it has skipped what fell between.
+Pausing is tested on the simulated console and **has not been tried on
+hardware**: each sample is looked for 3 CPU cycles later than it was when
+the station was heard there.
 
 The status line says what is wrong when something is: `WAITING FOR LINK`
 when nothing answers, `UPDATE NESP32` when the firmware there has no TUNER,
@@ -86,7 +95,8 @@ console's filters are not in it.
 
 - A long run, a real NES, and the StickC Plus2.
 - More than one station, and a station's name or programme on the screen.
-- The controller during the sound.
+- Pausing, and the sound's new timing, on hardware.
+- Start during the sound: only A is looked at.
 - Loudness. A sample goes to the DAC at the level the station sent it, and
   speech uses about a third of the DAC's range; a gain that followed the
   programme would use more of the 7 bits.

@@ -219,6 +219,7 @@ NO_WIFI = 1
 TUNING = 2              # its stream is being fetched, and not enough has come to play
 READY = 3               # enough has: ask for the sound
 FAILED = 4              # the stream could not be had, or was lost; the reply says how
+PAUSED = 5              # the console left the sound: held, and fetched still, until PLAY
 
 [enums.LOBBY]           # PEER: how it stands with the other nesp32
 NO_WIFI = 0             # this one is not on a network
@@ -279,11 +280,13 @@ JUKE_TITLE_MAX = 28     # characters in a name on the console's screen
 JUKE_SOUND_RATES = 6    # the rates a sound may have: 21, 16, 14, 12, 10 and 8 cycles a bit
 JUKE_SOUND_REFUSED = 0xFF   # JUKE SOUND's rate from a console that cannot play it
 JUKE_SOUND_LAST = 0xFC  # the byte that ends a sound and leaves the console's DAC at 0
+JUKE_HEARD = 4          # bytes from the console during a sound that pause it
+SOUND_SAY = 8           # bytes a console sends, at the link's rate, to say it has left a sound
 TUNER_RATE = 5          # the rate a station is sent at, as JUKE's sounds count them: 8 cycles a bit
 TUNER_PERIOD = 8        # which is 20338 samples a second
 TUNER_TEXT_MAX = 28     # characters in why a station failed, for the console's screen
 TUNER_READY_MS = 2000   # this much of a station is held before it is offered
-TUNER_HEARD = 4         # bytes from the console during a station's sound that end it
+TUNER_HEARD = 4         # bytes from the console during a station's sound that pause it
 RADAR_TARGETS_MAX = 8   # aircraft in a scene, the nearest first
 RADAR_MOTION_LEN = 9    # bytes of one in a scene
 RADAR_NAMES_LEN = 25    # and of its names

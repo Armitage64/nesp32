@@ -431,6 +431,15 @@ typedef struct {
     bool sound_ended;
     uint32_t sound_at;
     uint32_t sound_end;
+    uint32_t sound_from;            /* where this run of it began */
+    uint32_t sound_began;           /* and when, in ms */
+    bool sound_fresh;               /* its first bytes have gone, and tick has not noted when */
+    uint32_t sound_spoke;           /* bytes heard from the console during the run */
+    uint32_t sound_spoke_ms;        /* when the first of them came */
+    bool sound_hushed;              /* enough of them: the console has left it */
+    uint32_t sound_ramp;            /* samples a sound that was paused rises over, */
+    uint32_t sound_rise;            /* and how many of them have gone */
+    uint32_t now;                   /* tick's last */
     nesp_run_t run;
     /* For the nesp32's screen. */
     uint16_t named;                 /* the track `name` is of, or count if none */
@@ -522,6 +531,7 @@ typedef struct {
     bool press;                     /* the nesp32's button, pressed while the line was its */
     bool ended;
     bool lost;                      /* the stream ended, and all of it has been played */
+    bool hushed;                    /* the console left the sound: paused */
     bool holding;                   /* the ring ran dry: the DAC is held until more has come */
     uint8_t last;                   /* the level last sent */
     uint32_t rise;                  /* samples of the ramp from the DAC's rest so far */

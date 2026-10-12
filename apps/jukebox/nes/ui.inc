@@ -358,14 +358,14 @@ LINE_COUNT = * - line_bit
     ldx #STATUS_PAUSED
 @status:
 .ifdef LINK
-    lda paused                  ; paused shows as stopped does
-    beq @not_paused
-    ldx #STATUS_STOPPED
-@not_paused:
     lda sound_wanted            ; the screen stands still while sound plays,
     beq @no_sound               ; so this is drawn before it starts
     ldx #STATUS_SOUND
 @no_sound:
+    lda paused                  ; paused shows as stopped does, a sound too
+    beq @not_paused
+    ldx #STATUS_STOPPED
+@not_paused:
 .endif
     ; Stopped with a track on the screen: no "press Start", which the foot
     ; of the screen says already. The clock flashes instead, about once a
@@ -388,6 +388,12 @@ LINE_COUNT = * - line_bit
     ora text_pending
     sta text_pending
 @show:
+    cpx ui_status
+    beq @same
+    lda text_pending            ; the flash may have left the clock blanked
+    ora #PENDING_TIME
+    sta text_pending
+@same:
     stx ui_status
 
     ; The clock: a second for every FRAMES_PER_SECOND frames played.

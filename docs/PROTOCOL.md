@@ -615,7 +615,12 @@ with a reply of its own in place of SEND's: JUKE's SOUND does, and
 TUNER's. The clock and the rules are the same, and the hello must have
 asked for RAW. Such a service may also be told of anything the nesp32
 hears while it is sending its run, which can only be a console that is
-not listening to it: TUNER ends its run on that.
+not listening to it: JUKE and TUNER both end the run on that, and pause.
+It is how a console that left a sound for a press of its button A says so:
+8 bytes of `$FF` at the link's rate, each of which a UART at any run's
+rate hears as a byte of some kind. The console then waits for the line to
+have been quiet for 30 ms, and says them again every half second or so
+until it is.
 
 nes-throughput (`apps/throughput/`) is the ROM that asks
 for runs of the pattern: a block of 256 bytes a run, at each rate of a
@@ -715,9 +720,20 @@ answer is not WAIT.
   its file holds it; the run ends with `$FC`, which the console's routines
   take for the last and which leaves its DAC at 0.
 - The music after a sound is a new epoch.
+- **A console may leave a sound**, and nes-jukebox's does when button A of
+  its controller goes down, which is all of the controller it can look at
+  then. When the nesp32 has heard 4 bytes from it during the run, it ends
+  the run at once, and the music is PAUSED in the same epoch, with the
+  sound due again: STREAM says so, and brings nothing. Played again, SOUND
+  is answered with GO as before, and the run begins where the file was
+  when the first of those bytes was heard, worked out from the clock, since
+  the UART holds a tenth of a second and more that was never sent; its
+  first 20 ms rise from the DAC's rest, where the console left it. Next and
+  previous do what they always do, and the sound is GONE.
 - A button on the nesp32 during a sound ends it at once, with the last
-  byte, and is then done: A stops (a sound cannot be paused, and A again
-  plays it from its start), B and the power button change the track. One
+  byte, and is then done: A stops (the nesp32's own button does not pause
+  a sound, and A again plays it from its start), B and the power button
+  change the track. One
   pressed in the 100 ms before a sound begins waits for it to begin,
   since the console may already be deaf.
 
@@ -899,6 +915,7 @@ add ops to this one.
 | `$02` | TUNING | the stream is being fetched, and under 2 seconds of it are held |
 | `$03` | READY | 2 seconds are: ask for the sound |
 | `$04` | FAILED | the stream could not be had, or was lost. Up to 28 characters follow, for the console's screen |
+| `$05` | PAUSED | the console left the sound. The stream is fetched still, and PLAY has it READY again |
 
 **The nesp32 does all of the work.** The stream is fetched as any address
 is, and never ends. As it arrives, in the fetch's task, it is decoded
@@ -910,9 +927,10 @@ from the console's DAC is nearest, through the DAC's curve. Levels go into
 a ring of 256 KB, about twelve seconds. The run takes them from there and
 sends each as the byte the console's receiver turns into it.
 
-- **PLAY** starts the fetch, unless one is under way; **STOP** ends it and
-  empties the ring. Both are safe to send again. The nesp32's front button
-  does one or the other.
+- **PLAY** starts the fetch, unless one is under way, and makes a station
+  that is PAUSED READY; **STOP** ends the fetch and empties the ring. Both
+  are safe to send again. The nesp32's front button does one or the other,
+  and turns a station that is paused off.
 - **SOUND** is JUKE's, with no epoch: `RATE` is 5, the one rate there is
   (8 CPU cycles a bit, 223722 baud, 20338 samples a second), or `$FF` from
   a console that cannot play it. The answer is WAIT while TUNING, GO when
@@ -927,10 +945,17 @@ sends each as the byte the console's receiver turns into it.
 - **The run has no end of its own.** It ends when the nesp32's front
   button is pressed; when the stream ends or is lost, once what was held
   has been played, and the state is then FAILED; and when the nesp32 hears
-  4 bytes from the console within 2 seconds, at once and with no ramp. A
-  console in a sound says nothing, so those are one that was reset, saying
-  hello at the link's rate into a line that is the run's.
-- After the run the console asks for STATE, and is told OFF or FAILED.
+  4 bytes from the console within 2 seconds, at once and with no ramp, and
+  the state is then PAUSED. A console in a sound says nothing, so those are
+  one that has left it: for a press of its button A, as with JUKE's sound,
+  or because it was reset and is saying hello into a line that is the
+  run's. That one says hello again when the run is over, which turns the
+  station off.
+- **Paused, the station is fetched still.** The ring loses its oldest
+  second as it fills, so what PLAY has ready is what was on the air up to
+  twelve seconds before, and a station lost while it is paused is FAILED.
+- After the run the console asks for STATE, and is told OFF, PAUSED or
+  FAILED.
 
 ## 6. Timing
 

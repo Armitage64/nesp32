@@ -217,7 +217,7 @@ A playlist may hold sampled sound: a recording, played through `$4011`, the
 or in frames. The console writes each byte to `$4011` as it arrives, a byte
 a sample, at a baud rate several times the link's, and nothing is stored.
 That takes all of its CPU: for as long as a sound plays the NMI is off, the
-screen stands still, and the controller is not read.
+screen stands still, and of the controller only button A is looked at.
 
 On the line a sound is a run of nesp32's RAW service, which JUKE's SOUND
 sets up; nesp32's `docs/PROTOCOL.md` has both.
@@ -316,6 +316,30 @@ cannot play one if they do not.
   asks for the stream. The answer is from a new epoch, so the music after
   a sound starts from a full buffer.
 - **A button on the nesp32** during a sound ends it with `$FC` at once.
+- **Button A on controller 1 pauses a sound.** The line to the nesp32 is
+  at rest all through a sound, and at rest it keeps the controller loading
+  its buttons, so a read of `$4016` gives A as it is at that moment, with
+  nothing put on the line. Each routine looks once a byte, in the stop
+  bits: `cpy $4016 / beq`, 6 cycles, 3 of which the three fastest routines
+  did not have to spare, so their hunt for the next start bit begins 3
+  cycles later, still before one can fall. The other buttons are behind
+  the controller's shift register, which is clocked only with the line
+  held low, and are not read.
+- **A console that leaves a sound says so** with 8 bytes of `$FF` at the
+  link's rate. The nesp32, sending at the sound's rate, cannot read them,
+  and does not need to: 4 bytes of any kind heard during a sound mean that
+  the console has stopped listening. It ends the run and pauses. The
+  console meanwhile brings its DAC to rest a step at a time, over 20 ms,
+  and waits until the line has been quiet for 30 ms, since the nesp32's
+  UART holds a tenth of a second or more of samples that were on their
+  way; if the line is still busy after about half a second it says the
+  bytes again. Then the NMI goes back on, with the sound still wanted.
+- **Paused**, the console asks for the stream, which says the music is
+  paused and brings nothing, and everything on the controller works: Start
+  or A plays, and Left and Right change the track. Played, the console
+  asks for the sound again, once A is up (a button held down would end the
+  sound as it began), and the nesp32 sends it from where it was when the
+  console left, rising from the DAC's rest over 20 ms.
 
 ### A console left in a sound
 

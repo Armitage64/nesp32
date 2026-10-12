@@ -157,15 +157,105 @@ def test_the_station_plays_on_the_dac(radio, tone):
     assert tone_amplitude(levels[2000:]) == pytest.approx(TONE_LEVEL, abs=0.02)
 
 
-def test_the_screen_stands_still_and_the_controller_is_not_heard(radio, tone):
+def test_the_screen_stands_still_and_only_a_is_looked_at(radio, tone):
     machine = on_air(radio(), tone)
     picture = machine.nametable()
     asked = len(machine.requests())
-    machine.pad = PAD_START
+    machine.pad = 0xFF & ~PAD_A                 # every other button
     machine.advance(ms(300))
     machine.pad = 0
     assert machine.deaf and machine.nametable() == picture
     assert len(machine.requests()) == asked     # nothing was said on the line
+
+
+def pause(machine):
+    """Hold A until the console has left the sound, then let go."""
+    machine.pad = PAD_A
+    machine.until(lambda: not machine.deaf, limit=60)
+    machine.wait(3)
+    machine.pad = 0
+
+
+def test_a_pauses_the_station_and_a_again_plays_it_on(radio, tone):
+    machine = on_air(radio(), tone)
+    machine.advance(ms(300))
+    before = len(machine.level_log)
+    pause(machine)
+    levels = played(machine)
+    assert levels[-1] == 0                      # the DAC is left at its rest
+    assert levels[-20:] == list(range(19, -1, -1))  # and came to it a step at a time
+    assert len(levels) - before < 0.05 * RATE   # at once: A is looked at with every sample
+    machine.until(lambda: machine.status == "PAUSED", limit=30)
+    assert machine.port.period == p.NESP_PERIOD     # the line is the link's again
+    assert machine.stick.fetching and machine.stick.fetches == 1
+    failed = machine.word("link_failed")
+    machine.wait(60)
+    assert machine.status == "PAUSED" and machine.byte("sounds") == 1
+    assert machine.word("link_failed") == failed
+    # Played again: what the nesp32 held, with nothing tuned in anew.
+    count = len(machine.level_log)
+    machine.press(PAD_A)
+    machine.until(lambda: machine.deaf, limit=60)
+    assert machine.status == "ON THE AIR"
+    machine.advance(ms(300))
+    assert machine.deaf and machine.byte("sounds") == 2 and machine.stick.fetches == 1
+    assert len(machine.level_log) > count + 0.1 * RATE
+
+
+def test_start_plays_a_paused_station_too(radio, tone):
+    machine = on_air(radio(), tone)
+    machine.advance(ms(200))
+    pause(machine)
+    machine.until(lambda: machine.status == "PAUSED", limit=30)
+    machine.press(PAD_START)
+    machine.until(lambda: machine.deaf, limit=60)
+    assert machine.byte("sounds") == 2 and machine.stick.fetches == 1
+
+
+def test_the_press_that_pauses_is_not_taken_for_one_that_plays(radio, tone):
+    machine = on_air(radio(), tone)
+    machine.advance(ms(200))
+    machine.pad = PAD_A                         # and held, a second and more
+    machine.until(lambda: machine.status == "PAUSED", limit=60)
+    machine.wait(90)
+    assert machine.status == "PAUSED" and not machine.deaf
+    machine.pad = 0
+    machine.wait(30)
+    assert machine.status == "PAUSED" and machine.byte("sounds") == 1
+
+
+def test_a_held_down_does_not_end_the_sound_as_it_begins(radio, tone):
+    machine = radio()
+    machine.until(lambda: machine.status == "PRESS START", limit=60)
+    machine.pad = PAD_A                         # tuned in with A, which stays down
+    machine.until(lambda: machine.stick.fetches == 1, limit=30)
+    machine.air(tone)
+    machine.until(lambda: machine.status == "ON THE AIR", limit=60)
+    machine.wait(30)
+    assert not machine.deaf and machine.asked(p.NESP_TUNER_SOUND) == 0
+    machine.pad = 0
+    machine.until(lambda: machine.deaf, limit=30)
+    machine.advance(ms(300))
+    assert machine.deaf and machine.byte("sounds") == 1
+
+
+def test_the_nesp32s_button_turns_a_paused_station_off(radio, tone):
+    machine = on_air(radio(), tone)
+    machine.advance(ms(200))
+    pause(machine)
+    machine.until(lambda: machine.status == "PAUSED", limit=30)
+    machine.press_button(p.NESP_EVENT_BUTTON_A)
+    machine.until(lambda: machine.status == "PRESS START", limit=30)
+    assert not machine.stick.fetching
+
+
+def test_a_station_lost_while_it_is_paused_says_why(radio, tone):
+    machine = on_air(radio(), tone)
+    machine.advance(ms(200))
+    pause(machine)
+    machine.until(lambda: machine.status == "PAUSED", limit=30)
+    machine.stick.fetch_done(False, b"THE CONNECTION DROPPED")
+    machine.until(lambda: machine.status == "THE CONNECTION DROPPED", limit=30)
 
 
 def test_the_nesp32s_button_ends_the_sound_and_the_link_goes_on(radio, tone):

@@ -65,6 +65,9 @@ def dac_writes(rom, labels, sound, clock_error=0.0):
     # count on. Every read is on its instruction's fourth cycle.
     machine.memory.subscribe_to_read(
         [JOY2], lambda address: pcm.PORT_IDLE | (line.level(machine.mpu.processorCycles + 3) ^ 1))
+    # OUT0 at mark, where the ROM leaves it: the controller then shows
+    # button A, which the routines look at, and it is up.
+    machine._strobe = 1
     machine.call("pcm_stream_%d" % sound.rate, limit=line.end + 100000)
     return [(cycle, value & (pcm.LEVELS - 1)) for cycle, value in machine.level_log]
 

@@ -19,7 +19,7 @@ import pcm
 from link_harness import LinkConsole, ms
 from linked import (LINK_STOPPED, files, frames_of, greet, playlist_stream, press, start,
                     track_stream, wait_for)
-from nes_harness import PAD_RIGHT, PPUCTRL, PPUCTRL_NMI, expected_frames
+from nes_harness import PAD_A, PAD_LEFT, PAD_RIGHT, PAD_START, PPUCTRL, PPUCTRL_NMI, expected_frames
 from wire import SPACE
 
 RATES = range(len(pcm.PERIODS))
@@ -49,8 +49,17 @@ def played_levels(machine):
 
 # --- the routines, called by themselves -----------------------------------------
 
-def play(link_rom, rate, samples, phase=0.0, clock_error=0.0, last=0):
+def at_rest(link_rom):
+    """A console with nothing on its port, and OUT0 at mark, where the ROM
+    leaves it: the routines look at button A, which the controller shows
+    for as long as OUT0 is high."""
     machine = LinkConsole(*link_rom, attached=False)
+    machine._strobe = 1
+    return machine
+
+
+def play(link_rom, rate, samples, phase=0.0, clock_error=0.0, last=0):
+    machine = at_rest(link_rom)
     machine.read_log = []
     machine.level_log = []
     data = pcm.encode(samples) + bytes((pcm.sample_byte(last, last=True),))
@@ -131,7 +140,7 @@ def test_a_clock_1_percent_off_plays_every_sample(link_rom, rate, clock_error):
 def test_a_pause_in_the_samples_holds_the_level_and_loses_nothing(link_rom):
     rate = len(pcm.PERIODS) - 1
     samples = levels(0x75)
-    machine = LinkConsole(*link_rom, attached=False)
+    machine = at_rest(link_rom)
     machine.level_log = []
     wire = machine.port.wire
     resume = wire.send(pcm.encode(samples[:100]), START, pcm.PERIODS[rate])
@@ -146,7 +155,7 @@ def test_filler_at_the_links_rate_ends_a_stream_at_every_rate(link_rom):
     """What a nesp32 sends when it starts: four zero bytes at the link's
     rate, which is the slowest of a sound's."""
     for rate in RATES:
-        machine = LinkConsole(*link_rom, attached=False)
+        machine = at_rest(link_rom)
         machine.level_log = []
         wire = machine.port.wire
         end = wire.send(pcm.encode(levels(0x06, 20)), START, pcm.PERIODS[rate])
@@ -407,8 +416,9 @@ def test_a_paused_nesp32_holds_a_sound_until_it_is_resumed(link_rom):
     machine = console(link_rom, [("Voices - Hello", sound(14, 900))])
     hold_at_the_sound(machine)
     machine.run(60)
-    # Paused, the console asks every frame and is told to wait every time.
-    assert len(asked(machine)) > 40 and sounds(machine) == 0
+    # Paused, the console asks for the stream, which says so, and for the
+    # sound only once it is told otherwise.
+    assert len(asked(machine)) <= 1 and sounds(machine) == 0 and machine.byte("paused")
     assert machine.word("link_failed") == 0 and machine.port.rates == []
     machine.press_button(p.NESP_EVENT_BUTTON_A)
     wait_for(machine, lambda: sounds(machine))
@@ -435,13 +445,13 @@ def test_the_controller_can_skip_a_sound_that_has_not_started(link_rom, demo):
 
 
 @pytest.mark.parametrize("button, state, track", [
-    (p.NESP_EVENT_BUTTON_A, "stopped", 1),      # a sound cannot be paused
+    (p.NESP_EVENT_BUTTON_A, "stopped", 1),      # the nesp32's button does not pause one
     (p.NESP_EVENT_BUTTON_B, "playing", 0),
     (p.NESP_EVENT_BUTTON_POWER, "playing", 2),
 ])
 def test_a_button_on_the_nesp32_ends_a_sound_and_does_what_it_does(link_rom, demo, button, state,
                                                                     track):
-    """The console is deaf while a sound plays. The nesp32 ends the sound
+    """The console hears nothing while a sound plays. The nesp32 ends the sound
     with the byte that leaves the DAC at rest, and the console comes back
     to find the music stopped, or another track playing."""
     voice = sound(19, 6000)
@@ -472,6 +482,160 @@ def test_a_button_on_the_nesp32_ends_a_sound_and_does_what_it_does(link_rom, dem
     else:
         machine.run_until_played(played + 150)
         assert machine.byte("stream_error") == 0
+
+
+# --- button A, which pauses ----------------------------------------------------------
+
+def pause_under_way(machine, after=1500, buttons=PAD_A, release=True):
+    """Hold buttons on the controller from when this much of a sound has
+    been sent until the console has left it, and a little longer."""
+    def hold():
+        if len(machine.port.runs) > count and len(machine.port.runs[-1][2]) > after:
+            machine.pad = buttons
+        else:
+            machine.at(machine.now + ms(5), hold)
+    count = sounds(machine)
+    machine.at(machine.now, hold)
+    wait_for(machine, lambda: sounds(machine) > count)
+    machine.run(3)
+    if release:
+        machine.pad = 0
+        machine.run(2)                          # the console sees it let go
+
+
+def heard_before_the_pause(machine, wanted):
+    """How many of the sound's samples reached the DAC before the console
+    left it; after them it brought the DAC to its rest a step at a time."""
+    heard = played_levels(machine)
+    count = 0
+    while count < len(heard) and heard[count] == wanted[count]:
+        count += 1
+    assert heard[count:] == list(range(wanted[count - 1] - 1, -1, -1))
+    return count
+
+
+@pytest.mark.parametrize("period", pcm.PERIODS)
+def test_a_pauses_a_sound_and_a_again_plays_the_rest_of_it(link_rom, demo, period):
+    wanted = levels(21, 9000)
+    tracks = [("Demo - One", demo), ("Voices - Hello", sound(21, 9000, period)),
+              ("Demo - Two", demo)]
+    machine = console(link_rom, tracks)
+    pause_under_way(machine)
+    count = heard_before_the_pause(machine, wanted)
+    assert 1000 < count < 4500
+    wait_for(machine, lambda: machine.byte("paused"), limit=30)
+    assert machine.memory[PPUCTRL] & PPUCTRL_NMI and machine.byte("sound_wanted")
+    asked_before = len(asked(machine))
+    machine.run(60)
+    # Paused, it asks for the stream, which says so, and not for the sound.
+    assert machine.byte("paused") and sounds(machine) == 1
+    assert len(asked(machine)) == asked_before and machine.stick.juke_index == 1
+    assert machine.word("link_failed") == 0
+    # Played again, it goes on from where the console stopped listening,
+    # give or take what the nesp32 can tell of that, and from the DAC's rest.
+    machine.level_log = []
+    press(machine, PAD_A)
+    wait_for(machine, lambda: sounds(machine) == 2)
+    machine.run(30)
+    rest = played_levels(machine)
+    at = len(wanted) + 1 - len(rest)
+    rate = pcm.sample_rate(period)
+    assert abs(at - count) < 0.02 * rate
+    ramp = int(rate / 50)
+    assert rest[ramp:] == wanted[at + ramp:] + [0]
+    assert all(got <= level for got, level in zip(rest[:ramp], wanted[at:]))
+    assert rest[0] == 0 and rest[:ramp] != wanted[at:at + ramp]
+    # And then the music after it, as if nothing had happened.
+    assert machine.byte("sound_wanted") == 0 and not machine.byte("paused")
+    played = len(machine.played_frames())
+    machine.run_until_played(played + 150)
+    assert machine.stick.juke_index == 2 and machine.byte("stream_error") == 0
+
+
+def test_a_paused_sound_shows_as_paused_music_does_and_then_as_it_did(link_rom):
+    machine = console(link_rom, [("Voices - Hello", sound(27, 9000))])
+    pause_under_way(machine)
+    wait_for(machine, lambda: machine.byte("paused"), limit=30)
+    machine.run(10)
+    shown = set()
+    for _ in range(64):                         # a flash and more
+        machine.run(1)
+        shown.add(machine.nametable())
+    assert len(shown) == 2                      # the clock flashes, and nothing else moves
+    assert all(b"SAMPLED SOUND" not in picture for picture in shown)
+    press(machine, PAD_A)
+    wait_for(machine, lambda: sounds(machine) == 2)
+    # The screen that stood still through the rest of it is the one that
+    # stood still through the first of it, clock and all.
+    assert len(machine.sound_screens) == 2
+    assert machine.sound_screens[1] == machine.sound_screens[0]
+    assert b"SAMPLED SOUND" in machine.sound_screens[1]
+
+
+def test_a_sound_can_be_paused_more_than_once(link_rom):
+    wanted = levels(22, 9000)
+    machine = console(link_rom, [("Voices - Hello", sound(22, 9000))])
+    pause_under_way(machine)
+    wait_for(machine, lambda: machine.byte("paused"), limit=30)
+    press(machine, PAD_START)                   # Start plays too
+    pause_under_way(machine)
+    wait_for(machine, lambda: machine.byte("paused"), limit=30)
+    machine.level_log = []
+    press(machine, PAD_A)
+    wait_for(machine, lambda: sounds(machine) == 3)
+    machine.run(30)
+    rest = played_levels(machine)
+    assert 1000 < len(rest) < 6500 and rest[-500:] == wanted[-499:] + [0]
+
+
+@pytest.mark.parametrize("button, track", [(PAD_RIGHT, 2), (PAD_LEFT, 0)])
+def test_the_track_can_be_changed_while_a_sound_is_paused(link_rom, demo, button, track):
+    tracks = [("Demo - One", demo), ("Voices - Hello", sound(23, 9000)), ("Demo - Two", demo)]
+    machine = console(link_rom, tracks)
+    pause_under_way(machine)
+    wait_for(machine, lambda: machine.byte("paused"), limit=30)
+    played = len(machine.played_frames())
+    logged = len(machine.level_log)
+    press(machine, button, frames=5)
+    assert machine.stick.juke_index == track
+    machine.run_until_played(played + 150)
+    assert sounds(machine) == 1
+    assert machine.byte("sound_wanted") == 0 and not machine.byte("paused")
+    assert len(machine.level_log) == logged and machine.byte("stream_error") == 0
+
+
+def test_the_press_that_pauses_a_sound_is_not_taken_for_one_that_plays(link_rom):
+    machine = console(link_rom, [("Voices - Hello", sound(24, 9000))])
+    pause_under_way(machine, release=False)     # still down, a second and more
+    machine.run(90)
+    assert machine.byte("paused") and sounds(machine) == 1
+    machine.pad = 0
+    machine.run(30)
+    assert machine.byte("paused") and sounds(machine) == 1
+
+
+def test_a_held_down_does_not_end_a_sound_as_it_begins(link_rom):
+    machine = console(link_rom, [("Voices - Hello", sound(25, 3000))])
+    hold_at_the_sound(machine)
+    wait_for(machine, lambda: machine.byte("paused"), limit=30)
+    machine.pad = PAD_A                         # played again with A, which stays down
+    wait_for(machine, lambda: not machine.byte("paused"), limit=30)
+    machine.run(60)
+    assert sounds(machine) == 0 and machine.port.rates == []
+    machine.pad = 0
+    wait_for(machine, lambda: sounds(machine))
+    machine.run(10)
+    assert played_levels(machine) == levels(25, 3000) + [0]
+
+
+def test_no_other_button_is_looked_at_while_a_sound_plays(link_rom):
+    machine = console(link_rom, [("Voices - Hello", sound(26, 4000))])
+    wait_for(machine, lambda: machine.port.runs)
+    machine.pad = 0xFF & ~PAD_A
+    wait_for(machine, lambda: sounds(machine))
+    machine.pad = 0
+    machine.run(10)
+    assert played_levels(machine) == levels(26, 4000) + [0]
 
 
 def test_filler_frees_a_console_left_in_the_middle_of_a_sound(link_rom, demo):
