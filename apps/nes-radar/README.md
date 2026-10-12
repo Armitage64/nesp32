@@ -40,14 +40,14 @@ build, `nes_radar_cart.nes`: the link ROM, asking the MMC1's CHR register
 for the splash's tiles and the scope's, with each page once in place of
 the CN-ROM's four. It is a part of that cartridge and not a ROM to run by
 itself: it counts on the menu having set the mapper, and is built for the
-place on the cartridge its tiles have (`CART_CHR`).
+place on the cartridge its tiles have (`CART_CHR`). It works on hardware,
+from the menu and back to it by reset.
 
 **It works on hardware** with nesp32's firmware: an airport is found, its
 aircraft are on the scope, and the nesp32 switched off and on begins at
 the same airport. It is also tested on a simulated console against
 nesp32's own RADAR service, over a cycle-exact line. No figures have been
-taken from a console, and no run has been of any length. The cartridge's
-build has not been run on hardware.
+taken from a console, and no run has been of any length.
 
 ## Using it
 
@@ -176,7 +176,6 @@ commit's file. `make clean` will not delete a `build/src` that has changes
 ## Not done
 
 - Figures from hardware, and a long run.
-- The cartridge's build on hardware.
 - PAL consoles.
 
 ## Licence

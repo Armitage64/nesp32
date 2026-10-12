@@ -7,8 +7,6 @@ Built and tested on a computer, not yet run on hardware:
 - A StickS3 as a USB drive, from Setup's screen.
 - A computer in place of a nesp32, on a USB serial cable
   (`host/serial_host.py`).
-- The cartridge with NES Radar on it: the one program there that writes
-  to the mapper, for its tiles.
 
 Not measured:
 
