@@ -13,17 +13,19 @@ its TUNER service, in [nesp32's `docs/PROTOCOL.md`](../../docs/PROTOCOL.md).
 
 ## Status
 
-**Not yet played on hardware**; only the nesp32's decoding has been
-measured there. On a simulated console the ROM plays the
-station from nesp32's own firmware code, over a line that models every
-bit: each sample the nesp32 sends reaches the DAC, once and in order.
+**It plays on hardware**: from a StickS3, speech was entirely clear, if
+a little quiet, and in a first minute the nesp32's ring neither ran dry
+nor dropped anything. No longer run has been made, and nothing was
+measured. On a simulated console the ROM plays the station from nesp32's
+own firmware code, over a line that models every bit: each sample the
+nesp32 sends reaches the DAC, once and in order.
 
 | Part | State |
 |---|---|
-| TUNER on the nesp32: the stream fetched, decoded (MP3), resampled and made into levels for the DAC | tested on a computer, with the test as the Internet. The StickS3's firmware builds with it |
-| The ROM (`build/npr.nes`) | tested on py65 against that code, over the simulated line |
+| TUNER on the nesp32: the stream fetched, decoded (MP3), resampled and made into levels for the DAC | working on a StickS3; tested on a computer, with the test as the Internet |
+| The ROM (`build/npr.nes`) | working on hardware with a StickS3; tested on py65 against that code, over the simulated line |
 | A nesp32 decoding the stream as fast as it arrives | measured on a StickS3, with no console: 11.5% of one core ([nesp32's firmware](../../firmware/README.md), "The radio") |
-| How it sounds | by `tools/npr_preview.py` only, which leaves out the console's analog side |
+| How it sounds | clear speech on hardware, and quiet. `tools/npr_preview.py` gives it without a console |
 
 ## Building
 
@@ -80,7 +82,7 @@ console's filters are not in it.
 
 ## Not done
 
-- Any of it on hardware.
+- A long run, a real NES, and the StickC Plus2.
 - More than one station, and a station's name or programme on the screen.
 - The controller during the sound.
 - Loudness. A sample goes to the DAC at the level the station sent it, and

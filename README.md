@@ -57,7 +57,7 @@ Current NESP32 apps:
 | [Dr. Mario 2P](apps/drmario) | Dr. Mario two-player over a network |
 | [Contra, 2P](apps/contra) | Contra's two-player over a network |
 | [NES Radar](apps/nes-radar) | k6lcm's live air traffic scope, with the nesp32 in place of a computer |
-| [NPR](apps/npr) | NPR's live radio stream on the NES's sample channel. A proof of concept, not yet run on hardware |
+| [NPR](apps/npr) | NPR's live radio stream on the NES's sample channel. A proof of concept |
 
 ## How it works
 

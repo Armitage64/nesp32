@@ -190,9 +190,9 @@ isolating one thing:
 
 TUNER plays a radio station on the console ([NPR](../apps/npr)'s ROM): the
 fetch task decodes the station's MP3 as it arrives, which is the first
-thing this firmware does that is heavy and never stops. **The decoding
-has been measured on a StickS3; the service and the ROM have not run
-there.** With it the StickS3's image is 1.30 MB, 29 KB more than
+thing this firmware does that is heavy and never stops. **It works on a StickS3**: the station played, with clear speech, and the
+ring neither ran dry nor dropped anything in a first minute; no longer
+run has been made. With it the StickS3's image is 1.30 MB, 29 KB more than
 before: 20 KB of that is the decoder. The fetch task's stack went from 12
 to 32 KB, since the decoder keeps 16 KB there while it works, and the
 ring of samples is 256 KB of PSRAM.
