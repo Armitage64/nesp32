@@ -23,9 +23,10 @@ one another by themselves. In about 15000 requests the nesp32 sent no reply
 twice, the console's buffer never ran dry, and the nesp32's slowest reply
 took 474 microseconds. On the simulated console the same ROM and firmware
 come out frame for frame and sample for sample, over a line that models
-every bit, whatever is lost or damaged on the way. Still untried with a
-nesp32: a real NES, the StickC Plus2, a long run, and the five slower
-rates of sound.
+every bit, whatever is lost or damaged on the way. **Sampled sound has
+played on a real NES from a StickC Plus2**, with the hat on its PCB, at
+10169, 11622 and 20338 samples a second. Still untried with a nesp32: a
+long run, and the three other rates of sound.
 
 | Part | State |
 |---|---|
@@ -33,7 +34,7 @@ rates of sound.
 | Player ROM, with a song built in (`build/jukebox.nes`) | tested on py65, where every song plays frame-exact; confirmed by ear in Mesen 2 and on a real NES |
 | The screen and the controller, on both ROMs | tested on py65; they worked on a real NES before the link changed, and are unchanged |
 | Link ROM (`build/jukebox_link.nes`): the ROM on nesp32's library, and nesp32's JUKE and RAW services | working on a StickS3 with the MiSTer's NES core, at 85227 baud; tested together over a cycle-exact simulated line |
-| Sampled sound through `$4011`, at 7748 to 20338 samples a second | heard from a nesp32 on the MiSTer at the fastest rate, and the routines played on a real NES under the old firmware; all six rates are tested on the simulated line |
+| Sampled sound through `$4011`, at 7748 to 20338 samples a second | heard from a nesp32 on the MiSTer at the fastest rate, and on a real NES from a StickC Plus2 at 10169, 11622 and 20338; all six rates are tested on the simulated line |
 | Link throughput ([`../throughput/`](../throughput), a program of its own now) | a ROM that climbs the rates each way through nesp32's RAW service. On a StickS3 with the MiSTer's NES core it reached 298296 baud to the console and 223722 from it, the rates it measured on a real NES before it moved, with a MicroPython script of its own on a StickC Plus2 |
 
 Until October 2026 the jukebox had a link protocol of its own, at 38400
@@ -268,10 +269,13 @@ the rest. Starting the nesp32 again frees it; so does Reset.
   neither has been worked out further than on paper.
 - A sound paused and played again on hardware, and the sound's new timing
   heard there.
-- A real NES, the StickC Plus2 and a long run with nesp32's firmware, and
-  sound at the five slower rates.
-- The throughput test ([`../throughput/`](../throughput)) on a real NES with nesp32's
-  firmware. It has run on the MiSTer.
+- A long run with nesp32's firmware, and sound at 7748, 13559 and 16271
+  samples a second on hardware.
+- The throughput test ([`../throughput/`](../throughput)) on a real NES with the hat
+  on its PCB. It has run on the MiSTer, and on a real NES with a StickC
+  Plus2 wired through a breadboard, which stopped it at 111861 baud to the
+  console and 178977 from it; sound at 127841 and 223722 baud failed on
+  that wiring and plays with the PCB.
 
 ## Converting music
 

@@ -33,8 +33,16 @@ not use the Grove port.
 > the StickS3 starts in firmware‑download mode instead of NES Radar. Both
 > stages would: a TX base resistor holds G0 near 1.2 V through the transistor's
 > base junction, and the RX collector sits low whenever the NES idles OUT0
-> high. Older StickC hats used slot 3 for G26, so a hat built for the Plus2
-> must be converted first.
+> high. Older StickC hats used slot 3 for G26, so a hat built for the Plus2's
+> old pins must be converted first.
+
+The same hat fits a **StickC Plus2**, with nesp32's firmware: its slot 4 is
+G36 (RX), slot 5 is G0 (TX), slot 7 is 3V3, and slot 3 is G26, left open. G0
+is that board's boot‑mode pin too, and it carries the TX base resistor there;
+a Plus2 started from off a number of times with the hat on, the console on
+and off, and came up in nesp32's firmware every time. No level on it has
+been measured. A Plus2 with the hat on a real NES played NPR at 223722 baud,
+the link's fastest rate for sound.
 
 G3 (a JTAG strapping pin) and G43/G44 (UART0, which carries the boot ROM's
 log) are avoided on purpose. The even row is out of the proto hat's reach.
@@ -124,10 +132,12 @@ hardware to cancel it (`"invert": true`, the default).
 
 ## Converting a Plus2 hat
 
-A hat built for the StickC Plus2 has TX on slot 3, which is G0 on the StickS3.
-Move the wire from the TX base resistor to slot 5 (G8), and check that slot 3
-is left open. RX stays on slot 4. Nothing else changes. After the move, the
-hat no longer works on a Plus2, where slot 5 is G0.
+A hat built for the StickC Plus2's old pins has TX on slot 3, which is G0 on
+the StickS3. Move the wire from the TX base resistor to slot 5, and check
+that slot 3 is left open. RX stays on slot 4. Nothing else changes. Slot 5 is
+G8 on a StickS3 and G0 on a Plus2, and nesp32's firmware sends on it on both;
+a Plus2 with firmware from before that sent on G26, and is silent to a
+converted hat until it is flashed.
 
 ## Alternative: TXU0202 (surface mount, non‑inverting)
 

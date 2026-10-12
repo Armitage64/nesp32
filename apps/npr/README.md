@@ -151,7 +151,9 @@ high-quality mode's. The console's filters are not in it.
 
 ## Not done
 
-- A long run, a real NES, and the StickC Plus2.
+- A long run. The high-quality mode has played on a real NES, from a StickC
+  Plus2 with the hat on its PCB; the mode with the headlines has not been
+  tried there.
 - More than one station, and a station's name or programme on the screen.
 - A long run on hardware of the mode with the headlines. A write to the
   PPU that fell outside vblank would show as a flicker or a wrong
