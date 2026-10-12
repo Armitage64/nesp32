@@ -22,8 +22,12 @@ service, in [nesp32's `docs/PROTOCOL.md`](../../docs/PROTOCOL.md).
 StickS3, at 20338 samples a second, speech was entirely clear, if a little
 quiet, and in a first minute the nesp32's ring neither ran dry nor dropped
 anything. **The menu and the mode with the headlines have had a first run
-on hardware, and worked**; no long run has been made of either mode, and
-nothing was measured. On a simulated console the ROM plays the station from nesp32's own firmware code,
+on hardware, and worked**, and so has pausing, also for longer than the
+nesp32 holds. After a few minutes with the headlines and several pauses
+its figures were 21 seconds held, dry 0, cut 8: the ring never ran dry,
+the pauses had cost eight seconds of the station, and what played was 21
+seconds behind it. No long run has been made of either mode, and nothing
+else was measured. On a simulated console the ROM plays the station from nesp32's own firmware code,
 over a line that models every bit: each sample the nesp32 sends reaches
 the DAC, once and in order, and every write to the screen during a sound
 falls in a vblank.
@@ -74,9 +78,10 @@ A paused station is fetched still, so that it plays again without tuning:
 the nesp32 holds its last 12 seconds (22 with the headlines, at their
 lower rate), and goes on from the oldest of
 them. Paused for longer than that, it has skipped what fell between.
-Pausing is tested on the simulated console and **has not been tried on
-hardware**: in the high-quality mode each sample is looked for 3 CPU
-cycles later than it was when the station was heard there.
+A station that has been paused for long plays from then on with the
+nesp32's ring nearly full, as far behind the station as it can be, and
+with no room to spare: whenever the station gets a little ahead of the
+console another second is dropped.
 
 ### The headlines
 
@@ -118,10 +123,18 @@ lost (`THE SITE DID NOT ANSWER`, `THE CONNECTION DROPPED`). Start tries
 again.
 
 The nesp32's screen shows `NPR` and how it stands; while the station
-plays, `ON THE AIR` with the seconds it holds ready, and two counts that
-should stay at 0 for hours at a time: `dry`, times it had nothing to send
-and held the sound where it was, and `cut`, seconds dropped because the
-station ran ahead of the console.
+plays, `ON THE AIR`. How its ring fares is in its log, on the USB serial
+port, every two seconds while the station plays:
+
+```
+npr: on the air, 21s held, dry 0, cut 8
+```
+
+the seconds it holds ready, and two counts that should stay at 0 for hours
+at a time unless the station is paused: `dry`, times it had nothing to
+send and held the sound where it was, and `cut`, seconds dropped because
+the station ran ahead of the console, or was paused for longer than the
+ring holds.
 
 ## Hearing it without a console
 
@@ -146,6 +159,8 @@ high-quality mode's. The console's filters are not in it.
   simulated console no write does.
 - Start during the sound: only A is looked at, and not in the samples that
   bring a character of a page (a fifth of a second in thirty).
+- A station played again after a long pause brought nearer to the moment,
+  with room in the ring, in place of from its oldest second.
 - Headlines newer than the moment of tuning in, which want a second fetch
   on the nesp32 while the station plays.
 - A samples' stall in the middle of a page being drawn. The drawing goes at

@@ -793,8 +793,16 @@ static void show(nesp_tuner_t *tuner, uint32_t now)
     uint32_t dropped = tuner->dropped;
     unlock(tuner);
     if (tuner->sound == S_PLAYING) {
-        snprintf(text, sizeof(text), "ON THE AIR %us dry %u cut %u", (unsigned)(held / RATE(tuner)),
-                 (unsigned)tuner->dry, (unsigned)(dropped / DROP_SAMPLES(tuner)));
+        /* How the ring fares is for whoever is watching the log: seconds
+         * held, times it ran dry, and seconds dropped from it full. */
+        snprintf(text, sizeof(text), "ON THE AIR");
+        if (tuner->hal->watch != NULL) {
+            char figures[64];
+            snprintf(figures, sizeof(figures), "npr: on the air, %us held, dry %u, cut %u",
+                     (unsigned)(held / RATE(tuner)), (unsigned)tuner->dry,
+                     (unsigned)(dropped / DROP_SAMPLES(tuner)));
+            tuner->hal->watch(tuner->hal->ctx, figures);
+        }
     } else {
         static const char *const states[] = {"OFF", "NO WI-FI", "TUNING", "READY", NULL, "PAUSED"};
         snprintf(text, sizeof(text), "%s",

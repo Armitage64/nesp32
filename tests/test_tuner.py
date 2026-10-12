@@ -8,6 +8,7 @@ it, with the jukebox's own tools.
 
 import math
 import os
+import re
 import sys
 
 import pytest
@@ -257,7 +258,9 @@ def test_the_station_goes_as_a_run_at_its_rate(radio):
     radio.wait(p.NESP_RAW_START_MS - 10)
     assert line.rates == [PERIOD] and not line.sent     # not before its time
     sent = radio.hear(1000)
-    assert radio.stick.shown(1).startswith("ON THE AIR")
+    # The screen says so, and no more; how the ring fares is in the log.
+    assert radio.stick.shown(1) == "ON THE AIR"
+    assert re.fullmatch(r"npr: on the air, \d+s held, dry 0, cut 0", radio.stick.watched)
     assert 0.9 * RATE < len(sent) < 1.1 * RATE
     assert all(pcm.raw_byte(byte) & pcm.MORE for byte in sent)      # none is the last
 

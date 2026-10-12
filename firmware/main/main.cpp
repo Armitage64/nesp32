@@ -305,11 +305,19 @@ extern "C" void app_main(void)
                      (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
         }
         if (now - watch_at >= WATCH_MS) {
-            // And for whoever is watching a game: what PEER says of it, and
-            // how long the network between the two nesp32s has taken.
+            // And for whoever is watching: the station's figures, from
+            // TUNER, or what PEER says of a game, and how long the network
+            // between the two nesp32s has taken.
             watch_at = now;
             char said[RADIO_WATCH_MAX];
-            if (radio_watch(said)) {
+            said[0] = 0;
+            if (!radio_watch(said)) {
+                said[0] = 0;        // nothing new: what it holds has been logged
+            }
+            if (strncmp(said, "npr: ", 5) == 0) {
+                // The station's figures, which are whole as they come.
+                ESP_LOGI(TAG, "%s", said);
+            } else if (said[0] != 0) {
                 conn_ping_t ping;
                 conn_ping(&ping);
                 // What it says of the console's buttons, from "; pad" on,

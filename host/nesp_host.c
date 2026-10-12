@@ -69,6 +69,7 @@ typedef struct {
     uint32_t track_reads;
     bool answering;                 /* in a feed: a file read now would hold up the reply */
     char shown[2][HOST_SHOWN_MAX];  /* the application's lines of the screen */
+    char watched[256];              /* the last line for the log (the hal's watch) */
     /* The connection to another nesp32. The caller is the network: it says
      * when a call is answered, takes what was sent and gives what comes. */
     uint8_t conn;                   /* NESP_CONN_* */
@@ -314,6 +315,12 @@ static void hal_show(void *ctx, uint8_t row, const char *text)
     }
 }
 
+static void hal_watch(void *ctx, const char *text)
+{
+    host_t *host = ctx;
+    snprintf(host->watched, sizeof(host->watched), "%s", text);
+}
+
 static uint8_t hal_peer_state(void *ctx)
 {
     return ((host_t *)ctx)->conn;
@@ -474,6 +481,7 @@ host_t *host_new(void)
     host->hal.track_size = hal_track_size;
     host->hal.track_read = hal_track_read;
     host->hal.show = hal_show;
+    host->hal.watch = hal_watch;
     host->hal.peer_state = hal_peer_state;
     host->hal.peer_listen = hal_peer_listen;
     host->hal.peer_call = hal_peer_call;
@@ -766,6 +774,7 @@ uint8_t host_raw_state(const host_t *host) { return host->stick.raw.state; }
 uint32_t host_tuner_held(const host_t *host) { return host->stick.tuner.held; }
 uint32_t host_tuner_dropped(const host_t *host) { return host->stick.tuner.dropped; }
 uint32_t host_tuner_dry(const host_t *host) { return host->stick.tuner.dry; }
+const char *host_watched(const host_t *host) { return host->watched; }
 uint32_t host_tuner_page(const host_t *host) { return host->stick.tuner.page; }
 
 /* The next page of the headlines now, where a station waits half a minute:
