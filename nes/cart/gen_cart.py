@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Put the five programs and a menu on one cartridge.
+"""Put the six programs and a menu on one cartridge.
 
     nes/cart/gen_cart.py tables build/cart --jukebox J.nes --wiki W.nes ...
     nes/cart/gen_cart.py rom build/nesp32.nes --menu menu.prg --chr chr.bin
@@ -7,7 +7,7 @@
     nes/cart/gen_cart.py page radar
 
 The cartridge is an MMC1 with 256 KB of PRG and 128 KB of CHR ROM, and no
-memory of its own. Four of the programs are NROM, and the MMC1 set to 32 KB
+memory of its own. Five of the programs are NROM, and the MMC1 set to 32 KB
 of PRG and 8 KB of CHR is an NROM to a program that never writes to it, so
 each goes in as it was built: nothing is linked again, and the serial
 routines keep their pages and their timing.
@@ -18,8 +18,9 @@ routines keep their pages and their timing.
     4-5    jukebox              2     jukebox
     6-7    throughput test      3     throughput test
     8-9    NES Radar            4     the menu
-    10-14  nothing              5-6   NES Radar
-    15     the menu             7-15  nothing
+    10-11  NPR                  5-6   NES Radar
+    12-14  nothing              7     NPR
+    15     the menu             8-15  nothing
 
 NES Radar has two pages of tiles, one for its splash and one for its
 scope, and is the one program that writes to the mapper: to its CHR
@@ -95,6 +96,7 @@ PROGRAMS = (
     Program("jukebox", "Jukebox", 4, 2),
     Program("wiki", "NESpedia", 2, 1),
     Program("radar", "NES Radar", 8, 5, pages=2, mapper=MAPPER_MMC1),
+    Program("npr", "National Public Radio", 10, 7),
     Program("throughput", "Throughput Test", 6, 3),
     Program("setup", "Setup", 0, 0),
 )

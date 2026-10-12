@@ -43,7 +43,7 @@ Current NESP32 capabilities:
 | Sampled sound | Stream PCM audio at up to 20kHz |
 | Online Gaming | Host or join a 2-Player game over a LAN or WAN |
 | Radar | Live air traffic round an airport named by its ICAO code, from adsb.fi |
-| Radio | NPR's live stream, decoded on the NESP32 and played as sampled sound |
+| Radio | National Public Radio's live stream, decoded on the NESP32 from MP3 and played as sampled sound |
 | Files | Manage stored music files via USB drive mode |
 
 Current NESP32 apps: 
@@ -57,7 +57,7 @@ Current NESP32 apps:
 | [Dr. Mario 2P](apps/drmario) | Dr. Mario two-player over a network |
 | [Contra, 2P](apps/contra) | Contra's two-player over a network |
 | [NES Radar](apps/nes-radar) | k6lcm's live air traffic scope, with the nesp32 in place of a computer |
-| [NPR](apps/npr) | NPR's live radio stream on the NES's sample channel. A proof of concept |
+| [National Public Radio](apps/npr) | NPR's live radio stream on the NES's sample channel. A proof of concept, with the one station |
 
 ## How it works
 

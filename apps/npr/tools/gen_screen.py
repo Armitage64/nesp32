@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "..", "jukebox", "tools"))
 
 import gen_ui  # noqa: E402
 
-SUBTITLE = "NPR"
+SUBTITLE = "NATIONAL PUBLIC RADIO"
 STATION_ROW = 11
 STATION = "NPR PROGRAM STREAM"
 # The status line: as wide as what the nesp32 may say of a station that

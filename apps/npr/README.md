@@ -1,4 +1,4 @@
-# NPR
+# National Public Radio
 
 NPR's live radio stream on a NES, through the console's own sample
 channel. A [nesp32](../..) on controller port 2 fetches the stream from the
@@ -42,7 +42,9 @@ make test
 ![The screen](docs/screen.png)
 
 With the nesp32 on a Wi-Fi network (the [setup ROM](../setup) joins one)
-and on controller port 2, start `build/npr.nes`.
+and on controller port 2, start `build/npr.nes`. The screen's header is
+nesp32's, with `NATIONAL PUBLIC RADIO` under the name; the nesp32's own
+screen calls the program `NPR`.
 
 | | |
 |---|---|
@@ -89,7 +91,8 @@ console's filters are not in it.
   speech uses about a third of the DAC's range; a gain that followed the
   programme would use more of the 7 bits.
 - A stream that is lost is not fetched again by itself.
-- A cartridge with this on it.
+- The cartridge with this on it, on hardware: it is the sixth program there
+  (nesp32's `make cart`), and starts from the menu on a simulated console.
 
 ## Tests
 

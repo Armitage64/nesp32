@@ -23,10 +23,11 @@ ROMS = {"jukebox": ("cart", "jukebox", "jukebox_link.nes"),
         "wiki": ("cart", "wiki", "nespedia_link.nes"),
         "throughput": ("cart", "throughput", "linktest.nes"),
         "radar": ("cart", "radar", "nes_radar_cart.nes"),
+        "npr": ("cart", "npr", "npr.nes"),
         "setup": ("setup.nes",)}
 # What each says it is in its hello.
 APPS = {"jukebox": b"JUKE", "wiki": b"WIKI", "throughput": b"THRU", "radar": b"RADR",
-        "setup": b"SETP"}
+        "npr": b"NPR ", "setup": b"SETP"}
 MMC1_CHR0 = 1                   # the mapper's registers, as the console numbers them
 CHR_WRITES = 5                  # to set one
 RAM_END = 0x0800
@@ -132,8 +133,8 @@ def test_power_on_is_the_menu(cart):
     c.run(4)
     assert at_menu(c)
     assert c.mapper[:2] == [0x0E, 2 * cart_layout.MENU_PAGE]
-    for index, name in enumerate(("Jukebox", "NESpedia", "NES Radar", "Throughput Test",
-                                  "Setup")):
+    for index, name in enumerate(("Jukebox", "NESpedia", "NES Radar",
+                                  "National Public Radio", "Throughput Test", "Setup")):
         assert c.line(cart_layout.LIST_ROW + cart_layout.LIST_STEP * index) == name
     assert c.line(layout.HELP_ROW) == "A:RUN"
     assert c.sprite() == cart_layout.arrow(0) + (c.chr.index(
@@ -153,11 +154,12 @@ def test_the_header_says_main_menu(cart):
 def test_up_and_down_move_the_arrow_and_go_round(cart):
     c = cart()
     c.run(4)
-    for index in (1, 2, 3, 4, 0):
+    last = len(PROGRAMS) - 1
+    for index in list(range(1, last + 1)) + [0]:
         c.press(PAD_DOWN)
         assert c.byte("choice") == index
         assert c.sprite() and c.sprite()[:2] == cart_layout.arrow(index)
-    for index in (4, 3, 2):
+    for index in range(last, 1, -1):
         c.press(PAD_UP)
         assert c.byte("choice") == index
         assert c.sprite()[:2] == cart_layout.arrow(index)
