@@ -89,9 +89,9 @@
 +
 @@ -21188,0 +21259,6 @@
 +.ifdef NETPLAY
-+; The game never plays a sample (0x005A58 is not reached), so the netplay
-+; build leaves them out, and this segment begins with the reset code. That
-+; stays at FF00: its first byte is what resets the mapper.
++; The netplay build leaves the samples out, for the room, and this segment
++; begins with the reset code: so the music's drums (bra_DFEF) play empty
++; pages. That stays at FF00: its first byte is what resets the mapper.
 +.org $FF00
 +.else
 @@ -21203,0 +21280 @@

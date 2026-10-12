@@ -254,8 +254,9 @@ session_read_port:
 ;
 ; A reply names no ticks. That one comes says the nesp32 holds the buttons
 ; it was sent, and its CRC says which request it answers. A reply that is
-; not heard is not asked for again in this frame: the game plays no
-; samples, and its line is clean.
+; not heard is not asked for again in this frame: the next frame's
+; exchange asks. The fetches of the drums' samples take cycles from the
+; serial routines, and may be why one is misheard now and again.
 ;
 ; With net_tune set the request's count is NESP_PEER_TUNE: one tick of
 ; buttons and then this console's report, and the reply has the delay
