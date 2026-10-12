@@ -763,6 +763,9 @@ uint16_t host_juke_index(const host_t *host) { return host->stick.juke.index; }
 uint32_t host_juke_resent(const host_t *host) { return host->stick.juke.resent; }
 uint32_t host_juke_underruns(const host_t *host) { return host->stick.juke.underruns; }
 uint8_t host_raw_state(const host_t *host) { return host->stick.raw.state; }
+uint32_t host_tuner_held(const host_t *host) { return host->stick.tuner.held; }
+uint32_t host_tuner_dropped(const host_t *host) { return host->stick.tuner.dropped; }
+uint32_t host_tuner_dry(const host_t *host) { return host->stick.tuner.dry; }
 
 uint8_t host_scan_state(const host_t *host) { return host->scan_state; }
 uint32_t host_scans(const host_t *host) { return host->scans; }

@@ -356,6 +356,10 @@ typedef struct {
     /* The run is over. sent: its bytes have left, and the line is the
      * link's again. Otherwise it was called off before any did. */
     void (*done)(void *ctx, bool sent);
+    /* May be NULL. The console sent this many bytes while the run was
+     * being sent: it is not listening for it, whatever they were (they
+     * came at the run's rate, and mean nothing). */
+    void (*heard)(void *ctx, size_t len);
 } nesp_run_t;
 
 #define NESP_RAW_HELD 128
@@ -490,6 +494,47 @@ typedef struct {
     uint32_t shown_at;
 } nesp_peer_t;
 
+/* TUNER: a radio station as sampled sound (tuner.c). */
+struct nesp_tuner_work;             /* the decoder's memory, which the fetch's task has */
+
+typedef struct {
+    const nesp_hal_t *hal;
+    nesp_raw_t *raw;
+    nesp_sink_t sink;
+    uint8_t state;                  /* NESP_TUNER_* */
+    char why[NESP_TUNER_TEXT_MAX + 1];  /* with FAILED */
+    /* What the link's task and the fetch's both touch, under the hal's
+     * lock: which fetch is wanted, the ring of levels for the console's
+     * DAC that it fills, and that it has ended. */
+    uint32_t generation;
+    uint8_t *ring;
+    uint32_t ring_size;
+    uint32_t head;                  /* where the oldest level held is */
+    uint32_t held;
+    uint32_t dropped;               /* levels lost from a ring that was full */
+    uint8_t landed;                 /* not 0: the fetch has ended, and landed_why says how */
+    char landed_why[NESP_TUNER_TEXT_MAX + 1];
+    /* The fetch's task alone. */
+    struct nesp_tuner_work *work;
+    /* The run that sends the ring. */
+    nesp_run_t run;
+    uint8_t sound;                  /* where it has got to (tuner.c) */
+    bool press;                     /* the nesp32's button, pressed while the line was its */
+    bool ended;
+    bool lost;                      /* the stream ended, and all of it has been played */
+    bool holding;                   /* the ring ran dry: the DAC is held until more has come */
+    uint8_t last;                   /* the level last sent */
+    uint32_t rise;                  /* samples of the ramp from the DAC's rest so far */
+    uint32_t fall;                  /* and of the one back to it */
+    uint32_t sent;
+    uint32_t spoke;                 /* bytes heard from the console during the run */
+    uint32_t spoke_at;              /* the count sent when the first of them came */
+    /* For the nesp32's screen. */
+    uint32_t dry;                   /* times the ring ran dry */
+    bool show;
+    uint32_t shown_at;
+} nesp_tuner_t;
+
 /* A Stick: the link and every service this firmware has. */
 typedef struct {
     nesp_link_t link;
@@ -501,7 +546,8 @@ typedef struct {
     nesp_juke_t juke;
     nesp_peer_t peer;
     nesp_radar_t radar;
-    nesp_service_t services[8];
+    nesp_tuner_t tuner;
+    nesp_service_t services[9];
 } nesp_stick_t;
 
 void nesp_stick_init(nesp_stick_t *stick, const nesp_hal_t *hal);
@@ -535,6 +581,8 @@ void nesp_peer_service(nesp_service_t *service, nesp_peer_t *peer, const nesp_sy
                        const nesp_hal_t *hal);
 
 void nesp_radar_service(nesp_service_t *service, nesp_radar_t *radar, const nesp_hal_t *hal);
+void nesp_tuner_service(nesp_service_t *service, nesp_tuner_t *tuner, nesp_raw_t *raw,
+                        const nesp_hal_t *hal);
 
 /* For a service with something to send as a run (JUKE's sampled sound).
  *

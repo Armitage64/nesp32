@@ -124,7 +124,8 @@ def library():
         lib.host_track_add.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t]
         lib.host_track_cut.argtypes = [ctypes.c_void_p, ctypes.c_uint16, ctypes.c_size_t]
         lib.host_juke_set.argtypes = [ctypes.c_void_p, ctypes.c_uint8, ctypes.c_bool]
-        for name in ("host_track_reads", "host_juke_resent", "host_juke_underruns"):
+        for name in ("host_track_reads", "host_juke_resent", "host_juke_underruns",
+                     "host_tuner_held", "host_tuner_dropped", "host_tuner_dry"):
             getattr(lib, name).restype = ctypes.c_uint32
             getattr(lib, name).argtypes = [ctypes.c_void_p]
         lib.host_shown.restype = ctypes.c_char_p
@@ -604,6 +605,19 @@ class Stick:
     @property
     def raw_state(self):
         return self._lib.host_raw_state(self._host)
+
+    @property
+    def tuner_held(self):
+        """Samples of the station held for the console."""
+        return self._lib.host_tuner_held(self._host)
+
+    @property
+    def tuner_dropped(self):
+        return self._lib.host_tuner_dropped(self._host)
+
+    @property
+    def tuner_dry(self):
+        return self._lib.host_tuner_dry(self._host)
 
     @property
     def scan_state(self):

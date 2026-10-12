@@ -87,6 +87,8 @@ not would not start this cartridge.
 | One cartridge (`nes/cart/`): the five programs and a menu, on an MMC1 | working on hardware: the menu and every program, NES Radar and its two pages of tiles among them. With the four programs before it, that was a real NES and the MiSTer, with a StickC Plus2 and with a StickS3. Tested on a simulated console: each program starts from the menu, NES Radar has its own tiles from the mapper, and reset is the menu again |
 | RADAR, NES Radar's service: an airport by its letters, and the aircraft round it from adsb.fi as scenes of the nearest eight (`firmware/components/nesp_services/radar.c`), with where the airport is asked of Wikidata and the last one kept in flash | tested with nes-radar's ROM as [nes-radar](../apps/nes-radar) builds it for the link, on a simulated console, and its scenes held to the bytes nes-radar's own server makes; the firmware builds for both boards with it. Working on hardware with that ROM, the airport kept over power-off among the rest |
 
+| TUNER, a radio station as sampled sound: NPR's MP3 stream fetched, decoded with minimp3, resampled to 20338 samples a second and made into levels for the console's DAC on the nesp32, and sent as a run of RAW's (`firmware/components/nesp_services/tuner.c`, `mp3.c`) | tested with the test as the Internet, and with [NPR](../apps/npr)'s ROM on a simulated console; the firmware builds for a StickS3 with it, 29 KB larger. Not yet run on hardware: `firmware/main/spike.c` is a build that measures the decoding there by itself |
+
 ## What is where
 
 | Path | Purpose |
@@ -94,14 +96,14 @@ not would not start this cartridge.
 | `proto/nesp.toml`, `tools/gen_proto.py` | the numbers both ends share, and the C, ca65 and Python files written from them |
 | `docs/PROTOCOL.md` | the protocol |
 | `firmware/components/nesp_core` | frames, CRC, services' registry |
-| `firmware/components/nesp_services` | SYS, NET, DIAG, WIKI, RAW, JUKE, PEER and RADAR, and the text code WIKI lays articles out with |
+| `firmware/components/nesp_services` | SYS, NET, DIAG, WIKI, RAW, JUKE, PEER, RADAR and TUNER, the text code WIKI lays articles out with, and the MP3 decoder TUNER plays a station with |
 | `firmware/main` | the Stick: UART and link task, Wi-Fi, HTTPS fetches, the connection to another nesp32, files, screen and buttons |
 | `tools/put_files.py` | puts the jukebox's tracks on a nesp32, over USB, for a board that cannot be a drive |
 | `tools/lcd.py` | pictures of the nesp32's own screen, for trying a layout before flashing it |
 | `nes/lib/nesp.inc`, `nes/lib/gen_link.py` | the console's library, and its cycle-timed serial routines |
 | `apps/setup/` | the setup ROM |
-| `apps/` | the other programs: the jukebox, NESpedia, the throughput test, netplay for Dr. Mario and Contra, and NES Radar |
-| `third_party/` | the two games' disassemblies and nes-radar, as submodules |
+| `apps/` | the other programs: the jukebox, NESpedia, the throughput test, netplay for Dr. Mario and Contra, NES Radar, and NPR |
+| `third_party/` | the two games' disassemblies and nes-radar, as submodules; and minimp3, the MP3 decoder (CC0), as a file |
 | `nes/cart/` | the cartridge: its menu, and the tool that puts the five programs on it |
 | `host/nesp_host.c`, `host/nesp.py` | the firmware's code as a library for this computer, with a stand-in for the hardware |
 | `host/serial_host.py` | that, on a USB serial cable in place of a Stick |
@@ -137,6 +139,10 @@ make test
   server makes of it and of 40 made up, and the fetches by the clock, with
   the test as both sites. nes-radar's ROM is run against this code in
   nes-radar's tests.
+- `test_tuner.py`: a station's stream, an MP3 of a tone, to the tone on
+  the line as the console's DAC would have it; a ring that fills and one
+  that runs dry; and every way the sound ends. NPR's ROM is run against
+  this code in its own tests.
 - `test_put_files.py`: the image of the tracks that goes over USB.
 - `test_vgm.py`: the converter of rips, held to the same bytes as
   nes-jukebox's Python over its rips, over made-up ones, and over 300 made

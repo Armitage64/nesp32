@@ -43,6 +43,7 @@ Current NESP32 capabilities:
 | Sampled sound | Stream PCM audio at up to 20kHz |
 | Online Gaming | Host or join a 2-Player game over a LAN or WAN |
 | Radar | Live air traffic round an airport named by its ICAO code, from adsb.fi |
+| Radio | NPR's live stream, decoded on the NESP32 and played as sampled sound |
 | Files | Manage stored music files via USB drive mode |
 
 Current NESP32 apps: 
@@ -56,6 +57,7 @@ Current NESP32 apps:
 | [Dr. Mario 2P](apps/drmario) | Dr. Mario two-player over a network |
 | [Contra, 2P](apps/contra) | Contra's two-player over a network |
 | [NES Radar](apps/nes-radar) | k6lcm's live air traffic scope, with the nesp32 in place of a computer |
+| [NPR](apps/npr) | NPR's live radio stream on the NES's sample channel. A proof of concept, not yet run on hardware |
 
 ## How it works
 
@@ -75,5 +77,5 @@ Current NESP32 apps:
 | [docs/PROTOCOL.md](docs/PROTOCOL.md) | the link: the line, frames, the hello, every service, timing, and the console's library |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | building, the cartridge, what is where in the repository, the tests, and how far each part has got |
 | [firmware/README.md](firmware/README.md) | the nesp32's firmware: building and flashing it, how it keeps time, and what was seen on hardware |
-| [apps/setup](apps/setup), [apps/wiki](apps/wiki), [apps/jukebox](apps/jukebox), [apps/throughput](apps/throughput), [apps/drmario](apps/drmario), [apps/contra](apps/contra), [apps/nes-radar](apps/nes-radar) | each program |
+| [apps/setup](apps/setup), [apps/wiki](apps/wiki), [apps/jukebox](apps/jukebox), [apps/throughput](apps/throughput), [apps/drmario](apps/drmario), [apps/contra](apps/contra), [apps/nes-radar](apps/nes-radar), [apps/npr](apps/npr) | each program |
 | [apps/contra/docs/Netplay.md](apps/contra/docs/Netplay.md) | how two consoles are kept in the same game, with figures from sessions on hardware |

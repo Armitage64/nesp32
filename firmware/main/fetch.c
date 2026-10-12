@@ -26,7 +26,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#define FETCH_STACK 12288           /* a TLS handshake wants most of it */
+/* A TLS handshake wants 12 KB, and the MP3 decoder a sink may call from
+ * here (nesp_mp3.h) keeps 16 KB of its own while it works. */
+#define FETCH_STACK 32768
 #define FETCH_PRIORITY 5
 #define FETCH_CORE 0                /* with Wi-Fi; the link has core 1 */
 #define TIMEOUT_MS 10000

@@ -129,6 +129,14 @@ SCENE = 0x01            # the aircraft round the airport, if they are not the on
 IDENTITY = 0x02         # one aircraft's names, by its slot
 LAST = 0x03             # the letters of the last airport found, if one is kept
 
+[services.TUNER]
+id = 0x13
+[services.TUNER.ops]
+STATE = 0x00            # how it stands with the station (enum TUNER), and why if it failed
+PLAY = 0x01             # start on the station's stream
+STOP = 0x02             # and give it up
+SOUND = 0x03            # the console's rate: send the station as samples (enum SOUND)
+
 [enums.WIFI]            # the state of the Stick's Wi-Fi
 NONE = 0                # no network has been set up
 IDLE = 1                # one is saved, and the Stick is not on it
@@ -205,6 +213,13 @@ WAIT = 0                # not now (paused): ask again
 GO = 1                  # samples follow, as a run of RAW's
 GONE = 2                # there is no such sound to play: ask for the stream
 
+[enums.TUNER]           # TUNER: how it stands with the station
+OFF = 0                 # nothing is being fetched
+NO_WIFI = 1
+TUNING = 2              # its stream is being fetched, and not enough has come to play
+READY = 3               # enough has: ask for the sound
+FAILED = 4              # the stream could not be had, or was lost; the reply says how
+
 [enums.LOBBY]           # PEER: how it stands with the other nesp32
 NO_WIFI = 0             # this one is not on a network
 IDLE = 1
@@ -264,6 +279,11 @@ JUKE_TITLE_MAX = 28     # characters in a name on the console's screen
 JUKE_SOUND_RATES = 6    # the rates a sound may have: 21, 16, 14, 12, 10 and 8 cycles a bit
 JUKE_SOUND_REFUSED = 0xFF   # JUKE SOUND's rate from a console that cannot play it
 JUKE_SOUND_LAST = 0xFC  # the byte that ends a sound and leaves the console's DAC at 0
+TUNER_RATE = 5          # the rate a station is sent at, as JUKE's sounds count them: 8 cycles a bit
+TUNER_PERIOD = 8        # which is 20338 samples a second
+TUNER_TEXT_MAX = 28     # characters in why a station failed, for the console's screen
+TUNER_READY_MS = 2000   # this much of a station is held before it is offered
+TUNER_HEARD = 4         # bytes from the console during a station's sound that end it
 RADAR_TARGETS_MAX = 8   # aircraft in a scene, the nearest first
 RADAR_MOTION_LEN = 9    # bytes of one in a scene
 RADAR_NAMES_LEN = 25    # and of its names

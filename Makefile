@@ -29,7 +29,9 @@ PROTO := $(BUILD)/nesp_proto.h $(BUILD)/nesp_proto.inc $(BUILD)/nesp_proto.py
 CORE := firmware/components/nesp_core
 SERVICES := firmware/components/nesp_services
 HOST_SOURCES := $(CORE)/nesp_core.c $(wildcard $(SERVICES)/*.c) host/nesp_host.c
-HOST_HEADERS := $(CORE)/include/nesp_core.h $(SERVICES)/include/nesp_services.h
+MINIMP3 := third_party/minimp3
+HOST_HEADERS := $(CORE)/include/nesp_core.h $(wildcard $(SERVICES)/include/*.h) \
+	$(MINIMP3)/minimp3.h
 
 ROM := $(BUILD)/setup.nes
 
@@ -52,7 +54,7 @@ proto: $(PROTO)
 
 $(HOST_LIB): $(HOST_SOURCES) $(HOST_HEADERS) $(BUILD)/nesp_proto.h
 	$(CC) $(CFLAGS) -shared -I $(BUILD) -I $(CORE)/include -I $(SERVICES)/include \
-		-o $@ $(HOST_SOURCES) -lm
+		-I $(MINIMP3) -o $@ $(HOST_SOURCES) -lm
 
 host: $(HOST_LIB)
 

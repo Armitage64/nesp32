@@ -132,6 +132,10 @@ bool nesp_raw_owns_line(const nesp_raw_t *raw)
 
 void nesp_raw_heard(nesp_raw_t *raw, const uint8_t *data, size_t len)
 {
+    if (raw->phase == SENDING && len != 0 && raw->run.heard != NULL) {
+        raw->run.heard(raw->run.ctx, len);  /* the nesp32 is sending, and not to a listener */
+        return;
+    }
     if (raw->phase != LISTENING) {
         return;                     /* the nesp32 is sending, or this is junk */
     }

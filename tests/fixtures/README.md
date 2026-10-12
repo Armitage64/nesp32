@@ -15,3 +15,10 @@ by its contributors, under
 API for the aircraft within ten nautical miles of Los Angeles
 International, as RADAR asks for them: 43 aircraft, some of them on the
 ground, some with no callsign and some with no altitude.
+
+`tone_1khz.mp3` is the stream TUNER's tests play: four seconds of a 1 kHz
+tone at half of full scale, the same in both channels, as MP3 at 96 kbps
+and 32 kHz in joint stereo, which is how NPR's stream comes. It was made
+with LAME 3.100 (the `lameenc` Python package, quality 2) from samples
+worked out in Python; nothing in the tests needs an encoder. LAME scales
+what it is given by 0.95, so the tone a decoder gets back is at 0.475.

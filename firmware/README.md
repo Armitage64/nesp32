@@ -41,11 +41,12 @@ by the component manager on the first build (`main/idf_component.yml`).
 | Path | Purpose |
 |---|---|
 | `components/nesp_core` | frames, the CRC, the services' registry, who is asked what. No hardware; also built for the tests |
-| `components/nesp_services` | SYS, NET (Wi-Fi), DIAG, WIKI, RAW, JUKE and PEER, the text code, and `nesp_hal_t`, what they ask of the hardware |
+| `components/nesp_services` | SYS, NET (Wi-Fi), DIAG, WIKI, RAW, JUKE, PEER, RADAR and TUNER, the text code, the MP3 decoder (`mp3.c`, which is minimp3 from `../third_party`), and `nesp_hal_t`, what they ask of the hardware |
 | `main/link.c` | the UART and the one task that answers the console, on a core of its own; the UART with framing off, for RAW |
 | `main/store.c` | the files: LittleFS in the `storage` partition, and the jukebox's tracks in it |
 | `main/radio.c` | Wi-Fi, its worker task, and the hardware as the services see it |
 | `main/fetch.c` | one HTTPS GET at a time, in a task of its own, handed to a service as it arrives |
+| `main/spike.c` | not part of the firmware: a measurement of decoding a radio station, built with `-D NESP_SPIKE=1` ("The radio", below) |
 | `main/conn.c` | one connection to another nesp32, as datagrams, in a task of its own: PEER's, for two consoles |
 | `main/main.cpp` | M5Unified: the screen, the buttons, the battery, power off |
 | `main/board.h` | the link's pins on each board |
@@ -184,6 +185,32 @@ isolating one thing:
    gone back.
 4. **The buttons**, the nesp32's and the controller's, during music and
    during a sound.
+
+## The radio
+
+TUNER plays a radio station on the console ([NPR](../apps/npr)'s ROM): the
+fetch task decodes the station's MP3 as it arrives, which is the first
+thing this firmware does that is heavy and never stops. **It has not run
+on hardware.** With it the StickS3's image is 1.30 MB, 29 KB more than
+before: 20 KB of that is the decoder. The fetch task's stack went from 12
+to 32 KB, since the decoder keeps 16 KB there while it works, and the
+ring of samples is 256 KB of PSRAM.
+
+Whether a nesp32 decodes fast enough can be measured with no console and
+no hat:
+
+```sh
+idf.py -B build-spike -D SDKCONFIG=build-spike/sdkconfig -D IDF_TARGET=esp32s3 \
+       -D NESP_SPIKE=1 build
+idf.py -B build-spike -p /dev/cu.usbmodemXXXX flash monitor
+```
+
+Once the nesp32 has joined its network it fetches the station, decodes
+it, throws the samples away, and logs every ten seconds: how much sound
+came in how long, the share of a core the decoding took, the slowest
+piece, and what the fetch task's stack has left. The share should be well
+under 100%; the CPU is at its default 160 MHz
+(`CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240` would raise it).
 
 ## Two consoles
 

@@ -77,7 +77,9 @@ static void publish_stats(bool heard)
     shared_stats.noise = counters->noise;
     shared_stats.turnaround_us = counters->turnaround_us;
     shared_stats.turnaround_max_us = counters->turnaround_max_us;
-    if (heard) {
+    /* A console in a run says nothing for as long as the run lasts, which
+     * for a radio station is until it is turned off: it is there. */
+    if (heard || nesp_raw_owns_line(&stick.raw)) {
         shared_stats.last_request_ms = (uint32_t)(esp_timer_get_time() / 1000);
     }
     portEXIT_CRITICAL(&stats_lock);

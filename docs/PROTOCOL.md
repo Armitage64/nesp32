@@ -19,6 +19,8 @@ that ROM on hardware. RADAR is implemented and tested the same way, with
 nes-radar's ROM as [nes-radar](../apps/nes-radar) builds it for the link
 (its `tests/`), and has run on hardware with that ROM: an airport
 found, its aircraft on the scope, and the airport kept over power-off.
+TUNER is implemented and tested the same way, with [NPR](../apps/npr)'s
+ROM (its `tests/`), and has not yet run on hardware.
 The services marked *reserved* have a number and no ops.
 
 Every number in this document comes from `proto/nesp.toml`, from which
@@ -213,6 +215,7 @@ nothing done on the Stick.
 | `$10` | JUKE | the jukebox: the playlist as a stream, the buttons, sampled sound | done |
 | `$11` | WIKI | NESpedia: a search, and the article it finds as numbered lines | done |
 | `$12` | RADAR | NES Radar: an airport, and the aircraft round it | done |
+| `$13` | TUNER | a radio station from the Internet, as sampled sound | built and tested; not yet run on hardware |
 | `$80`-`$FF` | | experiments and other people's | |
 
 Multi-byte numbers are low byte first, except the CRC.
@@ -607,8 +610,11 @@ While a run has the line nothing on it is a request, and the nesp32
 answers none.
 
 Another service may have something to send as a run, and agrees to it
-with a reply of its own in place of SEND's: JUKE's SOUND does. The clock
-and the rules are the same, and the hello must have asked for RAW.
+with a reply of its own in place of SEND's: JUKE's SOUND does, and
+TUNER's. The clock and the rules are the same, and the hello must have
+asked for RAW. Such a service may also be told of anything the nesp32
+hears while it is sending its run, which can only be a console that is
+not listening to it: TUNER ends its run on that.
 
 nes-throughput (`apps/throughput/`) is the ROM that asks
 for runs of the pattern: a block of 256 bytes a run, at each rate of a
@@ -869,6 +875,61 @@ and never held whole: an aircraft of more than 2 KB is passed over.
 Wikidata had 55 of 60 airports taken at random from nes-radar's own ten
 thousand, the five it lacked being small fields; a table of them all in
 the firmware was 123 KB.
+
+### TUNER `$13`: a radio station
+
+One station, NPR's live stream (`https://npr-ice.streamguys1.com/live.mp3`:
+MP3, 96 kbps, 32 kHz, two channels), played on the console as JUKE's
+sampled sound is: a run of RAW's, a byte a sample, written to `$4011` as
+it arrives. A proof of concept; a service for more than one station would
+add ops to this one.
+
+| `OP` | Name | Request | Reply |
+|---|---|---|---|
+| `$00` | STATE | | `STATE`, and with FAILED the words for why |
+| `$01` | PLAY | | the same |
+| `$02` | STOP | | the same |
+| `$03` | SOUND | `RATE` | `STATE`, `ANSWER` |
+
+| `STATE` | Name | Meaning |
+|---|---|---|
+| `$00` | OFF | nothing is being fetched |
+| `$01` | NO_WIFI | PLAY found the nesp32 on no network |
+| `$02` | TUNING | the stream is being fetched, and under 2 seconds of it are held |
+| `$03` | READY | 2 seconds are: ask for the sound |
+| `$04` | FAILED | the stream could not be had, or was lost. Up to 28 characters follow, for the console's screen |
+
+**The nesp32 does all of the work.** The stream is fetched as any address
+is, and never ends. As it arrives, in the fetch's task, it is decoded
+([minimp3](https://github.com/lieff/minimp3), in `third_party/`), mixed to
+one channel, brought from its own rate to the run's by a windowed sinc
+(the one nes-jukebox's `tools/wav2pcm.py` has, worked out once for 64
+places between two samples), and each sample made the level whose output
+from the console's DAC is nearest, through the DAC's curve. Levels go into
+a ring of 256 KB, about twelve seconds. The run takes them from there and
+sends each as the byte the console's receiver turns into it.
+
+- **PLAY** starts the fetch, unless one is under way; **STOP** ends it and
+  empties the ring. Both are safe to send again. The nesp32's front button
+  does one or the other.
+- **SOUND** is JUKE's, with no epoch: `RATE` is 5, the one rate there is
+  (8 CPU cycles a bit, 223722 baud, 20338 samples a second), or `$FF` from
+  a console that cannot play it. The answer is WAIT while TUNING, GO when
+  READY, and GONE otherwise. After GO the run is RAW's in every way.
+- **The sound rises from the DAC's rest over 20 ms and falls back to it
+  over 20 ms** before the byte that ends it, `$FC`, which leaves the DAC
+  at 0.
+- **Nothing keeps the station's clock and the console's together**, and
+  the ring is the slack. When it fills, its oldest second is dropped. When
+  it runs dry the nesp32 goes on sending the last level, so the run and
+  its clock go on, until a second of the station is held again.
+- **The run has no end of its own.** It ends when the nesp32's front
+  button is pressed; when the stream ends or is lost, once what was held
+  has been played, and the state is then FAILED; and when the nesp32 hears
+  4 bytes from the console within 2 seconds, at once and with no ramp. A
+  console in a sound says nothing, so those are one that was reset, saying
+  hello at the link's rate into a line that is the run's.
+- After the run the console asks for STATE, and is told OFF or FAILED.
 
 ## 6. Timing
 

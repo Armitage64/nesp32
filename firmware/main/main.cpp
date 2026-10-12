@@ -30,6 +30,9 @@
 #include "fetch.h"
 #include "link.h"
 #include "radio.h"
+#ifdef NESP_SPIKE
+#include "spike.h"
+#endif
 #include "store.h"
 #include "usb.h"
 
@@ -57,7 +60,7 @@ const struct {
     const char *id;
     const char *name;
 } APP_NAMES[] = {{"CNTR", "Contra"}, {"DRMA", "Dr. Mario"}, {"JUKE", "Jukebox"},
-                 {"RADR", "Radar"}, {"SETP", "Setup"}, {"THRU", "Throughput"},
+                 {"NPR ", "NPR"}, {"RADR", "Radar"}, {"SETP", "Setup"}, {"THRU", "Throughput"},
                  {"WIKI", "Wikipedia"}};
 const char *const WIFI_STATES[] = {"not set up", "not joined", "joining", "joined", "failed"};
 
@@ -256,6 +259,9 @@ extern "C" void app_main(void)
     for (;;) {
         M5.update();
         usb_poll();
+#ifdef NESP_SPIKE
+        spike_poll();
+#endif
         uint8_t drive = usb_drive_state();
         if (M5.BtnA.wasPressed()) {
             if (drive != NESP_DRIVE_NONE && drive != NESP_DRIVE_OFF) {
