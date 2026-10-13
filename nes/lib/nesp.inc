@@ -275,8 +275,13 @@ nesp_reply_len = nesp_rx + NESP_HEADER - 1
 .else
 
 ; With no table: the polynomial's three terms, x^12, x^5 and 1, shifted
-; into place from the byte. 66 cycles. After Greg Cook's routine
-; (6502.org, "CRC-16 without tables"). Destroys X and Y.
+; into place from the byte. 66 cycles. Destroys X and Y.
+;
+; This routine is Greg Cook's CRC16_F, as he gave it to 6502.org's source
+; library ("More CRC Calculations", https://6502.org/source/integers/crc-more.html),
+; with nesp32's names and comments. It is his, and is not under nesp32's
+; licence: his page states no terms, and says he contributed it to be of
+; use.
 .proc nesp_crc
     eor nesp_crc_hi
     sta nesp_crc_hi

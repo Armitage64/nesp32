@@ -113,3 +113,35 @@ Contra's build needs your own copy of the game (US release) at `apps/contra/base
 | [firmware/README.md](firmware/README.md) | the nesp32's firmware: building and flashing it, how it keeps time, and what was seen on hardware |
 | [apps/setup](apps/setup), [apps/wiki](apps/wiki), [apps/jukebox](apps/jukebox), [apps/throughput](apps/throughput), [apps/drmario](apps/drmario), [apps/contra](apps/contra), [apps/nes-radar](apps/nes-radar), [apps/npr](apps/npr) | each program |
 | [apps/contra/docs/Netplay.md](apps/contra/docs/Netplay.md) | how two consoles are kept in the same game, with figures from sessions on hardware |
+
+## Licence
+
+nesp32 is free software, copyright 2026 Matthew Demicco, under the
+[GNU General Public License, version 3](LICENSE): the firmware, the ROMs and
+their sources, the console's library, the tools, the tests, the hat's
+board and the documents. It comes with no warranty.
+
+Not everything in the repository is nesp32's to license:
+
+- **`third_party/`** is other people's, each under its own terms:
+  [nes-radar](https://github.com/k6lcm/nes-radar) (GPL-3.0, as this is),
+  [minimp3](third_party/minimp3/LICENSE) (CC0), and the disassemblies of
+  Dr. Mario and Contra that the two-player ROMs are built from.
+- **The games.** `apps/drmario` and `apps/contra` hold nesp32's patches and
+  the code they add, which are under this licence; Dr. Mario and Contra are
+  their publishers', and no ROM of either is here. Contra's build wants your
+  own copy.
+- **NES Radar's ROM** is k6lcm's with nesp32's changes
+  ([apps/nes-radar](apps/nes-radar)), and the cartridge has it on it.
+- **The CRC routine without a table** (`nesp_crc` in
+  [`nes/lib/nesp.inc`](nes/lib/nesp.inc), which NPR and Throughput are
+  built with) is Greg Cook's, from
+  [6502.org's source library](https://6502.org/source/integers/crc-more.html).
+  He gave it there to be of use, and his page states no terms; it is used
+  as he published it, and is not nesp32's to license.
+- **Fetched text and data** keep their own terms: Wikipedia's articles and
+  the piece of one in `tests/fixtures/` are CC BY-SA 4.0, and
+  [tests/fixtures/README.md](tests/fixtures/README.md) names the rest.
+- **The firmware is built with** ESP-IDF and esp_tinyusb (Apache-2.0), and
+  TinyUSB, M5Unified and M5GFX (MIT), which are fetched when it is built
+  and are not in this repository.

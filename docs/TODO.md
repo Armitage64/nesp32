@@ -45,9 +45,4 @@ Not started:
   pulses, is the other line the hat leaves alone
   ([the jukebox's plan](../apps/jukebox/PLAN.md), "clocked link").
 - PAL consoles.
-- A licence. A line-by-line comparison found no code of nes-radar's
-  (GPL-3.0) here beyond idioms; since then [apps/nes-radar](../apps/nes-radar)
-  has a patch to its ROM, which is under that licence, and the cartridge,
-  which the web site offers, has that ROM on it. The CRC routine without a table follows
-  Greg Cook's on 6502.org, whose terms have not been checked.
 

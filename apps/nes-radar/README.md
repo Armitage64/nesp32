@@ -183,7 +183,8 @@ commit's file. `make clean` will not delete a `build/src` that has changes
 nes-radar is k6lcm's, under the
 [GPL-3.0](https://github.com/k6lcm/nes-radar/blob/main/LICENSE). The ROM
 built here is nes-radar's with these changes, and so is under it too; the
-files in this directory are offered under the same licence. nesp32's
+files in this directory are under the same licence, as all of nesp32 is
+([LICENSE](../../LICENSE)). nesp32's
 RADAR service is written from nes-radar's documents of its records
 (`nes_radar/PROTOCOL.md`), not from its server's code, which the tests
 only run beside it. The aircraft are adsb.fi's, from its open data API,

@@ -157,8 +157,8 @@ link.
 - A list of search results to choose from: the first result is taken.
 - Links, tables and pictures, which Wikipedia's plain text leaves out.
 - PAL consoles.
-- A licence. Parts are adapted from nes-jukebox, which has none yet.
 
-Wikipedia's text is its contributors', under
+The program is under nesp32's licence, the
+[GPL-3.0](../../LICENSE). Wikipedia's text is its contributors', under
 [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/); every
 article fetched ends with two lines saying so.
