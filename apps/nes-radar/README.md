@@ -8,6 +8,10 @@ scope, from [adsb.fi](https://adsb.fi). The nesp32 fetches them itself,
 over Wi-Fi, and asks [Wikidata](https://www.wikidata.org) where the
 airport is.
 
+![The scope](docs/scope.png)
+
+The picture is k6lcm's own, from nes-radar's `assets`.
+
 **The program is not in this repository.** What is here is the code that
 puts it on nesp32's link, its tests, and a few lines to be put into the
 ROM's own source. The build takes the rest from

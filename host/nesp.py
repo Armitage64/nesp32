@@ -196,6 +196,13 @@ def library():
                                      ctypes.POINTER(ctypes.c_int32)]
         lib.host_airport_keeps.restype = ctypes.c_uint32
         lib.host_airport_keeps.argtypes = [ctypes.c_void_p]
+        lib.host_set_zip.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int32,
+                                     ctypes.c_int32, ctypes.c_char_p]
+        lib.host_zip.restype = ctypes.c_bool
+        lib.host_zip.argtypes = [ctypes.c_void_p, ctypes.c_char_p,
+                                 ctypes.POINTER(ctypes.c_int32), ctypes.c_char_p]
+        lib.host_zip_keeps.restype = ctypes.c_uint32
+        lib.host_zip_keeps.argtypes = [ctypes.c_void_p]
         lib.host_last.restype = ctypes.c_bool
         lib.host_last.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
         lib.host_checks.argtypes = [ctypes.c_char_p, ctypes.c_size_t, _u8p]
@@ -554,6 +561,31 @@ class Stick:
     @property
     def airport_keeps(self):
         return self._lib.host_airport_keeps(self._host)
+
+    @property
+    def zip(self):
+        """The zip code the nesp32 keeps over power-off: (its digits, its
+        latitude, its longitude, its place's name), the two in millionths
+        of a degree and the name with no spaces after it. None if it keeps
+        none."""
+        digits = ctypes.create_string_buffer(proto.NESP_WEATHER_ZIP_LEN)
+        place = (ctypes.c_int32 * 2)()
+        name = ctypes.create_string_buffer(proto.NESP_WEATHER_PLACE_MAX)
+        if not self._lib.host_zip(self._host, digits, place, name):
+            return None
+        return digits.raw, place[0], place[1], name.raw.rstrip(b" ")
+
+    @zip.setter
+    def zip(self, kept):
+        if kept is None:
+            self._lib.host_set_zip(self._host, None, 0, 0, None)
+        else:
+            self._lib.host_set_zip(self._host, bytes(kept[0]), kept[1], kept[2],
+                                   bytes(kept[3]).ljust(proto.NESP_WEATHER_PLACE_MAX))
+
+    @property
+    def zip_keeps(self):
+        return self._lib.host_zip_keeps(self._host)
 
     @property
     def listens(self):

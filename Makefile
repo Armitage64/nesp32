@@ -5,7 +5,7 @@
 #   make host       build/libnesp_host: the firmware's link and services for
 #                   this computer, which the tests load
 #   make rom        build/setup.nes: the setup ROM, from apps/setup
-#   make cart       build/nesp32.nes: the setup ROM and the five other
+#   make cart       build/nesp32.nes: the setup ROM and the six other
 #                   programs on one cartridge, with a menu. It builds them
 #                   from apps/, and NES Radar's from the nes-radar submodule
 #                   in third_party.
@@ -83,7 +83,7 @@ verify: $(ROM)
 
 # --- the cartridge --------------------------------------------------------------
 
-# The other five programs, each built by its own Makefile in apps/ as the
+# The other six programs, each built by its own Makefile in apps/ as the
 # setup ROM is, into this build directory and against this tree. BUILD
 # is given to each by name: one given to this make would otherwise be
 # theirs too.
@@ -92,6 +92,7 @@ WIKI ?= apps/wiki
 THROUGHPUT ?= apps/throughput
 RADAR ?= apps/nes-radar
 NPR ?= apps/npr
+WEATHER ?= apps/weather
 
 CART := $(BUILD)/nesp32.nes
 CART_SIZE := 393232   # 16-byte header + 256 KB PRG + 128 KB CHR
@@ -102,9 +103,12 @@ WIKI_ROM := $(PARTS)/wiki/nespedia_link.nes
 THROUGHPUT_ROM := $(PARTS)/throughput/linktest.nes
 RADAR_ROM := $(PARTS)/radar/nes_radar_cart.nes
 NPR_ROM := $(PARTS)/npr/npr.nes
-CART_ROMS := $(JUKEBOX_ROM) $(WIKI_ROM) $(THROUGHPUT_ROM) $(RADAR_ROM) $(NPR_ROM)
+WEATHER_ROM := $(PARTS)/weather/weather.nes
+CART_ROMS := $(JUKEBOX_ROM) $(WIKI_ROM) $(THROUGHPUT_ROM) $(RADAR_ROM) $(NPR_ROM) \
+	$(WEATHER_ROM)
 CART_ARGS := --jukebox $(JUKEBOX_ROM) --wiki $(WIKI_ROM) \
-	--throughput $(THROUGHPUT_ROM) --radar $(RADAR_ROM) --npr $(NPR_ROM) --setup $(ROM)
+	--throughput $(THROUGHPUT_ROM) --radar $(RADAR_ROM) --npr $(NPR_ROM) \
+	--weather $(WEATHER_ROM) --setup $(ROM)
 PART = $(MAKE) -s -C $(1) BUILD=$(@D) NESP32=$(CURDIR) NESP_BUILD=$(abspath $(BUILD)) $@
 
 # Each of their Makefiles knows what of its ROM is out of date.
@@ -119,6 +123,9 @@ $(THROUGHPUT_ROM): FORCE $(PROTO) $(HOST_LIB)
 
 $(NPR_ROM): FORCE $(PROTO) $(HOST_LIB)
 	$(call PART,$(NPR))
+
+$(WEATHER_ROM): FORCE $(PROTO) $(HOST_LIB)
+	$(call PART,$(WEATHER))
 
 # NES Radar is not an NROM: it has two pages of tiles, and is built to ask
 # the cartridge's mapper for the one it wants. It has to know where they

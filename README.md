@@ -8,6 +8,11 @@ the ESP32 microcontroller.
   <img src="apps/wiki/docs/search.png" width="32%" alt="The wikipedia app" />
   <img src="apps/jukebox/docs/screen.png" width="32%" alt="The jukebox app" />
 </p>
+<p float="left">
+  <img src="apps/weather/docs/screen.png" width="32%" alt="The weather app" />
+  <img src="apps/npr/docs/screen-news.png" width="32%" alt="National Public Radio with a headline" />
+  <img src="apps/nes-radar/docs/scope.png" width="32%" alt="NES Radar's scope" />
+</p>
 
 ## About
 
@@ -46,6 +51,7 @@ to be configured from the NES itself.
 | [Contra, 2P](apps/contra) | Contra's two-player over a LAN or WAN |
 | [NES Radar](apps/nes-radar) | [k6lcm](https://github.com/k6lcm)'s live air traffic scope, no PC required |
 | [National Public Radio](apps/npr) | NPR's live .mp3 radio stream with optional headline news |
+| [Weather](apps/weather) | Current conditions and a 5-day forecast for a US zip code, which the NESP32 remembers |
 
 ## How it works
 
@@ -98,7 +104,7 @@ Contra's build needs your own copy of the game (US release) at `apps/contra/base
 
 | File | What it is |
 |---|---|
-| `build/nesp32.nes` | The cartridge: Setup, NESpedia, Jukebox, Throughput, NES Radar and National Public Radio behind one menu (MMC1, 256 KB PRG, 128 KB CHR) |
+| `build/nesp32.nes` | The cartridge: Setup, NESpedia, Jukebox, Throughput, NES Radar, National Public Radio and Weather behind one menu (MMC1, 256 KB PRG, 128 KB CHR) |
 | `build/setup.nes` | Setup as a ROM of its own. For any other program on the cartridge, `make -C apps/<name>` builds one into `apps/<name>/build/` |
 | `apps/drmario/build/drmario_net.nes` | Dr. Mario 2P, which is not on the cartridge |
 | `apps/contra/build/contra_net.nes` | Contra 2P, which is not on the cartridge. `make -C apps/contra ines` also makes `contra_net_ines.nes`, with an iNES header in place of the NES 2.0 one |
@@ -111,7 +117,7 @@ Contra's build needs your own copy of the game (US release) at `apps/contra/base
 | [docs/PROTOCOL.md](docs/PROTOCOL.md) | the link: the line, frames, the hello, every service, timing, and the console's library |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | building, the cartridge, what is where in the repository, the tests, and how far each part has got |
 | [firmware/README.md](firmware/README.md) | the nesp32's firmware: building and flashing it, how it keeps time, and what was seen on hardware |
-| [apps/setup](apps/setup), [apps/wiki](apps/wiki), [apps/jukebox](apps/jukebox), [apps/throughput](apps/throughput), [apps/drmario](apps/drmario), [apps/contra](apps/contra), [apps/nes-radar](apps/nes-radar), [apps/npr](apps/npr) | each program |
+| [apps/setup](apps/setup), [apps/wiki](apps/wiki), [apps/jukebox](apps/jukebox), [apps/throughput](apps/throughput), [apps/drmario](apps/drmario), [apps/contra](apps/contra), [apps/nes-radar](apps/nes-radar), [apps/npr](apps/npr), [apps/weather](apps/weather) | each program |
 | [apps/contra/docs/Netplay.md](apps/contra/docs/Netplay.md) | how two consoles are kept in the same game, with figures from sessions on hardware |
 
 ## Licence

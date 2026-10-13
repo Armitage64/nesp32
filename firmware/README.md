@@ -41,7 +41,7 @@ by the component manager on the first build (`main/idf_component.yml`).
 | Path | Purpose |
 |---|---|
 | `components/nesp_core` | frames, the CRC, the services' registry, who is asked what. No hardware; also built for the tests |
-| `components/nesp_services` | SYS, NET (Wi-Fi), DIAG, WIKI, RAW, JUKE, PEER, RADAR and TUNER, the text code, the MP3 decoder (`mp3.c`, which is minimp3 from `../third_party`), and `nesp_hal_t`, what they ask of the hardware |
+| `components/nesp_services` | SYS, NET (Wi-Fi), DIAG, WIKI, RAW, JUKE, PEER, RADAR, TUNER and WEATHER, the text code, the MP3 decoder (`mp3.c`, which is minimp3 from `../third_party`), and `nesp_hal_t`, what they ask of the hardware |
 | `main/link.c` | the UART and the one task that answers the console, on a core of its own; the UART with framing off, for RAW |
 | `main/store.c` | the files: LittleFS in the `storage` partition, and the jukebox's tracks in it |
 | `main/radio.c` | Wi-Fi, its worker task, and the hardware as the services see it |

@@ -53,6 +53,12 @@ typedef struct {
     char airport[4];
     int32_t airport_place[2];       /* latitude and longitude, in millionths of a degree */
     uint32_t airport_keeps;
+    /* The zip code kept likewise. */
+    bool have_zip;
+    char zip[NESP_WEATHER_ZIP_LEN];
+    int32_t zip_place[2];
+    char zip_name[NESP_WEATHER_PLACE_MAX];
+    uint32_t zip_keeps;
     size_t alloc_most;              /* set by the caller: no more than this at once; 0 for any */
     uint32_t allocated;             /* blocks handed out and not given back */
     int locked;
@@ -432,6 +438,30 @@ static void hal_airport_keep(void *ctx, const char *code, int32_t latitude, int3
     host->airport_keeps++;
 }
 
+static bool hal_zip_last(void *ctx, char *zip, int32_t *latitude, int32_t *longitude, char *name)
+{
+    host_t *host = ctx;
+    if (host->have_zip) {
+        memcpy(zip, host->zip, sizeof(host->zip));
+        *latitude = host->zip_place[0];
+        *longitude = host->zip_place[1];
+        memcpy(name, host->zip_name, sizeof(host->zip_name));
+    }
+    return host->have_zip;
+}
+
+static void hal_zip_keep(void *ctx, const char *zip, int32_t latitude, int32_t longitude,
+                         const char *name)
+{
+    host_t *host = ctx;
+    host->have_zip = true;
+    memcpy(host->zip, zip, sizeof(host->zip));
+    host->zip_place[0] = latitude;
+    host->zip_place[1] = longitude;
+    memcpy(host->zip_name, name, sizeof(host->zip_name));
+    host->zip_keeps++;
+}
+
 static bool hal_peer_last(void *ctx, uint8_t *address)
 {
     host_t *host = ctx;
@@ -492,6 +522,8 @@ host_t *host_new(void)
     host->hal.peer_keep = hal_peer_keep;
     host->hal.airport_last = hal_airport_last;
     host->hal.airport_keep = hal_airport_keep;
+    host->hal.zip_last = hal_zip_last;
+    host->hal.zip_keep = hal_zip_keep;
     host->hal.peer_rtt = hal_peer_rtt;
     host->hal.peer_note = hal_peer_note;
     host->hal.peer_noted = hal_peer_noted;
@@ -694,6 +726,31 @@ bool host_airport(const host_t *host, char *code, int32_t *place)
 }
 
 uint32_t host_airport_keeps(const host_t *host) { return host->airport_keeps; }
+
+/* The zip code a nesp32 has kept from before it was switched on, if any:
+ * its digits, where it is, and its place's name with spaces after it. */
+void host_set_zip(host_t *host, const char *zip, int32_t latitude, int32_t longitude,
+                  const char *name)
+{
+    host->have_zip = zip != NULL;
+    if (zip != NULL) {
+        memcpy(host->zip, zip, sizeof(host->zip));
+        host->zip_place[0] = latitude;
+        host->zip_place[1] = longitude;
+        memcpy(host->zip_name, name, sizeof(host->zip_name));
+    }
+}
+
+bool host_zip(const host_t *host, char *zip, int32_t *place, char *name)
+{
+    memcpy(zip, host->zip, sizeof(host->zip));
+    place[0] = host->zip_place[0];
+    place[1] = host->zip_place[1];
+    memcpy(name, host->zip_name, sizeof(host->zip_name));
+    return host->have_zip;
+}
+
+uint32_t host_zip_keeps(const host_t *host) { return host->zip_keeps; }
 
 /* The address a nesp32 has kept from before it was switched on, if any. */
 void host_set_last(host_t *host, const uint8_t *address)

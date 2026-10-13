@@ -22,3 +22,10 @@ and 32 kHz in joint stereo, which is how NPR's stream comes. It was made
 with LAME 3.100 (the `lameenc` Python package, quality 2) from samples
 worked out in Python; nothing in the tests needs an encoder. LAME scales
 what it is given by 0.95, so the tone a decoder gets back is at 0.475.
+
+`zip_90210.json` is [Zippopotam](https://zippopotam.us)'s answer for the
+zip code 90210, and `openmeteo_90210.json` is
+[Open-Meteo](https://open-meteo.com)'s for the weather at the place it
+names, as WEATHER asks for it, both on 2026-10-13 and as they were sent.
+Open-Meteo's data is under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).

@@ -39,17 +39,18 @@ the three.
 
 ![The cartridge's menu](cart-menu.png)
 
-One ROM with the jukebox, NESpedia, NES Radar, National Public Radio, the
-throughput test and setup, and a menu that is up at power-on: Up and Down, and A or Start to
+One ROM with the jukebox, NESpedia, NES Radar, National Public Radio,
+Weather, the throughput test and setup, and a menu that is up at power-on: Up and Down, and A or Start to
 run a program. Reset is the menu again. It is built from
 [nesp32 Setup](../apps/setup), [nes-jukebox](../apps/jukebox),
 [nes-wiki](../apps/wiki), [nes-radar](../apps/nes-radar),
-[NPR](../apps/npr) and [nes-throughput](../apps/throughput) in `apps/`,
+[NPR](../apps/npr), [Weather](../apps/weather) and
+[nes-throughput](../apps/throughput) in `apps/`,
 each program with its own Makefile, into `build/cart/`.
 
 It is an MMC1 (mapper 1) with 256 KB of PRG and 128 KB of CHR ROM and no
 memory. Set to 32 KB of PRG and 8 KB of CHR, an MMC1 is an NROM to a
-program that never writes to it, so the five programs that are each an NROM are
+program that never writes to it, so the six programs that are each an NROM are
 on it as they were built, their serial routines on the
 pages they were timed on. `nes/cart/gen_cart.py` has where everything is
 and the few bytes that are not as built: six in each program's padding and
@@ -84,10 +85,12 @@ not would not start this cartridge.
 | The nesp32's files: the jukebox's tracks, in a FAT filing system (`firmware/main/store.c`, `tools/put_files.py`), with rips of games' music (`.vgm`, `.vgz`) made playable on the nesp32 itself (`firmware/components/nesp_services/vgm.c`) | builds for both boards, and the converter makes the same files as nes-jukebox's on a computer; not yet run on hardware. Before this the files were in LittleFS, and that worked on a StickS3 |
 | A StickS3 as a USB drive, for music to be copied to (`firmware/main/usb.c`, the setup ROM's USB screen) | builds, and the ROM's screen is tested on a simulated console; not yet run on hardware |
 | PEER, for two consoles playing one game: a lobby, and a lockstep relay of buttons between two nesp32s over datagrams (`firmware/main/conn.c`), with advice to each console on the delay it keeps | tested with nes-drmario's netplay ROM ([nes-drmario](../apps/drmario)) and nes-contra's ([nes-contra](../apps/contra), whose exchange is a short frame) on two simulated consoles, the game the same on both; the firmware builds for both boards with it. On hardware both ROMs have played network games, a real NES among the consoles; nes-contra's `docs/Netplay.md` has the figures taken from its sessions |
-| One cartridge (`nes/cart/`): the six programs and a menu, on an MMC1 | National Public Radio, the sixth, is on it and starts from the menu on a simulated console; the cartridge with it has not yet run on hardware. With the five before it, working on hardware: the menu and every program, NES Radar and its two pages of tiles among them. With the four programs before it, that was a real NES and the MiSTer, with a StickC Plus2 and with a StickS3. Tested on a simulated console: each program starts from the menu, NES Radar has its own tiles from the mapper, and reset is the menu again |
+| One cartridge (`nes/cart/`): the seven programs and a menu, on an MMC1 | Weather, the seventh, is on it and starts from the menu on a simulated console; the cartridge with it has not yet run on hardware, and neither has the one with National Public Radio, the sixth. With the five before those, working on hardware: the menu and every program, NES Radar and its two pages of tiles among them. With the four programs before it, that was a real NES and the MiSTer, with a StickC Plus2 and with a StickS3. Tested on a simulated console: each program starts from the menu, NES Radar has its own tiles from the mapper, and reset is the menu again |
 | RADAR, NES Radar's service: an airport by its letters, and the aircraft round it from adsb.fi as scenes of the nearest eight (`firmware/components/nesp_services/radar.c`), with where the airport is asked of Wikidata and the last one kept in flash | tested with nes-radar's ROM as [nes-radar](../apps/nes-radar) builds it for the link, on a simulated console, and its scenes held to the bytes nes-radar's own server makes; the firmware builds for both boards with it. Working on hardware with that ROM, the airport kept over power-off among the rest |
 
 | TUNER, a radio station as sampled sound: NPR's MP3 stream fetched, decoded with minimp3, resampled to 20338 samples a second, or to 11622 with the headlines, and made into levels for the console's DAC on the nesp32, and sent as a run of RAW's (`firmware/components/nesp_services/tuner.c`, `mp3.c`); and NPR's news headlines, fetched before it, laid out as pages (`news.c`), and sent in the eighth bit of the samples for the console to show while it plays | tested with the test as the Internet, and with [NPR](../apps/npr)'s ROM on a simulated console; the firmware builds for a StickS3 with it, 29 KB larger. The decoding alone has been measured on a StickS3 (`firmware/main/spike.c`): 11.5% of a core at 160 MHz. Worked on hardware with that ROM, from a StickS3, at 20338 samples a second and before the headlines: clear speech, and a ring that neither ran dry nor dropped anything in a first minute. The choice of two modes and the headlines have since had a first run there, and worked |
+
+| WEATHER, the weather at a zip code: where it is asked of Zippopotam, once, and kept in flash, the weather there of Open-Meteo every 15 minutes, and both laid out as rows of tiles with pictures (`firmware/components/nesp_services/weather.c`) | tested with the test as both sites, from replies the two really sent, and with [Weather](../apps/weather)'s ROM on a simulated console; the firmware builds for both boards with it. Working on hardware with that ROM by itself, from a StickC Plus2 and on the MiSTer |
 
 ## What is where
 
@@ -96,15 +99,15 @@ not would not start this cartridge.
 | `proto/nesp.toml`, `tools/gen_proto.py` | the numbers both ends share, and the C, ca65 and Python files written from them |
 | `docs/PROTOCOL.md` | the protocol |
 | `firmware/components/nesp_core` | frames, CRC, services' registry |
-| `firmware/components/nesp_services` | SYS, NET, DIAG, WIKI, RAW, JUKE, PEER, RADAR and TUNER, the text code WIKI lays articles out with, and the MP3 decoder TUNER plays a station with |
+| `firmware/components/nesp_services` | SYS, NET, DIAG, WIKI, RAW, JUKE, PEER, RADAR, TUNER and WEATHER, the text code WIKI lays articles out with, and the MP3 decoder TUNER plays a station with |
 | `firmware/main` | the Stick: UART and link task, Wi-Fi, HTTPS fetches, the connection to another nesp32, files, screen and buttons |
 | `tools/put_files.py` | puts the jukebox's tracks on a nesp32, over USB, for a board that cannot be a drive |
 | `tools/lcd.py` | pictures of the nesp32's own screen, for trying a layout before flashing it |
 | `nes/lib/nesp.inc`, `nes/lib/gen_link.py` | the console's library, and its cycle-timed serial routines |
 | `apps/setup/` | the setup ROM |
-| `apps/` | the other programs: the jukebox, NESpedia, the throughput test, netplay for Dr. Mario and Contra, NES Radar, and National Public Radio (`apps/npr`) |
+| `apps/` | the other programs: the jukebox, NESpedia, the throughput test, netplay for Dr. Mario and Contra, NES Radar, National Public Radio (`apps/npr`), and Weather (`apps/weather`) |
 | `third_party/` | the two games' disassemblies and nes-radar, as submodules; and minimp3, the MP3 decoder (CC0), as a file |
-| `nes/cart/` | the cartridge: its menu, and the tool that puts the six programs on it |
+| `nes/cart/` | the cartridge: its menu, and the tool that puts the seven programs on it |
 | `host/nesp_host.c`, `host/nesp.py` | the firmware's code as a library for this computer, with a stand-in for the hardware |
 | `host/serial_host.py` | that, on a USB serial cable in place of a Stick |
 | `host/peer_net.py` | for it, PEER's connection to another nesp32 on this computer's sockets, and an opponent who never presses a button |
@@ -143,6 +146,11 @@ make test
   the line as the console's DAC would have it; a ring that fills and one
   that runs dry; and every way the sound ends. NPR's ROM is run against
   this code in its own tests.
+- `test_weather.py`: a zip code to a place and the place's weather to a
+  report, from what Zippopotam and Open-Meteo sent for one; every weather
+  code's picture; a zip code that does not exist told from a site that is
+  down; and the fetches by the clock. Weather's ROM is run against this
+  code in its own tests.
 - `test_put_files.py`: the image of the tracks that goes over USB.
 - `test_vgm.py`: the converter of rips, held to the same bytes as
   nes-jukebox's Python over its rips, over made-up ones, and over 300 made

@@ -145,6 +145,13 @@ typedef struct {
      * never waits: the writing of it is another task's. */
     bool (*airport_last)(void *ctx, char *code, int32_t *latitude, int32_t *longitude);
     void (*airport_keep)(void *ctx, const char *code, int32_t latitude, int32_t longitude);
+    /* Either may be NULL, likewise. A zip code kept over power-off, the
+     * last that WEATHER found: its NESP_WEATHER_ZIP_LEN digits, where it is
+     * in millionths of a degree, and its place's name, NESP_WEATHER_PLACE_MAX
+     * characters with spaces after it. False: none has been kept. */
+    bool (*zip_last)(void *ctx, char *zip, int32_t *latitude, int32_t *longitude, char *name);
+    void (*zip_keep)(void *ctx, const char *zip, int32_t latitude, int32_t longitude,
+                     const char *name);
     /* How long the network takes to the other nesp32 and back, in
      * microseconds, smoothed. 0: not known. */
     uint32_t (*peer_rtt)(void *ctx);
@@ -344,6 +351,55 @@ typedef struct {
     uint8_t near_count;
     nesp_radar_target_t near[NESP_RADAR_TARGETS_MAX];
 } nesp_radar_t;
+
+/* WEATHER: the weather at a zip code, laid out as rows for a console's
+ * screen (weather.c). */
+#define NESP_WEATHER_REPLY 2048     /* the longest reply from either site that is read */
+
+typedef struct {
+    const nesp_hal_t *hal;
+    nesp_sink_t sink;
+    /* What the link's task and the fetch's both touch, under the hal's
+     * lock: which fetch is wanted, and that it has ended. */
+    uint32_t generation;
+    uint8_t landed;                 /* 0, or how the fetch ended (weather.c) */
+    /* The link's task alone: the zip code, the report, and the clock. */
+    bool chosen;
+    uint8_t place;                  /* what is known of where it is */
+    uint8_t zip_id;
+    char zip[NESP_WEATHER_ZIP_LEN];
+    int32_t latitude;               /* millionths of a degree */
+    int32_t longitude;
+    char name[NESP_WEATHER_PLACE_MAX];
+    /* The last zip code found, which is not asked after twice, and is
+     * kept over power-off where the board can. */
+    bool known;
+    char known_zip[NESP_WEATHER_ZIP_LEN];
+    int32_t known_latitude;
+    int32_t known_longitude;
+    char known_name[NESP_WEATHER_PLACE_MAX];
+    bool held;                      /* there is a report */
+    uint8_t serial;                 /* which report: never 0 */
+    uint8_t rows[NESP_WEATHER_ROWS][NESP_WEATHER_COLUMNS];
+    bool failed;                    /* the last fetch of the weather did, and why */
+    char why[NESP_WEATHER_COLUMNS];
+    uint8_t why_len;
+    bool asked;                     /* the console has asked since the last tick */
+    bool timed;                     /* the two below have been set */
+    uint32_t asked_at;
+    uint32_t fetch_at;              /* when the last fetch of the weather began */
+    bool fetching;
+    bool fetched;                   /* a fetch has begun for this zip code */
+    bool lookup;                    /* the fetch is of where the zip code is */
+    /* The fetch's task alone, until it says the fetch has landed: the
+     * reply, whole, and why there is none. */
+    uint32_t parsing;               /* the fetch the rest is in the middle of */
+    bool long_reply;                /* which is longer than is read */
+    uint16_t reply_len;
+    char reply[NESP_WEATHER_REPLY];
+    char said[NESP_WEATHER_COLUMNS];    /* the fetch's own words for how it failed */
+    uint8_t said_len;
+} nesp_weather_t;
 
 /* RAW: the line with framing off (raw.c). A run is a stretch of bytes at a
  * rate of its own, one way: the test pattern, or whatever another service
@@ -597,7 +653,8 @@ typedef struct {
     nesp_peer_t peer;
     nesp_radar_t radar;
     nesp_tuner_t tuner;
-    nesp_service_t services[9];
+    nesp_weather_t weather;
+    nesp_service_t services[10];
 } nesp_stick_t;
 
 void nesp_stick_init(nesp_stick_t *stick, const nesp_hal_t *hal);
@@ -633,6 +690,8 @@ void nesp_peer_service(nesp_service_t *service, nesp_peer_t *peer, const nesp_sy
 void nesp_radar_service(nesp_service_t *service, nesp_radar_t *radar, const nesp_hal_t *hal);
 void nesp_tuner_service(nesp_service_t *service, nesp_tuner_t *tuner, nesp_raw_t *raw,
                         const nesp_hal_t *hal);
+void nesp_weather_service(nesp_service_t *service, nesp_weather_t *weather,
+                          const nesp_hal_t *hal);
 
 /* For a service with something to send as a run (JUKE's sampled sound).
  *

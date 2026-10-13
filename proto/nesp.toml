@@ -137,6 +137,13 @@ PLAY = 0x01             # start on the station's stream
 STOP = 0x02             # and give it up
 SOUND = 0x03            # the console's rate: send the station as samples (enum SOUND)
 
+[services.WEATHER]
+id = 0x14
+[services.WEATHER.ops]
+ZIP = 0x00              # an id, then five digits: choose it, or say how it stands
+ROW = 0x01              # a row of the report, by its number
+LAST = 0x02             # the digits of the last zip code found, if one is kept
+
 [enums.WIFI]            # the state of the Stick's Wi-Fi
 NONE = 0                # no network has been set up
 IDLE = 1                # one is saved, and the Stick is not on it
@@ -220,6 +227,25 @@ TUNING = 2              # its stream is being fetched, and not enough has come t
 READY = 3               # enough has: ask for the sound
 FAILED = 4              # the stream could not be had, or was lost; the reply says how
 PAUSED = 5              # the console left the sound: held, and fetched still, until PLAY
+
+[enums.SKY]             # WEATHER: how it stands with the zip code and its report
+IDLE = 0                # no zip code chosen, or not the one the request is about
+NO_WIFI = 1
+LOOKING = 2             # where the zip code is, is being asked
+FETCHING = 3            # that is known, and nothing has come of its weather yet
+READY = 4               # a report is held
+NOT_FOUND = 5           # no place has that zip code
+FAILED = 6              # the asking or the fetching failed; the reply says how
+
+[enums.PICTURE]         # WEATHER: the pictures a row may have, four tiles each
+SUN = 0
+MOON = 1
+PARTLY = 2              # the sun behind a cloud
+CLOUD = 3
+FOG = 4
+RAIN = 5
+SNOW = 6
+STORM = 7
 
 [enums.LOBBY]           # PEER: how it stands with the other nesp32
 NO_WIFI = 0             # this one is not on a network
@@ -310,6 +336,18 @@ RADAR_NAMES_LEN = 25    # and of its names
 RADAR_POLL_MS = 8000    # between one fetch of the aircraft and the next
 RADAR_STALE_MS = 30000  # a scene is stale when nothing good has come for this long
 RADAR_UNASKED_MS = 30000    # no fetch for a console that has not asked for this long
+WEATHER_ROWS = 13       # rows of a report
+WEATHER_COLUMNS = 28    # characters to a row
+WEATHER_ZIP_LEN = 5     # digits in a zip code
+WEATHER_PLACE_MAX = 22  # characters of a place's name: a row, less a zip code and a space
+WEATHER_DAYS = 5        # days in a report, today the first
+# A row is tile numbers: ASCII, $20 to $5F, and besides those
+WEATHER_DEGREE = 0x1F   # the sign for degrees
+WEATHER_PICTURE = 0x60  # a quarter of a picture: this, and 4 x its PICTURE, and 0 to 3:
+                        # top left, top right, bottom left, bottom right
+WEATHER_POLL_MS = 900000    # between one fetch of the weather and the next
+WEATHER_RETRY_MS = 60000    # or this, after one that failed
+WEATHER_UNASKED_MS = 30000  # no fetch for a console that has not asked for this long
 PEER_PORT = 6502        # UDP, on the nesp32 that hosts
 PEER_VERSION = 1        # of what two nesp32s say to each other
 PEER_PER_FRAME = 2      # ticks of buttons a TICKS frame may carry, each way

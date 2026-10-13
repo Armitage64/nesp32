@@ -217,6 +217,7 @@ nothing done on the Stick.
 | `$11` | WIKI | NESpedia: a search, and the article it finds as numbered lines | done |
 | `$12` | RADAR | NES Radar: an airport, and the aircraft round it | done |
 | `$13` | TUNER | a radio station from the Internet, as sampled sound | done |
+| `$14` | WEATHER | the weather at a zip code, as rows for the screen | done |
 | `$80`-`$FF` | | experiments and other people's | |
 
 Multi-byte numbers are low byte first, except the CRC.
@@ -990,6 +991,104 @@ sends each as the byte the console's receiver turns into it.
   twelve seconds before (or 22), and a station lost while it is paused is FAILED.
 - After the run the console asks for STATE, and is told OFF, PAUSED or
   FAILED.
+
+### WEATHER `$14`: the weather at a zip code
+
+The weather at a place in the United States, now and for five days, laid
+out by the nesp32 as 13 rows of 28 tiles, pictures and all. The console
+names the place by its zip code. The nesp32 asks
+[Zippopotam](https://zippopotam.us) where that is and what it is called,
+once, then asks [Open-Meteo](https://open-meteo.com) for the weather
+there, and again every 15 minutes. The console draws the rows and works
+nothing out.
+
+| `OP` | Name | Request | Reply |
+|---|---|---|---|
+| `$00` | ZIP | `ID`, `DIGITS[5]` | `STATE`, `ID`, `SERIAL`, and with FAILED up to 28 characters for the screen |
+| `$01` | ROW | `ID`, `NUMBER` | `STATE`, `ID`, `SERIAL`, `NUMBER`, and with a report held `TEXT[28]` |
+| `$02` | LAST | | `DIGITS[5]` of the last zip code found, or nothing if none is kept |
+
+| `STATE` | Name | Meaning |
+|---|---|---|
+| `$00` | IDLE | no zip code is chosen, or not the one with the request's `ID` |
+| `$01` | NO_WIFI | the nesp32 is not on a network, and holds no report |
+| `$02` | LOOKING | where the zip code is, is being asked |
+| `$03` | FETCHING | that is known, and nothing has come of its weather yet |
+| `$04` | READY | a report is held |
+| `$05` | NOT_FOUND | no place has that zip code |
+| `$06` | FAILED | the asking or the fetching failed; the reply says how |
+
+**ZIP is both "this zip code" and "how does it stand"**, as RADAR's
+AIRPORT is. The console gives each choice an id, one more than the last,
+and may send the same request as often as it likes. The nesp32 chooses
+the zip code when the id or the digits differ from the one it has, and
+otherwise only answers. The digits are `0` to `9` as characters; anything
+else is BAD_ARG. No reply of WEATHER's is held for a repeat.
+
+**A zip code that does not exist is told from a site that is down.**
+Zippopotam answers one it has not got with a 404, and that alone is
+NOT_FOUND. Any other failure of either site is FAILED, with a line of
+words: `THE SITE DID NOT ANSWER`, `THE SITE SAID 503`, `THE SITE MADE NO
+SENSE` for an answer that was cut short or had no weather in it. A zip
+code whose lookup failed is asked after again when the console chooses it
+again, with a new id.
+
+**The last zip code found is kept, over power-off too**: its digits,
+where it is, and its place's name, in the nesp32's flash, written when
+they are news and not otherwise. One that was not found is never kept.
+Chosen again, it is not asked after again. LAST is its digits, for a ROM
+to begin with: Weather's form comes up with them in it. LAST chooses
+nothing and starts no fetch.
+
+**A report has a `SERIAL`**, which is never 0, and is 0 in a reply with
+no report. Every fetch of the weather that ends well makes a report with
+a new one. A console draws the rows of one serial, and starts over if a
+row comes with another; it asks ZIP now and then, and draws again when
+the serial is not the one on its screen. A fetch that fails leaves the
+report there was, and is tried again after a minute; with no report
+there is none to leave, and the state is FAILED until a fetch ends well.
+
+`TEXT` is tile numbers, ready for the screen. Characters are ASCII, `$20`
+to `$5F`: capitals, digits and signs. `$1F` is the sign for degrees. `$60`
+to `$7F` are the pictures, four tiles each, where a font would have its
+small letters: `$60 + 4 x PICTURE + QUARTER`, the quarters being top
+left, top right, bottom left and bottom right. A picture's top two are on
+one row and its bottom two on the next, in the same columns.
+
+| `PICTURE` | Name | For |
+|---|---|---|
+| 0 | SUN | clear, by day |
+| 1 | MOON | clear, by night |
+| 2 | PARTLY | partly cloudy, by day |
+| 3 | CLOUD | cloudy; and partly cloudy by night |
+| 4 | FOG | |
+| 5 | RAIN | drizzle, rain, showers |
+| 6 | SNOW | |
+| 7 | STORM | thunderstorms |
+
+The rows, as `firmware/components/nesp_services/weather.c` lays them out:
+
+| Row | |
+|---|---|
+| 0 | the place and its state, `BEVERLY HILLS, CA`, and at the right the zip code |
+| 2, 3 | the weather now: its picture, and beside it the temperature and a word or two, then today's high and low |
+| 4, 5 | the humidity, and the wind |
+| 8 | five days' names, today the first |
+| 9, 10 | their pictures |
+| 11, 12 | their highs, and their lows |
+
+Temperatures are in degrees Fahrenheit and the wind in miles an hour. The
+days are the place's own, as Open-Meteo gives them for its time zone, and
+their names are worked out from their dates: the nesp32's clock is not
+asked. A day's picture is the day's, whatever the hour is now.
+
+**The nesp32 stops fetching for a console that has stopped asking**, 30
+seconds after its last request, and starts again with the next. Both
+sites' replies are short, and each is held whole before it is read: one
+longer than 2 KB is FAILED.
+
+A row's exchange is 9 bytes out and 39 back, so a ROM that asks for one
+takes replies of 63 (a shorter `REPLY_MAX` is BAD_ARG).
 
 ## 6. Timing
 

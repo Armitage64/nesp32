@@ -21,6 +21,7 @@ The firmware has to have been built first (firmware/deploy.sh build), and
 the cartridge (make cart; make web does that itself).
 """
 
+import hashlib
 import json
 import os
 import shutil
@@ -35,7 +36,10 @@ WEB = os.path.join(ROOT, "web")
 PICTURES = [("cart-menu.png", "docs/cart-menu.png"),
             ("search.png", "apps/wiki/docs/search.png"),
             ("jukebox.png", "apps/jukebox/docs/screen.png"),
-            ("status.png", "apps/setup/docs/status.png")]
+            ("status.png", "apps/setup/docs/status.png"),
+            ("weather.png", "apps/weather/docs/screen.png"),
+            ("npr-news.png", "apps/npr/docs/screen-news.png"),
+            ("radar.png", "apps/nes-radar/docs/scope.png")]
 
 # (ESP Web Tools' name for the chip, the build's directory, a prefix for its files)
 BOARDS = [("ESP32-S3", os.path.join(ROOT, "firmware", "build-esp32s3"), "s3")]
@@ -63,6 +67,15 @@ def build(family, directory, prefix, out):
     return {"chipFamily": family, "parts": parts}
 
 
+def page(source, target, style):
+    """A page, with the stylesheet asked for by a name that changes when
+    it does: a browser that kept the old one does not go on using it."""
+    with open(source) as f:
+        text = f.read()
+    with open(target, "w") as f:
+        f.write(text.replace('style.css"', 'style.css?v=%s"' % style))
+
+
 def main(out, cart):
     if not os.path.exists(cart):
         sys.exit("No cartridge at %s: run make cart first." % os.path.relpath(cart))
@@ -86,8 +99,10 @@ def main(out, cart):
     with open(os.path.join(flash, "manifest.json"), "w") as f:
         json.dump(manifest, f, indent=2)
         f.write("\n")
-    shutil.copyfile(os.path.join(WEB, "flash", "index.html"), os.path.join(flash, "index.html"))
-    shutil.copyfile(os.path.join(WEB, "product", "index.html"), os.path.join(out, "index.html"))
+    with open(os.path.join(WEB, "style.css"), "rb") as f:
+        style = hashlib.sha256(f.read()).hexdigest()[:8]
+    page(os.path.join(WEB, "flash", "index.html"), os.path.join(flash, "index.html"), style)
+    page(os.path.join(WEB, "product", "index.html"), os.path.join(out, "index.html"), style)
     shutil.copyfile(os.path.join(WEB, "style.css"), os.path.join(out, "style.css"))
     shutil.copyfile(cart, os.path.join(out, "nesp32.nes"))
     for name, path in PICTURES:

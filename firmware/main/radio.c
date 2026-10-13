@@ -47,9 +47,10 @@
 
 static const char *TAG = "radio";
 
-typedef enum { ORDER_SCAN, ORDER_JOIN, ORDER_FORGET, ORDER_AIRPORT } order_kind_t;
+typedef enum { ORDER_SCAN, ORDER_JOIN, ORDER_FORGET, ORDER_AIRPORT, ORDER_ZIP } order_kind_t;
 #define SETTINGS "nesp32"           /* conn.c's too */
 #define SETTING_AIRPORT "airport"
+#define SETTING_ZIP "zip"
 
 typedef struct {
     order_kind_t kind;
@@ -67,9 +68,20 @@ typedef struct {
     int32_t longitude;
 } airport_t;
 
+/* WEATHER's last zip code, likewise: its digits, where it is, and its
+ * place's name. */
+typedef struct {
+    char digits[NESP_WEATHER_ZIP_LEN];
+    int32_t latitude;
+    int32_t longitude;
+    char name[NESP_WEATHER_PLACE_MAX];
+} zip_t;
+
 static portMUX_TYPE lock = portMUX_INITIALIZER_UNLOCKED;
 static airport_t airport;                   /* under lock */
 static bool have_airport;                   /* under lock */
+static zip_t zip;                           /* under lock */
+static bool have_zip;                       /* under lock */
 static nesp_wifi_t wifi;                    /* under lock */
 static uint8_t scan_state = NESP_SCAN_IDLE; /* under lock */
 static uint8_t scan_count;                  /* under lock */
@@ -426,9 +438,53 @@ static void hal_airport_keep(void *ctx, const char *code, int32_t latitude, int3
     xQueueSend(orders, &order, 0);  /* the flash is the worker's to write */
 }
 
+static bool hal_zip_last(void *ctx, char *digits, int32_t *latitude, int32_t *longitude,
+                         char *name)
+{
+    (void)ctx;
+    portENTER_CRITICAL(&lock);
+    bool have = have_zip;
+    if (have) {
+        memcpy(digits, zip.digits, sizeof(zip.digits));
+        *latitude = zip.latitude;
+        *longitude = zip.longitude;
+        memcpy(name, zip.name, sizeof(zip.name));
+    }
+    portEXIT_CRITICAL(&lock);
+    return have;
+}
+
+static void hal_zip_keep(void *ctx, const char *digits, int32_t latitude, int32_t longitude,
+                         const char *name)
+{
+    (void)ctx;
+    order_t order = {.kind = ORDER_ZIP};
+    portENTER_CRITICAL(&lock);
+    memcpy(zip.digits, digits, sizeof(zip.digits));
+    zip.latitude = latitude;
+    zip.longitude = longitude;
+    memcpy(zip.name, name, sizeof(zip.name));
+    have_zip = true;
+    portEXIT_CRITICAL(&lock);
+    xQueueSend(orders, &order, 0);  /* the flash is the worker's to write */
+}
+
 static void do_order(order_t *order)
 {
     switch (order->kind) {
+    case ORDER_ZIP: {
+        zip_t kept;
+        nvs_handle_t settings;
+        portENTER_CRITICAL(&lock);
+        kept = zip;
+        portEXIT_CRITICAL(&lock);
+        if (nvs_open(SETTINGS, NVS_READWRITE, &settings) == ESP_OK) {
+            nvs_set_blob(settings, SETTING_ZIP, &kept, sizeof(kept));
+            nvs_commit(settings);
+            nvs_close(settings);
+        }
+        break;
+    }
     case ORDER_AIRPORT: {
         airport_t kept;
         nvs_handle_t settings;
@@ -528,6 +584,9 @@ void radio_start(void)
         size_t size = sizeof(airport);
         have_airport = nvs_get_blob(settings, SETTING_AIRPORT, &airport, &size) == ESP_OK
                        && size == sizeof(airport);
+        size = sizeof(zip);
+        have_zip = nvs_get_blob(settings, SETTING_ZIP, &zip, &size) == ESP_OK
+                   && size == sizeof(zip);
         nvs_close(settings);
     }
     ESP_ERROR_CHECK(esp_netif_init());
@@ -610,6 +669,8 @@ const nesp_hal_t *radio_hal(void)
     hal.peer_keep = conn_keep;
     hal.airport_last = hal_airport_last;
     hal.airport_keep = hal_airport_keep;
+    hal.zip_last = hal_zip_last;
+    hal.zip_keep = hal_zip_keep;
     hal.peer_rtt = conn_rtt;
     hal.peer_note = conn_note;
     hal.peer_noted = conn_noted;
