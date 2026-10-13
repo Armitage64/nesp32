@@ -13,7 +13,9 @@ the ESP32 microcontroller.
 
 - Provides Internet access, media streaming, and online gaming capabilities to NES software.
 
-- Built using the M5 StickS3. The StickS3 is a ~$20 all-in-one IoT development kit that includes a dual core processor, flash storage, audio, WiFi, color LCD screen, battery, USB interface, and buttons. The M5 StickC-Plus2 is also fully supported but no longer available from the vendor.
+- Built using the M5 StickS3. The StickS3 is a ~$20 all-in-one IoT development kit that includes a dual core processor, flash storage, audio, WiFi, color LCD screen, battery, USB interface, and buttons.
+
+- The M5 StickC-Plus2 is also fully supported but no longer available from the vendor.
 
 - A custom hat plugs into the top of the device and connects to controller port 2 of the NES. 
 
@@ -24,13 +26,13 @@ to be configured from the NES itself.
 
 ## Quick Links
 
-[NESP32 Home Page](https://retrobits.tv/nesp32)
+- [NESP32 Home Page](https://retrobits.tv/nesp32)
 
-[Purchase the M5 StickS3](https://amzn.to/3TVUV0y)
+- [Purchase the M5 StickS3](https://amzn.to/3TVUV0y)
 
-PCB Gerber Files
+- [PCB Gerber Files](hardware/)
 
-[Firmware Updates](https://retrobits.tv/nesp32/flash/)
+- [Online Firmware Installer](https://retrobits.tv/nesp32/flash/)
 
 ## Demonstration Apps
 
@@ -100,9 +102,6 @@ Contra's build needs your own copy of the game (US release) at `apps/contra/base
 | `build/setup.nes` | Setup as a ROM of its own. For any other program on the cartridge, `make -C apps/<name>` builds one into `apps/<name>/build/` |
 | `apps/drmario/build/drmario_net.nes` | Dr. Mario 2P, which is not on the cartridge |
 | `apps/contra/build/contra_net.nes` | Contra 2P, which is not on the cartridge. `make -C apps/contra ines` also makes `contra_net_ines.nes`, with an iNES header in place of the NES 2.0 one |
-
-[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) has the rest: the tests, the cartridge's layout, and
-what is where.
 
 ## Further Reading
 
