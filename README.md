@@ -1,7 +1,7 @@
 # NESP32
 
 An inexpensive, DIY wireless network interface for the Nintendo Entertainment System (NES) based on
-the ESP32 S3 microcontroller. 
+the ESP32 microcontroller. 
 
 <p float="left">
   <img src="apps/setup/docs/status.png" width="32%" alt="The status screen" />
@@ -13,7 +13,7 @@ the ESP32 S3 microcontroller.
 
 - Provides Internet access, media streaming, and online gaming capabilities to NES software.
 
-- Built using the M5 StickS3. The StickS3 is a ~$20 all-in-one IoT development kit that includes a dual core processor, flash storage, audio, WiFi, color LCD screen, battery, USB interface, and buttons.
+- Built using the M5 StickS3. The StickS3 is a ~$20 all-in-one IoT development kit that includes a dual core processor, flash storage, audio, WiFi, color LCD screen, battery, USB interface, and buttons. The M5 StickC-Plus2 is also fully supported but no longer available from the vendor.
 
 - A custom hat plugs into the top of the device and connects to controller port 2 of the NES. 
 
@@ -32,32 +32,18 @@ PCB Gerber Files
 
 [Firmware Updates](https://retrobits.tv/nesp32/flash/)
 
-## Features
+## Demonstration Apps
 
-Current NESP32 capabilities:
-| Service | What it provides |
-|---|---|
-| Wi-Fi | Connect to an access point from the NES |
-| Fetch | Retrieve pages via HTTP/S, reduced to plain text for display |
-| Music | Stream VGM/VGZ music to the NES's APU |
-| Sampled sound | Stream PCM audio at up to 20kHz |
-| Online Gaming | Host or join a 2-Player game over a LAN or WAN |
-| Radar | Live air traffic round an airport named by its ICAO code, from adsb.fi |
-| Radio | National Public Radio's live stream, decoded on the NESP32 from MP3 and played as sampled sound |
-| Files | Manage stored music files via USB drive mode |
-
-Current NESP32 apps: 
-
-| Program | What it is |
+| Name | Description |
 |---|---|
 | [Setup](apps/setup) | Configure the NESP32, status, Wi-Fi, link test, USB drive |
 | [NESpedia](apps/wiki) | Search and display Wikipedia articles |
-| [Jukebox](apps/jukebox) | Stream VGM/VGZ music files and PCM audio to the NES |
+| [Jukebox](apps/jukebox) | Stream VGM/VGZ music files and PCM audio to the NES sound chip |
 | [Throughput](apps/throughput) | Test the bandwidth of the NES<>ESP32 interface |
-| [Dr. Mario 2P](apps/drmario) | Dr. Mario two-player over a network |
-| [Contra, 2P](apps/contra) | Contra's two-player over a network |
-| [NES Radar](apps/nes-radar) | k6lcm's live air traffic scope, with the nesp32 in place of a computer |
-| [National Public Radio](apps/npr) | NPR's live radio stream on the NES's sample channel. A proof of concept, with the one station |
+| [Dr. Mario 2P](apps/drmario) | Dr. Mario two-player over a LAN or WAN |
+| [Contra, 2P](apps/contra) | Contra's two-player over a LAN or WAN |
+| [NES Radar](apps/nes-radar) | [k6lcm](https://github.com/k6lcm)'s live air traffic scope, no PC required |
+| [National Public Radio](apps/npr) | NPR's live .mp3 radio stream with optional headline news |
 
 ## How it works
 
@@ -86,7 +72,7 @@ If you cloned without the submodules, run `git submodule update --init`.
 
 **2. Build and flash the firmware**
 
-Connect the StickS3 over USB, then:
+Connect the StickS3 (or StickC-Plus2) over USB, then:
 
 ```sh
 firmware/deploy.sh          # build, and flash every NESP32 that is connected
