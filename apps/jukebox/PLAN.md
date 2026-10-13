@@ -438,10 +438,9 @@ serial hardware.
    **Done on the StickC Plus2**, in `firmware/stick/`; the StickS3 is
    still to try. One firmware
    serves the StickS3 and the StickC Plus2 that stands in for it until an
-   S3 arrives; `board.py` picks the pins (S3: TX G8, RX G1; Plus2: TX G26,
-   RX G36). The hat is the same circuit, but its TX wire sits on a
-   different slot for each board, because G0 is on slot 3 of one and slot
-   5 of the other.
+   S3 arrives; `board.py` picks the pins. (The Plus2's pins were not then
+   the ones it has now: [`docs/WIRING.md`](../../docs/WIRING.md) has the
+   hat both boards share.)
    - The ports send the same bytes as the desktop modules under random
      requests, noise, resends, skips and restarts, and play frame-exact on
      the simulated NES at 1 ms and 12 ms reply times.
@@ -465,8 +464,7 @@ serial hardware.
    to be the USB log line, which is now timed by itself.
 
    That meets the exit on the Plus2. **Still to do, when an S3 is on
-   hand:** move the hat's TX wire to slot 5 and repeat the bring-up steps
-   in `firmware/stick/README.md`. Its RX stage has a 100 kΩ base
+   hand:** repeat the bring-up steps in `firmware/stick/README.md`. Its RX stage has a 100 kΩ base
    resistor, the slowest part of the link at 38400, so scope its edges if
    requests fail to decode there.
 

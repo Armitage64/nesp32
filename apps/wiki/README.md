@@ -96,7 +96,8 @@ or changed for NESpedia.
 
 The hat is nes-radar's two-transistor level shifter
 ([`docs/WIRING.md`](../../docs/WIRING.md) has the circuit),
-wired for the board: on a StickS3, TX on slot 5 (G8) and RX on slot 4 (G1).
+the same for both boards: TX on slot 5 and RX on slot 4, which are G8 and G1
+on a StickS3 and G0 and G36 on a StickC Plus2.
 
 If a search says `NO ANSWER FROM THE NESP32`, the Stick is not there, or is
 running something else. `THE NESP32 NEEDS AN UPDATE` means its firmware is

@@ -1,7 +1,7 @@
 # Wiring
 
-This is the hat every nesp32 uses, between an M5StickS3 and controller
-port 2. It was written for nes-radar, whose MicroPython firmware the text
+This is the hat every nesp32 uses, between an M5StickS3 or an M5StickC Plus2
+and controller port 2. It was written for nes-radar, whose MicroPython firmware the text
 below still names in places, and is given here whole. Where it says
 `"invert"` in `config.json`, nesp32's firmware has `BOARD_LINK_INVERTED`
 in [`firmware/main/board.h`](../firmware/main/board.h) (1 for the NPN
@@ -13,36 +13,42 @@ guaranteed to register on the NES. Each direction goes through one NPN
 transistor stage, all through‑hole, which fits the M5Stick proto hat's 5 × 8
 board with no adapters. See [Why a level shifter](#why-a-level-shifter).
 
-The link uses the Stick's top 16‑pin Hat2‑Bus. The proto hat's 8‑pin plug
-fits its odd row (pins 1–15), which keeps the old StickC hat order. It does
-not use the Grove port.
+The link uses the StickS3's top 16‑pin Hat2‑Bus. The proto hat's 8‑pin plug
+fits its odd row (pins 1–15), which keeps the old StickC hat order, and a
+StickC Plus2's 8‑pin header takes it as it is. It does not use the Grove
+port.
 
-| Hat slot | Hat2 pin | StickS3 | Use |
-|---|---|---|---|
-| 1 | 1 | GND | common ground |
-| 2 | 3 | EXT_5V | **not connected.** A power input by default. |
-| 3 | 5 | G0 | **not connected.** The boot‑mode pin; see below. |
-| 4 | 7 | G1 | RX, from the RX transistor's collector |
-| 5 | 9 | G8 | TX, to the TX transistor's base resistor |
-| 6 | 11 | BAT | not connected |
-| 7 | 13 | 3V3_L2 | RX pull‑up (0.33 mA while OUT0 is high) |
-| 8 | 15 | 5V_IN | not connected |
+One hat serves both boards. Its slots reach different pins on each, the link
+is on the same two slots, and the firmware picks the pins by the board it
+was built for.
+
+| Hat slot | Hat2 pin | StickS3 | StickC Plus2 | Use |
+|---|---|---|---|---|
+| 1 | 1 | GND | GND | common ground |
+| 2 | 3 | EXT_5V | 5V OUT | **not connected.** On a StickS3, a power input by default. |
+| 3 | 5 | G0 | G26 | **not connected.** The StickS3's boot‑mode pin; see below. |
+| 4 | 7 | G1 | G36/G25 | RX, from the RX transistor's collector |
+| 5 | 9 | G8 | G0 | TX, to the TX transistor's base resistor |
+| 6 | 11 | BAT | BAT | not connected |
+| 7 | 13 | 3V3_L2 | 3V3 | RX pull‑up (0.33 mA while OUT0 is high) |
+| 8 | 15 | 5V_IN | 5V IN | not connected |
 
 > [!WARNING]
-> **Nothing may touch G0 (slot 3).** If anything holds it low at power‑up,
-> the StickS3 starts in firmware‑download mode instead of NES Radar. Both
-> stages would: a TX base resistor holds G0 near 1.2 V through the transistor's
-> base junction, and the RX collector sits low whenever the NES idles OUT0
-> high. Older StickC hats used slot 3 for G26, so a hat built for the Plus2's
-> old pins must be converted first.
+> **Nothing may touch slot 3.** It is G0 on a StickS3, and if anything holds
+> that low at power‑up, the StickS3 starts in firmware‑download mode instead
+> of NES Radar. Both stages would: a TX base resistor holds G0 near 1.2 V
+> through the transistor's base junction, and the RX collector sits low
+> whenever the NES idles OUT0 high.
 
-The same hat fits a **StickC Plus2**, with nesp32's firmware: its slot 4 is
-G36 (RX), slot 5 is G0 (TX), slot 7 is 3V3, and slot 3 is G26, left open. G0
-is that board's boot‑mode pin too, and it carries the TX base resistor there;
-a Plus2 started from off a number of times with the hat on, the console on
-and off, and came up in nesp32's firmware every time. No level on it has
-been measured. A Plus2 with the hat on a real NES played NPR at 223722 baud,
-the link's fastest rate for sound.
+On a **StickC Plus2**, G36 is input‑only and shares its pad with G25, which
+must stay an input. G0 is that board's boot‑mode pin too, and it carries the
+TX base resistor there; a Plus2 started from off a number of times with the
+hat on, the console on and off, and came up in nesp32's firmware every time.
+No level on it has been measured. A Plus2 with the hat on a real NES played
+NPR at 223722 baud, the link's fastest rate for sound.
+
+The rest of this page names the StickS3's pins. On a Plus2, read G8 as G0,
+G1 as G36 and 3V3_L2 as 3V3.
 
 G3 (a JTAG strapping pin) and G43/G44 (UART0, which carries the boot ROM's
 log) are avoided on purpose. The even row is out of the proto hat's reach.
@@ -129,15 +135,6 @@ hardware to cancel it (`"invert": true`, the default).
 - The whole circuit uses about 21 of the 40 holes.
 - Make all connections with the NES off and the Stick off. Identify leads by
   continuity, not color.
-
-## Converting a Plus2 hat
-
-A hat built for the StickC Plus2's old pins has TX on slot 3, which is G0 on
-the StickS3. Move the wire from the TX base resistor to slot 5, and check
-that slot 3 is left open. RX stays on slot 4. Nothing else changes. Slot 5 is
-G8 on a StickS3 and G0 on a Plus2, and nesp32's firmware sends on it on both;
-a Plus2 with firmware from before that sent on G26, and is silent to a
-converted hat until it is flashed.
 
 ## Alternative: TXU0202 (surface mount, non‑inverting)
 

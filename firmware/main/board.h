@@ -17,9 +17,7 @@
  * hat leaves open: either stage there would start the board in
  * firmware-download mode. On a StickC Plus2 it is slot 5, the hat's TX,
  * and the board starts all the same with the TX stage's 10 k base resistor
- * on it: tried from off a number of times, with the console on and off. A
- * hat built for the Plus2's old pins, with TX on slot 3 (G26), has to be
- * converted (docs/WIRING.md).
+ * on it: tried from off a number of times, with the console on and off.
  *
  * The two boards have different chips, so the board is the target the
  * firmware was built for (idf.py set-target esp32, or esp32s3).
