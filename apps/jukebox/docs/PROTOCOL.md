@@ -222,11 +222,11 @@ screen stands still, and of the controller only button A is looked at.
 On the line a sound is a run of nesp32's RAW service, which JUKE's SOUND
 sets up; nesp32's `docs/PROTOCOL.md` has both.
 
-**Status: the routines played on a real NES at two rates**, a 30-second
-clip at rate 1 (10169 samples a second) and at rate 5 (20338), sent by a
-StickC Plus2 under the MicroPython firmware the jukebox used to have. From
-a nesp32, a clip at rate 5 sounded right on the MiSTer's NES core, and all
-six rates play on the simulated console. The receive routines are the throughput test's fast receiver
+**Status: working on hardware.** From a nesp32, sound has played on a
+real NES from a StickC Plus2 at rates 1, 2 and 5 (10169, 11622 and 20338
+samples a second), and at rate 5 on the MiSTer's NES core from a StickS3;
+pausing with A and playing on works there. All six rates play on the
+simulated console. The receive routines are the throughput test's fast receiver
 (`../../throughput/README.md`), which passed on that console at every rate used
 here.
 
@@ -298,14 +298,11 @@ cannot play one if they do not.
   on, every frame, once the lines the record's frame changed are on the
   screen and the bars of the music before it, which the record brings
   down, are off it.
-- **GO** means the samples follow. The NES turns the NMI off, waits
-  150 ms, and receives samples until the last.
-- **The nesp32 cannot see that the NES heard GO**, and must not send
-  samples to one that did not. So it listens for 100 ms first. A console
-  that missed the reply asks again a frame later and is told GO again,
-  and the 100 ms start again; one that heard it is silent, since even its
-  controller read has stopped. Only then does the nesp32 change its
-  UART's rate, and it starts the samples 175 ms after its last GO.
+- **GO** means the samples follow, as a run of RAW's, with RAW's clock:
+  the NES turns the NMI off, waits 150 ms, and receives samples until the
+  last; the nesp32 listens for 100 ms in case the NES did not hear GO and
+  asks again, and starts the samples at 175 ms (nesp32's
+  `docs/PROTOCOL.md`, "RAW").
 - **WAIT** means the music is paused: the NES asks again next frame.
 - **GONE** means there is no sound to play: this console said it could not
   play it, or the track was changed, or the nesp32 was restarted. The NES
@@ -325,15 +322,12 @@ cannot play one if they do not.
   cycles later, still before one can fall. The other buttons are behind
   the controller's shift register, which is clocked only with the line
   held low, and are not read.
-- **A console that leaves a sound says so** with 8 bytes of `$FF` at the
-  link's rate. The nesp32, sending at the sound's rate, cannot read them,
-  and does not need to: 4 bytes of any kind heard during a sound mean that
-  the console has stopped listening. It ends the run and pauses. The
-  console meanwhile brings its DAC to rest a step at a time, over 20 ms,
-  and waits until the line has been quiet for 30 ms, since the nesp32's
-  UART holds a tenth of a second or more of samples that were on their
-  way; if the line is still busy after about half a second it says the
-  bytes again. Then the NMI goes back on, with the sound still wanted.
+- **A console that leaves a sound says so** as RAW has it, with 8 bytes
+  of `$FF` at the link's rate, and the nesp32 ends the run and pauses
+  (nesp32's `docs/PROTOCOL.md`, "RAW" and "JUKE"). The console meanwhile
+  brings its DAC to rest a step at a time, over 20 ms, and waits for the
+  line to be quiet. Then the NMI goes back on, with the sound still
+  wanted.
 - **Paused**, the console asks for the stream, which says the music is
   paused and brings nothing, and everything on the controller works: Start
   or A plays, and Left and Right change the track. Played, the console

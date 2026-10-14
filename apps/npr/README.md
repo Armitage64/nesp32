@@ -18,25 +18,26 @@ service, in [nesp32's `docs/PROTOCOL.md`](../../docs/PROTOCOL.md).
 
 ## Status
 
-**It played on hardware in what is now the high-quality mode**: from a
-StickS3, at 20338 samples a second, speech was entirely clear, if a little
-quiet, and in a first minute the nesp32's ring neither ran dry nor dropped
-anything. **The menu and the mode with the headlines have had a first run
-on hardware, and worked**, and so has pausing, also for longer than the
-nesp32 holds. After a few minutes with the headlines and several pauses
-its figures were 21 seconds held, dry 0, cut 8: the ring never ran dry,
-the pauses had cost eight seconds of the station, and what played was 21
-seconds behind it. No long run has been made of either mode, and nothing
-else was measured. On a simulated console the ROM plays the station from nesp32's own firmware code,
+**It works on hardware, both modes, and for long runs.** From a StickS3,
+at 20338 samples a second, speech is entirely clear, if a little quiet,
+and the nesp32's ring neither runs dry nor drops anything; the
+high-quality mode has also played on a real NES from a StickC Plus2. The
+mode with the headlines plays for long periods with nothing wrong in the
+sound, though its text now and then has a wrong or odd character, or a
+character in the wrong colour ("Not done"). Pausing works, also for
+longer than the nesp32 holds. After a few minutes with the headlines and
+several pauses its figures were 21 seconds held, dry 0, cut 8: the ring
+never ran dry, the pauses had cost eight seconds of the station, and what
+played was 21 seconds behind it. On a simulated console the ROM plays the station from nesp32's own firmware code,
 over a line that models every bit: each sample the nesp32 sends reaches
 the DAC, once and in order, and every write to the screen during a sound
 falls in a vblank.
 
 | Part | State |
 |---|---|
-| TUNER on the nesp32: the stream fetched, decoded (MP3), resampled and made into levels for the DAC | worked on a StickS3 at 20338; tested on a computer at both rates, with the test as the Internet |
-| The headlines: NPR's news feed fetched, laid out as pages, and sent in the samples | tested on a computer, with a feed of the test's own; the laying out once by hand with NPR's |
-| The ROM (`build/npr.nes`) | worked on hardware with a StickS3 before the menu and the headlines; tested on py65 against that code, over the simulated line |
+| TUNER on the nesp32: the stream fetched, decoded (MP3), resampled and made into levels for the DAC | working on a StickS3 at both rates, for long runs; tested on a computer at both rates, with the test as the Internet |
+| The headlines: NPR's news feed fetched, laid out as pages, and sent in the samples | working on hardware, with now and then a wrong character; tested on a computer, with a feed of the test's own |
+| The ROM (`build/npr.nes`) | working on hardware, both modes; tested on py65 against that code, over the simulated line |
 | A nesp32 decoding the stream as fast as it arrives | measured on a StickS3, with no console: 11.5% of one core ([nesp32's firmware](../../firmware/README.md), "The radio") |
 | How it sounds | clear speech on hardware, and quiet. `tools/npr_preview.py` gives it without a console |
 
@@ -151,14 +152,14 @@ high-quality mode's. The console's filters are not in it.
 
 ## Not done
 
-- A long run. The high-quality mode has played on a real NES, from a StickC
-  Plus2 with the hat on its PCB; the mode with the headlines has not been
-  tried there.
+- **Now and then a wrong character in the headlines**: a typo, an odd
+  character, or one in the wrong colour, here and there on a page, while
+  the sound plays on unharmed for long periods. A sample misread is a bit
+  of a character misread, which would look like this; a write to the PPU
+  that fell outside vblank would too. The tests say that on the simulated
+  console every bit arrives and no write falls outside one, so it is
+  something of the real line or the real PPU, and not yet looked into.
 - More than one station, and a station's name or programme on the screen.
-- A long run on hardware of the mode with the headlines. A write to the
-  PPU that fell outside vblank would show as a flicker or a wrong
-  character; a first run showed neither, and the tests say that on the
-  simulated console no write does.
 - Start during the sound: only A is looked at, and not in the samples that
   bring a character of a page (a fifth of a second in thirty).
 - A station played again after a long pause brought nearer to the moment,
@@ -170,9 +171,8 @@ high-quality mode's. The console's filters are not in it.
   millisecond or two just then, the rest of that vblank's writes would come
   late. It sends without pause, also when its ring is dry, so this has not
   been seen, and is not guarded against.
-- A sample misread in the mode with the headlines may be a character
-  misread: a wrong letter on the page until the next, or at worst the
-  sound ended, as by the nesp32's button.
+- A misread character that is below `$20` ends the sound, as the
+  nesp32's button does.
 - Loudness. A sample goes to the DAC at the level the station sent it, and
   speech uses about a third of the DAC's range; a gain that followed the
   programme would use more of the 7 bits.

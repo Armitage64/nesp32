@@ -6,6 +6,8 @@ The StickS3 used by the NESP32 is already capable of serial communication on its
 
 This hat is also compatible with the M5 StickC-Plus2 which is no longer available for purchase.
 
+The circuit, the pins it uses on each Stick, and why the levels have to be shifted are in [docs/WIRING.md](../docs/WIRING.md).
+
 ## Specifications
 * Base Material: FR-4
 * Layers: 2

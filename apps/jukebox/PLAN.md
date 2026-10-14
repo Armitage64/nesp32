@@ -707,8 +707,8 @@ unchanged. Only the link layer changes.
 - **VGM coverage:** some rips update the APU more than once per frame. The
   quantization report flags these.
 - **License:** code adapted from nes-radar (the TX technique, the CRC, and
-  the host decoder) is GPL-3.0 there. Decide whether nes-jukebox is GPL-3.0
-  as well, or reimplements those parts.
+  the host decoder) is GPL-3.0 there. Settled: the jukebox is GPL-3.0, as
+  all of nesp32 is.
 - **Validation boundary:** as in nes-radar, offline tests prove instruction
   timing and byte formats only. Voltage levels, USB latency and real sampling
   margin need real-console acceptance, recorded per host.

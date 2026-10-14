@@ -134,18 +134,12 @@ not taken.
 
 ### The delay
 
-Each console keeps a delay for its own buttons, from 1 tick to 5. The two
-need not be the same, and nothing is agreed between them: a console only
-ever takes the buttons it is given for each tick. To make its delay a tick
-longer a console sends the buttons it last read once more, for the tick
-between; to make it a tick shorter it lets one read go by.
-
-How long it should be is the nesp32's to say, from the times the network
-takes (nesp32's `docs/PROTOCOL.md`, "The delay"). One exchange in 128
-carries the console's report in place of a second tick of buttons, and its
-reply has the delay advised after its buttons. A session's first report
-sets the delay outright; after it the advice is made longer when two
-reports running call for it, and a tick shorter when eight do.
+Each console keeps a delay for its own buttons, from 1 tick to 5, and
+changes it as its nesp32 advises. How the delay is changed, and how the
+nesp32 works out its advice from the network's times, is PEER's, in
+[nesp32's `docs/PROTOCOL.md`](../../../docs/PROTOCOL.md), "The delay": one
+exchange in 128 carries the console's report, and its reply the delay
+advised.
 
 ### Checking that they stay alike
 
@@ -178,8 +172,11 @@ so the mapper is never written in the middle of the game's own writes to
 it.
 
 In the game's bank the session's code takes space the game does not use,
-the padding before `$FD00`. The sample data at `$FD00` (the game never
-plays a sample) is left out, and its two pages are empty.
+the padding before `$FD00`. The two pages at `$FD00` are the samples of
+the music's drums. They were left out, in the belief that the game never
+plays a sample, which is wrong (nesp32's [`docs/PHANTOM-RIGHT.md`](../../../docs/PHANTOM-RIGHT.md)); the
+music still plays them, so the netplay ROM's drums are not the
+original's.
 
 The library's memory is 16 bytes of zero page at `$00B0` and its two
 buffers at `$0330`, the session's is at `$0742`, and the menu's at `$03B0`:

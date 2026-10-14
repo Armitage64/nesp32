@@ -41,16 +41,6 @@ firmware's link and services for this computer.
 
 ## Changing the game's code
 
-The build copies the disassembly's sources to `build/src` and applies
-`patches/` there; the submodule is never written to. To change what
-netplay adds to the game's own files, edit the copies in `build/src`, then
-
-```sh
-make patches    # patches/ again, from build/src
-```
-
-A patch is made with no context, so it holds our lines and where they go
-and none of the disassembly. That is why the submodule is kept at one
-commit (`CONTRA_COMMIT` in the Makefile): the patches are line numbers in
-that commit's files. `make clean` will not delete a `build/src` that has
-changes `patches/` has not.
+Edit the copies in `build/src`, then `make patches`. nesp32's
+[`docs/DEVELOPMENT.md`](../../docs/DEVELOPMENT.md), "Changing a borrowed
+program's code", has how the patches are kept.

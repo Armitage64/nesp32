@@ -1,12 +1,13 @@
 # Building and testing nesp32
 
 What is in the repository, how to build it, what the tests cover, and how
-far each part has got. The [README](../README.md) has what the nesp32 is.
+far each part has got. The [README](../README.md) has what the nesp32 is,
+and the steps for a first build.
 
 ## Building
 
-Needs [cc65](https://cc65.github.io/) (`ca65`, `ld65`), a C compiler and
-Python 3.
+For working on it, beyond the README's first build: a Python environment
+for the tests, and the firmware's code built for this computer.
 
 ```sh
 git submodule update --init    # for the two games and nes-radar only
@@ -35,18 +36,32 @@ it. Neither game is on the cartridge; NES Radar is, so the cartridge's
 build needs that submodule, and `patch`. Nothing else here needs any of
 the three.
 
+### Changing a borrowed program's code
+
+The same for all three. The build copies the submodule's sources into the
+program's `build/` (`build/src` for Contra and NES Radar, `build/upstream`
+for Dr. Mario) and applies its `patches/` there; the submodule is never
+written to. To change what nesp32 adds to their own files, edit the
+copies, then
+
+```sh
+make patches    # patches/ again, from the copies
+```
+
+A patch is made with no context, so it holds our lines and where they go
+and none of the original. That is why each submodule is kept at one commit
+(`CONTRA_COMMIT`, `DRMARIO_COMMIT`, `RADAR_COMMIT` in the Makefiles): the
+patches are line numbers in that commit's files. `make clean` will not
+delete copies that have changes `patches/` has not.
+
 ## The cartridge
 
 ![The cartridge's menu](cart-menu.png)
 
-One ROM with the jukebox, NESpedia, NES Radar, National Public Radio,
-Weather, the throughput test and setup, and a menu that is up at power-on: Up and Down, and A or Start to
-run a program. Reset is the menu again. It is built from
-[nesp32 Setup](../apps/setup), [nes-jukebox](../apps/jukebox),
-[nes-wiki](../apps/wiki), [nes-radar](../apps/nes-radar),
-[NPR](../apps/npr), [Weather](../apps/weather) and
-[nes-throughput](../apps/throughput) in `apps/`,
-each program with its own Makefile, into `build/cart/`.
+One ROM with every program in the [README](../README.md)'s table but the
+two games, and a menu that is up at power-on: Up and Down, and A or Start
+to run a program. Reset is the menu again. Each program is built from its
+own directory in `apps/`, with its own Makefile, into `build/cart/`.
 
 It is an MMC1 (mapper 1) with 256 KB of PRG and 128 KB of CHR ROM and no
 memory. Set to 32 KB of PRG and 8 KB of CHR, an MMC1 is an NROM to a
@@ -71,45 +86,47 @@ not would not start this cartridge.
 
 ## How far each part has got
 
+Each program's README has its own status, with the figures from hardware.
+What is still to do on the hardware and the firmware is in
+[TODO.md](TODO.md).
+
 | Part | State |
 |---|---|
-| The protocol ([`PROTOCOL.md`](PROTOCOL.md)) | version 1: frames, hello, and the services SYS, NET (Wi-Fi) and DIAG |
+| The protocol ([`PROTOCOL.md`](PROTOCOL.md)) | version 1: frames, short frames, hello, and the services SYS, NET, RAW, PEER, DIAG, JUKE, WIKI, RADAR, TUNER and WEATHER |
 | The link and services in C (`firmware/components/`) | done; tested on a computer |
 | The console's library (`nes/lib/`) | done; every read and write timed on py65 |
-| The setup ROM ([nesp32 Setup](../apps/setup)): status, Wi-Fi from the controller, link test, the USB drive | done; tested on a simulated console against the C code over a cycle-exact line |
-| The Stick's firmware (`firmware/main/`): UART, Wi-Fi, screen | working on a StickS3 and on a StickC Plus2, with the MiSTer and with a real NES |
-| A computer in place of a Stick (`host/serial_host.py`) | written, not run on a cable |
-| WIKI, NESpedia's service: an HTTPS fetch, the text laid out in lines | working on a StickS3 with the NESpedia ROM ([nes-wiki](../apps/wiki)) |
-| RAW: a run of bytes with framing off, at a rate of its own, either way | working on a StickS3 with the MiSTer: a run to the console as the jukebox's sampled sound, and runs of the pattern both ways with the throughput test's ROM ([nes-throughput](../apps/throughput)), to 298296 baud to the console and 223722 from it |
-| JUKE, the jukebox's service: the playlist as a stream, the buttons, sampled sound through RAW | working on a StickS3 with the jukebox's ROM ([nes-jukebox](../apps/jukebox)) on the MiSTer; tested with that ROM on a simulated console |
-| The nesp32's files: the jukebox's tracks, in a FAT filing system (`firmware/main/store.c`, `tools/put_files.py`), with rips of games' music (`.vgm`, `.vgz`) made playable on the nesp32 itself (`firmware/components/nesp_services/vgm.c`) | builds for both boards, and the converter makes the same files as nes-jukebox's on a computer; not yet run on hardware. Before this the files were in LittleFS, and that worked on a StickS3 |
-| A StickS3 as a USB drive, for music to be copied to (`firmware/main/usb.c`, the setup ROM's USB screen) | builds, and the ROM's screen is tested on a simulated console; not yet run on hardware |
-| PEER, for two consoles playing one game: a lobby, and a lockstep relay of buttons between two nesp32s over datagrams (`firmware/main/conn.c`), with advice to each console on the delay it keeps | tested with nes-drmario's netplay ROM ([nes-drmario](../apps/drmario)) and nes-contra's ([nes-contra](../apps/contra), whose exchange is a short frame) on two simulated consoles, the game the same on both; the firmware builds for both boards with it. On hardware both ROMs have played network games, a real NES among the consoles; nes-contra's `docs/Netplay.md` has the figures taken from its sessions |
-| One cartridge (`nes/cart/`): the seven programs and a menu, on an MMC1 | Weather, the seventh, is on it and starts from the menu on a simulated console; the cartridge with it has not yet run on hardware, and neither has the one with National Public Radio, the sixth. With the five before those, working on hardware: the menu and every program, NES Radar and its two pages of tiles among them. With the four programs before it, that was a real NES and the MiSTer, with a StickC Plus2 and with a StickS3. Tested on a simulated console: each program starts from the menu, NES Radar has its own tiles from the mapper, and reset is the menu again |
-| RADAR, NES Radar's service: an airport by its letters, and the aircraft round it from adsb.fi as scenes of the nearest eight (`firmware/components/nesp_services/radar.c`), with where the airport is asked of Wikidata and the last one kept in flash | tested with nes-radar's ROM as [nes-radar](../apps/nes-radar) builds it for the link, on a simulated console, and its scenes held to the bytes nes-radar's own server makes; the firmware builds for both boards with it. Working on hardware with that ROM, the airport kept over power-off among the rest |
-
-| TUNER, a radio station as sampled sound: NPR's MP3 stream fetched, decoded with minimp3, resampled to 20338 samples a second, or to 11622 with the headlines, and made into levels for the console's DAC on the nesp32, and sent as a run of RAW's (`firmware/components/nesp_services/tuner.c`, `mp3.c`); and NPR's news headlines, fetched before it, laid out as pages (`news.c`), and sent in the eighth bit of the samples for the console to show while it plays | tested with the test as the Internet, and with [NPR](../apps/npr)'s ROM on a simulated console; the firmware builds for a StickS3 with it, 29 KB larger. The decoding alone has been measured on a StickS3 (`firmware/main/spike.c`): 11.5% of a core at 160 MHz. Worked on hardware with that ROM, from a StickS3, at 20338 samples a second and before the headlines: clear speech, and a ring that neither ran dry nor dropped anything in a first minute. The choice of two modes and the headlines have since had a first run there, and worked |
-
-| WEATHER, the weather at a zip code: where it is asked of Zippopotam, once, and kept in flash, the weather there of Open-Meteo every 15 minutes, and both laid out as rows of tiles with pictures (`firmware/components/nesp_services/weather.c`) | tested with the test as both sites, from replies the two really sent, and with [Weather](../apps/weather)'s ROM on a simulated console; the firmware builds for both boards with it. Working on hardware with that ROM by itself, from a StickC Plus2 and on the MiSTer |
+| The firmware (`firmware/main/`): UART, Wi-Fi, HTTPS, the screen, the files, the USB drive, the connection to another nesp32 | working on a StickS3 and on a StickC Plus2, with the MiSTer and with a real NES ([its README](../firmware/README.md)) |
+| The nesp32's files, in a FAT filing system, with rips converted on the nesp32 itself | working on hardware: written over USB with `tools/put_files.py` to a StickC Plus2, and copied to a StickS3 as a USB drive |
+| A computer in place of a nesp32 (`host/serial_host.py`) | written, not run on a cable |
+| The cartridge (`nes/cart/`): seven programs and a menu, on an MMC1 | working on hardware with the first five, a real NES and the MiSTer, with each board. National Public Radio and Weather start from the menu on a simulated console; the cartridge with them has not yet run on hardware |
+| [Setup](../apps/setup), SYS, NET, DIAG | working on hardware |
+| [NESpedia](../apps/wiki), WIKI | working on hardware |
+| [Jukebox](../apps/jukebox), JUKE and RAW | working on hardware |
+| [Throughput](../apps/throughput), RAW | working on hardware |
+| [Dr. Mario](../apps/drmario) and [Contra](../apps/contra), PEER | working on hardware, two consoles on one network |
+| [NES Radar](../apps/nes-radar), RADAR | working on hardware |
+| [National Public Radio](../apps/npr), TUNER | working on hardware, and for long runs |
+| [Weather](../apps/weather), WEATHER | working on hardware, the ROM by itself |
 
 ## What is where
 
 | Path | Purpose |
 |---|---|
 | `proto/nesp.toml`, `tools/gen_proto.py` | the numbers both ends share, and the C, ca65 and Python files written from them |
-| `docs/PROTOCOL.md` | the protocol |
+| `docs/` | the protocol, the wiring, this file, the hardware and firmware to-do list, and write-ups of bugs found on hardware |
 | `firmware/components/nesp_core` | frames, CRC, services' registry |
-| `firmware/components/nesp_services` | SYS, NET, DIAG, WIKI, RAW, JUKE, PEER, RADAR, TUNER and WEATHER, the text code WIKI lays articles out with, and the MP3 decoder TUNER plays a station with |
-| `firmware/main` | the Stick: UART and link task, Wi-Fi, HTTPS fetches, the connection to another nesp32, files, screen and buttons |
+| `firmware/components/nesp_services` | every service, the text code WIKI lays articles out with, and the MP3 decoder TUNER plays a station with |
+| `firmware/main` | the board: UART and link task, Wi-Fi, HTTPS fetches, the connection to another nesp32, files, screen and buttons |
+| `hardware/` | the hat's board, its parts and pictures |
+| `web/` | the product page and the page that flashes a nesp32 from a browser (`make web`) |
 | `tools/put_files.py` | puts the jukebox's tracks on a nesp32, over USB, for a board that cannot be a drive |
 | `tools/lcd.py` | pictures of the nesp32's own screen, for trying a layout before flashing it |
 | `nes/lib/nesp.inc`, `nes/lib/gen_link.py` | the console's library, and its cycle-timed serial routines |
-| `apps/setup/` | the setup ROM |
-| `apps/` | the other programs: the jukebox, NESpedia, the throughput test, netplay for Dr. Mario and Contra, NES Radar, National Public Radio (`apps/npr`), and Weather (`apps/weather`) |
+| `apps/` | the programs, a directory each |
 | `third_party/` | the two games' disassemblies and nes-radar, as submodules; and minimp3, the MP3 decoder (CC0), as a file |
-| `nes/cart/` | the cartridge: its menu, and the tool that puts the seven programs on it |
+| `nes/cart/` | the cartridge: its menu, and the tool that puts the programs on it |
 | `host/nesp_host.c`, `host/nesp.py` | the firmware's code as a library for this computer, with a stand-in for the hardware |
-| `host/serial_host.py` | that, on a USB serial cable in place of a Stick |
+| `host/serial_host.py` | that, on a USB serial cable in place of a nesp32 |
 | `host/peer_net.py` | for it, PEER's connection to another nesp32 on this computer's sockets, and an opponent who never presses a button |
 | `tests/console.py`, `tests/wire.py`, `tests/drive.py` | a console on py65, the serial line, and a hand on the controller |
 
@@ -121,10 +138,10 @@ make test
 
 - `test_core.py`: the C link and services, bytes in and bytes out.
 - `test_link_timing.py`: every sample and every bit of the console's two
-  receivers and its sender, at every phase and with the Stick's clock out.
+  receivers and its sender, at every phase and with the nesp32's clock out.
 - `test_link.py`: the ROM and the C code over the line: how soon and how
-  late the Stick may answer, damaged and lost frames, a Stick switched off
-  and on.
+  late the nesp32 may answer, damaged and lost frames, a nesp32 switched
+  off and on.
 - `test_text.py`, `test_wiki.py`: an API reply to ASCII to lines of 28, and
   the WIKI service with the test in place of the Internet.
 - `test_raw.py`: a run agreed, called off, sent and heard, with the test as

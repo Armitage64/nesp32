@@ -14,12 +14,12 @@ own now; it still has the jukebox's font and header.
 
 **Status: run on a StickS3 with the MiSTer's NES core**, where it reached
 298296 baud to the console, the last rate the console's CPU can do, and
-223722 baud coming back. Those are the rates the test found before October
-2026, a ROM with the
-same receive and send routines and a MicroPython script on a StickC Plus2:
-on a real NES. See "Hardware results"
-and "What the runs taught". That script, its protocol and its tests are in
-this repository's history.
+223722 baud coming back. Those are the rates the test found on a real NES
+before October 2026, when it was a ROM with the same receive and send
+routines and a MicroPython script on a StickC Plus2; that script, its
+protocol and its tests are in this repository's history. It has also run
+on a real NES with a StickC Plus2 wired through a breadboard. See
+"Hardware results" and "What the runs taught".
 
 ## What it measures
 
@@ -291,7 +291,18 @@ core through a SNAC adapter:
 | to NES | 298296 baud | nothing, as on the real NES: 357955 baud failed as it should |
 | from NES | 223722 baud, 21563 bytes a second | 298296 baud: 187 of a block's 256 bytes came |
 
-The first run there passed nothing from the console: 194 of 256 bytes
+With this ROM and nesp32's firmware, on a StickC Plus2 wired to a real NES
+through a breadboard, with long runs of wire in place of the hat's board:
+
+| Direction | Fastest rate that passed |
+|---|---|
+| to NES | 111861 baud |
+| from NES | 178977 baud |
+
+That was the breadboard: on the hat's board the same Plus2 plays sampled
+sound at 223722 baud to a real NES, which failed on the breadboard.
+
+The first run on the MiSTer passed nothing from the console: 194 of 256 bytes
 came, at 9622 baud and at 85227 alike. The nesp32's UART was set for the
 two stop bits it sends with, and a StickS3's receiver then waits for both,
 where the console's blocks have one and nothing after it. nesp32's
@@ -334,7 +345,7 @@ two bits.
 
 Still untried:
 
-- **This ROM on a real NES, or with a StickC Plus2.**
+- **This ROM on a real NES with the hat on its board**, with either Stick.
 - **The fast receiver below 162707 baud**, where it has taken over from
   the one the first run used. It is the same sampling and hunt as the
   rates it passed at, with longer padding.

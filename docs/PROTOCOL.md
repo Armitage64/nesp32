@@ -1,58 +1,46 @@
 # The nesp link protocol
 
-How an NES talks to an M5Stack Stick on controller port 2, for every
-application at once: one frame format, a set of numbered services, and a
+How an NES talks to a nesp32 (an M5Stack Stick with nesp32's firmware)
+on controller port 2, for every application at once: one frame format, a set of numbered services, and a
 hello by which a ROM says which of them it needs.
 
-Status: version 1. The frames, the hello, and the services SYS, NET
-(Wi-Fi), DIAG and WIKI are implemented by `firmware/components/` and
-`nes/lib/`, and tested together on a simulated console over a cycle-exact
-line (`tests/`), and have run on a StickS3 with the MiSTer's NES core
-(`firmware/README.md`, "On hardware"). RAW and JUKE are implemented and
-tested the same way, JUKE with nes-jukebox's ROM (its `tests/`), and run
-on the same hardware with that ROM. RAW's runs of the pattern, both ways,
-are tested with nes-throughput's test ROM (its
-`tests/`), and have run on that hardware with it. PEER is
-implemented and tested the same way, with nes-drmario's netplay ROM on two
-simulated consoles (its `tests/`), and a network game has been played with
-that ROM on hardware. RADAR is implemented and tested the same way, with
-nes-radar's ROM as [nes-radar](../apps/nes-radar) builds it for the link
-(its `tests/`), and has run on hardware with that ROM: an airport
-found, its aircraft on the scope, and the airport kept over power-off.
-TUNER is implemented and tested the same way, with [NPR](../apps/npr)'s
-ROM (its `tests/`), and has played the station on hardware with that
-ROM, from a StickS3.
-The services marked *reserved* have a number and no ops.
+Status: version 1. The frames and the hello are implemented by
+`firmware/components/` and `nes/lib/`. Each service is tested with the
+ROM that uses it, on a simulated console over a cycle-exact line, and has
+run on hardware with it; section 5 has which ROM that is, and the
+[DEVELOPMENT](DEVELOPMENT.md) table how far each has got. The services
+marked *reserved* have a number and no ops.
 
 Every number in this document comes from `proto/nesp.toml`, from which
 `tools/gen_proto.py` writes a C header, a ca65 include and a Python module.
 
 ## 1. The line
 
-The wiring is nes-radar's hat, unchanged ([`WIRING.md`](WIRING.md)): the Stick drives D0 (bit 0 of
+The wiring is the nesp32's hat ([`WIRING.md`](WIRING.md), and the board in
+[`hardware/`](../hardware/)): the nesp32 drives D0 (bit 0 of
 `$4017`, inverted by the port's buffer) and reads OUT0 (bit 0 of `$4016`
 writes), which rests at mark.
 
 | | |
 |---|---|
 | Rate | 21 NES CPU cycles a bit, 85227 baud, both ways |
-| Console to Stick | 8N1 |
-| Stick to console | 8N2: the second stop bit is the console's time to store a byte |
+| Console to nesp32 | 8N1 |
+| nesp32 to console | 8N2: the second stop bit is the console's time to store a byte |
 | CRC | CRC-16/CCITT-FALSE (polynomial `$1021`, start `$FFFF`), high byte first |
 
 The console bit-bangs both directions by counting CPU cycles
 (`nes/lib/gen_link.py`). Once a frame it also reads its controller, which
-holds OUT0 low for 94 cycles; the Stick's UART takes that for a byte, and
-the Stick's decoder passes over it.
+holds OUT0 low for 94 cycles; the nesp32's UART takes that for a byte, and
+the nesp32's decoder passes over it.
 
 ## 2. Frames
 
-The console is in charge. The Stick sends only in answer to a request, and
+The console is in charge. The nesp32 sends only in answer to a request, and
 answers every request it acts on with exactly one reply.
 
 ```text
-request   $4E, SVC, OP,     SEQ, LEN, PAYLOAD[LEN], CRC_HI, CRC_LO     console to Stick
-reply     $A5, SVC, STATUS, SEQ, LEN, PAYLOAD[LEN], CRC_HI, CRC_LO     Stick to console
+request   $4E, SVC, OP,     SEQ, LEN, PAYLOAD[LEN], CRC_HI, CRC_LO     console to nesp32
+reply     $A5, SVC, STATUS, SEQ, LEN, PAYLOAD[LEN], CRC_HI, CRC_LO     nesp32 to console
 ```
 
 | Field | Meaning |
@@ -68,19 +56,19 @@ reply     $A5, SVC, STATUS, SEQ, LEN, PAYLOAD[LEN], CRC_HI, CRC_LO     Stick to 
 one for each.
 
 **The same request again gets the same reply again.** If a request has the
-`OP`, `SEQ`, `LEN` and CRC of the last one the Stick answered for that
-service, the Stick sends the bytes it sent then and does nothing else. So
+`OP`, `SEQ`, `LEN` and CRC of the last one the nesp32 answered for that
+service, the nesp32 sends the bytes it sent then and does nothing else. So
 a console that heard no reply sends the request again unchanged
 (`nesp_again`), and nothing is done twice: a piece of a password is not
 added twice, a stream does not skip. Two replies are never held for a
 repeat: a hello's, and one whose status is busy.
 
-**Only the newest request is acted on.** If the Stick finds several
+**Only the newest request is acted on.** If the nesp32 finds several
 requests waiting, it drops all but the last. The console listens only
 just after it asks, so the older ones are past answering, and it will ask
 again for anything it still wants.
 
-**The Stick is never silent on purpose.** Whatever takes time (joining a
+**The nesp32 is never silent on purpose.** Whatever takes time (joining a
 network, a scan, a fetch) is started by one request and asked after by
 others. A request for something not ready is answered at once, with a
 state or with busy.
@@ -89,7 +77,7 @@ state or with busy.
 marker, the service, the sequence number, the length against its buffer,
 and the CRC. Anything else is the same as no reply.
 
-The Stick's decoder looks for `$4E` and a good CRC, and passes over
+The nesp32's decoder looks for `$4E` and a good CRC, and passes over
 anything else a byte at a time. A marker in the noise with a plausible
 length does not hold up the request behind it.
 
@@ -153,7 +141,7 @@ cycles a byte with a 512-byte table if a ROM defines `NESP_CRC_TABLE`.
 | Value | Name | Meaning |
 |---|---|---|
 | `$00` | OK | |
-| `$40` | ATTENTION | a flag, set on any reply: the Stick has an event waiting (SYS EVENT) |
+| `$40` | ATTENTION | a flag, set on any reply: the nesp32 has an event waiting (SYS EVENT) |
 | `$80` | NO_SERVICE | this firmware has no such service |
 | `$81` | NO_OP | the service has no such op |
 | `$82` | BAD_ARG | the payload is not what the op takes |
@@ -167,14 +155,14 @@ cycles a byte with a 512-byte table if a ROM defines `NESP_CRC_TABLE`.
 Bit 7 marks an error. The console's library takes the attention flag off
 the status and keeps it apart (`nesp_attention`).
 
-**INACTIVE tells a ROM that the Stick was switched off and on.** A Stick
+**INACTIVE tells a ROM that the nesp32 was switched off and on.** A nesp32
 that starts knows of no hello, so a ROM's first request to one of its
 services is refused with it. The ROM says hello again.
 
 ## 4. Hello: which services a ROM needs
 
 The first request a ROM makes after reset is SYS HELLO. It is how the
-Stick knows what is on the console, with nothing chosen on the Stick.
+nesp32 knows what is on the console, with nothing chosen on the nesp32.
 
 ```text
 request payload   PROTOCOL, APP[4], APP_VERSION, REPLY_MAX, SERVICE, SERVICE, ...
@@ -185,23 +173,23 @@ reply payload     PROTOCOL, MAJOR, MINOR, PATCH, BOARD, REQUEST_MAX, MISSING, SE
 |---|---|
 | `PROTOCOL` | 1 |
 | `APP` | four characters that name the ROM: `SETP` is the setup ROM |
-| `REPLY_MAX` | the longest reply payload the ROM can take, 16 to 127. Until a hello the Stick sends no more than 32 |
+| `REPLY_MAX` | the longest reply payload the ROM can take, 16 to 127. Until a hello the nesp32 sends no more than 32 |
 | `SERVICE` ... | the services the ROM needs |
 | `MAJOR`, `MINOR`, `PATCH` | the firmware's version |
 | `BOARD` | 1 StickC Plus2, 2 StickS3, 3 a computer standing in |
-| `REQUEST_MAX` | the longest request payload the Stick takes: 127 |
+| `REQUEST_MAX` | the longest request payload the nesp32 takes: 127 |
 | `MISSING`, `SERVICE` ... | how many of the services asked for this firmware lacks, and which |
 
-On a hello the Stick stops every service that was in use and starts the
+On a hello the nesp32 stops every service that was in use and starts the
 ones named, each from nothing, forgets every reply it held, and shows the
 application on its own screen. SYS is always in use and need not be named.
 
 The status is NO_SERVICE if any service asked for is missing, and VERSION
 if the protocol is not one the firmware speaks; the payload is the same
-either way, so a ROM can say "update the Stick" and what for.
+either way, so a ROM can say "update the nesp32" and what for.
 
 A reset of the console is a new hello, so changing cartridges needs
-nothing done on the Stick.
+nothing done on the nesp32.
 
 ## 5. Services
 
@@ -237,7 +225,7 @@ Multi-byte numbers are low byte first, except the CRC.
 - `WIFI`: 0 none set up, 1 not joined, 2 joining, 3 joined, 4 the last
   join failed.
 - `SIGNAL`: dBm, a signed byte; 0 when not joined.
-- `BATTERY`: percent, or `$FF` if the Stick cannot tell.
+- `BATTERY`: percent, or `$FF` if the nesp32 cannot tell.
 - INFO's strings: 0 the firmware's version, 1 the board's name, 2 the
   saved network's name, 3 the application of the last hello.
 - DRIVE lends the nesp32's files (the jukebox's music) to a computer on its
@@ -274,16 +262,16 @@ Multi-byte numbers are low byte first, except the CRC.
   `REPLY_MAX` where they are sent back, which the name is and the password
   never is.
 
-**A name and a password go to the Stick in pieces.** A password of 63
+**A name and a password go to the nesp32 in pieces.** A password of 63
 characters is longer than a request that fits between two frames with its
 reply. Each SET carries the offset its bytes go at. Offset 0 begins the
 text again; any other must be where the text so far ends, or the reply is
-BAD_ARG with the length the Stick has. JOIN repeats both lengths, and is
-BAD_ARG unless they are what the Stick holds, so a piece that never came
+BAD_ARG with the length the nesp32 has. JOIN repeats both lengths, and is
+BAD_ARG unless they are what the nesp32 holds, so a piece that never came
 is found out before anything is tried. An open network has a password of
 no pieces but one empty SET at offset 0.
 
-**JOIN saves the network and starts joining it.** The Stick keeps it over
+**JOIN saves the network and starts joining it.** The nesp32 keeps it over
 power-off and joins it by itself at every start. How the join goes is
 asked for with WIFI_STATUS. The staged name and password are wiped by JOIN
 and by any hello.
@@ -297,9 +285,11 @@ Two consoles play one two-player game, each with a nesp32, and the nesp32s
 joined over the network. Both consoles run the whole game, and only buttons
 cross: a byte for each *tick* of the game, each way. A console takes a tick
 only when it holds both players' buttons for it, so the two games see the
-same buttons at the same tick and stay the same game. nes-drmario's netplay
-ROM is the console's side, and its `docs/PROTOCOL.md` has what a tick is
-there and how the games are kept the same.
+same buttons at the same tick and stay the same game. nes-drmario's and
+nes-contra's netplay ROMs are the console's side, and their docs have what
+a tick is in each game and how the games are kept the same. How long a
+console's delay should be is this service's to advise ("The delay",
+below), and the games' docs point here for it.
 
 The service is a lobby, in which one nesp32 waits and the other calls it,
 and then a relay. It does not know what a button is, and keeps no time.
@@ -514,22 +504,13 @@ has a line more: this console's buttons at each change since the last one,
 as the tick's low byte and the buttons, after how many changes the session
 has had ("pad").
 
-nes-contra's ROM makes its exchange before the game's work in each NMI,
-not after it, so that buttons leave as soon as they are read and the other
-console's are asked for at the last moment they can be used. Its input
-delay is 1 tick by default: on the simulated consoles no frame waits for
-buttons with 5 ms between the nesp32s, and next to none with 7,
-whatever the two consoles' frames are to each other; 2 ticks do the same
-at 20 ms. Its `docs/Netplay.md` has the figures.
-
-nes-drmario's ROM does the same, where its game reads the controllers in
-its NMI, with the session's code and the library in its second bank: the
-game's own is full. It made its exchange after the game's work at first,
-9 to 11 bytes out and 10 to 12 back as ordinary frames, with a delay fixed
-at 3 ticks. On the simulated consoles its delay is now 1 tick with 5 or
-7 ms between the nesp32s, and no frame waits; on two real consoles on a
-home network it was 1 tick too, with under one frame in a hundred waiting
-and no reply misheard in 5000. Its README has the figures.
+Both games make their exchange where the game reads its controllers,
+before the game's work, so that buttons leave as soon as they are read and
+the other console's are asked for at the last moment they can be used;
+with that a delay of 1 tick does on a quick network. What a tick is in
+each game, and the figures from the simulation and from hardware, are in
+[nes-contra's `docs/Netplay.md`](../apps/contra/docs/Netplay.md) and
+[nes-drmario's README](../apps/drmario/README.md).
 
 ### DIAG `$05`
 
@@ -745,7 +726,7 @@ before it plays come in 14 frames.
 
 ### WIKI `$11`: NESpedia
 
-An article from Wikipedia, laid out by the Stick in lines of exactly 28
+An article from Wikipedia, laid out by the nesp32 in lines of exactly 28
 characters, which the console asks for by number. The console never holds
 the article: it has 2 KB of memory.
 
@@ -757,7 +738,7 @@ the article: it has 2 KB of memory.
 | `STATE` | Name | Meaning |
 |---|---|---|
 | `$00` | IDLE | no article, and nothing being fetched |
-| `$01` | NO_WIFI | the Stick is not on a network |
+| `$01` | NO_WIFI | the nesp32 is not on a network |
 | `$02` | FETCHING | a search is under way |
 | `$03` | READY | an article is held; `TOTAL` is its number of lines. With bit 6 (`$43`), more of it is still arriving |
 | `$04` | NOT_FOUND | the last search found no article |
@@ -766,14 +747,14 @@ the article: it has 2 KB of memory.
 **SEARCH is both "search for this" and "how is it going".** The console
 gives each search an id, one more than the last, and sends the same request
 again every few frames until the search has ended one way or another. The
-Stick starts fetching when the id or the words differ from the search it
+nesp32 starts fetching when the id or the words differ from the search it
 has, and otherwise only answers with its state. So a lost request or a lost
 reply needs no handling of its own, and an old article is never taken for
 the answer to a new search. Neither op's reply is held for a repeat: the
 same request again is a new question.
 
 **An article is offered while it is still arriving.** Once its first 28
-lines are laid out, the Stick answers READY with bit 6 set, and `TOTAL` is
+lines are laid out, the nesp32 answers READY with bit 6 set, and `TOTAL` is
 the lines so far. The console starts reading, and takes the new `TOTAL`
 from every reply. Lines already laid out never change.
 
@@ -795,7 +776,7 @@ A reply that stops partway is still READY if a screenful of it had come.
 
 In NESpedia, a line's exchange is 9 bytes out and 40 back, made after the
 header's split, about 10600 cycles into the frame. On the simulated console
-it lands with the Stick taking up to 4.25 ms.
+it lands with the nesp32 taking up to 4.25 ms.
 
 ### RADAR `$12`: NES Radar
 
@@ -1095,20 +1076,20 @@ takes replies of 63 (a shorter `REPLY_MAX` is BAD_ARG).
 Measured on the simulated console and line (`tests/test_link.py`,
 `tests/test_link_timing.py`); a frame is 29780.5 CPU cycles.
 
-- **The Stick answers no sooner than 50 microseconds** after a request's
+- **The nesp32 answers no sooner than 50 microseconds** after a request's
   last byte. The console is still on its way from sending to listening: a
   reply that began under 20 microseconds after the stop bit was missed
   every time, and one at 20 or more never.
-- **How late it may answer depends on the exchange.** A byte to the Stick
+- **How late it may answer depends on the exchange.** A byte to the nesp32
   is 210 cycles and a byte back 231, and the whole exchange has to end
   before the next vblank. The setup ROM's longest, 10 bytes out and 55
-  back, was good with the Stick taking up to 5.75 ms and lost its longer
+  back, was good with the nesp32 taking up to 5.75 ms and lost its longer
   replies from 6 ms.
 - An exchange cut off by the vblank, or answered a whole frame late, is
   never taken for the answer to the next request: its sequence number is
   the old one.
 - The console's samples fall within a quarter of a bit of mid-bit at every
-  phase, and the Stick's clock may be 3% out either way. With the receiver
+  phase, and the nesp32's clock may be 3% out either way. With the receiver
   that counts its own timeout (below) those are a third of a bit, for a
   frame's first byte, and a fifth for the rest, and 2%.
 

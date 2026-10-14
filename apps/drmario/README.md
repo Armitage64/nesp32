@@ -69,20 +69,9 @@ menu's bank includes, and `firmware/` there is what runs on the nesp32.
 
 ## Changing the game's code
 
-The build copies what it needs of the disassembly to `build/upstream` and
-applies `patches/` there; the submodule is never written to. To change
-what netplay adds to the game's own files, edit the copies in
-`build/upstream`, then
-
-```sh
-make patches    # patches/ again, from build/upstream
-```
-
-A patch is made with no context, so it holds our lines and where they go
-and none of the disassembly. That is why the submodule is kept at one
-commit (`DRMARIO_COMMIT` in the Makefile): the patches are line numbers in
-that commit's files. `make clean` will not delete a `build/upstream` that
-has changes `patches/` has not.
+Edit the copies in `build/upstream`, then `make patches`. nesp32's
+[`docs/DEVELOPMENT.md`](../../docs/DEVELOPMENT.md), "Changing a borrowed
+program's code", has how the patches are kept.
 
 ## Where the netplay code sits
 
@@ -100,8 +89,8 @@ an emulator.
 
 ## The nesp32
 
-The hat and the pins are nes-radar's, as for every ROM that uses a nesp32.
-Flash nesp32's firmware (`firmware/README.md` there) and join a Wi-Fi
+The hat is nesp32's ([`docs/WIRING.md`](../../docs/WIRING.md) there), as
+for every ROM that uses a nesp32. Flash nesp32's firmware (`firmware/README.md` there) and join a Wi-Fi
 network from the controller with its setup ROM, once: the nesp32 keeps the
 network and joins it by itself from then on. Nothing is set up from a
 computer, and nothing is chosen on the nesp32: this ROM says what it is
@@ -256,11 +245,10 @@ None of it has been measured again since the move to nesp32:
 
 ## To do
 
-- **A steadier way between the nesp32s**, since what is left of the
-  waiting is the network's spikes (nes-contra's `docs/Netplay.md`, "On
-  hardware"): ESP-NOW for two consoles in one room, past the access point;
-  the receiving nesp32 woken by what comes instead of looking once a
-  millisecond.
+What is left on the nesp32 itself is in nesp32's
+[`docs/TODO.md`](../../docs/TODO.md): among it, a steadier way between two
+nesp32s, and a way to meet across the Internet without a port forwarded.
+
 - **A faster exchange.** The line runs three times faster than the link's
   rate (nes-throughput's test), which is about 1.5 ms of every
   exchange. And no wait for a reply in a frame whose buttons from the
@@ -272,16 +260,11 @@ None of it has been measured again since the move to nesp32:
   to the protocol; the second bank has room for its code. Rolling back, as
   newer games do, is not for this one: there is nowhere to keep a copy of
   the game.
-- **The Internet**: the host forwards UDP port 6502 today. A relay would
-  spare that. The delay will be what the distance makes it.
 - **Say why on the console** when a session ends (the other console left,
   the nesp32 went quiet, the games differed); it only goes back to the
   title now.
 - **The menu**: held buttons do not repeat in the address editor, and its
   colours and layout have only been looked at once.
-- **An idle opponent on the nesp32**, as the computer has, to test one
-  console with a nesp32 alone.
-- PAL is not considered anywhere.
 
 ## Known limits
 

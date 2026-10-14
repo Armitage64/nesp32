@@ -1,36 +1,42 @@
-## To do
+# To do: the hardware and the firmware
 
-Built and tested on a computer, not yet run on hardware:
+What is still to do on the nesp32 itself. Each program in `apps/` keeps
+its own list in its README.
 
-- The nesp32's files in a FAT filing system, and rips of games' music
-  converted on the nesp32 itself when it starts.
-- A StickS3 as a USB drive, from Setup's screen.
+## Not yet run on hardware
+
 - A computer in place of a nesp32, on a USB serial cable
   (`host/serial_host.py`).
+- The firmware's end of the datagrams between two nesp32s
+  (`firmware/main/conn.c`) has run on hardware and has no tests of its
+  own: what it does is tested through a computer's stand-in for it.
 
-Not measured:
+## Not measured, or not known
 
-- A long run, and figures from a real NES: it works there, and nothing was
-  timed.
+- Figures from a real NES for the link itself (the setup ROM's link test):
+  it works there, and nothing was timed.
 - Why the network between two nesp32s is slower for the first eight to ten
   seconds after they connect than it is from then on
-  ([the protocol](docs/PROTOCOL.md), "The delay").
+  ([the protocol](PROTOCOL.md), "The delay").
+- What the access point costs a netplay session. Its spikes are in every
+  packet's way and differ from day to day; marking the packets for the
+  class Wi-Fi sends first, and never holding one back to send with others,
+  were not seen to help ([nes-contra's figures](../apps/contra/docs/Netplay.md)).
 
-Not started:
+## Not started
 
-- The receiving nesp32 woken when a packet comes, in place of looking once
-  a millisecond.
+- A steadier way between two nesp32s: ESP-NOW for two consoles in one
+  room, past the access point; and the receiving nesp32 woken when a
+  packet comes, in place of looking once a millisecond.
 - A way for two nesp32s to meet across the Internet without a port
-  forwarded.
+  forwarded: a server that introduces them, or a relay. Today the host
+  forwards UDP port 6502.
+- An idle opponent on the nesp32, as `host/serial_host.py --idle` has, to
+  test one console with a nesp32 alone.
 - A fetch that drops partway made again; today what came is read, if it
   was a screenful.
-- Updates over Wi-Fi, and a way to put music on a nesp32 without a cable.
-- The web site (`make web`: a product page, and a page that flashes a
-  nesp32 from a browser) put on GitHub Pages: an Action that builds the
-  firmware and deploys `build/web`, for when the repository is public.
-  Until then it is served from this computer (`make web-serve`). The
-  product page is a stub, and the flashing page has not yet flashed a
-  StickS3.
+- Updates over Wi-Fi (the partitions are laid out for them), and a way to
+  put music on a nesp32 without a cable.
 - More data lines, for the next board. The hat uses one of controller
   port 2's inputs, D0, and the port has two more, D3 and D4, which the
   console reads in the same `$4017` as bits 3 and 4. With one of them
@@ -44,5 +50,5 @@ Not started:
   further than that. The port's CLK pin, which every read of `$4017`
   pulses, is the other line the hat leaves alone
   ([the jukebox's plan](../apps/jukebox/PLAN.md), "clocked link").
-- PAL consoles.
-
+- PAL consoles. The console's library counts NTSC cycles, and so does
+  every program on it.

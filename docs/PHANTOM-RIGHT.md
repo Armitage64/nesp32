@@ -100,9 +100,8 @@ press that begins in such a tick is a frame late.
   thing on.
 - **Dr. Mario's drums.** The netplay ROM leaves the samples' data out
   for the room, in the belief that the game never plays a sample, so its
-  drums play two empty pages. The README says so now; two comments, in
-  `net/session.inc` (the exchange) and `patches/bank_FF.patch`, still say
-  the game plays none.
+  drums play two empty pages. Its README, its `docs/PROTOCOL.md` and the
+  comments in `net/session.inc` and `patches/bank_FF.patch` now say so.
 - **The serial exchange** loses cycles to the same fetches, which the
   README says it does not. A reply that is misheard is not asked for again
   in the same frame, on the same belief.

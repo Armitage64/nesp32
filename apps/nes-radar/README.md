@@ -163,24 +163,13 @@ the NMI on.
 
 ## Changing nes-radar's code
 
-The build copies nes-radar's ROM directory to `build/src` and applies
-`patches/` there; the submodule is never written to. To change what the
-link adds to nes-radar's own file, edit the copy in `build/src/nes`, then
-
-```sh
-make patches    # patches/ again, from build/src
-```
-
-A patch is made with no context, so it holds our lines and where they go
-and none of nes-radar's. That is why the submodule is kept at one commit
-(`RADAR_COMMIT` in the Makefile): the patch is line numbers in that
-commit's file. `make clean` will not delete a `build/src` that has changes
-`patches/` has not.
+Edit the copy in `build/src/nes`, then `make patches`. nesp32's
+[`docs/DEVELOPMENT.md`](../../docs/DEVELOPMENT.md), "Changing a borrowed
+program's code", has how the patches are kept.
 
 ## Not done
 
 - Figures from hardware, and a long run.
-- PAL consoles.
 
 ## Licence
 

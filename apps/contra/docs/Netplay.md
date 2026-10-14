@@ -58,7 +58,8 @@ one of three things:
 The exchange is made before the game's work and not after it, which is what
 lets a delay of one tick do: the buttons leave as soon as they are read,
 and the other console's are asked for at the last moment they can be used.
-nes-drmario makes its exchange after, and needs three.
+nes-drmario made its exchange after the game's work at first, and needed
+three; it now makes it this way too.
 
 ### What had to change in the game
 
@@ -94,24 +95,12 @@ sends are tick 0's.
 
 ### The delay
 
-Each console keeps a delay for its own buttons, from 1 tick to 5. The two
-need not be the same, and nothing is agreed between them: a console only
-ever takes the buttons it is given for each tick. To make its delay a tick
-longer a console sends the buttons it last read once more, for the tick
-between; to make it a tick shorter it lets one read go by.
-
-How long it should be is the nesp32's to say. Every packet between the
-two nesp32s measures how long the network takes, and a network's times are
-not one time: most are short, and now and again one is very long. No delay
-covers those. So the nesp32 advises the delay that covers nine in ten of
-the times it has measured since the console last asked, which is once in
-128 ticks, and the game stands still a frame or two for a press that meets
-one of the rest (nesp32's `docs/PROTOCOL.md`, "The delay"). The advice is
-made longer when two askings running call for it, and a tick shorter when
-eight do. A session begins with the delay that covers the network's time
-at its quickest while the two connected, and its first report, a second or
-two in, sets the delay outright from what the game's own packets have
-taken since.
+Each console keeps a delay for its own buttons, from 1 tick to 5, and
+changes it as its nesp32 advises: the delay that covers nine in ten of the
+network's times, so that the game stands still a frame or two for a press
+that meets one of the rest. How the delay is changed and how the advice is
+worked out are PEER's, in
+[nesp32's `docs/PROTOCOL.md`](../../../docs/PROTOCOL.md), "The delay".
 
 ### Checking that they stay alike
 
@@ -314,28 +303,23 @@ on and its own leavings in memory, which the handler acted on.
   are whenever its delay has a tick to spare; and leaving the reply's CRC
   at one byte. And to see how a local two-player game does in the same
   scenes, which is the least this can come to.
-- **The firmware's own end of the datagrams** (its `main/conn.c`) has run
-  on hardware and has no tests of its own: what it does is tested through
-  a computer's stand-in for it.
+- **A message** when a session ends. The console goes back to the title
+  and says nothing of why.
 - **Across the Internet.** The host forwards UDP port 6502 to its nesp32,
   and player 2 enters the host's public address. Nothing has been played
   that way. The delay will be what the distance makes it: three ticks
   across a continent, five or more across an ocean.
-- **What the access point costs.** Its spikes are in every packet's way,
-  whatever carries the buttons, and differ from day to day. The packets
-  are marked for the class Wi-Fi sends first, and the nesp32 does not hold
-  one back to send with others; neither was seen to help.
-- **A way to meet without forwarding a port**: a server that introduces
-  the two nesp32s.
-- **A message** when a session ends. The console goes back to the title
-  and says nothing of why.
 - **Player 2 cannot pause.** The game reads only player 1's Start.
 - **A press shorter than a stall is lost**: no controller is read in one.
 - **No zero delay.** It would need the other console's buttons in the frame
   they were read, which works only while the two consoles' frames happen to
   line up. And the game cannot be rolled back: there is nowhere to keep a
   copy of it.
-- **PAL**, and Probotector.
+- **Probotector**, the PAL release.
+
+What is left to do on the nesp32 for netplay (meeting without a port
+forwarded, the access point's spikes, `conn.c`'s own tests) is in
+[nesp32's `docs/TODO.md`](../../../docs/TODO.md).
 
 ## Building and testing
 

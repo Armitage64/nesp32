@@ -1,8 +1,8 @@
 # NES Jukebox
 
 Stream music from NES `.vgm` rips to a real NES over the controller-2
-serial link from [nes-radar](../../../nes-radar), and play it on the console's own
-APU.
+serial link first made for [nes-radar](https://github.com/k6lcm/nes-radar),
+and play it on the console's own APU.
 
 The link ROM's host is a [nesp32](../..): one firmware for every NES
 application that uses the hat on controller port 2. The jukebox is this ROM
@@ -25,8 +25,9 @@ took 474 microseconds. On the simulated console the same ROM and firmware
 come out frame for frame and sample for sample, over a line that models
 every bit, whatever is lost or damaged on the way. **Sampled sound has
 played on a real NES from a StickC Plus2**, with the hat on its PCB, at
-10169, 11622 and 20338 samples a second. Still untried with a nesp32: a
-long run, and the three other rates of sound.
+10169, 11622 and 20338 samples a second, and pausing a sound with A and
+playing it on works there. Still untried with a nesp32: a long run, and
+the three other rates of sound.
 
 | Part | State |
 |---|---|
@@ -35,7 +36,6 @@ long run, and the three other rates of sound.
 | The screen and the controller, on both ROMs | tested on py65; they worked on a real NES before the link changed, and are unchanged |
 | Link ROM (`build/jukebox_link.nes`): the ROM on nesp32's library, and nesp32's JUKE and RAW services | working on a StickS3 with the MiSTer's NES core, at 85227 baud; tested together over a cycle-exact simulated line |
 | Sampled sound through `$4011`, at 7748 to 20338 samples a second | heard from a nesp32 on the MiSTer at the fastest rate, and on a real NES from a StickC Plus2 at 10169, 11622 and 20338; all six rates are tested on the simulated line |
-| Link throughput ([`../throughput/`](../throughput), a program of its own now) | a ROM that climbs the rates each way through nesp32's RAW service. On a StickS3 with the MiSTer's NES core it reached 298296 baud to the console and 223722 from it, the rates it measured on a real NES before it moved, with a MicroPython script of its own on a StickC Plus2 |
 
 Until October 2026 the jukebox had a link protocol of its own, at 38400
 baud, a MicroPython firmware for the Stick, and a desktop streamer for an
@@ -123,7 +123,7 @@ makes each into the stream the console plays, which its screen shows as
 `Converting 3/12`, and puts that in the rip's place as a `.jbs` file of the
 same name. So each is converted once, and the `.jbs` files on the drive are
 the music it has. A rip still there after a start is one that could not be
-played. There are about 3900 KB for them, and a track is a few kilobytes.
+played. There are 3968 KB for them, and a track is a few kilobytes.
 
 **A StickS3** is given them as any USB drive is. Run
 [the setup ROM](../setup) with the StickS3 on controller port 2, choose
@@ -135,22 +135,14 @@ While it is a drive its USB port is not the serial port it is flashed
 through, which comes back with the restart.
 
 **A StickC Plus2** cannot be a drive: its USB port is a serial port and
-nothing else. Its music is written from a computer, which needs ESP-IDF
-(the firmware's own build) to make the filing system:
-
-```sh
-pip install construct esptool
-../../tools/put_files.py music/      # .vgm, .vgz, .jbs and .pcm files: the playlist, in name order
-```
-
-This builds the whole filing system on the computer and writes it over
-whatever tracks the nesp32 had, so the files named are the playlist. It
-works for a StickS3 too.
-
-Sampled sound is not converted on the nesp32. Recordings are made into
-`.pcm` files here, and such a file copied to the drive plays: a minute of
-it is 465 to 1220 KB. `tools/deploy.py` converts recordings and writes a
-whole playlist at once. With the nesp32 on USB, and already running
+nothing else. Its music is written from a computer, over that port, by
+nesp32's `tools/put_files.py`, which builds the whole filing system on the
+computer and writes it over whatever tracks the nesp32 had, so the files
+named are the playlist. It works for a StickS3 too, and needs ESP-IDF (the
+firmware's own build) to make the filing system. `tools/deploy.py` here
+calls it, after converting what it is given on this computer (into
+`build/tracks`): rips to `.jbs`, and recordings to `.pcm`. With the
+nesp32 on USB, and already running
 [nesp32's firmware](../../firmware/README.md):
 
 ```sh
@@ -158,12 +150,12 @@ pip install construct esptool
 tools/deploy.py                              # everything in music/
 tools/deploy.py music/a.vgz music/b.mp3      # these, in this order
 tools/deploy.py -p /dev/cu.usbserial-XXXX music/
+../../tools/put_files.py music/              # or nesp32's own: .vgm, .vgz, .jbs and .pcm, in name order
 ```
 
-It converts the music to `.jbs` and the recordings to `.pcm` on this
-computer (into `build/tracks`), and hands them to nesp32's
-`tools/put_files.py`, which writes them over whatever tracks the nesp32
-had. The files named are the playlist. There are 3968 KB for them.
+Sampled sound is not converted on the nesp32. Recordings are made into
+`.pcm` files here (below), and such a file copied to the drive plays: a
+minute of it is 465 to 1220 KB.
 
 Plug the hat into controller port 2 and start `build/jukebox_link.nes` on
 the console. The order of powering up does not matter. Nothing plays until
@@ -244,8 +236,7 @@ clock flashes as it does when music is paused, and the whole controller
 works again, so Left and Right change the track from there. Start or A
 plays the sound on from where it was left, to within a few hundredths of
 a second. This is tested on the simulated console at all six rates, and
-**has not been tried on hardware**: every sample of the three fastest
-rates is looked for 3 CPU cycles later than it was, which wants hearing.
+works on hardware.
 
 A button on the nesp32 ends the sound and then does what it always does,
 except that A stops: the nesp32's own button does not pause a sound, and
@@ -267,15 +258,8 @@ the rest. Starting the nesp32 again frees it; so does Reset.
   console that has left. At 14 CPU cycles a bit and slower there looks to
   be room to read all eight inside one sample. Neither is begun, and
   neither has been worked out further than on paper.
-- A sound paused and played again on hardware, and the sound's new timing
-  heard there.
 - A long run with nesp32's firmware, and sound at 7748, 13559 and 16271
   samples a second on hardware.
-- The throughput test ([`../throughput/`](../throughput)) on a real NES with the hat
-  on its PCB. It has run on the MiSTer, and on a real NES with a StickC
-  Plus2 wired through a breadboard, which stopped it at 111861 baud to the
-  console and 178977 from it; sound at 127841 and 223722 baud failed on
-  that wiring and plays with the PCB.
 
 ## Converting music
 

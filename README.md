@@ -104,7 +104,7 @@ Contra's build needs your own copy of the game (US release) at `apps/contra/base
 
 | File | What it is |
 |---|---|
-| `build/nesp32.nes` | The cartridge: Setup, NESpedia, Jukebox, Throughput, NES Radar, National Public Radio and Weather behind one menu (MMC1, 256 KB PRG, 128 KB CHR) |
+| `build/nesp32.nes` | The cartridge: every program above but the two games, behind one menu (MMC1, 256 KB PRG, 128 KB CHR) |
 | `build/setup.nes` | Setup as a ROM of its own. For any other program on the cartridge, `make -C apps/<name>` builds one into `apps/<name>/build/` |
 | `apps/drmario/build/drmario_net.nes` | Dr. Mario 2P, which is not on the cartridge |
 | `apps/contra/build/contra_net.nes` | Contra 2P, which is not on the cartridge. `make -C apps/contra ines` also makes `contra_net_ines.nes`, with an iNES header in place of the NES 2.0 one |
@@ -116,9 +116,12 @@ Contra's build needs your own copy of the game (US release) at `apps/contra/base
 | [docs/WIRING.md](docs/WIRING.md) | the hat: its pins, the level shifter, and why it is needed |
 | [docs/PROTOCOL.md](docs/PROTOCOL.md) | the link: the line, frames, the hello, every service, timing, and the console's library |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | building, the cartridge, what is where in the repository, the tests, and how far each part has got |
+| [docs/TODO.md](docs/TODO.md) | what is still to do on the hardware and the firmware |
 | [firmware/README.md](firmware/README.md) | the nesp32's firmware: building and flashing it, how it keeps time, and what was seen on hardware |
-| [apps/setup](apps/setup), [apps/wiki](apps/wiki), [apps/jukebox](apps/jukebox), [apps/throughput](apps/throughput), [apps/drmario](apps/drmario), [apps/contra](apps/contra), [apps/nes-radar](apps/nes-radar), [apps/npr](apps/npr), [apps/weather](apps/weather) | each program |
+| [hardware/](hardware/) | the hat's board and its parts |
+| the programs' READMEs, linked from the table above | each program: using it, building it, its status and its own to-do list |
 | [apps/contra/docs/Netplay.md](apps/contra/docs/Netplay.md) | how two consoles are kept in the same game, with figures from sessions on hardware |
+| [docs/PHANTOM-RIGHT.md](docs/PHANTOM-RIGHT.md) | a netplay bug found on a real NES: a Right that nobody pressed |
 
 ## Licence
 

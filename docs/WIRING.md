@@ -1,19 +1,23 @@
 # Wiring
 
 This is the hat every nesp32 uses, between an M5StickS3 or an M5StickC Plus2
-and controller port 2. It was written for nes-radar, whose MicroPython firmware the text
-below still names in places, and is given here whole. Where it says
-`"invert"` in `config.json`, nesp32's firmware has `BOARD_LINK_INVERTED`
-in [`firmware/main/board.h`](../firmware/main/board.h) (1 for the NPN
-shifter, 0 for the two that do not invert), and where it says the StickS3
-would not start NES Radar, read nesp32.
+and controller port 2: its circuit, its pins, and why it is needed. The
+board itself, with its parts and pictures, is in
+[`hardware/`](../hardware/); this page also has how to wire the same
+circuit by hand on M5Stack's proto hat, and two other level shifters that
+would do. The circuit was first worked out for nes-radar.
+
+Whether the link is inverted is `BOARD_LINK_INVERTED` in
+[`firmware/main/board.h`](../firmware/main/board.h): 1 for the NPN
+shifter, 0 for the two alternatives, which do not invert.
 
 The ESP32‑S3 is a 3.3 V part and **not 5 V tolerant**, and a 3.3 V high is not
 guaranteed to register on the NES. Each direction goes through one NPN
 transistor stage, all through‑hole, which fits the M5Stick proto hat's 5 × 8
 board with no adapters. See [Why a level shifter](#why-a-level-shifter).
 
-The link uses the StickS3's top 16‑pin Hat2‑Bus. The proto hat's 8‑pin plug
+The link uses the StickS3's 16‑pin Hat2‑Bus, the GPIO header at the bottom
+end, furthest from the LCD screen. The proto hat's 8‑pin plug
 fits its odd row (pins 1–15), which keeps the old StickC hat order, and a
 StickC Plus2's 8‑pin header takes it as it is. It does not use the Grove
 port.
@@ -36,7 +40,7 @@ was built for.
 > [!WARNING]
 > **Nothing may touch slot 3.** It is G0 on a StickS3, and if anything holds
 > that low at power‑up, the StickS3 starts in firmware‑download mode instead
-> of NES Radar. Both stages would: a TX base resistor holds G0 near 1.2 V
+> of nesp32's firmware. Both stages would: a TX base resistor holds G0 near 1.2 V
 > through the transistor's base junction, and the RX collector sits low
 > whenever the NES idles OUT0 high.
 
@@ -54,6 +58,9 @@ G3 (a JTAG strapping pin) and G43/G44 (UART0, which carries the boot ROM's
 log) are avoided on purpose. The even row is out of the proto hat's reach.
 
 ## NPN shifter (default, through‑hole)
+
+This is the circuit on the hat's board in [`hardware/`](../hardware/),
+which has the parts to buy.
 
 ```
  TX (Stick → NES)                          RX (NES → Stick)
@@ -90,7 +97,7 @@ order, which differs between parts and makers.
 | Stick GND | – | NES pin 1 (GND) |
 
 **How it works.** Each stage inverts, and the ESP32 UART inverts TX and RX in
-hardware to cancel it (`"invert": true`, the default).
+hardware to cancel it (`BOARD_LINK_INVERTED` 1, the default).
 
 - **TX:** the UART idles with G8 low, so the transistor is off and the
   10 kΩ pull‑up holds D0 at the NES's own 5 V, which is idle (mark). A space
@@ -119,15 +126,17 @@ hardware to cancel it (`"invert": true`, the default).
     through a transistor's base junction (a fraction of a milliamp, via
     10 kΩ) are about a tenth of what the tested FTDI cable pushes into an
     unpowered NES through its 1 kΩ.
-- **Speed:** a pull‑up makes the rising edge take about 0.3 µs, roughly 1/300
-  of a 9600‑baud bit. The ROM samples mid‑bit. The 100 kΩ base resistor
-  slows the RX transistor's edges to a few µs (estimated, not measured). The
-  slowest is turn‑off, when OUT0 falls. At 9600 baud that is a few percent of
-  a bit; check it on a scope before running this stage at higher rates.
+- **Speed:** a pull‑up makes the rising edge take about 0.3 µs, about a
+  fortieth of a bit at the link's 85227 baud. The ROM samples mid‑bit. The
+  100 kΩ base resistor slows the RX transistor's edges to a few µs
+  (estimated, not measured); the slowest is turn‑off, when OUT0 falls. In
+  practice the board carries 298296 baud to the console and 223722 from it
+  ([the throughput test](../apps/throughput/README.md)), so the RX stage's
+  edges are what limit the direction from the console.
 - **Why the 1 kΩ stays:** it is the same fault‑current limiter the FTDI
   cable uses on D0. On the RX side the 100 kΩ base resistor does that job.
 
-**Fit on the 5 × 8 proto hat:**
+**Fit on the 5 × 8 proto hat**, to wire it by hand in place of the board:
 - Each TO‑92 takes 3 holes in a row. After soldering, bend it over flat so it
   stands about 3 mm tall.
 - Use 1/8 W mini resistors laid flat across 3 holes (0.3″); they stand about
@@ -140,7 +149,7 @@ hardware to cancel it (`"invert": true`, the default).
 
 If you have room for an MSOP/VSSOP‑8‑to‑DIP adapter, one TI TXU0202
 (`TXU0202DCUR`, VSSOP‑8, 0.5 mm pitch) does both directions with levels
-guaranteed by its datasheet. Set **`"invert": false`** in `config.json`.
+guaranteed by its datasheet. Build the firmware with **`BOARD_LINK_INVERTED` 0**.
 
 | TXU0202 pin | Name | Connect to |
 |---|---|---|
@@ -168,7 +177,7 @@ guaranteed by its datasheet. Set **`"invert": false`** in `config.json`.
 ## Alternative: two single‑gate buffers (surface mount, non‑inverting)
 
 Two SOT‑23‑5 (0.95 mm pitch) buffers, each on its own SOT‑23‑5/6‑to‑DIP
-adapter. Set **`"invert": false`** in `config.json`.
+adapter. Build the firmware with **`BOARD_LINK_INVERTED` 0**.
 
 | Pin | TX: 74AHCT1G125, powered from NES pin 5 | RX: 74LVC1G125, powered from Stick 3V3_L2 |
 |---|---|---|

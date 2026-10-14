@@ -10,7 +10,7 @@ link, and lends a StickS3's files to a computer as a USB drive.
 ![The USB drive](docs/usb.png)
 
 It is also the first user of nesp32's link, and the ROM that the tests of
-the link are run on. It is one of the four programs on
+the link are run on. It is one of the programs on
 [the cartridge](../../docs/DEVELOPMENT.md#the-cartridge).
 
 ## Status
@@ -24,8 +24,8 @@ nesp32's slowest reply was 215 microseconds
 also run from the cartridge on a real NES, and with a StickC Plus2; no
 figures were taken from those runs.
 
-The USB drive screen is tested on a simulated console and has not been run
-on hardware.
+The USB drive works on hardware too: a StickS3's files lent to a
+computer, and music copied to it.
 
 ## Using it
 
