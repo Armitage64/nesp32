@@ -18,7 +18,7 @@ the ESP32 microcontroller.
 
 - Provides Internet access, media streaming, and online gaming capabilities to NES software.
 
-- Built using the M5 StickS3. The StickS3 is a ~$20 all-in-one IoT development kit that includes a dual core processor, flash storage, audio, WiFi, color LCD screen, battery, USB interface, and buttons.
+- Built using the M5 StickS3, a ~$20 all-in-one IoT development kit that includes a dual core processor, flash storage, audio, WiFi, color LCD screen, battery, USB interface, and buttons.
 
 - The M5 StickC-Plus2 is also fully supported but no longer available from the vendor.
 
