@@ -31,13 +31,13 @@ to be configured from the NES itself.
 
 ## Quick Links
 
-- [NESP32 Home Page](https://retrobits.tv/nesp32)
+- [NESP32 Home Page](https://nesp32.retrobits.tv/)
 
 - [Purchase the M5 StickS3](https://amzn.to/3TVUV0y)
 
 - [PCB Gerber Files](hardware/)
 
-- [Online Firmware Installer](https://retrobits.tv/nesp32/flash/)
+- [Online Firmware Installer](https://nesp32.retrobits.tv/flash/)
 
 ## NESP32 needs YOU
 
@@ -94,7 +94,7 @@ firmware/deploy.sh          # build, and flash every NESP32 that is connected
 
 `firmware/deploy.sh build` builds without flashing, and [firmware/README.md](firmware/README.md)
 has the `idf.py` commands it runs. Flashing replaces whatever is on the device. To skip the
-build, a released image can be flashed from a browser at [Firmware Updates](https://retrobits.tv/nesp32/flash/).
+build, a released image can be flashed from a browser at [Firmware Updates](https://nesp32.retrobits.tv/flash/).
 
 **3. Build the ROMs**
 
