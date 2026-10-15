@@ -1,0 +1,84 @@
+# The web site: the product page, the cartridge to download, and the page
+# that flashes a nesp32 from a browser, built as `make web` builds it and
+# put on GitHub Pages. It runs when anything that goes into the firmware,
+# the cartridge or the pages changes on main, and by hand from the Actions
+# tab.
+
+name: Web site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "firmware/**"
+      - "nes/**"
+      - "apps/**"
+      - "proto/**"
+      - "host/**"
+      - "third_party/**"
+      - "web/**"
+      - "docs/cart-menu.png"
+      - "tools/gen_web.py"
+      - "tools/gen_proto.py"
+      - "Makefile"
+      - ".github/workflows/web.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; a newer push waits for the one under way.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The firmware's version is `git describe`, which wants the history.
+          fetch-depth: 0
+          # The cartridge's NES Radar is built from its submodule; the two
+          # games' disassemblies are not on the cartridge.
+          submodules: false
+
+      - name: Fetch the nes-radar submodule
+        run: git submodule update --init --depth 1 third_party/nes-radar
+
+      - name: Build the StickS3's firmware
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.5.5
+          target: esp32s3
+          path: firmware
+          command: idf.py -B build-esp32s3 -D SDKCONFIG=build-esp32s3/sdkconfig -D IDF_TARGET=esp32s3 build
+
+      - name: Install cc65
+        run: sudo apt-get update && sudo apt-get install -y cc65
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build the cartridge and the site
+        # clang, as on the Mac the project is developed on: the host
+        # library is built with -Werror.
+        run: make web CC=clang
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

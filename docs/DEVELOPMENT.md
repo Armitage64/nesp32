@@ -118,7 +118,7 @@ What is still to do on the hardware and the firmware is in
 | `firmware/components/nesp_services` | every service, the text code WIKI lays articles out with, and the MP3 decoder TUNER plays a station with |
 | `firmware/main` | the board: UART and link task, Wi-Fi, HTTPS fetches, the connection to another nesp32, files, screen and buttons |
 | `hardware/` | the hat's board, its parts and pictures |
-| `web/` | the product page and the page that flashes a nesp32 from a browser (`make web`) |
+| `web/` | the product page and the page that flashes a nesp32 from a browser (`make web`); `.github/workflows/web.yml` builds the firmware and the cartridge and puts the site on GitHub Pages whenever either changes on main |
 | `tools/put_files.py` | puts the jukebox's tracks on a nesp32, over USB, for a board that cannot be a drive |
 | `tools/lcd.py` | pictures of the nesp32's own screen, for trying a layout before flashing it |
 | `nes/lib/nesp.inc`, `nes/lib/gen_link.py` | the console's library, and its cycle-timed serial routines |
