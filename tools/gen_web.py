@@ -11,6 +11,7 @@ flashes a nesp32 from a browser.
     flash/index.html      web/flash/index.html, as it is
     flash/manifest.json   what ESP Web Tools is to write, and where
     flash/s3-*.bin        the StickS3's firmware, from firmware/build-esp32s3
+    flash/plus2-*.bin     the StickC Plus2's, from firmware/build-esp32
 
 The firmware's pieces go as they are, each to its own offset, and are not
 merged into one image: an image from 0 to the end of the firmware would
@@ -41,8 +42,11 @@ PICTURES = [("cart-menu.png", "docs/cart-menu.png"),
             ("npr-news.png", "apps/npr/docs/screen-news.png"),
             ("radar.png", "apps/nes-radar/docs/scope.png")]
 
-# (ESP Web Tools' name for the chip, the build's directory, a prefix for its files)
-BOARDS = [("ESP32-S3", os.path.join(ROOT, "firmware", "build-esp32s3"), "s3")]
+# (ESP Web Tools' name for the chip, the build's directory, a prefix for its
+# files). ESP Web Tools asks the chip what it is and writes the build for it:
+# the StickS3's ESP32-S3, or the StickC Plus2's ESP32.
+BOARDS = [("ESP32-S3", os.path.join(ROOT, "firmware", "build-esp32s3"), "s3"),
+          ("ESP32", os.path.join(ROOT, "firmware", "build-esp32"), "plus2")]
 
 
 def version():

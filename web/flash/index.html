@@ -20,11 +20,12 @@
   <nav><a href="../">&larr; NESP32</a></nav>
   <h1>NESP<span>32</span></h1>
   <p class="lead">Install NESP32 firmware on an M5Stack
-    StickS3 from your browser.</p>
+    StickS3 or StickC Plus2 from your browser.</p>
 
   <div class="card">
-    <p>Connect your StickS3 to this computer with a USB data cable
-       and press Connect.</p>
+    <p>Connect your Stick to this computer with a USB data cable
+       and press Connect. The right firmware for your Stick is chosen
+       for you.</p>
     <esp-web-install-button manifest="manifest.json">
       <span slot="unsupported" class="note">This browser cannot reach a
         USB serial port. Use Chrome, Edge or Opera on a computer.</span>
@@ -36,8 +37,9 @@
 
   <h2>Note</h2>
   <ul>
-    <li><strong>Installing firmware replaces what is current on the StickS3</strong>, including UIFlow</li>
-    <li><strong>If this is the first time installing</strong>, put the device in boot mode. Push and hold the power button on the side until the green light flashes.</li>
+    <li><strong>Installing firmware replaces what is current on the Stick</strong>, including UIFlow</li>
+    <li><strong>If this is the first time installing on a StickS3</strong>, put the device in boot mode. Push and hold the power button on the side until the green light flashes. A StickC Plus2 needs no button.</li>
+    <li><strong>On Windows, a StickC Plus2</strong> may need the driver for its USB serial chip (CH9102) before the browser can see it.</li>
     <li>The browser asks whether to erase first. Answer no when updating
       an existing NESP32 install to retain WiFi and stored files.</li>
   </ul>
@@ -45,7 +47,7 @@
   <h2>After Installation</h2>
   <ol>
     <li>Fit the hat and plug the NESP32 into controller port 2.</li>
-    <li>Ensure the StickS3 is powered on.</li>
+    <li>Ensure the Stick is powered on.</li>
     <li>Boot the NESP32 cartridge ROM and run the Setup utility to join a WiFi network.</li>
   </ol>
 
