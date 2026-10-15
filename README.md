@@ -18,9 +18,7 @@ the ESP32 microcontroller.
 
 - Provides Internet access, media streaming, and online gaming capabilities to NES software.
 
-- Built using the M5 StickS3, a ~$20 all-in-one IoT development kit that includes a dual core processor, flash storage, audio, WiFi, color LCD screen, battery, USB interface, and buttons.
-
-- The M5 StickC-Plus2 is also fully supported but no longer available from the vendor.
+- Built using the M5 StickS3, a ~$20 all-in-one IoT development kit that includes a dual core processor, flash storage, audio, WiFi, color LCD screen, battery, USB interface, and buttons. The M5 StickC-Plus2 is also fully supported.
 
 - A custom hat plugs into the top of the device and connects to controller port 2 of the NES. 
 
@@ -28,6 +26,8 @@ the ESP32 microcontroller.
 to be configured from the NES itself. 
 
 - The NESP32 is an evolution of [NES Radar](https://github.com/k6lcm/nes-radar) where the controller port serial interface was originally conceived.
+
+- This project is still just a proof of concept but with your help it could someday become a real boy!
 
 ## Quick Links
 
@@ -38,6 +38,12 @@ to be configured from the NES itself.
 - [PCB Gerber Files](hardware/)
 
 - [Online Firmware Installer](https://retrobits.tv/nesp32/flash/)
+
+## NESP32 needs YOU
+
+Interested in trying out or even developing for the NESP32? We'd love to grow a community around this project.
+
+Please join our [Discord](https://discord.gg/kwSC7pwtmb)!
 
 ## Demonstration Apps
 
@@ -119,7 +125,7 @@ Contra's build needs your own copy of the game (US release) at `apps/contra/base
 | [docs/TODO.md](docs/TODO.md) | what is still to do on the hardware and the firmware |
 | [firmware/README.md](firmware/README.md) | the nesp32's firmware: building and flashing it, how it keeps time, and what was seen on hardware |
 | [hardware/](hardware/) | the hat's board and its parts |
-| the programs' READMEs, linked from the table above | each program: using it, building it, its status and its own to-do list |
+| [apps/](apps/) | each program's self-contained documentation and to-do list |
 | [apps/contra/docs/Netplay.md](apps/contra/docs/Netplay.md) | how two consoles are kept in the same game, with figures from sessions on hardware |
 | [docs/PHANTOM-RIGHT.md](docs/PHANTOM-RIGHT.md) | a netplay bug found on a real NES: a Right that nobody pressed |
 
