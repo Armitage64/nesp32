@@ -129,7 +129,7 @@ Contra's build needs your own copy of the game (US release) at `apps/contra/base
 | [apps/contra/docs/Netplay.md](apps/contra/docs/Netplay.md) | how two consoles are kept in the same game, with figures from sessions on hardware |
 | [docs/PHANTOM-RIGHT.md](docs/PHANTOM-RIGHT.md) | a netplay bug found on a real NES: a Right that nobody pressed |
 
-## Licence
+## License
 
 nesp32 is free software, copyright 2026 Matthew Demicco, under the
 [GNU General Public License, version 3](LICENSE): the firmware, the ROMs and
