@@ -3,18 +3,8 @@
 What is still to do on the nesp32 itself. Each program in `apps/` keeps
 its own list in its README.
 
-## Not yet run on hardware
-
-- A computer in place of a nesp32, on a USB serial cable
-  (`host/serial_host.py`).
-- The firmware's end of the datagrams between two nesp32s
-  (`firmware/main/conn.c`) has run on hardware and has no tests of its
-  own: what it does is tested through a computer's stand-in for it.
-
 ## Not measured, or not known
 
-- Figures from a real NES for the link itself (the setup ROM's link test):
-  it works there, and nothing was timed.
 - Why the network between two nesp32s is slower for the first eight to ten
   seconds after they connect than it is from then on
   ([the protocol](PROTOCOL.md), "The delay").
@@ -25,9 +15,6 @@ its own list in its README.
 
 ## Not started
 
-- A steadier way between two nesp32s: ESP-NOW for two consoles in one
-  room, past the access point; and the receiving nesp32 woken when a
-  packet comes, in place of looking once a millisecond.
 - A way for two nesp32s to meet across the Internet without a port
   forwarded: a server that introduces them, or a relay. Today the host
   forwards UDP port 6502.
