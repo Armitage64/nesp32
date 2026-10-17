@@ -57,6 +57,62 @@ G1 as G36 and 3V3_L2 as 3V3.
 G3 (a JTAG strapping pin) and G43/G44 (UART0, which carries the boot ROM's
 log) are avoided on purpose. The even row is out of the proto hat's reach.
 
+## The NES controller plug
+
+The hat reaches the console through a controller pigtail: a controller plug
+on a cable with bare wires at the other end. Four of its seven pins are used.
+The pin numbers on this page are the ones below, **viewed looking into the
+jack on the front of the console**:
+
+```
+               .
+pin 1 GND  -- |o\
+pin 2 CLK  -- |o o\ -- pin 5 +5V
+pin 3 OUT0 -- |o o| -- pin 6 D3
+pin 4 D0   -- |o o| -- pin 7 D4
+               '--'
+```
+
+The pigtail's plug is the mirror image, **viewed looking at its pins**:
+
+```
+                .
+               /o| -- pin 1 GND
+pin 5 +5V -- /o o| -- pin 2 CLK
+pin 6 D3  -- |o o| -- pin 3 OUT0
+pin 7 D4  -- |o o| -- pin 4 D0
+             '--'
+```
+
+> **Check your orientation before soldering.** The plug's mating face and its
+> wire/solder side are mirrored. Confirm you are counting pins in the direction
+> above — not from the back of the connector. See the
+> [NESdev controller port pinout](https://www.nesdev.org/wiki/Controller_port_pinout).
+
+The column of four, with GND at the end beside the slanted corner, carries
+everything nesp32 uses except +5 V, which is at the top of the column of
+three. CLK, D3 and D4 are not connected.
+
+| Pin | Signal | Direction | Hat pad | Official wire colour |
+|---|---|---|---|---|
+| 1 | GND | – | GND(1) | brown |
+| 2 | CLK | console → controller | – | red |
+| 3 | OUT0 (strobe) | console → controller | OUT(3) | orange |
+| 4 | D0 | controller → console | D0(4) | yellow |
+| 5 | +5 V | console → controller | 5V(5) | white |
+| 6 | D3 | controller → console | – | – |
+| 7 | D4 | controller → console | – | – |
+
+On the hat's board the four pads at the edge opposite the 8‑pin header are,
+from the end nearest the header's GND pin, 5V(5), OUT(3), D0(4) and
+GND(1), the last on the square pad. Each is labelled on the silkscreen.
+
+**Find each wire with a multimeter, not by its colour.** The colours are the
+ones Nintendo's own controllers use; aftermarket pigtails and extension
+cables often use others. With the cable unplugged, set the meter to
+continuity, hold one probe on a pin of the plug and touch the other to each
+bare wire until it beeps. Mark each wire as you find it.
+
 ## NPN shifter (default, through‑hole)
 
 This is the circuit on the hat's board in [`hardware/`](../hardware/),
