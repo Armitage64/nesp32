@@ -25,7 +25,7 @@
  * A feed that cannot be had is no
  * headlines, and the station plays without.
  *
- * PLAY says which of two modes: the station at 20338 samples a second and
+ * PLAY says which of two modes: the station at 16271 samples a second and
  * nothing else, or at 11622 with the headlines, which leaves the console
  * the cycles to draw them in. With the headlines, they go to the console
  * in the samples themselves: the DAC takes seven bits of a byte, and the

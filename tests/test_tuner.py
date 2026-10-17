@@ -77,15 +77,33 @@ class Set:
         self.stick = stick
         self.now = 0
         stick.set_wifi(p.NESP_WIFI_JOINED)
-        # A UART takes what it has room for: about what leaves in a
-        # millisecond, so that a millisecond of the clock is one of sound.
-        stick.line.room = 20
+        # A UART takes what it has room for: what leaves in a millisecond,
+        # so that a millisecond of the clock is one of sound. The room is a
+        # millisecond's, however many writes it is taken in.
+        line = stick.line
+        if not hasattr(line, "paced"):     # once for a Stick that has more sets than one
+            write = line.line_write
+
+            def paced(data):
+                count = write(data)
+                line.room -= count
+                return count
+
+            line.line_write = line.paced = paced
+        line.room = 0
+        self.owed = 0.0
         assert stick.hello(app=b"NPR ", services=services).ok
 
+    rate = RATE                     # samples a second: the mode's
+
     def wait(self, ms=5):
+        line = self.stick.line
         for _ in range(ms):
             self.now += 1
+            self.owed = min(self.owed, 1.0) + self.rate / 1000
+            line.room = int(self.owed)
             self.stick.tick(self.now)
+            self.owed -= int(self.owed) - line.room
 
     def ask(self, op, payload=b""):
         reply = self.stick.ask(TUNER, op, payload)
@@ -520,9 +538,7 @@ def pages(bursts):
 class NewsSet(Set):
     """A console that asks for the station with the headlines."""
 
-    def __init__(self, stick):
-        super().__init__(stick)
-        stick.line.room = 12        # about what leaves in a millisecond at this rate
+    rate = NEWS_RATE
 
     def play(self, feed=FEED, fed=True):
         """PLAY with the headlines, and unless told not to, what becomes of

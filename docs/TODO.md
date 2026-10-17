@@ -12,9 +12,38 @@ its own list in its README.
   packet's way and differ from day to day; marking the packets for the
   class Wi-Fi sends first, and never holding one back to send with others,
   were not seen to help ([nes-contra's figures](../apps/contra/docs/Netplay.md)).
+- What holds the hat at 198864 baud to a real NES. The throughput test
+  there stops at 9 cycles a bit, on two consoles and from either Stick,
+  where the MiSTer takes 298296, the last rate the console's CPU can. A
+  pull-up of 3.3 kΩ in place of 10 kΩ took it from 149148 to 198864, and
+  a stronger one did no better ([the wiring](WIRING.md), "Speed"). D0 has
+  not been on a scope: its rising edge, how long after G8 falls it begins
+  (the TX transistor coming out of saturation), and the level the
+  console's 74HC368 reads it at would say which it is.
+- How fast the hat carries from a real NES, the other way: the throughput
+  test's NES-to-nesp32 half has its figure only from the MiSTer (223722
+  baud), and the 100 kΩ RX base resistor slows that stage's edges.
 
 ## Not started
 
+- The link at full speed to a real NES. Until the hat carries 223722 baud
+  there, NPR's high-quality mode is at 10 cycles a bit, 16271 samples a
+  second (`TUNER_RATE` 4 and `TUNER_PERIOD` 10 in `proto/nesp.toml`), and
+  the jukebox's sound at 8 cycles, 20338 samples a second, is past what
+  the throughput test passed. At 10 cycles both play on the hat with the
+  3.3 kΩ pull-up. Once the cause is known (above), what to try, cheapest
+  first:
+  - A speed-up capacitor of 100 to 470 pF across the TX base resistor,
+    or a Schottky diode (BAT85, 1N5817) from the TX base to its collector,
+    to keep the transistor out of hard saturation.
+  - 2N3904s from a known maker, in case the ones on hand are slow.
+  - A TX stage that drives D0 high as well as low: the 74AHCT1G125 of
+    [the wiring](WIRING.md)'s "two single-gate buffers", powered from the
+    NES. That is surface mount, and a new revision of the board.
+
+  With 223722 passing on a real NES and some margin above it, NPR goes
+  back to 8 cycles (`TUNER_RATE` 5, `TUNER_PERIOD` 8), and the docs that
+  give its rate with it.
 - A way for two nesp32s to meet across the Internet without a port
   forwarded: a server that introduces them, or a relay. Today the host
   forwards UDP port 6502.

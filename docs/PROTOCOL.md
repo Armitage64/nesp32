@@ -906,7 +906,7 @@ one channel, brought from its own rate to the run's by a windowed sinc
 (the one nes-jukebox's `tools/wav2pcm.py` has, worked out once for 64
 places between two samples), and each sample made the level whose output
 from the console's DAC is nearest, through the DAC's curve. Levels go into
-a ring of 256 KB, about twelve seconds, or 22 at the lower rate. The run takes them from there and
+a ring of 256 KB, about sixteen seconds, or 22 at the lower rate. The run takes them from there and
 sends each as the byte the console's receiver turns into it.
 
 - **PLAY** starts the fetch, unless one is under way, and makes a station
@@ -917,8 +917,8 @@ sends each as the byte the console's receiver turns into it.
   the station with the headlines at a rate that leaves the console the
   cycles to draw them. With no `MODE` it is `$00`, as it was before there
   were two. A station that is PAUSED is made READY in the mode it has.
-- **SOUND** is JUKE's, with no epoch: `RATE` is the mode's, 5 (8 CPU cycles
-  a bit, 223722 baud, 20338 samples a second) or with the headlines 2 (14
+- **SOUND** is JUKE's, with no epoch: `RATE` is the mode's, 4 (10 CPU cycles
+  a bit, 178977 baud, 16271 samples a second) or with the headlines 2 (14
   cycles, 127841 baud, 11622 samples a second), or `$FF` from
   a console that cannot play it. The answer is WAIT while TUNING, GO when
   READY, and GONE otherwise. After GO the run is RAW's in every way.
@@ -969,7 +969,7 @@ sends each as the byte the console's receiver turns into it.
   station off.
 - **Paused, the station is fetched still.** The ring loses its oldest
   second as it fills, so what PLAY has ready is what was on the air up to
-  twelve seconds before (or 22), and a station lost while it is paused is FAILED.
+  sixteen seconds before (or 22), and a station lost while it is paused is FAILED.
 - After the run the console asks for STATE, and is told OFF, PAUSED or
   FAILED.
 

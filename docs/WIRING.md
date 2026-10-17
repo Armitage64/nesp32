@@ -123,7 +123,7 @@ which has the parts to buy.
 
  NES +5 V (pin 5)                          Stick 3V3_L2
      │                                         │
-   [10 kΩ]                                   [10 kΩ]
+   [3.3 kΩ]                                  [10 kΩ]
      │                                         │
      ├──[1 kΩ]──► NES D0 (pin 4)               ├──────► Stick G1
      │                                         │
@@ -136,15 +136,15 @@ which has the parts to buy.
  EXT_5V, 5V_IN, BAT, G0 ── not connected
 ```
 
-**Parts:** two 2N3904 (TO‑92), three 10 kΩ, one 100 kΩ, and one 1 kΩ
-resistor. Any small NPN works (2N2222A, BC547, PN2222); check the E‑B‑C lead
+**Parts:** two 2N3904 (TO‑92), two 10 kΩ, one 3.3 kΩ, one 100 kΩ, and one
+1 kΩ resistor. Any small NPN works (2N2222A, BC547, PN2222); check the E‑B‑C lead
 order, which differs between parts and makers.
 
 | From | Through | To |
 |---|---|---|
 | Stick G8 | 10 kΩ | TX 2N3904 base |
 | TX 2N3904 emitter | – | GND |
-| TX 2N3904 collector | 10 kΩ | NES pin 5 (+5 V) |
+| TX 2N3904 collector | 3.3 kΩ | NES pin 5 (+5 V) |
 | TX 2N3904 collector | 1 kΩ | NES pin 4 (D0) |
 | NES pin 3 (OUT0) | 100 kΩ | RX 2N3904 base |
 | RX 2N3904 emitter | – | GND |
@@ -156,7 +156,7 @@ order, which differs between parts and makers.
 hardware to cancel it (`BOARD_LINK_INVERTED` 1, the default).
 
 - **TX:** the UART idles with G8 low, so the transistor is off and the
-  10 kΩ pull‑up holds D0 at the NES's own 5 V, which is idle (mark). A space
+  3.3 kΩ pull‑up holds D0 at the NES's own 5 V, which is idle (mark). A space
   bit turns the transistor on and pulls D0 to about 0.1 V. A 2N3904 switches at
   about 0.7 V on its base, so 3.3 V drives it hard, and both levels sit far
   inside the NES input's limits.
@@ -182,13 +182,24 @@ hardware to cancel it (`BOARD_LINK_INVERTED` 1, the default).
     through a transistor's base junction (a fraction of a milliamp, via
     10 kΩ) are about a tenth of what the tested FTDI cable pushes into an
     unpowered NES through its 1 kΩ.
-- **Speed:** a pull‑up makes the rising edge take about 0.3 µs, about a
-  fortieth of a bit at the link's 85227 baud. The ROM samples mid‑bit. The
-  100 kΩ base resistor slows the RX transistor's edges to a few µs
-  (estimated, not measured); the slowest is turn‑off, when OUT0 falls. In
-  practice the board carries 298296 baud to the console and 223722 from it
-  ([the throughput test](../apps/throughput/README.md)), so the RX stage's
-  edges are what limit the direction from the console.
+- **Why the TX pull‑up is 3.3 kΩ:** D0 falls as fast as the transistor
+  turns on, but rises only as fast as the pull‑up charges the cable and the
+  console's input. With 10 kΩ the throughput test on a real NES stopped at
+  149148 baud to the console. With about 3.2 kΩ (a 4.7 kΩ across the
+  10 kΩ) it reached 198864, and about 2.1 kΩ did no better, so 3.3 kΩ is
+  the value. The transistor sinks about 1.5 mA when D0 is low, and its
+  0.26 mA of base current still saturates it.
+- **Speed:** on a real NES the board carries 198864 baud to the console; on
+  the MiSTer through a SNAC adapter, 298296, the last rate the console's
+  CPU can take ([the throughput test](../apps/throughput/README.md)). The
+  SNAC adapter's own pull‑up and its lower threshold make D0's rise count
+  for less there. What holds a real NES at 198864 is not known: a stronger
+  pull‑up stopped helping, and the TX transistor's turn‑off, the console's
+  input and the cable are untested, since D0 has not been on a scope.
+  NPR's high‑quality mode runs at 178977 baud for this. The 100 kΩ base
+  resistor slows the RX transistor's edges to a few µs (estimated, not
+  measured); the slowest is turn‑off, when OUT0 falls. From the console
+  the board carried 223722 baud on the MiSTer.
 - **Why the 1 kΩ stays:** it is the same fault‑current limiter the FTDI
   cable uses on D0. On the RX side the 100 kΩ base resistor does that job.
 
