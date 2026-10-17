@@ -58,7 +58,8 @@
 </main>
 <script>
   fetch("manifest.json").then(r => r.json()).then(m => {
-    document.getElementById("version").textContent = "Firmware " + m.version;
+    document.getElementById("version").textContent = "Firmware " + m.version +
+      (m.date ? ", " + m.date : "");
   }).catch(() => {});
 </script>
 </body>
