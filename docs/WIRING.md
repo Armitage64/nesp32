@@ -73,6 +73,17 @@ pin 4 D0   -- |o o| -- pin 7 D4
                '--'
 ```
 
+The pigtail's plug is the mirror image, **viewed looking at its pins**:
+
+```
+                .
+               /o| -- pin 1 GND
+pin 5 +5V -- /o o| -- pin 2 CLK
+pin 6 D3  -- |o o| -- pin 3 OUT0
+pin 7 D4  -- |o o| -- pin 4 D0
+             '--'
+```
+
 > **Check your orientation before soldering.** The plug's mating face and its
 > wire/solder side are mirrored. Confirm you are counting pins in the direction
 > above — not from the back of the connector. See the
