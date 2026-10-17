@@ -37,5 +37,8 @@ its own list in its README.
   further than that. The port's CLK pin, which every read of `$4017`
   pulses, is the other line the hat leaves alone
   ([the jukebox's plan](../apps/jukebox/PLAN.md), "clocked link").
-- PAL consoles. The console's library counts NTSC cycles, and so does
-  every program on it.
+- PAL consoles ([the plan](PAL.md)). The console's library counts cycles,
+  not time, and works as it is on a PAL CPU; what assumes NTSC is the
+  nesp32's rates, worked out from the NTSC clock, and the programs' times
+  and sounds made for 60 frames a second. Dr. Mario and Contra would also
+  need their patches made again for the PAL releases.
