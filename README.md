@@ -25,7 +25,7 @@ the ESP32 microcontroller.
 - Extensible firmware provides an API that any cartridge-based software can interface with. A setup program allows the wifi and USB storage 
 to be configured from the NES itself. 
 
-- The NESP32 is an evolution of [NES Radar](https://github.com/k6lcm/nes-radar) where the controller port serial interface was originally conceived.
+- The NESP32 grew out of [NES Radar](https://github.com/k6lcm/nes-radar) and [connectedNES](https://github.com/hxlnt/connectedNES), projects that first explored the use of the NES controller port as a data link.
 
 - This project is still just a proof of concept but with your help it could someday become a real boy!
 
