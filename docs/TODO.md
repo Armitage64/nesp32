@@ -42,6 +42,14 @@ its own list in its README.
 - A way for two nesp32s to meet across the Internet without a port
   forwarded: a server that introduces them, or a relay. Today the host
   forwards UDP port 6502.
+- A choice in [Setup](../apps/setup)'s menu that turns the Stick's screen
+  the other way up, and is remembered when the Stick is restarted. Today
+  the way up is fixed when the firmware is built
+  (`CONFIG_NESP_DISPLAY_FLIPPED`, in `firmware/main/Kconfig.projbuild`).
+  The cartridge would ask for it with a new request, and the nesp32 would
+  keep it in its settings in NVS, as it keeps the ZIP code and the last
+  address (`radio.c`, `conn.c`), and read it before the first thing is
+  drawn; the build's setting would be the way up until one is chosen.
 - An idle opponent on the nesp32, as `host/serial_host.py --idle` has, to
   test one console with a nesp32 alone.
 - A fetch that drops partway made again; today what came is read, if it

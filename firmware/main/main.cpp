@@ -237,7 +237,13 @@ extern "C" void app_main(void)
     usb_start();
     auto config = M5.config();
     M5.begin(config);
+    // 1 is M5Stack's landscape, and 3 the same turned a half turn round
+    // (CONFIG_NESP_DISPLAY_FLIPPED, in main/Kconfig.projbuild).
+#if CONFIG_NESP_DISPLAY_FLIPPED
+    M5.Display.setRotation(3);
+#else
     M5.Display.setRotation(1);
+#endif
     M5.Display.setTextSize(1);
     M5.Display.setFont(&fonts::FreeSans9pt7b);
     M5.Display.setTextWrap(false);      // a long name is cut off, not run into the next line

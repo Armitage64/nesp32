@@ -1,0 +1,10 @@
+menu "nesp32"
+
+config NESP_DISPLAY_FLIPPED
+    bool "Turn the screen upside down"
+    default y
+    help
+        On, the screen is drawn a half turn round from M5Stack's landscape
+        (rotation 3). Off draws it M5Stack's way up again (rotation 1).
+
+endmenu

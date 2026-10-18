@@ -31,6 +31,12 @@ idf.py -B build-esp32s3 -D SDKCONFIG=build-esp32s3/sdkconfig -D IDF_TARGET=esp32
 USB, telling a StickS3 from a StickC Plus2 by the name of its port, and
 `firmware/deploy.sh watch` prints their logs without restarting them.
 
+The screen is drawn upside down from M5Stack's landscape. To have it
+M5Stack's way up again, turn off "Turn the screen upside down" under
+nesp32 in `idf.py -B build-esp32s3 menuconfig` (or the board's own build
+directory), or put `CONFIG_NESP_DISPLAY_FLIPPED=n` in that board's
+`sdkconfig`.
+
 Flashing replaces whatever is on the Stick, UIFlow included; M5Burner
 brings UIFlow back. A Stick that ships with UIFlow has to be flashed once
 over USB.
