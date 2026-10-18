@@ -53,9 +53,9 @@ Please join our [Discord](https://discord.gg/kwSC7pwtmb)!
 | [NESpedia](apps/wiki) | Search and display Wikipedia articles |
 | [Jukebox](apps/jukebox) | Stream VGM/VGZ music files and PCM audio to the NES sound chip |
 | [Throughput](apps/throughput) | Test the bandwidth of the NES<>ESP32 interface |
-| [Dr. Mario 2P](apps/drmario) | Dr. Mario two-player over a LAN or WAN |
-| [Contra, 2P](apps/contra) | Contra's two-player over a LAN or WAN |
-| [Tetris 2P](apps/tetris) | Tetris two-player, side by side, over a LAN or WAN |
+| [Dr. Mario 2P](apps/drmario) | Dr. Mario online two-player |
+| [Contra, 2P](apps/contra) | Contra's online two-player |
+| [Tetris 2P](apps/tetris) | Tetris online two-player |
 | [NES Radar](apps/nes-radar) | [k6lcm](https://github.com/k6lcm)'s live air traffic scope, no PC required |
 | [National Public Radio](apps/npr) | NPR's live .mp3 radio stream with optional headline news |
 | [Weather](apps/weather) | Current conditions and a 5-day forecast for a US zip code, which the NESP32 remembers |
