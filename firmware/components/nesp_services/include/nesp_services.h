@@ -416,6 +416,9 @@ typedef struct {
      * being sent: it is not listening for it, whatever they were (they
      * came at the run's rate, and mean nothing). */
     void (*heard)(void *ctx, size_t len);
+    /* Bytes of $FF the run begins with, before read's: for a console's
+     * receiver that settles on them. */
+    uint8_t lead;
 } nesp_run_t;
 
 #define NESP_RAW_HELD 128

@@ -48,8 +48,7 @@ On a **StickC Plus2**, G36 is input‑only and shares its pad with G25, which
 must stay an input. G0 is that board's boot‑mode pin too, and it carries the
 TX base resistor there; a Plus2 started from off a number of times with the
 hat on, the console on and off, and came up in nesp32's firmware every time.
-No level on it has been measured. A Plus2 with the hat on a real NES played
-NPR at 223722 baud, the link's fastest rate for sound.
+No level on it has been measured.
 
 The rest of this page names the StickS3's pins. On a Plus2, read G8 as G0,
 G1 as G36 and 3V3_L2 as 3V3.
@@ -184,22 +183,33 @@ hardware to cancel it (`BOARD_LINK_INVERTED` 1, the default).
     unpowered NES through its 1 kΩ.
 - **Why the TX pull‑up is 3.3 kΩ:** D0 falls as fast as the transistor
   turns on, but rises only as fast as the pull‑up charges the cable and the
-  console's input. With 10 kΩ the throughput test on a real NES stopped at
-  149148 baud to the console. With about 3.2 kΩ (a 4.7 kΩ across the
-  10 kΩ) it reached 198864, and about 2.1 kΩ did no better, so 3.3 kΩ is
-  the value. The transistor sinks about 1.5 mA when D0 is low, and its
-  0.26 mA of base current still saturates it.
-- **Speed:** on a real NES the board carries 198864 baud to the console; on
-  the MiSTer through a SNAC adapter, 298296, the last rate the console's
-  CPU can take ([the throughput test](../apps/throughput/README.md)). The
-  SNAC adapter's own pull‑up and its lower threshold make D0's rise count
-  for less there. What holds a real NES at 198864 is not known: a stronger
-  pull‑up stopped helping, and the TX transistor's turn‑off, the console's
-  input and the cable are untested, since D0 has not been on a scope.
-  NPR's high‑quality mode runs at 178977 baud for this. The 100 kΩ base
+  console's input. With 10 kΩ the throughput test's climb on a real NES
+  stopped at 149148 baud to the console, and on another hat and two other
+  consoles at 111861. With about 3.2 kΩ (a 4.7 kΩ across the 10 kΩ) it
+  reached 198864; about 2.1 kΩ, or a 470 Ω in place of the 1 kΩ, did no
+  better. The rates it gained, 162707 to 198864, are ones the jukebox and
+  NPR play at with receivers that hunt for each start bit, which a late
+  edge costs most. The transistor sinks about 1.5 mA when D0 is low, a
+  milliamp more than with 10 kΩ and under one on average, and its 0.26 mA
+  of base current still saturates it, with five times what it needs.
+- **Speed:** the board carries 298296 baud to the console, the last rate
+  the console's CPU can take, on a real NES as on the MiSTer through a SNAC
+  adapter ([the throughput test](../apps/throughput/README.md)). On a real
+  NES the climb stopped at 198864 all the same: a sweep passed every rate
+  from 14 cycles a bit to 6 but 8, which lost about one byte in nine,
+  every time. 8 cycles had the receiver that hunts for each start
+  bit, and 7 and 6 the one that tracks it, so it was the hunt that failed
+  there, not the line; why a real console's hunt fails at 8 cycles and the
+  MiSTer's does not is not known. From 8 cycles down the console's
+  receivers track now, in the throughput test and in the jukebox's and
+  NPR's sound, whose fastest rate is 7 cycles, 255682 baud; with them the
+  climb on a real NES reaches 298296 baud, and sound and NPR play at
+  255682. The 100 kΩ base
   resistor slows the RX transistor's edges to a few µs (estimated, not
   measured); the slowest is turn‑off, when OUT0 falls. From the console
-  the board carried 223722 baud on the MiSTer.
+  the board carries 223722 baud, on a real NES as on the MiSTer, and
+  298296 fails; nothing the console sends is near that fast, its
+  requests going at 85227.
 - **Why the 1 kΩ stays:** it is the same fault‑current limiter the FTDI
   cable uses on D0. On the RX side the 100 kΩ base resistor does that job.
 

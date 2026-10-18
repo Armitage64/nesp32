@@ -199,9 +199,11 @@ def test_the_receivers_share_of_the_cpu_is_what_rates_says(rom):
     assert rates.to_nes_work(6) == rates.to_nes_byte(6) == 4 + 5 + 46 + 11
     # The one nop is a way out, and there is no bit $00.
     assert body(6).count(0xEA) == 1 and body(6).count(b"\x24\x00") == 0
-    # 8 cycles a bit: 7 pads of 2 between samples, and the hunt idles the rest.
-    assert body(8).count(0xEA) == 7 + 1
-    assert rates.to_nes_byte(8) - rates.to_nes_work(8) - 7 * 2 == 10
+    # 8 cycles a bit, tracking: 7 pads of 2 between samples, the nop of the
+    # late way, and a turn of 5 (nop, bit $00) before the look; and a first
+    # pad of 3, bit $00.
+    assert body(8).count(0xEA) == 7 + 1 + 1
+    assert rates.to_nes_byte(8) - rates.to_nes_work(8) == 7 * 2 + 5 + 3
     # 13 cycles a bit: 7 pads of 7 (pha, pla), a first pad of 5, a rest of 4.
     code = body(13)
     assert code.count(0x48) == code.count(0x68) == 7
@@ -226,7 +228,7 @@ def test_the_cpu_share_rises_with_the_rate():
         shares = [cpu for _, cpu, _ in figures.values()]
         assert shares == sorted(shares)
     assert [received[period][1] for period in (186, 47, 13, 12, 8, 7, 6, 5)] == [
-        3, 13, 48, 48, 73, 86, 100, 120]
+        3, 13, 48, 48, 75, 86, 100, 120]
     assert [sent[period][1] for period in (186, 47, 13, 8, 6)] == [4, 14, 52, 81, 97]
     assert received[13][2] == 12515 and sent[13][2] == 13767
     # Under 11 cycles a bit the console's stop bit is longer than the rest.

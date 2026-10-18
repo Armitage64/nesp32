@@ -225,10 +225,13 @@ sets up; nesp32's `docs/PROTOCOL.md` has both.
 **Status: working on hardware.** From a nesp32, sound has played on a
 real NES from a StickC Plus2 at rates 1, 2 and 5 (10169, 11622 and 20338
 samples a second), and at rate 5 on the MiSTer's NES core from a StickS3;
-pausing with A and playing on works there. All six rates play on the
-simulated console. The receive routines are the throughput test's fast receiver
-(`../../throughput/README.md`), which passed on that console at every rate used
-here.
+pausing with A and playing on works there, and at rate 4 (16271) on the
+hat's PCB. All seven rates play on the simulated console. The receive
+routines are the throughput test's (`../../throughput/README.md`): its fast
+receiver at rates 0 to 4, and its tracking receiver at rates 5 and 6. On a
+real NES the fast receiver lost bytes at 8 cycles a bit where the tracking
+one lost none at 8, 7 and 6. With it, rates 5 and 6 play correctly on a
+real NES.
 
 ### Rates
 
@@ -244,8 +247,18 @@ byte, and its UART is the clock: the sample rate is the baud rate over 11.
 | 3 | 12 | 149148 | 13559 | 814 KB |
 | 4 | 10 | 178977 | 16271 | 976 KB |
 | 5 | 8 | 223722 | 20338 | 1220 KB |
+| 6 | 7 | 255682 | 23244 | 1395 KB |
 
 Rate 0 is the link's own rate.
+
+**At rates 5 and 6 a sound begins with 8 bytes of `$FF`** (nesp32's
+`SOUND_LEAD`), which are not samples and are not played. The routines
+there look at the line once a byte, where the start bit should fall, and
+are a cycle quicker or slower for what they see, rather than hunt for
+every start bit; they find the first by a hunt, up to 6 cycles out, and
+settle on these. A file holds no lead: the nesp32 sends it. Going by the
+clock, these routines read a gap in the samples as bytes of mark, and
+come out of it out of step; the nesp32 leaves none.
 
 ### The bytes
 
@@ -353,7 +366,7 @@ The nesp32 stores and reads this file. `tools/wav2pcm.py` and
 |---|---|---|
 | 0 | 4 | magic `NPCM` |
 | 4 | 1 | version, 1 |
-| 5 | 1 | cycles a bit: 21, 16, 14, 12, 10 or 8 |
+| 5 | 1 | cycles a bit: 21, 16, 14, 12, 10, 8 or 7 |
 | 6 | 1 | title length *n* |
 | 7 | 1 | reserved, 0 |
 | 8 | *n* | title, printable ASCII, "game - track" as for a `.jbs` |

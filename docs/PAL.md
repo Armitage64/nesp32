@@ -107,7 +107,7 @@ an NTSC NMI will stop fitting.
 
 ### 5. NPR: about 1–2 days
 
-The two qualities, 16271 and 11622 samples a second, become about 15078
+The two qualities, 23244 and 11622 samples a second, become about 21540
 and 10770 on PAL. The tuner's decoder resamples to whatever rate it is
 told, so this is giving it the PAL one, and checking that the ring still
 never runs dry and that the news's turns of `TUNER_NEWS_TURN_MS` still

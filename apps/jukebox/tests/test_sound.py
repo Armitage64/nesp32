@@ -23,6 +23,8 @@ from nes_harness import PAD_A, PAD_LEFT, PAD_RIGHT, PAD_START, PPUCTRL, PPUCTRL_
 from wire import SPACE
 
 RATES = range(len(pcm.PERIODS))
+HUNTED = [rate for rate in RATES if not pcm.tracked(pcm.PERIODS[rate])]
+TRACKED = [rate for rate in RATES if pcm.tracked(pcm.PERIODS[rate])]
 PHASES = (0, 2.5, 4.5, 7, 8.5)
 START = 500
 SOUND = (p.NESP_SVC_JUKE, p.NESP_JUKE_SOUND)
@@ -62,8 +64,9 @@ def play(link_rom, rate, samples, phase=0.0, clock_error=0.0, last=0):
     machine = at_rest(link_rom)
     machine.read_log = []
     machine.level_log = []
-    data = pcm.encode(samples) + bytes((pcm.sample_byte(last, last=True),))
-    machine.port.wire.send(data, START + phase, pcm.PERIODS[rate] / (1.0 + clock_error))
+    period = pcm.PERIODS[rate]
+    data = pcm.lead(period) + pcm.encode(samples) + bytes((pcm.sample_byte(last, last=True),))
+    machine.port.wire.send(data, START + phase, period / (1.0 + clock_error))
     machine.call("pcm_stream_%d" % rate, limit=2_000_000)
     return machine
 
@@ -78,8 +81,9 @@ def test_each_routine_has_a_page_to_itself(link_rom):
 def test_the_rates_are_the_ones_the_nesp32_sends_at():
     """Its JUKE service names a sound's rate by its place in this list
     (nesp32's juke.c), and the ROM has a routine for each."""
-    assert pcm.PERIODS == (21, 16, 14, 12, 10, 8)
+    assert pcm.PERIODS == (21, 16, 14, 12, 10, 8, 7)
     assert len(pcm.PERIODS) == p.NESP_JUKE_SOUND_RATES
+    assert (pcm.TRACKED, pcm.LEAD) == (p.NESP_SOUND_TRACKED, p.NESP_SOUND_LEAD)
     assert pcm.LAST_BYTE == bytes((p.NESP_JUKE_SOUND_LAST,))
     assert pcm.FRAME_BITS == p.NESP_TO_NES_BITS and pcm.PERIODS[0] == p.NESP_PERIOD
 
@@ -95,7 +99,7 @@ def test_every_sample_reaches_the_dac_at_every_start_phase(link_rom, rate):
         assert machine.level_log[-1][1] == 0x55
 
 
-@pytest.mark.parametrize("rate", RATES)
+@pytest.mark.parametrize("rate", HUNTED)
 def test_the_port_is_sampled_mid_bit_and_the_hunt_resumes_in_the_stop_bits(link_rom, rate):
     """The hunt's looks are 6 or 7 cycles apart, so a sample is up to 3.5
     off the middle of its bit, and a little more for rounding the first
@@ -116,7 +120,7 @@ def test_the_port_is_sampled_mid_bit_and_the_hunt_resumes_in_the_stop_bits(link_
     assert worst <= 7 / 2 + 1 and worst < period / 2
 
 
-@pytest.mark.parametrize("rate", RATES)
+@pytest.mark.parametrize("rate", HUNTED)
 def test_samples_come_out_a_byte_apart_give_or_take_the_hunt(link_rom, rate):
     """The nesp32's UART is the clock. A write comes right after its byte's
     last sample: a fixed time from the start bit, plus where the hunt's
@@ -138,7 +142,9 @@ def test_a_clock_1_percent_off_plays_every_sample(link_rom, rate, clock_error):
 
 
 def test_a_pause_in_the_samples_holds_the_level_and_loses_nothing(link_rom):
-    rate = len(pcm.PERIODS) - 1
+    """At the rates that hunt for each start bit. The tracking routines go
+    by the clock, and a nesp32 leaves no gap."""
+    rate = HUNTED[-1]
     samples = levels(0x75)
     machine = at_rest(link_rom)
     machine.level_log = []
@@ -151,17 +157,53 @@ def test_a_pause_in_the_samples_holds_the_level_and_loses_nothing(link_rom):
     assert times[100] - times[99] > 20000   # nothing was written in between
 
 
+@pytest.mark.parametrize("rate", TRACKED)
+def test_a_tracking_routine_samples_within_a_cycle_or_two_of_mid_bit(link_rom, rate):
+    """Once it has settled on the lead, each byte's samples are where its
+    bits' middles are, give or take the cycle the look moves by and the
+    one a gap of 7 cannot be; and a byte is a byte long, a cycle either
+    way. The lead's bytes go to no DAC."""
+    period = pcm.PERIODS[rate]
+    samples = levels(0x47 + rate, 60)
+    for phase in PHASES:
+        machine = play(link_rom, rate, samples, phase)
+        assert played_levels(machine) == samples + [0]
+        reads = machine.read_log
+        detect = next(i for i, (_, level) in enumerate(reads) if level == SPACE)
+        # The reads are the lead's and the samples', each byte a look and
+        # 8 samples, after the hunt that found the first.
+        bytes_in = [reads[detect + 1 + 9 * k:detect + 10 + 9 * k] for k in range(pcm.LEAD + 50)]
+        worst = 0.0
+        for k, byte_reads in enumerate(bytes_in[pcm.LEAD:], pcm.LEAD):
+            begin = START + phase + k * pcm.FRAME_BITS * period
+            centers = [begin + (1.5 + bit) * period for bit in range(8)]
+            worst = max(worst, max(abs(cycle - center)
+                                   for (cycle, _), center in zip(byte_reads, centers)))
+        assert worst <= 2.5, "phase %.1f" % phase
+        lags = [cycle - (START + phase + (pcm.LEAD + index) * pcm.FRAME_BITS * period)
+                for index, (cycle, _) in enumerate(machine.level_log)]
+        assert max(lags) - min(lags) <= 3
+
+
 def test_filler_at_the_links_rate_ends_a_stream_at_every_rate(link_rom):
     """What a nesp32 sends when it starts: twelve zero bytes at the link's
-    rate, which is the slowest of a sound's."""
+    rate, which is the slowest of a sound's. A tracking routine plays the
+    silence before it as bytes of mark, at the DAC's middle, and is ended
+    all the same."""
     for rate in RATES:
+        period = pcm.PERIODS[rate]
         machine = at_rest(link_rom)
         machine.level_log = []
         wire = machine.port.wire
-        end = wire.send(pcm.encode(levels(0x06, 20)), START, pcm.PERIODS[rate])
+        end = wire.send(pcm.lead(period) + pcm.encode(levels(0x06, 20)), START, period)
         wire.send(pcm.FILLER, end + 5000, p.NESP_PERIOD)
         machine.call("pcm_stream_%d" % rate, limit=2_000_000)
-        assert len(machine.level_log) == 21 and not machine.level_log[-1][1] & pcm.MORE
+        assert played_levels(machine)[:20] == levels(0x06, 20)
+        assert not machine.level_log[-1][1] & pcm.MORE
+        if pcm.tracked(period):
+            assert all(level == 0x40 for level in played_levels(machine)[20:-3])
+        else:
+            assert len(machine.level_log) == 21
 
 
 # --- whole playlists --------------------------------------------------------------

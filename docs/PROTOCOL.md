@@ -691,8 +691,8 @@ answer is not WAIT.
 | `$01` | GO | the samples follow, as a run of RAW's at the sound's rate |
 | `$02` | GONE | there is no such sound to play: ask for the stream, which is in another epoch by now |
 
-- `RATE` is the record's: 0 to 5, for 21, 16, 14, 12, 10 and 8 CPU cycles
-  a bit, which are 7748 to 20338 samples a second. A console that cannot
+- `RATE` is the record's: 0 to 6, for 21, 16, 14, 12, 10, 8 and 7 CPU
+  cycles a bit, which are 7748 to 23244 samples a second. A console that cannot
   play it says `$FF`, and is told GONE; so is one whose hello did not ask
   for RAW. The nesp32 goes on to the next track.
 - `EPOCH` is the console's. A sound asked for from before a jump is GONE,
@@ -701,6 +701,13 @@ answer is not WAIT.
   nesp32 says GO again and starts the wait again. A sample is a byte, as
   its file holds it; the run ends with `$FC`, which the console's routines
   take for the last and which leaves its DAC at 0.
+- **At `SOUND_TRACKED` (8) CPU cycles a bit and fewer the run begins with
+  `SOUND_LEAD` (8) bytes of `$FF`**, before the samples. The console's
+  routines there track each byte's start bit from the one before rather
+  than hunt for every one: they find the first by a hunt, up to 6 cycles
+  out, settle on these, and do not play them. On a real NES the hunt lost
+  bytes at 8 cycles a bit where tracking lost none at 8, 7 and 6. TUNER's
+  runs do the same.
 - The music after a sound is a new epoch.
 - **A console may leave a sound**, and nes-jukebox's does when button A of
   its controller goes down, which is all of the controller it can look at
@@ -906,7 +913,7 @@ one channel, brought from its own rate to the run's by a windowed sinc
 (the one nes-jukebox's `tools/wav2pcm.py` has, worked out once for 64
 places between two samples), and each sample made the level whose output
 from the console's DAC is nearest, through the DAC's curve. Levels go into
-a ring of 256 KB, about sixteen seconds, or 22 at the lower rate. The run takes them from there and
+a ring of 256 KB, about eleven seconds, or 22 at the lower rate. The run takes them from there and
 sends each as the byte the console's receiver turns into it.
 
 - **PLAY** starts the fetch, unless one is under way, and makes a station
@@ -917,8 +924,9 @@ sends each as the byte the console's receiver turns into it.
   the station with the headlines at a rate that leaves the console the
   cycles to draw them. With no `MODE` it is `$00`, as it was before there
   were two. A station that is PAUSED is made READY in the mode it has.
-- **SOUND** is JUKE's, with no epoch: `RATE` is the mode's, 4 (10 CPU cycles
-  a bit, 178977 baud, 16271 samples a second) or with the headlines 2 (14
+- **SOUND** is JUKE's, with no epoch: `RATE` is the mode's, 6 (7 CPU cycles
+  a bit, 255682 baud, 23244 samples a second, after JUKE's lead of 8
+  bytes) or with the headlines 2 (14
   cycles, 127841 baud, 11622 samples a second), or `$FF` from
   a console that cannot play it. The answer is WAIT while TUNING, GO when
   READY, and GONE otherwise. After GO the run is RAW's in every way.
@@ -969,7 +977,7 @@ sends each as the byte the console's receiver turns into it.
   station off.
 - **Paused, the station is fetched still.** The ring loses its oldest
   second as it fills, so what PLAY has ready is what was on the air up to
-  sixteen seconds before (or 22), and a station lost while it is paused is FAILED.
+  eleven seconds before (or 22), and a station lost while it is paused is FAILED.
 - After the run the console asks for STATE, and is told OFF, PAUSED or
   FAILED.
 

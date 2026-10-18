@@ -10,7 +10,7 @@ import pytest
 
 import rates
 from rates import BLOCK, FROM_NES, TO_NES
-from thru_sim import PAD_START, VBLANK_CYCLES, Bench, ms
+from thru_sim import PAD_SELECT, PAD_START, VBLANK_CYCLES, Bench, ms
 
 RAW = p.NESP_SVC_RAW
 ROWS = [name for name, _ in gen_screen.ROWS]
@@ -126,7 +126,7 @@ def test_the_hello_names_the_rom_and_asks_for_raw(rom):
 
 def test_nothing_runs_until_it_is_started(rom):
     bench = greet(Bench(rom))
-    bench.machine.pad = 0xFF & ~PAD_START   # every button but Start
+    bench.machine.pad = 0xFF & ~(PAD_START | PAD_SELECT)    # every button but those two
     bench.stick.event(p.NESP_EVENT_BUTTON_B)
     bench.stick.event(p.NESP_EVENT_BUTTON_POWER)
     bench.machine.run(120)
@@ -339,6 +339,92 @@ def test_a_run_that_loses_bytes_does_not_hang_the_console(rom):
     assert rx["FAILED"].startswith("%d BPS, " % rates.baud(lost))
     assert int(rx["FAILED"].split()[2]) > 100   # everything after the gap is out of step
     assert half(bench, TX)["STATUS"] == "DONE"
+
+
+# --- a sweep --------------------------------------------------------------------------
+
+SWEEP = TO_NES[-10:]            # the ROM's SWEEP_RATES, from 14 cycles a bit
+SWEEPING = "SWEEPING"
+SWEEP_TOP = gen_screen.HALVES[0][1] + 2
+
+
+def sweep_rows(bench):
+    """The sweep's table: (cycles, speed, what came wrong) a rate, as the
+    screen has them."""
+    left = gen_screen.LEFT
+    rows = []
+    for index in range(len(SWEEP)):
+        text = bench.machine.text(SWEEP_TOP + index, left, gen_screen.WIDTH)
+        rows.append((text[1:5].rstrip(), text[5:16].rstrip(), text[16:].rstrip()))
+    return rows
+
+
+def sweep(rom, **options):
+    bench = greet(Bench(rom, **options))
+    bench.press_select()
+    began = bench.machine.now
+    bench.machine.run_until(lambda: state(bench) == SWEEPING, 30)
+    bench.machine.run_until(lambda: state(bench) == AGAIN, 6000)
+    return bench, began
+
+
+def checked(period, blocks):
+    return (BLOCK - (rates.PREAMBLE if rates.tracked_receive(period) else 0)) * blocks
+
+
+def test_select_sweeps_every_rate_to_the_console_from_14_cycles(rom):
+    assert SWEEP[0] == 14 and SWEEP[-1] == 5
+    bench, began = sweep(rom, blocks=1)
+    assert runs(bench, began) == [("to", period) for period in SWEEP]
+    left, width = gen_screen.LEFT, gen_screen.WIDTH
+    assert bench.machine.text(SWEEP_TOP - 2, left, width).rstrip() == "NESP32 TO NES, EVERY RATE"
+    assert bench.machine.text(SWEEP_TOP - 1, left, width).rstrip() == " CYC SPEED      BAD OF SENT"
+    rows = sweep_rows(bench)
+    for period, (cycles, speed, came) in zip(SWEEP, rows):
+        assert cycles == str(period) and speed == "%d BPS" % rates.baud(period)
+        bad, sent = came.split(" OF ")
+        assert int(sent) == checked(period, 1)
+        assert (int(bad) == 0) == (period != 5)     # 5 is the rate the CPU cannot do
+    # Under the table, and in the rest of the halves' rows, nothing.
+    for row in range(SWEEP_TOP + len(SWEEP), gen_screen.HALVES[1][1] + len(ROWS) + 1):
+        assert bench.machine.text(row, left, width).strip() == ""
+
+
+def test_a_sweep_does_not_stop_at_a_rate_that_fails(rom):
+    # The line to the console rises 4 cycles late. 13 and 12 cycles a bit
+    # do not take that, and 11, 10 and 9 do: how late a rising edge may be
+    # is each rate's routine's, and does not shrink rate by rate. A climb
+    # stops at 13; the sweep gives every rate its whole trial.
+    bench, began = sweep(rom, blocks=2, to_nes_rise=4.0)
+    assert runs(bench, began) == [("to", period) for period in SWEEP for _ in range(2)]
+    passed = []
+    for period, (_, _, came) in zip(SWEEP, sweep_rows(bench)):
+        bad, sent = (int(n) for n in came.split(" OF "))
+        assert sent == checked(period, 2)
+        if bad == 0:
+            passed.append(period)
+    assert passed == [14, 11, 10, 9]
+
+
+def test_a_sweep_on_a_console_whose_port_reads_otherwise_runs_nothing(rom):
+    bench = greet(Bench(rom, blocks=1))
+    bench.machine.port_bits = 0x48
+    bench.press_select()
+    bench.machine.run_until(lambda: state(bench) == AGAIN, 300)
+    assert runs(bench) == []
+    assert bench.machine.text(SWEEP_TOP, gen_screen.LEFT).startswith("$4017 READS $48")
+
+
+def test_a_climb_after_a_sweep_has_the_halves_back(rom):
+    bench, _ = sweep(rom, blocks=1)
+    bench.press_start()
+    bench.machine.run_until(lambda: state(bench) == TESTING, 30)
+    bench.machine.run(10)
+    assert half(bench, RX)["STATUS"] == "CLIMBING"
+    assert half(bench, TX) == dict(BLANK, STATUS="WAITING")
+    finish(bench)
+    assert half(bench, RX) == figures(6, to_nes=True, failed=half(bench, RX)["FAILED"])
+    assert half(bench, TX)["FAILED"] == "NONE"
 
 
 # --- after a test, and when the nesp32 goes away ---------------------------------------

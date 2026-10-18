@@ -153,8 +153,11 @@ def test_the_station_plays_on_the_dac(radio, tone):
     assert machine.deaf
     levels = played(machine)
     assert len(levels) > 0.4 * RATE
-    # Every sample the nesp32 has sent that has had time to arrive, in order.
-    sent = pcm.decode(machine.port.runs[-1][2])
+    # Every sample the nesp32 has sent that has had time to arrive, in order,
+    # after the bytes the routine settles on and does not play.
+    lead = machine.port.runs[-1][2][:pcm.LEAD]
+    assert lead == pcm.lead(PERIOD)
+    sent = pcm.decode(machine.port.runs[-1][2][len(lead):])
     assert levels == sent[:len(levels)] and len(sent) - len(levels) < 300
     # A sample for each byte on the line, when it comes.
     cycles = [cycle for cycle, _ in machine.level_log]

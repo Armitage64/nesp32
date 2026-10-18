@@ -7,8 +7,11 @@ sample, so the host's UART is the clock: 11 bits a byte (8N2), at a rate
 that is a whole number of CPU cycles a bit so that the console's bit-banged
 receiver hits every bit.
 
-That receiver (nes/sound.inc, written by tools/gen_pcm.py) keeps the byte in
-A and folds each read of the port into it: shift left, XOR $4017. It ends up
+That receiver (pcm_rates.inc, written by tools/gen_pcm.py) keeps the byte in
+A and folds each read of the port into it: shift left, XOR $4017. At the
+two fastest rates it tracks each byte's start bit from the one before
+rather than hunting for it, and a sound there begins with LEAD bytes of
+$FF for it to settle on, which are not played. It ends up
 with the byte's bits reversed and inverted, and with the $40 that the port's
 unused bits read left in from the last two reads (raw_byte). Nothing puts
 that right on the console. A file holds each sample as the byte that the
@@ -24,8 +27,10 @@ there), and ends them with LAST_BYTE.
 from dataclasses import dataclass
 
 CPU_HZ = 1789773                # NTSC: 21.477272 MHz / 12
-PERIODS = (21, 16, 14, 12, 10, 8)   # cycles a bit: 7748 to 20338 samples a second
+PERIODS = (21, 16, 14, 12, 10, 8, 7)    # cycles a bit: 7748 to 23244 samples a second
 DEFAULT_PERIOD = 16
+TRACKED = 8                     # cycles a bit from which down the receiver tracks
+LEAD = 8                        # bytes of $FF before a tracked sound's samples
 FRAME_BITS = 11                 # a start bit, 8 data bits, 2 stop bits
 ROOMY_FROM = 13                 # cycles a bit from which the receiver's padding needs Y
 
@@ -52,6 +57,16 @@ def baud(period):
 def sample_rate(period):
     """Samples a second: a byte is a sample."""
     return baud(period) / FRAME_BITS
+
+
+def tracked(period):
+    """True for the rates whose receiver tracks the start bits."""
+    return period <= TRACKED
+
+
+def lead(period):
+    """What goes on the wire before a sound's samples at this rate."""
+    return b"\xff" * (LEAD if tracked(period) else 0)
 
 
 def raw_byte(byte):

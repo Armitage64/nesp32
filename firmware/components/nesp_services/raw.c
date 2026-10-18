@@ -58,23 +58,17 @@ static void put16(uint8_t *out, uint32_t value)
     out[1] = (uint8_t)(value >> 8);
 }
 
-/* The pattern as a run: `lead` bytes of $FF for a receiver that needs some
- * to settle on, then the pattern from its seed. */
+/* The pattern as a run, from its seed. */
 static size_t pattern_read(void *ctx, uint8_t *out, size_t max)
 {
     nesp_raw_t *raw = ctx;
-    size_t count = 0;
-    while (count < max && raw->lead_left != 0) {
-        out[count++] = 0xFF;
-        raw->lead_left--;
-    }
-    size_t take = max - count;
+    size_t take = max;
     if (take > raw->left) {
         take = raw->left;
     }
-    raw->rng = nesp_pattern(raw->rng, out + count, take);
+    raw->rng = nesp_pattern(raw->rng, out, take);
     raw->left -= (uint32_t)take;
-    return count + take;
+    return take;
 }
 
 /* Agree to a run. One that was agreed and has not begun is replaced, and
@@ -88,6 +82,7 @@ static void agree(nesp_raw_t *raw, uint8_t period, bool from_console, const nesp
     memset(&raw->run, 0, sizeof(raw->run));
     if (run != NULL) {
         raw->run = *run;
+        raw->lead = run->lead;
     }
     raw->patterned = run == NULL;
     raw->from_console = from_console;
@@ -187,9 +182,18 @@ static void pump(nesp_raw_t *raw)
             if (raw->ended) {
                 return;
             }
-            size_t count = raw->patterned
-                ? pattern_read(raw, raw->held, sizeof(raw->held))
-                : raw->run.read(raw->run.ctx, raw->held, sizeof(raw->held));
+            size_t count;
+            if (raw->lead_left != 0) {
+                /* A run begins with `lead` bytes of $FF, for a receiver
+                 * that needs some to settle on. */
+                count = raw->lead_left < sizeof(raw->held) ? raw->lead_left : sizeof(raw->held);
+                memset(raw->held, 0xFF, count);
+                raw->lead_left = (uint8_t)(raw->lead_left - count);
+            } else {
+                count = raw->patterned
+                    ? pattern_read(raw, raw->held, sizeof(raw->held))
+                    : raw->run.read(raw->run.ctx, raw->held, sizeof(raw->held));
+            }
             raw->held_at = 0;
             raw->held_len = (uint8_t)count;
             if (count == 0) {

@@ -5,7 +5,7 @@ channel. A [nesp32](../..) on controller port 2 fetches the stream from the
 Internet, decodes it, and sends it to the console a byte a sample; the ROM
 writes each byte to `$4011`, the channel's 7-bit DAC, as it arrives.
 
-A menu offers it two ways: **high quality**, 16271 samples a second and
+A menu offers it two ways: **high quality**, 23244 samples a second and
 nothing else, or **medium quality with the news**, 11622 samples a second
 with NPR's headlines on the screen, one with its summary for half a minute
 and then the next.
@@ -22,10 +22,14 @@ service, in [nesp32's `docs/PROTOCOL.md`](../../docs/PROTOCOL.md).
 at 20338 samples a second, speech is entirely clear, if a little quiet,
 and the nesp32's ring neither runs dry nor drops anything. That rate,
 223722 baud, did not play on a real NES from the hat on its PCB, from
-either Stick and on two consoles, where the throughput test carried no
-more than 198864 baud to the console; the high-quality mode is 16271
-samples a second now (178977 baud), and plays there from the hat with
-its TX pull-up at 3.3 kΩ ([nesp32's to-do list](../../docs/TODO.md)). The
+either Stick and on two consoles; 16271 (178977 baud) did. A sweep of the
+throughput test then showed the hat carrying 298296 baud to the console,
+and the jukebox's routine at 8 cycles a bit, which hunted for each start
+bit, losing bytes where the test's tracking receiver lost none at 8, 7 and
+6 cycles. So the high-quality mode is 23244 samples a second now, 7
+cycles a bit (255682 baud), with a tracking routine of the jukebox's,
+and **plays properly on a real NES** from the hat. The nesp32's ring holds
+about 11 seconds at it. The
 mode with the headlines plays for long periods with nothing wrong in the
 sound, though its text now and then has a wrong or odd character, or a
 character in the wrong colour ("Not done"). Pausing works, also for
@@ -151,7 +155,7 @@ tools/npr_preview.py some.mp3 build/some_nes.wav
 
 The stream goes through the nesp32's own code, built for this computer,
 and what it would put on the line is written as a WAV file of the DAC's
-output: 7 bits through the DAC's curve, at 16271 samples a second, the
+output: 7 bits through the DAC's curve, at 23244 samples a second, the
 high-quality mode's. The console's filters are not in it.
 
 ## Not done

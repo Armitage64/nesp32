@@ -178,7 +178,8 @@ def test_the_nesp32_sends_the_stream_these_tools_describe(seed):
     listener.play(rng)
     assert listener.stream == playlist_stream(tracks, loops=loops, end=True)
     sounds = [track for _, track in tracks if isinstance(track, pcm.Sound)]
-    assert listener.sounds == [(sound.period, sound.samples + pcm.LAST_BYTE) for sound in sounds]
+    assert listener.sounds == [(sound.period, pcm.lead(sound.period) + sound.samples
+                                + pcm.LAST_BYTE) for sound in sounds]
 
 
 def test_a_length_past_the_clocks_last_minute_and_a_title_of_the_longest():

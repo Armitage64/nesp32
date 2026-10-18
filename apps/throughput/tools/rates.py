@@ -15,11 +15,13 @@ sample, which they can do because they count on what the unused bits of
 $4017 read as (PORT_IDLE). Both leave each byte scrambled in a known way,
 which the console undoes after the block (raw_byte).
 
-Down to 8 cycles a bit the fast receiver hunts for each start bit, looking
-every 6 or 7 cycles. At 8 that hunt is nearly a bit long, so at 7 and 6
-the tracking receiver does not hunt at all: it looks at the line once a
-byte, where the start bit should fall, and runs a cycle longer or shorter
-for what it sees. It needs the first PREAMBLE bytes of a block to settle,
+Down to 9 cycles a bit the fast receiver hunts for each start bit, looking
+every 6 or 7 cycles. That leaves a sample up to 3.5 cycles off the middle
+of its bit, and at 8 cycles a real NES lost bytes to it (about one in
+nine) where the tracking receiver at 7 and 6 lost none. So from 8 cycles
+down the tracking receiver does not hunt at all: it looks at the line once
+a byte, where the start bit should fall, and runs a cycle longer or
+shorter for what it sees. It needs the first PREAMBLE bytes of a block to settle,
 and those are $FF and not counted. 6 cycles is the floor: a sample takes 6.
 
 The last rate to the console, 5 cycles a bit, is there to fail. The console
@@ -80,7 +82,7 @@ def baud(period):
 def tracked_receive(period):
     """True for the rates the tracking receiver takes; the fast one takes
     the rest."""
-    return period < 8
+    return period <= 8
 
 
 def roomy(period):
