@@ -1,23 +1,30 @@
-; Bluesky: an account's latest posts on a NES, a card at a time.
+; Bluesky: an account's latest posts on a NES, as ConnectedNES had tweets.
 ;
 ; A nesp32 on controller port 2 asks Bluesky for an account's posts and
-; lays each out as a card of lines; this ROM asks for the lines and draws
-; them. It is ConnectedNES's idea (Rachel Simone Weil, 2016), which put
-; tweets on a NES the same way through a Particle Photon, and it begins
-; with her splash screen. What is new is on the nesp32, its BSKY service
-; (nesp32's docs/PROTOCOL.md).
+; lays each out in lines; this ROM asks for the lines and draws them. It is
+; ConnectedNES's idea (Rachel Simone Weil, 2016), which put tweets on a NES
+; the same way through a Particle Photon, and a post is on her screen as a
+; tweet was: eight lines of 24 characters in her font, each after one of
+; her arrows, the handle first and the date last. What is new is on the
+; nesp32, its BSKY service (nesp32's docs/PROTOCOL.md).
 ;
-; There are four views:
+; There are four views, on three screens:
 ;
 ;   the splash      hers, until the nesp32 has answered and Start is pressed
-;   the favorites   handles the nesp32 keeps; A reads one, Select twice
-;                   takes it off, and the last line is the way to the form
+;   the favorites   handles the nesp32 keeps: A reads one, Start twice takes
+;                   it off, Select is the cartridge's menu (on the
+;                   cartridge), and the last line is the way to the form
 ;   the form        a handle typed a letter at a time: Left and Right move,
 ;                   Up and Down change the letter, A reads it, Start saves
 ;                   it to the favorites, B goes back
-;   a post          the nesp32's card for one of the account's posts: Left
-;                   and Right go through them, Start saves the account to
-;                   the favorites, B goes back
+;   a post          on her screen: Left and Right go through the posts, Up
+;                   and Down through a post's text six lines at a time,
+;                   Start saves the account to the favorites, B goes back
+;
+; The favorites and the form are on NESpedia's screen, with its font and
+; header; the splash and a post on hers, with her font, palettes and page
+; of tiles. A status line on hers is on her blue ground, in letters of its
+; own.
 ;
 ; The link is nesp32's (its nes/lib/nesp.inc). Every use of it is one
 ; exchange, a request and its reply, made right after the NMI, at most one
@@ -30,15 +37,15 @@
 ;   BSKY FEED       a post is the view: this handle, and how it stands.
 ;                   Until it is known, and every 8 frames while it is
 ;                   being fetched
-;   BSKY LINE       the next line of the post on the screen, while there is
-;                   one to draw
+;   BSKY LINE       the next of the eight lines on the screen, while there
+;                   is one to draw
 ;
 ; The NMI reads the controller, copies the sprite to the PPU, and draws
 ; what the main loop has staged: the status line when it has changed, and
-; one row of the middle of the screen or its foot (row_buf). Nothing else
-; writes to the PPU while the screen is on. Going from the splash to the
-; rest, the main loop turns it off, loads the other palette and nametable
-; itself, and turns it on again.
+; one row (row_buf, of row_len tiles). Nothing else writes to the PPU while
+; the screen is on. Going from one screen to another, the main loop turns
+; it off, loads the other's palettes and nametable itself, and turns it on
+; again.
 
 PPUCTRL   = $2000
 PPUMASK   = $2001
@@ -75,15 +82,27 @@ REPEAT_EVERY = 5                ; and frames between repeats
 
 OUT0_MARK = $01
 
+; The cartridge's reset stub (nesp32's nes/cart/gen_cart.py) is at the same
+; place in every program's bank: an `inc` of itself, which resets the
+; mapper and puts the menu's bank at $C000, and a jump to the menu. Built by
+; itself, this ROM has padding there. As the setup ROM's Quit does.
+CART_STUB = $FFDA
+CART_STUB_FIRST = $EE           ; inc absolute
+
 NESP_RX_MASK = $3F              ; replies of up to 63 bytes: a line, and what it is of
 NESP_TX_MAX  = 28               ; an id and a handle
 .define NESP_APP "BSKY"
-NESP_APP_VERSION = 1
+NESP_APP_VERSION = 2
 
 VIEW_SPLASH = 0
 VIEW_LIST   = 1
 VIEW_FORM   = 2
 VIEW_POST   = 3
+
+SCREEN_SPLASH = 0               ; which nametable, palettes and page are up
+SCREEN_APP    = 1
+SCREEN_POST   = 2
+SCREEN_NONE   = $FF
 
 PENDING_NONE   = 0
 PENDING_ADD    = 1
@@ -95,6 +114,7 @@ BLINK_MASK = $10                ; the form's mark is hidden for 16 frames in 32
 MISSED_MAX = 8                  ; exchanges in a row with no reply: the nesp32 is not there
 SPRITE_HIDDEN = $FF
 SPACE = ' '
+WHEN_SLOT = POST_SLOTS - 1      ; the last of her lines: when it was posted
 
 oam = $0200                     ; the sprite, copied to the PPU every NMI
 
@@ -110,7 +130,6 @@ oam = $0200                     ; the sprite, copied to the PPU every NMI
 .segment "ZEROPAGE"
 frame_count:  .res 1            ; NMIs, for the main loop
 served_frame: .res 1
-text_ptr:     .res 2            ; the status line's text, for the NMI
 src_ptr:      .res 2            ; the main loop's
 dst_ptr:      .res 2
 pad:          .res 1            ; A B Select Start Up Down Left Right
@@ -121,21 +140,26 @@ pad_prev:     .res 1
 pad_new:      .res 1            ; buttons that went down, or repeated: the main loop's
 repeat:       .res 1            ; frames until a direction held down counts again
 presses:      .res 1            ; the main loop's copy of pad_new
+on_cart:      .res 1            ; this is on nesp32's cartridge, which has a menu
 screen_on:    .res 1            ; 0: the NMI leaves the PPU alone, and keeps it off
+screen:       .res 1            ; SCREEN_*
 ppu_ctrl:     .res 1            ; what the NMI writes to PPUCTRL
-status:       .res 1            ; STATUS_* or a SPLASH_*: what the status line says
+status:       .res 1            ; STATUS_*: what the status line says
 status_dirty: .res 1            ; and it is not on the screen yet
-status_addr:  .res 2            ; where the status line is, high byte first
+status_addr:  .res 2            ; where the status line is, high byte first,
+status_len:   .res 1            ; how long it is,
+status_buf:   .res COLUMNS      ; and its tiles
 greeted:      .res 1            ; the nesp32 has answered this ROM's hello
 link_missed:  .res 1            ; exchanges in a row with no reply, up to MISSED_MAX
 link_failed:  .res 2            ; every exchange with none, for a debugger's watch list
-why_buf:      .res COLUMNS      ; the nesp32's words for what went wrong
-count_buf:    .res COLUMNS      ; "POST 3 OF 25"
+why_buf:      .res COLUMNS      ; the nesp32's words for what went wrong, as ASCII
+count_buf:    .res COLUMNS      ; "POST 3 OF 25 PAGE 1/2", likewise
 view:         .res 1            ; VIEW_*
-paint_at:     .res 1            ; rows still to paint: from this one
+paint_at:     .res 1            ; the app's rows still to paint: from this one
 paint_end:    .res 1            ; up to this one
 row_buf:      .res COLUMNS      ; a row for the NMI to draw,
 row_addr:     .res 2            ; where, high byte first,
+row_len:      .res 1            ; how long,
 row_dirty:    .res 1            ; and that it has not yet
 ; The favorites, as the nesp32 has them.
 fav_count:    .res 1
@@ -144,7 +168,7 @@ fav_next:     .res 1            ; from this one
 fav_lens:     .res FAVORITES
 favs:         .res FAVORITES * HANDLE_MAX
 choice:       .res 1            ; the line the arrow is at: a favorite, or fav_count for the form
-confirm:      .res 1            ; Select has been pressed once at it
+confirm:      .res 1            ; Start has been pressed once at it
 pending:      .res 1            ; PENDING_*
 pending_again: .res 1           ; it went, and no reply came: send it again as it was
 pending_arg:  .res 1            ; REMOVE's number
@@ -159,18 +183,24 @@ feed_id:      .res 1            ; one more with every choice
 feed_state:   .res 1            ; NESP_FEED_*, or FEED_UNKNOWN
 post_count:   .res 1            ; posts the nesp32 holds
 post_index:   .res 1            ; the one on the screen
-row_next:     .res 1            ; its next line to draw; POST_ROWS when it is all there
+post_used:    .res 1            ; its lines of text
+text_top:     .res 1            ; the first of them on the screen
+row_next:     .res 1            ; the next of her lines to draw; POST_SLOTS when they all are
+asked_line:   .res 1            ; the post's line that LINE asked for
+digits_len:   .res 1            ; count_status's,
+count_tmp:    .res COLUMNS      ; and where it puts the words together
+status_y:     .res 1            ; set_status's
 
 .include "nesp.inc"
 
 .assert NESP_TX_MAX >= NESP_HELLO_FIXED + 1, error, "the hello must fit a request"
 .assert NESP_TX_MAX = 1 + NESP_BSKY_HANDLE_MAX, error, "an id and a handle must fit a request"
-.assert 4 + NESP_BSKY_COLUMNS <= NESP_RX_MASK, error, "a line must fit its buffer"
-.assert COLUMNS = NESP_BSKY_COLUMNS && POST_ROWS = NESP_BSKY_ROWS, error, "a post is the nesp32's"
+.assert 5 + NESP_BSKY_COLUMNS <= NESP_RX_MASK, error, "a line must fit its buffer"
+.assert POST_COLUMNS = NESP_BSKY_COLUMNS && POST_LINES = NESP_BSKY_ROWS, error, "a post is the nesp32's"
 .assert HANDLE_MAX = NESP_BSKY_HANDLE_MAX && FAVORITES = NESP_BSKY_FAVORITES, error, "and so are the favorites"
-.assert STATUS_WIDTH = COLUMNS, error, "why_buf holds what the nesp32 may say"
-
-SPLASH_BASE = STATUS_COUNT + 1  ; the splash's words, after the app's in the tables
+.assert NESP_BSKY_HANDLE_ROW = 0 && NESP_BSKY_WHEN_ROW = 1, error, "slot_line"
+.assert NESP_BSKY_TEXT_ROW = 2, error, "slot_line"
+.assert POST_COLUMNS <= COLUMNS && NESP_BSKY_COLUMNS + 2 <= COLUMNS, error, "row_buf and why_buf"
 
 .segment "RODATA"
 palette_data:
@@ -181,32 +211,43 @@ screen_data:
     .incbin "screen.bin"
 splash_data:
     .incbin "splash.bin"
+post_data:
+    .incbin "post.bin"
 
-; The status line's text, by STATUS_*, then the splash's by SPLASH_*.
+; The status line's text, by STATUS_*.
 status_lo:
 .repeat STATUS_WHY, index
     .byte <(status_text + index * COLUMNS)
 .endrepeat
     .byte <why_buf, <count_buf
-.repeat 3, index
-    .byte <(splash_text + index * COLUMNS)
-.endrepeat
 status_hi:
 .repeat STATUS_WHY, index
     .byte >(status_text + index * COLUMNS)
 .endrepeat
     .byte >why_buf, >count_buf
-.repeat 3, index
-    .byte >(splash_text + index * COLUMNS)
-.endrepeat
+
+; Each screen's palettes, nametable, PPUCTRL, and status line: where, how
+; long, from what character of a text, and through what table.
+screen_pal_lo:  .byte <splash_palette, <palette_data, <splash_palette
+screen_pal_hi:  .byte >splash_palette, >palette_data, >splash_palette
+screen_nam_lo:  .byte <splash_data, <screen_data, <post_data
+screen_nam_hi:  .byte >splash_data, >screen_data, >post_data
+screen_ctrl:    .byte PPUCTRL_NMI | PPUCTRL_BG_PAGE1, PPUCTRL_NMI, PPUCTRL_NMI | PPUCTRL_BG_PAGE1
+screen_st_lo:   .byte <SPLASH_STATUS_ADDR, <STATUS_ADDR, <POST_STATUS_ADDR
+screen_st_hi:   .byte >SPLASH_STATUS_ADDR, >STATUS_ADDR, >POST_STATUS_ADDR
+screen_st_len:  .byte HER_STATUS_WIDTH, COLUMNS, HER_STATUS_WIDTH
+screen_st_skip: .byte HER_STATUS_SKIP, 0, HER_STATUS_SKIP
+screen_map_lo:  .byte <her_font, 0, <her_ground
+screen_map_hi:  .byte >her_font, 0, >her_ground
+.assert SCREEN_SPLASH = 0 && SCREEN_APP = 1 && SCREEN_POST = 2, error, "the screen tables"
 
 ; Where a row of the middle begins in a template, and where a favorite is.
 row_off_lo:
-.repeat POST_ROWS, index
+.repeat ROWS, index
     .byte <(index * COLUMNS)
 .endrepeat
 row_off_hi:
-.repeat POST_ROWS, index
+.repeat ROWS, index
     .byte >(index * COLUMNS)
 .endrepeat
 fav_lo:
@@ -218,17 +259,15 @@ fav_hi:
     .byte >(favs + index * HANDLE_MAX)
 .endrepeat
 
-; The foot, by view.
-foot_lo:
-    .byte <foot_list, <foot_list, <foot_form, <foot_post
-foot_hi:
-    .byte >foot_list, >foot_list, >foot_form, >foot_post
-
 ; What the status line says of each of the nesp32's states, with no posts.
 feed_status:
     .byte STATUS_NONE, STATUS_NO_WIFI, STATUS_FETCHING, STATUS_NO_POSTS, STATUS_NOT_FOUND
 .assert NESP_FEED_IDLE = 0 && NESP_FEED_NO_WIFI = 1 && NESP_FEED_FETCHING = 2, error, "feed_status"
 .assert NESP_FEED_READY = 3 && NESP_FEED_NOT_FOUND = 4 && NESP_FEED_FAILED = 5, error, "feed_status"
+
+post_word:  .byte "POST "
+of_word:    .byte " OF "
+page_word:  .byte " PAGE "
 
 .segment "CODE"
 
@@ -265,15 +304,20 @@ feed_status:
     sta oam,x
     inx
     bne @hide
+    lda CART_STUB
+    cmp #CART_STUB_FIRST
+    bne @alone
+    inc on_cart
+@alone:
 
 @vblank2:
     bit PPUSTATUS
     bpl @vblank2
 
-    jsr load_splash             ; rendering is off; the first NMI turns it on
+    lda #SCREEN_NONE
+    sta screen
     lda #FEED_UNKNOWN
     sta feed_state
-    sta status                  ; nothing is on the status line yet
     lda #PAINT_ROWS
     sta paint_at
     sta paint_end
@@ -281,10 +325,12 @@ feed_status:
     sta repeat
     lda #1
     sta fav_load
-    lda #SPLASH_BASE + SPLASH_WAITING
-    jsr set_status
+    lda #STATUS_SPLASH_WAITING
+    sta status
     lda #OUT0_MARK              ; the line rests at mark, which is also what keeps
     sta JOY1                    ; the controller loading its buttons
+    lda #SCREEN_SPLASH
+    jsr load_screen             ; rendering is off; the first NMI turns it on
     lda #1
     sta screen_on
     lda ppu_ctrl
@@ -313,66 +359,40 @@ main_wait:
     jsr link_service
     jmp main_loop
 
-; --- the two screens -------------------------------------------------------------
+; --- the screens -------------------------------------------------------------------
 
-; Her splash: its palettes, its nametable, from her page of tiles. Rendering
-; must be off.
-.proc load_splash
-    lda #<splash_palette
-    sta src_ptr
-    lda #>splash_palette
-    sta src_ptr + 1
-    jsr load_palette
-    lda #<splash_data
-    sta src_ptr
-    lda #>splash_data
-    sta src_ptr + 1
-    jsr load_nametable
-    lda #PPUCTRL_NMI | PPUCTRL_BG_PAGE1
-    sta ppu_ctrl
-    lda #>SPLASH_STATUS_ADDR
-    sta status_addr
-    lda #<SPLASH_STATUS_ADDR
-    sta status_addr + 1
+; Screen A is to be up (SCREEN_*). If another is, the picture goes off at
+; the next NMI, A's palettes and nametable go in, and it comes on again.
+.proc switch_screen
+    cmp screen
+    bne @other
     rts
-.endproc
-
-; The splash is left: the screen goes off at the next NMI, the app's
-; palettes and nametable go in, and it comes on again with the favorites.
-.proc go_app
+@other:
+    pha
     lda #0
     sta screen_on
     lda frame_count
 @wait:
     cmp frame_count             ; an NMI with screen_on clear turns the picture off
     beq @wait
-    lda #<palette_data
-    sta src_ptr
-    lda #>palette_data
-    sta src_ptr + 1
-    jsr load_palette
-    lda #<screen_data
-    sta src_ptr
-    lda #>screen_data
-    sta src_ptr + 1
-    jsr load_nametable
-    lda #PPUCTRL_NMI
-    sta ppu_ctrl
-    lda #>STATUS_ADDR
-    sta status_addr
-    lda #<STATUS_ADDR
-    sta status_addr + 1
-    lda #$FF
-    sta status                  ; whatever the splash said, the line is drawn anew
+    pla
+    jsr load_screen
     lda frame_count
     sta served_frame            ; the frames that went by are not to be served now
     lda #1
     sta screen_on
-    jmp show_list
+    rts
 .endproc
 
-; 32 bytes of palettes from src_ptr. Rendering must be off.
-.proc load_palette
+; Screen A's palettes and nametable, and its status line drawn anew in it.
+; Rendering must be off.
+.proc load_screen
+    sta screen
+    tax
+    lda screen_pal_lo,x
+    sta src_ptr
+    lda screen_pal_hi,x
+    sta src_ptr + 1
     lda #>PALETTE
     sta PPUADDR
     lda #<PALETTE
@@ -384,11 +404,11 @@ main_wait:
     iny
     cpy #32
     bne @color
-    rts
-.endproc
-
-; A nametable and its attributes, 1 KB from src_ptr. Rendering must be off.
-.proc load_nametable
+    ldx screen
+    lda screen_nam_lo,x
+    sta src_ptr
+    lda screen_nam_hi,x
+    sta src_ptr + 1
     lda #>NAMETABLE
     sta PPUADDR
     lda #<NAMETABLE
@@ -403,34 +423,63 @@ main_wait:
     inc src_ptr + 1
     dex
     bne @byte
-    rts
+    ldx screen
+    lda screen_ctrl,x
+    sta ppu_ctrl
+    lda screen_st_hi,x
+    sta status_addr
+    lda screen_st_lo,x
+    sta status_addr + 1
+    lda screen_st_len,x
+    sta status_len
+    lda #0
+    sta row_dirty               ; a row staged for the other screen is not drawn on this
+    lda #PAINT_ROWS
+    sta paint_at
+    sta paint_end
+    lda status
+    jmp set_status
 .endproc
 
 ; --- the status line ---------------------------------------------------------------
 
-; The status line is to say A (STATUS_*, or SPLASH_BASE + SPLASH_*). The
-; NMI draws it; it is told only once the text's address is whole. The
-; nesp32's words and the count are drawn again even when the line says them
-; already: they may be new.
+; The status line is to say A (STATUS_*): its text, from the screen's first
+; character of it, through the screen's table, into status_buf. The NMI
+; draws it; it is told only once the tiles are whole.
 .proc set_status
-    cmp #STATUS_WHY
-    beq @new
-    cmp #STATUS_COUNT
-    beq @new
-    cmp status
-    beq @done
-@new:
     sta status
     tax
     lda #0
     sta status_dirty
     lda status_lo,x
-    sta text_ptr
+    ldy screen
+    clc
+    adc screen_st_skip,y
+    sta src_ptr
     lda status_hi,x
-    sta text_ptr + 1
+    adc #0
+    sta src_ptr + 1
+    lda screen_map_lo,y
+    sta dst_ptr
+    lda screen_map_hi,y
+    sta dst_ptr + 1
+    ldy #0
+@char:
+    lda (src_ptr),y
+    ldx dst_ptr + 1
+    beq @put                    ; the app's screen: as it is
+    sty status_y                ; Y, while it indexes the table
+    and #$7F
+    tay
+    lda (dst_ptr),y
+    ldy status_y
+@put:
+    sta status_buf,y
+    iny
+    cpy status_len
+    bne @char
     lda #1
     sta status_dirty
-@done:
     rts
 .endproc
 
@@ -440,10 +489,10 @@ main_wait:
     bne @app
     lda greeted
     beq @waiting
-    lda #SPLASH_BASE + SPLASH_START
+    lda #STATUS_SPLASH_START
     jmp set_status
 @waiting:
-    lda #SPLASH_BASE + SPLASH_WAITING
+    lda #STATUS_SPLASH_WAITING
     jmp set_status
 @app:
     cmp #VIEW_POST
@@ -456,15 +505,17 @@ main_wait:
     jmp set_status
 .endproc
 
-; --- painting ----------------------------------------------------------------------
+; --- the app's rows ----------------------------------------------------------------
 
-; row_buf is whole, and is row X of what is painted (the middle's rows,
-; then the foot): the NMI is to draw it there.
+; row_buf is whole, and is row X of the app's (the middle's rows, then the
+; foot): the NMI is to draw it there.
 .proc stage_row
     lda paint_hi,x
     sta row_addr
     lda paint_lo,x
     sta row_addr + 1
+    lda #COLUMNS
+    sta row_len
     lda #1
     sta row_dirty
     rts
@@ -516,30 +567,33 @@ main_wait:
     rts
 .endproc
 
-; Row X of the view, into row_buf: the foot, or a row of the middle.
+; Row X of the app's view, into row_buf: the foot, or a row of the middle.
 .proc fill_row
-    cpx #POST_ROWS
+    cpx #ROWS
     bne @middle
-    ldx view
-    lda foot_lo,x
+    lda view
+    cmp #VIEW_FORM
+    beq @form_foot
+    lda on_cart
+    bne @cart_foot
+    lda #<foot_list
+    ldy #>foot_list
+    bne @foot
+@cart_foot:
+    lda #<foot_list_cart
+    ldy #>foot_list_cart
+    bne @foot
+@form_foot:
+    lda #<foot_form
+    ldy #>foot_form
+@foot:
     sta src_ptr
-    lda foot_hi,x
-    sta src_ptr + 1
+    sty src_ptr + 1
     jmp copy_row
 @middle:
     lda view
-    cmp #VIEW_LIST
-    beq @list
     cmp #VIEW_FORM
     beq @form
-    ldy #COLUMNS - 1            ; a post: blank, for its lines to come
-    lda #SPACE
-@blank:
-    sta row_buf,y
-    dey
-    bpl @blank
-    rts
-@list:
     txa
     pha
     lda #<list_text
@@ -691,7 +745,7 @@ main_wait:
     lda presses
     and #PAD_START | PAD_A
     beq @done
-    jmp go_app
+    jmp show_list
 @done:
     rts
 .endproc
@@ -699,8 +753,15 @@ main_wait:
 .proc list_buttons
     lda presses
     and #PAD_SELECT
-    bne @select
-    lda confirm                 ; anything but Select calls a removal off
+    beq @start
+    lda on_cart                 ; Select: back to the cartridge's menu
+    beq @start
+    jmp quit
+@start:
+    lda presses
+    and #PAD_START
+    bne @remove_asked
+    lda confirm                 ; anything but Start calls a removal off
     beq @move
     lda #0
     sta confirm
@@ -733,7 +794,7 @@ main_wait:
     jmp show_form
 @read:
     jmp read_favorite
-@select:
+@remove_asked:
     ldx choice
     cpx fav_count
     bcs @done                   ; the way to the form is not a favorite
@@ -753,6 +814,17 @@ main_wait:
     sta pending_again
 @done:
     rts
+.endproc
+
+; Back to the cartridge's menu, as reset would go: through its stub, with
+; the NMI off first, since the stub's `inc` puts the menu's bank, and its
+; NMI, under this. The menu says nothing to the nesp32; the next program's
+; hello is what tells it this one has gone.
+.proc quit
+    lda #0
+    sta PPUCTRL
+    sta PPUMASK
+    jmp CART_STUB
 .endproc
 
 .proc form_buttons
@@ -846,13 +918,34 @@ main_wait:
 @right:
     lda presses
     and #PAD_RIGHT
-    beq @done
+    beq @down
     ldx post_index
     inx
     cpx post_count
     bcs @done
     stx post_index
     jmp turn
+@down:
+    lda presses
+    and #PAD_DOWN
+    beq @up
+    lda text_top
+    clc
+    adc #TEXT_SLOTS
+    cmp post_used
+    bcs @done                   ; it is all on the screen
+    sta text_top
+    jmp scroll
+@up:
+    lda presses
+    and #PAD_UP
+    beq @done
+    lda text_top
+    beq @done
+    sec
+    sbc #TEXT_SLOTS
+    sta text_top
+    jmp scroll
 @done:
     rts
 .endproc
@@ -866,6 +959,10 @@ main_wait:
     sta confirm
     jsr clamp_choice
     lda #STATUS_NONE
+    sta status
+    lda #SCREEN_APP
+    jsr switch_screen
+    lda #STATUS_NONE
     jsr set_status
     jmp repaint
 .endproc
@@ -873,6 +970,10 @@ main_wait:
 .proc show_form
     lda #VIEW_FORM
     sta view
+    lda #STATUS_NONE
+    sta status
+    lda #SCREEN_APP
+    jsr switch_screen
     lda #STATUS_NONE
     jsr set_status
     jmp repaint
@@ -932,7 +1033,8 @@ main_wait:
     rts
 .endproc
 
-; `handle`'s posts are the view: a new choice, from its first post.
+; `handle`'s posts are the view, on her screen: a new choice, from its
+; first post.
 .proc show_post
     lda #VIEW_POST
     sta view
@@ -942,15 +1044,33 @@ main_wait:
     lda #0
     sta post_count
     sta post_index
-    sta row_next
+    jsr from_the_top
     lda #STATUS_FETCHING
-    jsr set_status
-    jmp repaint
+    sta status
+    lda #SCREEN_POST
+    jsr switch_screen
+    lda #STATUS_FETCHING
+    jmp set_status
 .endproc
 
 ; Another post of the same handle: its lines, from the first.
 .proc turn
+    jsr from_the_top
+    jmp count_status
+.endproc
+
+.proc from_the_top
     lda #0
+    sta row_next
+    sta text_top
+    sta post_used
+    rts
+.endproc
+
+; Another page of the post's text: its six lines, and the line of when,
+; which is drawn again with them.
+.proc scroll
+    lda #1
     sta row_next
     jmp count_status
 .endproc
@@ -964,36 +1084,14 @@ main_wait:
     rts
 .endproc
 
-; "POST 3 OF 25" on the status line, for the post on the screen.
+; "POST 3 OF 25" on the status line, for the post on the screen, and
+; " PAGE 1/2" after it if its text is more than one screen's.
 .proc count_status
-    ldx #COLUMNS - 1
-    lda #SPACE
-@blank:
-    sta count_buf,x
-    dex
-    bpl @blank
-    ; Its length: "POST ", the number, " OF ", the count. It is centered.
-    ldx #9 + 2                  ; the words, and a digit of each number
-    lda post_index
-    cmp #9                      ; the number is one more: 10 or more has two
-    bcc @one
-    inx
-@one:
-    lda post_count
-    cmp #10
-    bcc @two
-    inx
-@two:
-    stx dst_ptr
-    lda #COLUMNS
-    sec
-    sbc dst_ptr
-    lsr a
-    tay
     ldx #0
+    ldy #0
 @post:
-    lda count_text,x
-    sta count_buf,y
+    lda post_word,x
+    sta count_tmp,y
     iny
     inx
     cpx #5
@@ -1004,22 +1102,76 @@ main_wait:
     jsr put_number
     ldx #0
 @of:
-    lda of_text,x
-    sta count_buf,y
+    lda of_word,x
+    sta count_tmp,y
     iny
     inx
     cpx #4
     bne @of
     lda post_count
     jsr put_number
+    lda post_used
+    cmp #TEXT_SLOTS + 1
+    bcc @centered               ; it has one page
+    ldx #0
+@page:
+    lda page_word,x
+    sta count_tmp,y
+    iny
+    inx
+    cpx #6
+    bne @page
+    lda text_top                ; which page: text_top / TEXT_SLOTS + 1
+    ldx #0
+@which:
+    inx
+    sec
+    sbc #TEXT_SLOTS
+    bcs @which
+    txa
+    jsr put_number
+    lda #'/'
+    sta count_tmp,y
+    iny
+    lda post_used               ; of how many: (post_used + TEXT_SLOTS - 1) / TEXT_SLOTS
+    clc
+    adc #TEXT_SLOTS - 1
+    ldx #0
+@pages:
+    cmp #TEXT_SLOTS
+    bcc @counted
+    sbc #TEXT_SLOTS
+    inx
+    bne @pages
+@counted:
+    txa
+    jsr put_number
+@centered:
+    sty digits_len
+    ldx #COLUMNS - 1
+    lda #SPACE
+@blank:
+    sta count_buf,x
+    dex
+    bpl @blank
+    lda #COLUMNS
+    sec
+    sbc digits_len
+    lsr a
+    tax                         ; where it begins
+    ldy #0
+@copy:
+    lda count_tmp,y
+    sta count_buf,x
+    inx
+    iny
+    cpy digits_len
+    bne @copy
     lda #STATUS_COUNT
     jmp set_status
 .endproc
 
-of_text:
-    .byte " OF "
-
-; A, 0 to 99, at count_buf + Y; Y moves on past it.
+; A, 0 to 99, at count_tmp + Y; Y moves on past it.
 .proc put_number
     ldx #'0'
 @tens:
@@ -1033,12 +1185,12 @@ of_text:
     beq @one
     pha
     txa
-    sta count_buf,y
+    sta count_tmp,y
     iny
     pla
 @one:
     ora #'0'
-    sta count_buf,y
+    sta count_tmp,y
     iny
     rts
 .endproc
@@ -1073,15 +1225,12 @@ of_text:
     jmp ask_feed
 @known:
     lda row_next
-    cmp #POST_ROWS
+    cmp #POST_SLOTS
     beq @poll
     lda post_index
     cmp post_count
     bcs @poll                   ; not held yet
-    lda row_dirty               ; a line at a time,
-    bne @idle
-    lda paint_at                ; and none over rows that are still being painted
-    cmp paint_end
+    lda row_dirty               ; a line at a time
     bne @idle
     jmp ask_line
 @poll:
@@ -1120,7 +1269,7 @@ of_text:
 @old:
     lda view
     bne @app
-    lda #SPLASH_BASE + SPLASH_OLD
+    lda #STATUS_SPLASH_OLD
     .byte $2C                   ; bit abs: skips the next lda
 @app:
     lda #STATUS_OLD
@@ -1337,11 +1486,32 @@ of_text:
     jmp link_heard
 .endproc
 
-; The next line of the post on the screen, into row_buf and onto it.
+; The post's line that her line X shows: the handle, six of the text from
+; text_top, and when it was posted.
+.proc slot_line
+    txa
+    beq @done                   ; 0: the handle, line 0
+    cpx #WHEN_SLOT
+    bne @text
+    lda #NESP_BSKY_WHEN_ROW
+    rts
+@text:
+    clc
+    adc text_top
+    adc #NESP_BSKY_TEXT_ROW - 1
+@done:
+    rts
+.endproc
+
+; The next of her lines of the post on the screen, from the nesp32's line,
+; into row_buf in her font: where it has a space, her picture as it was
+; there.
 .proc ask_line
     lda post_index
     sta nesp_request
-    lda row_next
+    ldx row_next
+    jsr slot_line
+    sta asked_line
     sta nesp_request + 1
     lda #NESP_SVC_BSKY
     ldx #NESP_BSKY_LINE
@@ -1361,23 +1531,54 @@ of_text:
     cmp post_index
     bne @heard
     lda nesp_reply + 2
-    cmp row_next
+    cmp asked_line
     bne @heard
     lda nesp_reply + 3
     jsr take_count
     lda nesp_reply
     bmi @heard                  ; NO_LINE: not held after all
     lda nesp_reply_len
-    cmp #4 + COLUMNS
+    cmp #5 + POST_COLUMNS
     bne @heard
-    ldx #COLUMNS - 1
-@copy:
-    lda nesp_reply + 4,x
-    sta row_buf,x
-    dex
-    bpl @copy
+    lda nesp_reply + 4 + POST_COLUMNS
+    cmp post_used
+    beq @drawn
+    sta post_used               ; how much text it has: the page count may be new
+    jsr count_status
+@drawn:
     ldx row_next
-    jsr stage_row
+    lda slot_off_lo,x
+    clc
+    adc #<post_data
+    sta src_ptr
+    lda slot_off_hi,x
+    adc #>post_data
+    sta src_ptr + 1
+    ldy #0
+@char:
+    lda nesp_reply + 4,y
+    cmp #SPACE
+    beq @under
+    and #$7F
+    tax
+    lda her_font,x
+    jmp @put
+@under:
+    lda (src_ptr),y
+@put:
+    sta row_buf,y
+    iny
+    cpy #POST_COLUMNS
+    bne @char
+    ldx row_next
+    lda slot_hi,x
+    sta row_addr
+    lda slot_lo,x
+    sta row_addr + 1
+    lda #POST_COLUMNS
+    sta row_len
+    lda #1
+    sta row_dirty
     inc row_next
 @heard:
     jmp link_heard
@@ -1400,21 +1601,21 @@ of_text:
 ; The nesp32's words for what went wrong, on the status line.
 .proc take_why
     ldx #COLUMNS - 1
-@copy:
-    lda nesp_reply + 3,x
-    sta why_buf,x
-    dex
-    bpl @copy
-    lda nesp_reply_len
-    cmp #3 + COLUMNS
-    beq @whole
-    ldx #COLUMNS - 1            ; no words came with it
     lda #SPACE
 @blank:
     sta why_buf,x
     dex
     bpl @blank
-@whole:
+    lda nesp_reply_len
+    cmp #3 + NESP_BSKY_COLUMNS
+    bne @said
+    ldx #NESP_BSKY_COLUMNS - 1
+@copy:
+    lda nesp_reply + 3,x
+    sta why_buf + (COLUMNS - NESP_BSKY_COLUMNS) / 2,x
+    dex
+    bpl @copy
+@said:
     lda #STATUS_WHY
     jmp set_status
 .endproc
@@ -1447,13 +1648,12 @@ of_text:
     lda link_missed
     cmp #MISSED_MAX
     bcs @say
-    rts
 @gone:
     rts
 @say:
     lda view
     bne @app
-    lda #SPLASH_BASE + SPLASH_WAITING
+    lda #STATUS_SPLASH_WAITING
     jmp set_status
 @app:
     lda #STATUS_WAITING
@@ -1540,10 +1740,10 @@ of_text:
     sta PPUADDR
     ldy #0
 @char:
-    lda (text_ptr),y
+    lda status_buf,y
     sta PPUDATA
     iny
-    cpy #STATUS_WIDTH
+    cpy status_len
     bne @char
     lda #0
     sta status_dirty
@@ -1559,7 +1759,7 @@ of_text:
     lda row_buf,y
     sta PPUDATA
     iny
-    cpy #COLUMNS
+    cpy row_len
     bne @tile
     lda #0
     sta row_dirty

@@ -7,8 +7,9 @@ Bluesky for the posts and lays each out as a card; the ROM draws it.
 It is [ConnectedNES](https://github.com/hxlnt/connectedNES)'s idea:
 Rachel Simone Weil put tweets on a NES in 2016, through a Particle Photon
 on the second controller port. This ROM begins with her splash screen,
-and does the same with Bluesky on a nesp32 (her files and her licence are
-in [`connectednes/`](connectednes)).
+and a post is on her screen as a tweet was: eight lines of 24 characters
+in her font, each after one of her arrows, the handle first and the date
+last (her files and her licence are in [`connectednes/`](connectednes)).
 
 On the nesp32 it is the BSKY service, in
 [nesp32's `docs/PROTOCOL.md`](../../docs/PROTOCOL.md).
@@ -60,7 +61,8 @@ too. A nesp32 that has kept none begins with four: `@levimaaia.com`,
 |---|---|
 | **Up**, **Down** | the arrow; from the last line round to the first |
 | **A** | read that account's posts; on the last line, the form |
-| **Select**, twice | take that favorite off |
+| **Start**, twice | take that favorite off |
+| **Select** | back to the cartridge's menu (on the cartridge) |
 
 **The form** is for any other handle, typed a letter at a time:
 
@@ -75,14 +77,16 @@ too. A nesp32 that has kept none begins with four: `@levimaaia.com`,
 Spaces are left out. A name with no dot in it is taken as
 `name.bsky.social`, which is where most accounts are.
 
-**A post** is a card: the author's name in blue, their handle, who
-reposted it if it is a repost, its text, and on the last line how long ago
-it was posted and its replies, reposts and likes. The status line says
-which post it is: `POST 3 OF 25`.
+**A post** is on her screen: the author's handle, six lines of its text
+(who reposted it first, for a repost), and how long ago it was posted with
+its replies, reposts and likes. Her blue ground under it says which post it
+is, and which page of its text when it has more than six lines: `POST 3
+OF 25 PAGE 1/2`.
 
 | | |
 |---|---|
 | **Left**, **Right** | the post before, or after |
+| **Up**, **Down** | the post's text, six lines at a time |
 | **Start** | save the account to the favorites |
 | **B** | back to the favorites |
 
@@ -107,7 +111,8 @@ What is not ASCII becomes the nearest thing that is; emoji are left out.
 - No hashtags or searches: Bluesky's search wants an account.
 - An account's posts, and not a feed of many accounts'.
 - A post's pictures, links and quoted posts are not shown, only its text.
-- A post longer than its twelve lines ends with `...`.
+- A post longer than eighteen lines ends with `...`.
+- Her balloons, the sprites that rose over her screen, are not here.
 - No way to read further back than the 25 latest.
 
 ## Tests
@@ -127,7 +132,8 @@ the vblank.
 
 ## Credits
 
-The splash screen, its font and its palettes are Rachel Simone Weil's,
+The splash screen, the screen a post is on, their font and their palettes
+are Rachel Simone Weil's,
 from [ConnectedNES](https://github.com/hxlnt/connectedNES), under the MIT
 licence ([`connectednes/LICENSE`](connectednes/LICENSE)). The font of the
 rest and the header are NESpedia's.

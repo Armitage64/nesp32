@@ -22,18 +22,30 @@ from console import (PAD_A, PAD_B, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_SELECT, PA
 from wire import link
 
 __all__ = ["Reader", "PAD_A", "PAD_B", "PAD_DOWN", "PAD_LEFT", "PAD_RIGHT", "PAD_SELECT",
-           "PAD_START", "PAD_UP", "NOT_FOUND", "NOW", "cards"]
+           "PAD_START", "PAD_UP", "NOT_FOUND", "NOW", "cards", "slots", "PAGE", "SCREEN_APP",
+           "SCREEN_POST", "SCREEN_SPLASH"]
 
 VIEW_SPLASH, VIEW_LIST, VIEW_FORM, VIEW_POST = range(4)
+SCREEN_SPLASH, SCREEN_APP, SCREEN_POST = range(3)
+PAGE = layout.HerPage()
 NOT_FOUND = object()                # Bluesky's answer to a handle no one has
 NOW = calendar.timegm((2026, 10, 18, 10, 0, 0))
 
 
-def her_char(tile):
-    """A tile of ConnectedNES's font as its character."""
-    if tile == layout.SPLASH_BLANK:
-        return " "
-    return chr(int("{:08b}".format(tile)[::-1], 2))
+def her_text(tiles, ground=False):
+    """Tiles of her font, or of her ground's, as text."""
+    table = PAGE.ground if ground else PAGE.font
+    back = {tile: char for char, tile in table.items()}
+    return "".join(back.get(tile, "^") for tile in tiles)
+
+
+def slots(lines, top=0):
+    """Her eight lines for a post's lines, as tiles: the handle, six of the
+    text from `top`, and when it was posted."""
+    text = lines[layout.TEXT_ROW + top:layout.TEXT_ROW + top + layout.TEXT_SLOTS]
+    shown = [lines[layout.HANDLE_ROW]] + text + [lines[layout.WHEN_ROW]]
+    return [layout.post_slot(line.decode("latin-1"), slot, PAGE)
+            for slot, line in enumerate(shown)]
 
 
 def cards(body, handle=b"bsky.app"):
@@ -53,7 +65,7 @@ def cards(body, handle=b"bsky.app"):
         lines = []
         for row in range(p.NESP_BSKY_ROWS):
             reply = stick.ask(p.NESP_SVC_BSKY, p.NESP_BSKY_LINE, bytes((post, row)))
-            lines.append(reply.payload[4:])
+            lines.append(reply.payload[4:4 + p.NESP_BSKY_COLUMNS])
         out.append(lines)
     return out
 
@@ -141,25 +153,33 @@ class Reader:
         return self.c.byte("view")
 
     @property
-    def splash_status(self):
-        row = self.c.tiles(layout.SPLASH_STATUS_ROW, layout.SPLASH_COLUMN,
-                           layout.SPLASH_STATUS_WIDTH)
-        return "".join(her_char(tile) for tile in row).strip()
+    def screen(self):
+        return self.c.byte("screen")
 
     @property
     def status(self):
-        return self.c.line(layout.STATUS_ROW)
+        """The status line, wherever the screen up has it."""
+        if self.screen == SCREEN_APP:
+            return self.c.line(layout.STATUS_ROW)
+        row = layout.SPLASH_STATUS_ROW if self.screen == SCREEN_SPLASH else layout.POST_STATUS_ROW
+        tiles = self.c.tiles(row, layout.HER_COLUMN, layout.HER_STATUS_WIDTH)
+        return her_text(tiles, ground=self.screen == SCREEN_POST).strip()
 
     @property
     def foot(self):
         return self.c.line(layout.FOOT_ROW)
 
     def row(self, number):
-        """A row of the middle of the screen, as its tiles."""
+        """A row of the middle of the app's screen, as its tiles."""
         return self.c.tiles(layout.BODY_ROW + number, layout.LEFT, layout.COLUMNS)
 
     def rows(self):
-        return [self.row(number) for number in range(layout.POST_ROWS)]
+        return [self.row(number) for number in range(layout.ROWS)]
+
+    def slots(self):
+        """Her eight lines, as their tiles."""
+        return [self.c.tiles(row, layout.HER_COLUMN, layout.POST_COLUMNS)
+                for row in layout.POST_SLOT_ROWS]
 
     @property
     def arrow(self):
@@ -179,7 +199,7 @@ class Reader:
         return row[1:].rstrip()
 
     def painted(self):
-        return (self.c.byte("paint_at") == self.c.byte("paint_end")
+        return (self.c.byte("screen_on") and self.c.byte("paint_at") == self.c.byte("paint_end")
                 and not self.c.byte("row_dirty") and not self.c.byte("status_dirty"))
 
     def settle(self, frames=600):
@@ -187,11 +207,12 @@ class Reader:
 
     def splash_is_up(self, frames=600):
         self.run_until(lambda: self.view == VIEW_SPLASH and self.c.byte("greeted")
-                       and self.splash_status == "Press Start", frames)
+                       and self.status == "Press Start" and self.painted(), frames)
 
     def list_is_up(self):
         """The favorites, whole: their handles."""
-        self.run_until(lambda: self.view == VIEW_LIST and not self.c.byte("fav_load")
+        self.run_until(lambda: self.view == VIEW_LIST and self.screen == SCREEN_APP
+                       and self.c.byte("screen_on") and not self.c.byte("fav_load")
                        and self.painted())
         rows = self.rows()
         assert rows == layout.list_rows([row[1:].decode().rstrip() for row in
@@ -208,13 +229,14 @@ class Reader:
         return self.list_is_up()
 
     def post_is_up(self, frames=600):
-        """A post, whole: its lines."""
-        self.run_until(lambda: self.view == VIEW_POST
-                       and self.c.byte("row_next") == layout.POST_ROWS and self.painted(),
+        """A post, whole: her eight lines, as tiles."""
+        self.run_until(lambda: self.view == VIEW_POST and self.screen == SCREEN_POST
+                       and self.c.byte("row_next") == len(layout.POST_SLOT_ROWS) and self.painted(),
                        frames)
-        assert self.foot == layout.FOOT_POST
         assert self.c.sprite() is None
-        return self.rows()
+        help_row = self.c.tiles(layout.POST_HELP_ROW, layout.HER_COLUMN, layout.HER_STATUS_WIDTH)
+        assert her_text(help_row, ground=True).strip() == layout.POST_HELP
+        return self.slots()
 
     # --- what the console did ----------------------------------------------------
 

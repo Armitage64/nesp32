@@ -382,11 +382,12 @@ WEATHER_UNASKED_MS = 30000  # no fetch for a console that has not asked for this
 BSKY_HANDLE_MAX = 27    # characters of a handle: with an "@" before it, a line
 BSKY_FAVORITES = 10     # handles kept
 BSKY_POSTS = 25         # posts fetched, the newest first
-BSKY_ROWS = 16          # lines to a post: its author's name and handle, who reposted it,
-                        # its text, and when it was posted, with its counts
-BSKY_COLUMNS = 28       # characters to a line
-# A line is tile numbers: ASCII, $20 to $7E, and on the author's line the
-# same with bit 7 set, for a second colour. Besides those:
+BSKY_ROWS = 20          # lines to a post: these two, then its text, which may not fill the rest
+BSKY_HANDLE_ROW = 0     # "@" and its author's handle
+BSKY_WHEN_ROW = 1       # when it was posted, and its counts
+BSKY_TEXT_ROW = 2
+BSKY_COLUMNS = 24       # characters to a line, as ConnectedNES had a tweet's
+# A line is ASCII, $20 to $7E. Besides those:
 BSKY_REPLY = 0x1C       # the sign for replies
 BSKY_REPOST = 0x1D      # for reposts
 BSKY_LIKE = 0x1E        # for likes: a heart

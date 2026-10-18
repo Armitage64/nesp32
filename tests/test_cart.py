@@ -336,3 +336,21 @@ def test_two_programs_cannot_have_the_same_tiles(images, menu, cart_build):
             cart_layout.build_rom(menu, tiles, images)
     finally:
         radar.program.page = was
+
+
+def test_select_in_bluesky_s_favorites_is_the_menu_again(cart, images):
+    index = next(index for index, image in enumerate(images) if image.program.key == "bluesky")
+    c = cart()
+    stick, _ = link(c, Stick)
+    c.run(4)
+    start(c, index)
+    c.run_until(lambda: stick.hellos, 300)
+    c.run(10)
+    c.press(PAD_START)                  # past the splash, to the favorites
+    c.run(30)
+    assert not c.home
+    c.press(PAD_SELECT)
+    c.strict = True
+    c.run(6)
+    assert at_menu(c)
+    assert c.byte("choice") == 0

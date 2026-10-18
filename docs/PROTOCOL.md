@@ -206,7 +206,7 @@ nothing done on the nesp32.
 | `$12` | RADAR | NES Radar: an airport, and the aircraft round it | done |
 | `$13` | TUNER | a radio station from the Internet, as sampled sound | done |
 | `$14` | WEATHER | the weather at a zip code, as rows for the screen | done |
-| `$15` | BSKY | Bluesky: an account's posts as cards of lines, and favorites | done |
+| `$15` | BSKY | Bluesky: an account's posts as lines, and favorites | done |
 | `$80`-`$FF` | | experiments and other people's | |
 
 Multi-byte numbers are low byte first, except the CRC.
@@ -1089,8 +1089,8 @@ takes replies of 63 (a shorter `REPLY_MAX` is BAD_ARG).
 
 ### BSKY `$15`: Bluesky
 
-A Bluesky account's latest posts, laid out by the nesp32 as cards of 16
-lines of 28 characters, which the console asks for a line at a time; and
+A Bluesky account's latest posts, laid out by the nesp32 as 20 lines of
+24 characters each, which the console asks for a line at a time; and
 a list of favorite accounts to choose them from, which the nesp32 keeps.
 The console names an account by its handle. The nesp32 asks Bluesky's
 public API (`public.api.bsky.app`, `app.bsky.feed.getAuthorFeed`) for its
@@ -1102,8 +1102,8 @@ needs no account and no password.
 | `$00` | FAVORITE | `NUMBER` | `COUNT`, `NUMBER`, and if there is such a favorite its handle |
 | `$01` | ADD | a handle | `COUNT`, and the handle's `NUMBER` among the favorites, or `$FF` if there was no room |
 | `$02` | REMOVE | `NUMBER` | `COUNT` |
-| `$03` | FEED | `ID`, a handle | `STATE`, `ID`, `POSTS`, and with FAILED 28 characters for the screen |
-| `$04` | LINE | `POST`, `ROW` | `STATE`, `POST`, `ROW`, `POSTS`, `TEXT[28]`; with no such post, bit 7 of `STATE` is set and there is no `TEXT` |
+| `$03` | FEED | `ID`, a handle | `STATE`, `ID`, `POSTS`, and with FAILED 24 characters for the screen |
+| `$04` | LINE | `POST`, `ROW` | `STATE`, `POST`, `ROW`, `POSTS`, `TEXT[24]`, `USED`; with no such post, bit 7 of `STATE` is set and there is neither `TEXT` nor `USED` |
 
 | `STATE` | Name | Meaning |
 |---|---|---|
@@ -1145,34 +1145,34 @@ number with no favorite removes nothing. Both are held for a repeat, as
 any reply is that does not say otherwise, so a remove sent twice removes
 one. FAVORITE's reply is not held: the list may have changed.
 
-`TEXT` is tile numbers, ready for the screen: ASCII, `$20` to `$7E`, small
-letters too. On a post's first line every character has bit 7 set, which a
-ROM shows as the same glyph in a second colour, as WIKI's headings are.
-Besides those, `$1C` is the sign for replies, `$1D` for reposts and `$1E`
-for likes, a heart. What is not ASCII becomes the nearest thing that is,
-as WIKI's text does; pictures (emoji) are left out, and a run of other
-characters with no likeness becomes one `?`.
+`TEXT` is ASCII, `$20` to `$7E`, small letters too, and three signs
+besides: `$1C` for replies, `$1D` for reposts and `$1E` for likes, a
+heart. A ROM maps them to its own tiles. What is not ASCII becomes the
+nearest thing that is, as WIKI's text does; pictures (emoji) are left out,
+and a run of other characters with no likeness becomes one `?`.
 
-The lines of a post, as `firmware/components/nesp_services/bsky.c` lays
-them out:
+The lines are ConnectedNES's: Rachel Simone Weil's ROM printed a tweet in
+eight lines of 24 characters, the handle, six of text and the date. A
+post's text is longer than a tweet was, so it has up to 18 lines, which a
+ROM shows a few at a time. `USED` is how many it has, to the last that is
+not blank. The lines of a post, as
+`firmware/components/nesp_services/bsky.c` lays them out:
 
 | Line | |
 |---|---|
-| 0 | the author's name, in the second colour; their handle if they have none |
-| 1 | `@` and their handle |
-| 2 | `Reposted by @` and a handle, for a repost; otherwise blank |
-| 3 to 14 | the text, wrapped at spaces. A newline ends a line, and newlines in a row leave one blank line. Text that does not fit ends with `...` |
-| 15 | when it was posted, and at the right its replies, reposts and likes, each after its sign: `2h     ↩3 ⟲12 ♥140`. A count of a thousand or more is in thousands, `3k` |
+| 0 | `@` and the author's handle, cut to the line |
+| 1 | when it was posted, then its replies, reposts and likes, each after its sign: `2h  ↩3 ⟲12 ♥140`, kept to the left. A count of a thousand or more is in thousands, `3k` |
+| 2 to 19 | the text, wrapped at spaces, after `Reposted by @` and a handle for a repost. A newline ends a line, and newlines in a row leave one blank line. Text that does not fit ends with `...` after the last word that does |
 
 When it was posted is how long ago, `now`, `5m`, `3h` or `2d`, if the
 nesp32 knows the time and it was within a week; otherwise its date,
 `Oct 18`, in UTC.
 
-A line's exchange is 9 bytes out and 39 back, as WEATHER's row is, so a
-ROM that asks for one takes replies of 63 (a shorter `REPLY_MAX` is
-BAD_ARG). A reply from Bluesky is a few dozen kilobytes, most of it what
-no console has a use for; the nesp32 reads it as it comes, and keeps only
-the 25 posts it lays out, 11 KB.
+A line's exchange is 9 bytes out and 36 back, so a ROM that asks for one
+takes replies of 63 (a shorter `REPLY_MAX` is BAD_ARG). A reply from
+Bluesky is a few dozen kilobytes, most of it what no console has a use
+for; the nesp32 reads it as it comes, and keeps only the 25 posts it lays
+out, 12 KB.
 
 ## 6. Timing
 

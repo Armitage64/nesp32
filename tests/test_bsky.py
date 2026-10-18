@@ -87,13 +87,16 @@ class Reader:
         return reply.payload[0]
 
     def line(self, post, row):
+        """A line of a post, or None; and how many lines of text the post
+        has goes to self.used."""
         reply = self.stick.ask(BSKY, p.NESP_BSKY_LINE, bytes((post, row)))
         assert reply.ok and reply.payload[1:3] == bytes((post, row))
         if len(reply.payload) == 4:
             assert reply.payload[0] & NO_LINE
             return None
-        assert len(reply.payload) == 4 + COLUMNS and not reply.payload[0] & NO_LINE
-        return reply.payload[4:].decode("latin-1")
+        assert len(reply.payload) == 5 + COLUMNS and not reply.payload[0] & NO_LINE
+        self.used = reply.payload[4 + COLUMNS]
+        return reply.payload[4:4 + COLUMNS].decode("latin-1")
 
     def post(self, number):
         return [self.line(number, row) for row in range(ROWS)]
@@ -132,19 +135,17 @@ def reader(stick):
     return Reader(stick)
 
 
-def heading(text):
-    """A line in the second colour."""
-    return "".join(chr(ord(char) | 0x80) for char in text) + " " * (COLUMNS - len(text))
-
-
 def lines(*texts):
     return [text.ljust(COLUMNS) for text in texts]
 
 
 def when(age, replies, reposts, likes):
-    """A post's last line: its age at the left, its counts at the right."""
-    counts = "%s%s %s%s %s%s" % (REPLY, replies, REPOST, reposts, LIKE, likes)
-    return age.ljust(COLUMNS - len(counts)) + counts
+    """A post's line of when: its age, two spaces, and its counts."""
+    return "%s  %s%s %s%s %s%s" % (age, REPLY, replies, REPOST, reposts, LIKE, likes)
+
+
+def blank(count):
+    return lines(*[""] * count)
 
 
 # --- posts ---------------------------------------------------------------------------
@@ -154,55 +155,55 @@ def test_posts_from_what_bluesky_really_sent(reader):
     assert reader.stick.fetch_url == FEED_URL % (POSTS, "bsky.app")
     assert reader.stick.fetch_agent.startswith("nesp32-bluesky/")
     assert len(posts) == 8
-    assert posts[0] == [heading("Bluesky")] + lines(
+    assert posts[0] == lines(
         "@bsky.app",
-        "",
-        '"Pro wrestling',
-        "conversations, like sports",
-        "on Bluesky across the board,",
-        "rarely engagement-farm-posts",
-        "are celebratory and much",
-        "more real. The lesson is to",
-        "invest in product features",
-        "that serve people who care",
-        "more about the community",
-        "than they care about going",
-        'viral." - @harry.bsky.team',
-        "",
         when("1d", 110, 111, 860),
-    )
-    # A repost says who reposted it; a count of thousands is in k.
-    assert posts[1][:3] == [heading("Stephen Judkins")] + lines(
-        "@stephenjudkins.bsky.social", "Reposted by @bsky.app")
-    assert posts[1][-1] == when("3d", 47, 360, "3k")
-    assert posts[1][-2] == "detailed and correct".ljust(COLUMNS)    # it just fits
+        '"Pro wrestling',
+        "conversations, like",
+        "sports on Bluesky across",
+        "the board, rarely",
+        "engagement-farm-posts",
+        "are celebratory and much",
+        "more real. The lesson is",
+        "to invest in product",
+        "features that serve",
+        "people who care more",
+        "about the community than",
+        "they care about going",
+        'viral." -',
+        "@harry.bsky.team",
+    ) + blank(4)
+    assert reader.line(0, 0) and reader.used == 14
+    # A handle longer than a line is cut; a repost says who reposted it,
+    # first; a count of thousands is in k.
+    assert posts[1][:4] == lines("@stephenjudkins.bsky.soc", when("3d", 47, 360, "3k"),
+                                 "Reposted by @bsky.app", "The Bob's Burgers")
+    assert reader.line(1, 0) and reader.used == 15      # all of it, as there is room now
+    assert posts[1][15:18] == lines("under-sink plumbing is", "detailed and correct", "")
     # Newlines: a blank line between paragraphs, and no more than one.
-    assert posts[2][3:9] == lines("v1.135 is live!", "", "You can now browse quote",
-                                  "posts by Top in addition to", "Latest. And posts keep their",
-                                  "thread numbering when")
-    assert posts[6][3:5] == lines("saw some cool clouds today", "")
+    assert posts[2][2:7] == lines("v1.135 is live!", "", "You can now browse quote",
+                                  "posts by Top in addition", "to Latest. And posts")
+    assert posts[6][2:4] == lines("saw some cool clouds", "today")
+    assert reader.line(6, 0) and reader.used == 2
 
 
 def test_every_line_is_tiles_the_console_has(reader):
     for post in reader.read(fixture("bsky_feed.json")):
         assert all(len(line) == COLUMNS for line in post)
-        for line in post[1:]:
+        for line in post:
             assert all(0x20 <= ord(tile) <= 0x7E or tile in (REPLY, REPOST, LIKE)
                        for tile in line)
-        assert all(0xA0 <= ord(tile) <= 0xFE for tile in post[0].rstrip())
 
 
 def test_only_the_post_s_own_fields_are_taken(reader):
     posts = reader.read(feed_reply(item(text="mine", handle="me.example", name="Me")))
-    assert posts == [[heading("Me")] + lines("@me.example", "", "mine", *[""] * 11)
-                     + [when("1h", 1, 2, 3)]]
+    assert posts == [lines("@me.example", when("1h", 1, 2, 3), "mine") + blank(ROWS - 3)]
+    assert reader.line(0, 0) and reader.used == 1
 
 
-def test_a_post_with_no_name_has_its_handle_for_one(reader):
-    post = reader.read(feed_reply(item(name=None, handle="nameless.bsky.social")))[0]
-    assert post[0] == heading("nameless.bsky.social")
-    post = reader.read(feed_reply(item(name="", handle="empty.bsky.social")))[0]
-    assert post[0] == heading("empty.bsky.social")
+def test_a_post_with_no_text_has_no_lines_of_it(reader):
+    reader.read(feed_reply(item(text="")))
+    assert reader.line(0, 0) == "@someone.bsky.social".ljust(COLUMNS) and reader.used == 0
 
 
 @pytest.mark.parametrize("text,first", [
@@ -214,14 +215,17 @@ def test_a_post_with_no_name_has_its_handle_for_one(reader):
 ])
 def test_text_as_ascii(reader, text, first):
     post = reader.read(feed_reply(item(text=text)))[0]
-    assert post[3].rstrip() == first
+    assert post[p.NESP_BSKY_TEXT_ROW].rstrip() == first
 
 
-def test_text_that_does_not_fit_ends_with_dots(reader):
+def test_text_that_does_not_fit_ends_with_dots_after_a_word(reader):
+    text_rows = ROWS - p.NESP_BSKY_TEXT_ROW
     post = reader.read(feed_reply(item(text=" ".join(["word"] * 200))))[0]
-    assert post[3:15] == lines(*["word word word word word"] * 11, "word word word word word...")
-    long_word = reader.read(feed_reply(item(text="x" * 70 + " end")))[0]
-    assert long_word[3:7] == lines("x" * 28, "x" * 28, "x" * 14 + " end", "")
+    assert post[2:] == lines(*["word word word word word"] * (text_rows - 1),
+                             "word word word word...")
+    assert reader.line(0, 0) and reader.used == text_rows
+    long_word = reader.read(feed_reply(item(text="x" * 60 + " end")))[0]
+    assert long_word[2:6] == lines("x" * 24, "x" * 24, "x" * 12 + " end", "")
 
 
 def test_ages_and_dates(stick):
@@ -230,11 +234,11 @@ def test_ages_and_dates(stick):
     whens = ["2026-10-18T09:59:30.000Z", "2026-10-18T09:15:00Z", "2026-10-17T07:00:00.000Z",
              "2026-10-12T10:00:00.000Z", "2026-10-01T10:00:00.000Z", "2026-10-19T00:00:00Z"]
     posts = reader.read(feed_reply(*[item(when=when) for when in whens]))
-    assert [post[-1][:7].rstrip() for post in posts] == ["now", "45m", "1d", "6d", "Oct 1",
-                                                         "Oct 19"]
+    assert [post[1].split("  ")[0] for post in posts] == ["now", "45m", "1d", "6d", "Oct 1",
+                                                        "Oct 19"]
     stick.set_time(None)
     posts = reader.read(feed_reply(item(when="2026-10-18T09:59:30.000Z")))
-    assert posts[0][-1][:7].rstrip() == "Oct 18"
+    assert posts[0][1].split("  ")[0] == "Oct 18"
 
 
 def test_posts_are_offered_as_they_come(reader):
@@ -243,8 +247,8 @@ def test_posts_are_offered_as_they_come(reader):
     middle = body.index(b"post 2")
     assert reader.stick.fetch_body(body[:middle])
     assert reader.feed(new=False) == FETCHING and reader.count == 2
-    assert reader.line(1, 3).rstrip() == "post 1"
-    assert reader.line(2, 3) is None
+    assert reader.line(1, 2).rstrip() == "post 1"
+    assert reader.line(2, 2) is None
     assert reader.stick.fetch_body(body[middle:]) is False     # it has all it wants
     reader.stick.fetch_done(True)
     assert reader.feed(new=False) == READY and reader.count == 5
@@ -331,7 +335,7 @@ def test_out_of_memory(stick):
     stick.alloc_most(1000)
     reader = Reader(stick)
     assert reader.feed() == FAILED
-    assert reader.why == b"THE NESP32 IS OUT OF MEMORY".center(COLUMNS)
+    assert reader.why == b"NESP32 OUT OF MEMORY".center(COLUMNS)
 
 
 def test_a_hello_lets_the_posts_go(reader):

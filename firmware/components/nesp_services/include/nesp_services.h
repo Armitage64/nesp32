@@ -421,7 +421,7 @@ typedef struct {
  * screen, and the favorites they are chosen from (bsky.c). */
 #define NESP_BSKY_DEPTH 12          /* containers deep in a reply that are followed */
 #define NESP_BSKY_KEY 16            /* characters of a key that are kept */
-#define NESP_BSKY_FIELD 64          /* of a name or a handle in a reply */
+#define NESP_BSKY_FIELD 64          /* of a handle in a reply */
 #define NESP_BSKY_TEXT 640          /* of a post's text, as ASCII */
 
 typedef struct {
@@ -431,6 +431,7 @@ typedef struct {
      * lock: the posts, and the fetch they are from. */
     uint8_t *posts;                 /* NESP_BSKY_POSTS of NESP_BSKY_ROWS lines */
     uint8_t count;                  /* posts laid out */
+    uint8_t used[NESP_BSKY_POSTS];  /* lines of text each has */
     uint8_t state;                  /* NESP_FEED_* */
     uint32_t generation;            /* which fetch the posts are being filled by */
     char why[NESP_BSKY_COLUMNS];    /* with FAILED, for the console's screen */
@@ -465,8 +466,6 @@ typedef struct {
     uint8_t key_lens[NESP_BSKY_DEPTH];
     size_t handle_field_len;
     char handle_field[NESP_BSKY_FIELD];
-    size_t name_len;
-    char name[NESP_BSKY_FIELD];
     size_t text_len;
     char text[NESP_BSKY_TEXT];
     size_t when_len;

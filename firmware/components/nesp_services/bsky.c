@@ -5,8 +5,12 @@
  * Bluesky's public API for its latest posts: no account and no password
  * are needed to read them. Each post is laid out as NESP_BSKY_ROWS lines of
  * NESP_BSKY_COLUMNS characters, the same number for every post, so that the
- * console asks for a line by the post's number and the line's, and draws a
- * post as a card, as ConnectedNES drew a tweet.
+ * console asks for a line by the post's number and the line's. The lines
+ * are ConnectedNES's: 24 characters, the author's handle, the post's
+ * text, and when it was posted, as Rachel Simone Weil's ROM drew a tweet.
+ * A post's text is longer than a tweet's was, and has up to
+ * NESP_BSKY_ROWS - NESP_BSKY_TEXT_ROW lines, which a console shows a few at
+ * a time; each LINE reply says how many it has.
  *
  * FEED is both "this handle" and "how does it stand", as WIKI's SEARCH is.
  * The console gives each choice an id and may send the same request as
@@ -24,7 +28,7 @@
  * where in it each value is, and only these are kept, of each item of
  * "feed":
  *
- *   post.author.handle, post.author.displayName
+ *   post.author.handle
  *   post.record.text
  *   post.indexedAt
  *   post.replyCount, post.repostCount, post.likeCount
@@ -48,19 +52,16 @@
 #define COLUMNS NESP_BSKY_COLUMNS
 #define ROWS NESP_BSKY_ROWS
 #define POST_SIZE (ROWS * COLUMNS)
-#define NAME_ROW 0
-#define HANDLE_ROW 1
-#define REPOST_ROW 2
-#define TEXT_ROW 3
-#define TEXT_ROWS (ROWS - TEXT_ROW - 1)
-#define WHEN_ROW (ROWS - 1)
+#define HANDLE_ROW NESP_BSKY_HANDLE_ROW
+#define WHEN_ROW NESP_BSKY_WHEN_ROW
+#define TEXT_ROW NESP_BSKY_TEXT_ROW
+#define TEXT_ROWS (ROWS - TEXT_ROW)
 #define AGENT "nesp32-bluesky/0.1 (Bluesky on a NES, from an M5Stack Stick; nesp32)"
 #define FEED_URL "https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed" \
                  "?filter=posts_no_replies&limit=%d&actor=%.*s"
 /* How fetch.c says the site answered 400, which is what Bluesky says to a
  * handle it has no one by. */
 #define NO_SUCH "THE SITE SAID 400"
-#define HEADING 0x80
 #define NO_CODE 0xFFFFFFFFu
 
 /* The favorites a nesp32 begins with. */
@@ -75,7 +76,6 @@ static const char *const defaults[] = {
 enum {
     FIELD_NONE,
     FIELD_HANDLE,
-    FIELD_NAME,
     FIELD_TEXT,
     FIELD_WHEN,
     FIELD_REPOSTER,
@@ -158,12 +158,12 @@ static void keep(nesp_bsky_t *bsky)
 /* --- a post, as lines ------------------------------------------------------------ */
 
 /* A line of the post being laid out: text, cut at the width, padded with
- * spaces, every character with `flags`. */
-static void put_line(uint8_t *post, unsigned row, const char *text, size_t len, uint8_t flags)
+ * spaces. */
+static void put_line(uint8_t *post, unsigned row, const char *text, size_t len)
 {
     uint8_t *line = post + row * COLUMNS;
     for (size_t index = 0; index < COLUMNS; index++) {
-        line[index] = index < len ? (uint8_t)((uint8_t)text[index] | flags) : ' ';
+        line[index] = index < len ? (uint8_t)text[index] : ' ';
     }
 }
 
@@ -247,45 +247,46 @@ static size_t count_text(uint32_t count, char *out, size_t max)
     return written > 0 ? (size_t)written : 0;
 }
 
-/* The last line: when it was posted at the left, and at the right its
- * replies, reposts and likes, each after its sign. */
+/* When it was posted, and after it its replies, reposts and likes, each
+ * after its sign: "2h  <3 %12 v140". It is kept to the left, as
+ * ConnectedNES's date was: the right of the line where a ROM draws it may
+ * be its picture. */
 static void when_line(const nesp_bsky_t *bsky, uint8_t *post)
 {
-    char line[COLUMNS + 1];
-    char counts[COLUMNS + 1];
-    memset(line, ' ', sizeof(line));
-    size_t len = age(bsky, line, sizeof(line));
-    if (len < COLUMNS) {
-        line[len] = ' ';
-    }
-    size_t at = 0;
+    char line[2 * COLUMNS];
+    size_t at = age(bsky, line, sizeof(line));
     const uint32_t values[] = {bsky->replies, bsky->reposts, bsky->likes};
     const char signs[] = {NESP_BSKY_REPLY, NESP_BSKY_REPOST, NESP_BSKY_LIKE};
     for (size_t index = 0; index < 3; index++) {
-        if (at > 0) {
-            counts[at++] = ' ';
+        line[at++] = ' ';
+        if (index == 0 && at > 1) {
+            line[at++] = ' ';
         }
-        counts[at++] = signs[index];
-        at += count_text(values[index], counts + at, sizeof(counts) - at);
+        line[at++] = signs[index];
+        at += count_text(values[index], line + at, sizeof(line) - at);
     }
-    if (at <= COLUMNS && len + 1 + at <= COLUMNS) {
-        memcpy(line + COLUMNS - at, counts, at);
-    }
-    put_line(post, WHEN_ROW, line, COLUMNS, 0);
+    put_line(post, WHEN_ROW, line, at < COLUMNS ? at : COLUMNS);
 }
 
-/* The text, wrapped at spaces into TEXT_ROWS lines. Spaces in a row are
- * one, as are the spaces either side of a picture that was left out. A
- * newline ends a line, and lines left blank by newlines in a row are one
- * blank line. A word
- * longer than a line is broken where the line ends. Text that does not
- * fit ends with "...". */
-static void text_lines(const nesp_bsky_t *bsky, uint8_t *post)
+/* The text, wrapped at spaces into TEXT_ROWS lines, after `first`, a line
+ * that says who reposted it, if it is a repost. Spaces in a row are one, as
+ * are the spaces either side of a picture that was left out. A newline
+ * ends a line, and lines left blank by newlines in a row are one blank
+ * line. A word longer than a line is broken where the line ends. Text that
+ * does not fit ends with "...". Returns how many lines it has, to the last
+ * that is not blank. */
+static uint8_t text_lines(const nesp_bsky_t *bsky, uint8_t *post, const char *first,
+                          size_t first_len)
 {
     char lines[TEXT_ROWS][COLUMNS];
     size_t lens[TEXT_ROWS];
     memset(lens, 0, sizeof(lens));
     size_t row = 0;
+    if (first_len > 0) {
+        memcpy(lines[0], first, first_len);
+        lens[0] = first_len;
+        row = 1;
+    }
     size_t at = 0;
     bool cut = false;
     const char *text = bsky->text;
@@ -345,14 +346,27 @@ static void text_lines(const nesp_bsky_t *bsky, uint8_t *post)
             lens[last]--;
         }
         if (lens[last] > COLUMNS - 3) {
-            lens[last] = COLUMNS - 3;
+            /* Room for the dots, after the last word that fits whole. */
+            size_t keep = COLUMNS - 3;
+            while (keep > 0 && lines[last][keep] != ' ' && lines[last][keep - 1] != ' ') {
+                keep--;
+            }
+            while (keep > 0 && lines[last][keep - 1] == ' ') {
+                keep--;
+            }
+            lens[last] = keep > 0 ? keep : COLUMNS - 3;
         }
         memcpy(lines[last] + lens[last], "...", 3);
         lens[last] += 3;
     }
+    uint8_t used = 0;
     for (size_t index = 0; index < TEXT_ROWS; index++) {
-        put_line(post, (unsigned)(TEXT_ROW + index), lines[index], lens[index], 0);
+        put_line(post, (unsigned)(TEXT_ROW + index), lines[index], lens[index]);
+        if (lens[index] > 0) {
+            used = (uint8_t)(index + 1);
+        }
     }
+    return used;
 }
 
 /* A post has ended in the reply: lay it out after the others, if it is
@@ -361,38 +375,34 @@ static void lay_out(nesp_bsky_t *bsky)
 {
     uint8_t post[POST_SIZE];
     char line[COLUMNS + 1];
+    char repost[COLUMNS];
+    size_t repost_len = 0;
     if (bsky->handle_field_len == 0) {
         return;                     /* not a post at all */
-    }
-    if (bsky->name_len > 0) {
-        put_line(post, NAME_ROW, bsky->name, bsky->name_len, HEADING);
-    } else {
-        put_line(post, NAME_ROW, bsky->handle_field, bsky->handle_field_len, HEADING);
     }
     size_t take = bsky->handle_field_len < COLUMNS - 1 ? bsky->handle_field_len : COLUMNS - 1;
     line[0] = '@';
     memcpy(line + 1, bsky->handle_field, take);
-    put_line(post, HANDLE_ROW, line, 1 + take, 0);
+    put_line(post, HANDLE_ROW, line, 1 + take);
     if (bsky->reposter_len > 0) {
         static const char by[] = "Reposted by @";
-        size_t len = sizeof(by) - 1;
-        memcpy(line, by, len);
+        repost_len = sizeof(by) - 1;
+        memcpy(repost, by, repost_len);
         take = bsky->reposter_len;
-        if (len + take > COLUMNS) {
-            take = COLUMNS - len;
+        if (repost_len + take > COLUMNS) {
+            take = COLUMNS - repost_len;
         }
-        memcpy(line + len, bsky->reposter, take);
-        put_line(post, REPOST_ROW, line, len + take, 0);
-    } else {
-        put_line(post, REPOST_ROW, NULL, 0, 0);
+        memcpy(repost + repost_len, bsky->reposter, take);
+        repost_len += take;
     }
-    text_lines(bsky, post);
+    uint8_t used = text_lines(bsky, post, repost, repost_len);
     when_line(bsky, post);
 
     lock(bsky);
     if (bsky->generation == bsky->parsing && bsky->posts != NULL
         && bsky->count < NESP_BSKY_POSTS) {
         memcpy(bsky->posts + (size_t)bsky->count * POST_SIZE, post, POST_SIZE);
+        bsky->used[bsky->count] = used;
         bsky->count++;              /* last: a post is whole before it is offered */
     }
     unlock(bsky);
@@ -433,9 +443,6 @@ static uint8_t field_here(const nesp_bsky_t *bsky)
             if (key_is(bsky, 5, "handle")) {
                 return FIELD_HANDLE;
             }
-            if (key_is(bsky, 5, "displayName")) {
-                return FIELD_NAME;
-            }
         } else if (depth == 5 && key_is(bsky, 4, "record") && key_is(bsky, 5, "text")) {
             return FIELD_TEXT;
         }
@@ -454,10 +461,6 @@ static char *field_room(nesp_bsky_t *bsky, size_t **len, size_t *max)
         *len = &bsky->handle_field_len;
         *max = sizeof(bsky->handle_field);
         return bsky->handle_field;
-    case FIELD_NAME:
-        *len = &bsky->name_len;
-        *max = sizeof(bsky->name);
-        return bsky->name;
     case FIELD_TEXT:
         *len = &bsky->text_len;
         *max = sizeof(bsky->text);
@@ -655,7 +658,6 @@ static void number_byte(nesp_bsky_t *bsky, uint8_t byte)
 static void begin_item(nesp_bsky_t *bsky)
 {
     bsky->handle_field_len = 0;
-    bsky->name_len = 0;
     bsky->text_len = 0;
     bsky->when_len = 0;
     bsky->reposter_len = 0;
@@ -840,7 +842,7 @@ static void begin(nesp_bsky_t *bsky)
     snprintf(url, sizeof(url), FEED_URL, NESP_BSKY_POSTS, (int)bsky->handle_len, bsky->handle);
     if (bsky->posts == NULL || !bsky->hal->fetch(bsky->hal->ctx, url, AGENT, id, &bsky->sink)) {
         lock(bsky);
-        set_why(bsky, bsky->posts == NULL ? "THE NESP32 IS OUT OF MEMORY" : "THE NESP32 IS BUSY");
+        set_why(bsky, bsky->posts == NULL ? "NESP32 OUT OF MEMORY" : "THE NESP32 IS BUSY");
         bsky->state = NESP_FEED_FAILED;
         unlock(bsky);
     }
@@ -952,7 +954,7 @@ static void feed(nesp_bsky_t *bsky, const nesp_request_t *request, nesp_reply_t 
 /* LINE: a line of a post, if the post is held. */
 static void line(nesp_bsky_t *bsky, const nesp_request_t *request, nesp_reply_t *reply)
 {
-    if (request->len != 2 || reply->max < 4 + COLUMNS) {
+    if (request->len != 2 || reply->max < 5 + COLUMNS) {
         reply->status = NESP_ST_BAD_ARG;
         return;
     }
@@ -964,7 +966,8 @@ static void line(nesp_bsky_t *bsky, const nesp_request_t *request, nesp_reply_t 
     if (post < count && row < ROWS && bsky->posts != NULL) {
         memcpy(reply->data + 4, bsky->posts + (size_t)post * POST_SIZE + (size_t)row * COLUMNS,
                COLUMNS);
-        reply->len = 4 + COLUMNS;
+        reply->data[4 + COLUMNS] = bsky->used[post];     /* lines of text it has */
+        reply->len = 5 + COLUMNS;
     } else {
         state |= NESP_FEED_NO_LINE;
         reply->len = 4;
