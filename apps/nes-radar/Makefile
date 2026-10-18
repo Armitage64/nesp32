@@ -31,10 +31,13 @@ VENDOR := $(RADAR_SRC)/vendor/nesp32
 NAME := nes_radar_scope_v3
 SOURCE := $(RADAR_SRC)/nes/$(NAME).s
 SOURCES := $(SOURCE) $(RADAR_SRC)/nes/radar_link.inc $(wildcard $(VENDOR)/*.inc)
-# nes-radar's own tool draws the targets' sprites, into build/.
-METASPRITES := $(BUILD)/sprites/metasprites.stamp
-INCLUDES := -I $(abspath $(BUILD))/sprites -I assets/ldv -I nes -I $(VENDOR) \
-	-I $(abspath $(BUILD))
+# nes-radar's own tool draws the targets' sprites. The source has their
+# tiles as build/radar_sprites_16.chr, its own build/, so they are drawn
+# into a build/ of our own, which ca65 is told to look for binaries in.
+SPRITES := $(BUILD)/radar
+METASPRITES := $(SPRITES)/build/metasprites.stamp
+INCLUDES := -I $(abspath $(SPRITES))/build -I assets/ldv -I nes -I $(VENDOR) \
+	-I $(abspath $(BUILD)) --bin-include-dir $(abspath $(SPRITES))
 
 .PHONY: all cart verify test clean FORCE
 
