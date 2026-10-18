@@ -48,10 +48,11 @@
 static const char *TAG = "radio";
 
 typedef enum { ORDER_SCAN, ORDER_JOIN, ORDER_FORGET, ORDER_AIRPORT, ORDER_ZIP,
-               ORDER_SCREEN } order_kind_t;
+               ORDER_SCREEN, ORDER_FAVORITES } order_kind_t;
 #define SETTINGS "nesp32"           /* conn.c's too */
 #define SETTING_AIRPORT "airport"
 #define SETTING_ZIP "zip"
+#define SETTING_FAVORITES "bsky"    /* BSKY's favorites, a nesp_bsky_favorites_t */
 #define SETTING_SCREEN "screen"     /* NESP_SCREEN_UPRIGHT or _FLIPPED */
 
 typedef struct {
@@ -84,6 +85,8 @@ static airport_t airport;                   /* under lock */
 static bool have_airport;                   /* under lock */
 static zip_t zip;                           /* under lock */
 static bool have_zip;                       /* under lock */
+static nesp_bsky_favorites_t favorites;     /* under lock */
+static bool have_favorites;                 /* under lock */
 /* Which way up the screen is: the build's, until the console chooses. */
 static uint8_t screen = CONFIG_NESP_DISPLAY_FLIPPED ? NESP_SCREEN_FLIPPED
                                                     : NESP_SCREEN_UPRIGHT;  /* under lock */
@@ -474,6 +477,29 @@ static void hal_zip_keep(void *ctx, const char *digits, int32_t latitude, int32_
     xQueueSend(orders, &order, 0);  /* the flash is the worker's to write */
 }
 
+static bool hal_favorites_last(void *ctx, nesp_bsky_favorites_t *out)
+{
+    (void)ctx;
+    portENTER_CRITICAL(&lock);
+    bool have = have_favorites;
+    if (have) {
+        *out = favorites;
+    }
+    portEXIT_CRITICAL(&lock);
+    return have;
+}
+
+static void hal_favorites_keep(void *ctx, const nesp_bsky_favorites_t *list)
+{
+    (void)ctx;
+    order_t order = {.kind = ORDER_FAVORITES};
+    portENTER_CRITICAL(&lock);
+    favorites = *list;
+    have_favorites = true;
+    portEXIT_CRITICAL(&lock);
+    xQueueSend(orders, &order, 0);  /* the flash is the worker's to write */
+}
+
 static uint8_t hal_screen(void *ctx, uint8_t turn)
 {
     (void)ctx;
@@ -516,6 +542,21 @@ static void do_order(order_t *order)
         portEXIT_CRITICAL(&lock);
         if (nvs_open(SETTINGS, NVS_READWRITE, &settings) == ESP_OK) {
             nvs_set_blob(settings, SETTING_ZIP, &kept, sizeof(kept));
+            nvs_commit(settings);
+            nvs_close(settings);
+        }
+        break;
+    }
+    case ORDER_FAVORITES: {
+        /* Big for the stack of a worker that only waits on its queue,
+         * hence static: there is the one worker. */
+        static nesp_bsky_favorites_t kept;
+        nvs_handle_t settings;
+        portENTER_CRITICAL(&lock);
+        kept = favorites;
+        portEXIT_CRITICAL(&lock);
+        if (nvs_open(SETTINGS, NVS_READWRITE, &settings) == ESP_OK) {
+            nvs_set_blob(settings, SETTING_FAVORITES, &kept, sizeof(kept));
             nvs_commit(settings);
             nvs_close(settings);
         }
@@ -623,6 +664,9 @@ void radio_settings(void)
         size = sizeof(zip);
         have_zip = nvs_get_blob(settings, SETTING_ZIP, &zip, &size) == ESP_OK
                    && size == sizeof(zip);
+        size = sizeof(favorites);
+        have_favorites = nvs_get_blob(settings, SETTING_FAVORITES, &favorites, &size) == ESP_OK
+                         && size == sizeof(favorites);
         uint8_t kept;
         if (nvs_get_u8(settings, SETTING_SCREEN, &kept) == ESP_OK
             && (kept == NESP_SCREEN_UPRIGHT || kept == NESP_SCREEN_FLIPPED)) {
@@ -717,6 +761,8 @@ const nesp_hal_t *radio_hal(void)
     hal.airport_keep = hal_airport_keep;
     hal.zip_last = hal_zip_last;
     hal.zip_keep = hal_zip_keep;
+    hal.favorites_last = hal_favorites_last;
+    hal.favorites_keep = hal_favorites_keep;
     hal.peer_rtt = conn_rtt;
     hal.peer_note = conn_note;
     hal.peer_noted = conn_noted;

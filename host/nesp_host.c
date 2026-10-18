@@ -60,6 +60,10 @@ typedef struct {
     int32_t zip_place[2];
     char zip_name[NESP_WEATHER_PLACE_MAX];
     uint32_t zip_keeps;
+    /* BSKY's favorites kept likewise. */
+    bool have_favorites;
+    nesp_bsky_favorites_t favorites;
+    uint32_t favorites_keeps;
     size_t alloc_most;              /* set by the caller: no more than this at once; 0 for any */
     uint32_t allocated;             /* blocks handed out and not given back */
     int locked;
@@ -460,6 +464,23 @@ static bool hal_zip_last(void *ctx, char *zip, int32_t *latitude, int32_t *longi
     return host->have_zip;
 }
 
+static bool hal_favorites_last(void *ctx, nesp_bsky_favorites_t *out)
+{
+    host_t *host = ctx;
+    if (host->have_favorites) {
+        *out = host->favorites;
+    }
+    return host->have_favorites;
+}
+
+static void hal_favorites_keep(void *ctx, const nesp_bsky_favorites_t *favorites)
+{
+    host_t *host = ctx;
+    host->have_favorites = true;
+    host->favorites = *favorites;
+    host->favorites_keeps++;
+}
+
 static void hal_zip_keep(void *ctx, const char *zip, int32_t latitude, int32_t longitude,
                          const char *name)
 {
@@ -535,6 +556,8 @@ host_t *host_new(void)
     host->hal.airport_keep = hal_airport_keep;
     host->hal.zip_last = hal_zip_last;
     host->hal.zip_keep = hal_zip_keep;
+    host->hal.favorites_last = hal_favorites_last;
+    host->hal.favorites_keep = hal_favorites_keep;
     host->hal.peer_rtt = hal_peer_rtt;
     host->hal.peer_note = hal_peer_note;
     host->hal.peer_noted = hal_peer_noted;
@@ -549,7 +572,7 @@ host_t *host_new(void)
 void host_free(host_t *host)
 {
     /* As a Stick switched off: whatever its services hold goes with it. */
-    uint8_t none[1];
+    uint8_t none[1] = {0};
     nesp_link_hello(&host->stick.link, none, 0, NESP_REPLY_MIN, none);
     for (uint16_t index = 0; index < host->track_count; index++) {
         free(host->tracks[index].data);
@@ -770,6 +793,30 @@ bool host_zip(const host_t *host, char *zip, int32_t *place, char *name)
 }
 
 uint32_t host_zip_keeps(const host_t *host) { return host->zip_keeps; }
+
+/* BSKY's favorites, as a nesp32 has kept them from before it was switched
+ * on: count handles of NESP_BSKY_HANDLE_MAX bytes each, or NULL for none. */
+void host_set_favorites(host_t *host, const char *handles, uint8_t count)
+{
+    host->have_favorites = handles != NULL;
+    memset(&host->favorites, 0, sizeof(host->favorites));
+    if (handles != NULL) {
+        host->favorites.count = count;
+        memcpy(host->favorites.handles, handles, (size_t)count * NESP_BSKY_HANDLE_MAX);
+    }
+}
+
+/* The ones kept now, likewise; the count, or -1 for none. */
+int host_favorites(const host_t *host, char *handles)
+{
+    if (!host->have_favorites) {
+        return -1;
+    }
+    memcpy(handles, host->favorites.handles, sizeof(host->favorites.handles));
+    return host->favorites.count;
+}
+
+uint32_t host_favorites_keeps(const host_t *host) { return host->favorites_keeps; }
 
 /* The address a nesp32 has kept from before it was switched on, if any. */
 void host_set_last(host_t *host, const uint8_t *address)

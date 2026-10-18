@@ -239,6 +239,7 @@ void nesp_stick_init(nesp_stick_t *stick, const nesp_hal_t *hal)
     nesp_radar_service(&stick->services[7], &stick->radar, hal);
     nesp_tuner_service(&stick->services[8], &stick->tuner, &stick->raw, hal);
     nesp_weather_service(&stick->services[9], &stick->weather, hal);
+    nesp_bsky_service(&stick->services[10], &stick->bsky, hal);
     for (size_t index = 0; index < sizeof(stick->services) / sizeof(stick->services[0]);
          index++) {
         nesp_link_register(&stick->link, &stick->services[index]);

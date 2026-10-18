@@ -190,6 +190,8 @@ class Console:
             self.chr = self.rom_chr[:CHR_SIZE]
             self.home = True
             prg = self.rom_prg[:PRG_SIZE]
+            if len(prg) == BANK_SIZE:   # NROM-128: the one bank at $8000 and again at $C000
+                prg += prg
         if prg != self.prg:
             self.prg = prg
             self.memory.write(PRG_START, prg)

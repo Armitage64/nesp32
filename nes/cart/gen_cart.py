@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Put the seven programs and a menu on one cartridge.
+"""Put the eight programs and a menu on one cartridge.
 
     nes/cart/gen_cart.py tables build/cart --jukebox J.nes --wiki W.nes ...
     nes/cart/gen_cart.py rom build/nesp32.nes --menu menu.prg --chr chr.bin
@@ -7,9 +7,9 @@
     nes/cart/gen_cart.py page radar
 
 The cartridge is an MMC1 with 256 KB of PRG and 128 KB of CHR ROM, and no
-memory of its own. Six of the programs are NROM, and the MMC1 set to 32 KB
-of PRG and 8 KB of CHR is an NROM to a program that never writes to it, so
-each goes in as it was built: nothing is linked again, and the serial
+memory of its own. Seven of the programs are NROM, and the MMC1 set to 32
+KB of PRG and 8 KB of CHR is an NROM to a program that never writes to it,
+so each goes in as it was built: nothing is linked again, and the serial
 routines keep their pages and their timing.
 
     PRG, 16 KB banks            CHR, 8 KB banks
@@ -20,8 +20,15 @@ routines keep their pages and their timing.
     8-9    NES Radar            4     the menu
     10-11  NPR                  5-6   NES Radar
     12-13  Weather              7     NPR
-    14     nothing              8     Weather
-    15     the menu             9-15  nothing
+    14     Bluesky              8     Weather
+    15     the menu             9     Bluesky
+                                10-15 nothing
+
+Bluesky is an NROM-128, 16 KB of PRG, in the one bank there was room for.
+An NROM-128 has its bank at $C000 (and again at $8000, which Bluesky does
+not use), so for it the MMC1 is set to 16 KB banks with the first fixed at
+$8000 and its own at $C000: the setup ROM's first bank is under $C000, and
+nothing reads it.
 
 NES Radar has two pages of tiles, one for its splash and one for its
 scope, and is the one program that writes to the mapper: to its CHR
@@ -67,9 +74,11 @@ PRG_START = 0x8000
 TOP = 0xC000                        # where a 32 KB program's second bank is
 
 # The mapper's control register: 32 KB of PRG and 8 KB of CHR, and the
-# mirroring an NROM's header asked for.
+# mirroring an NROM's header asked for. For an NROM-128, 16 KB banks with
+# the first fixed at $8000 and the one asked for at $C000.
 CONTROL_VERTICAL = 0x02
 CONTROL_HORIZONTAL = 0x03
+CONTROL_16K_AT_C000 = 0x08
 
 RESET_STUB = 0xFFDA
 STUB_SIZE = 6
@@ -81,15 +90,14 @@ MAPPER_NROM, MAPPER_MMC1 = 0, 1
 
 
 class Program:
-    banks = 2                       # 32 KB of PRG
-
-    def __init__(self, key, name, bank, page, pages=1, mapper=MAPPER_NROM):
+    def __init__(self, key, name, bank, page, pages=1, mapper=MAPPER_NROM, banks=2):
         self.key = key              # the option that names its ROM
         self.name = name            # as the menu has it
         self.bank = bank
         self.page = page
         self.pages = pages          # of CHR: an NROM has one
         self.mapper = mapper        # what its header says: the MMC1 for one built for it
+        self.banks = banks          # of PRG: 2 for 32 KB, 1 for an NROM-128
 
 
 # In the menu's order.
@@ -99,6 +107,7 @@ PROGRAMS = (
     Program("radar", "NES Radar", 8, 5, pages=2, mapper=MAPPER_MMC1),
     Program("npr", "National Public Radio", 10, 7),
     Program("weather", "Weather", 12, 8),
+    Program("bluesky", "Bluesky", 14, 9, banks=1),
     Program("throughput", "Throughput Test", 6, 3),
     Program("setup", "Setup", 0, 0),
 )
@@ -138,8 +147,9 @@ class Image:
         self.chr = data[INES_HEADER + program.banks * BANK:]
 
     def tops(self):
-        """Where in the PRG each of its 32 KB ends: every one has vectors."""
-        return range(2 * BANK, len(self.prg) + 1, 2 * BANK)
+        """Where in the PRG each of its 32 KB ends, or its 16 KB: every one
+        has vectors."""
+        return range(min(2 * BANK, len(self.prg)), len(self.prg) + 1, 2 * BANK)
 
     def resets(self):
         return {self.prg[top - 4] | self.prg[top - 3] << 8 for top in self.tops()}
@@ -154,7 +164,8 @@ class Image:
 
     @property
     def control(self):
-        return CONTROL_VERTICAL if self.vertical else CONTROL_HORIZONTAL
+        mirroring = CONTROL_VERTICAL if self.vertical else CONTROL_HORIZONTAL
+        return mirroring | (CONTROL_16K_AT_C000 if self.program.banks == 1 else 0)
 
 
 def load(args):

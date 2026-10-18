@@ -59,6 +59,7 @@ Please join our [Discord](https://discord.gg/kwSC7pwtmb)!
 | [NES Radar](apps/nes-radar) | [k6lcm](https://github.com/k6lcm)'s live air traffic scope, no PC required |
 | [National Public Radio](apps/npr) | NPR's live .mp3 radio stream with optional headline news |
 | [Weather](apps/weather) | Current conditions and a 5-day forecast for a US zip code, which the NESP32 remembers |
+| [Bluesky](apps/bluesky) | Bluesky posts from a list of favorite accounts the NESP32 remembers, after [ConnectedNES](https://github.com/hxlnt/connectedNES) |
 
 \* These games contain copyrighted material. You must build the ROM yourself using the publicly available disassembly and the NESP32 patch provided here.
 

@@ -59,9 +59,10 @@ const int BATTERY_HIGH = 10;
 const struct {
     const char *id;
     const char *name;
-} APP_NAMES[] = {{"CNTR", "Contra"}, {"DRMA", "Dr. Mario"}, {"JUKE", "Jukebox"},
-                 {"NPR ", "NPR"}, {"RADR", "Radar"}, {"SETP", "Setup"}, {"THRU", "Throughput"},
-                 {"TTRS", "Tetris"}, {"WIKI", "Wikipedia"}, {"WTHR", "Weather"}};
+} APP_NAMES[] = {{"BSKY", "Bluesky"}, {"CNTR", "Contra"}, {"DRMA", "Dr. Mario"},
+                 {"JUKE", "Jukebox"}, {"NPR ", "NPR"}, {"RADR", "Radar"}, {"SETP", "Setup"},
+                 {"THRU", "Throughput"}, {"TTRS", "Tetris"}, {"WIKI", "Wikipedia"},
+                 {"WTHR", "Weather"}};
 const char *const WIFI_STATES[] = {"not set up", "not joined", "joining", "joined", "failed"};
 
 char shown[ROWS][RADIO_SHOWN_MAX];

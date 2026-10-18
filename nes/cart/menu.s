@@ -1,6 +1,6 @@
 ; nesp32 cartridge: the menu.
 ;
-; One cartridge has the seven programs that use a nesp32, and this, which is
+; One cartridge has the eight programs that use a nesp32, and this, which is
 ; what comes up at power-on and at reset: their names, an arrow, and A or
 ; Start to run the one it is at. nes/cart/gen_cart.py has where each of
 ; them is on the cartridge, and what it does to make reset come here.

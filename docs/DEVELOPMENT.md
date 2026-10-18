@@ -98,13 +98,13 @@ What is still to do on the hardware and the firmware is in
 
 | Part | State |
 |---|---|
-| The protocol ([`PROTOCOL.md`](PROTOCOL.md)) | version 1: frames, short frames, hello, and the services SYS, NET, RAW, PEER, DIAG, JUKE, WIKI, RADAR, TUNER and WEATHER |
+| The protocol ([`PROTOCOL.md`](PROTOCOL.md)) | version 1: frames, short frames, hello, and the services SYS, NET, RAW, PEER, DIAG, JUKE, WIKI, RADAR, TUNER, WEATHER and BSKY |
 | The link and services in C (`firmware/components/`) | done; tested on a computer |
 | The console's library (`nes/lib/`) | done; every read and write timed on py65 |
 | The firmware (`firmware/main/`): UART, Wi-Fi, HTTPS, the screen, the files, the USB drive, the connection to another nesp32 | working on a StickS3 and on a StickC Plus2, with the MiSTer and with a real NES ([its README](../firmware/README.md)) |
 | The nesp32's files, in a FAT filing system, with rips converted on the nesp32 itself | working on hardware: written over USB with `tools/put_files.py` to a StickC Plus2, and copied to a StickS3 as a USB drive |
 | A computer in place of a nesp32 (`host/serial_host.py`) | written, not run on a cable |
-| The cartridge (`nes/cart/`): seven programs and a menu, on an MMC1 | working on hardware with the first five, a real NES and the MiSTer, with each board. National Public Radio and Weather start from the menu on a simulated console; the cartridge with them has not yet run on hardware |
+| The cartridge (`nes/cart/`): eight programs and a menu, on an MMC1 | working on hardware with the first five, a real NES and the MiSTer, with each board. National Public Radio, Weather and Bluesky start from the menu on a simulated console; the cartridge with them has not yet run on hardware |
 | [Setup](../apps/setup), SYS, NET, DIAG | working on hardware |
 | [NESpedia](../apps/wiki), WIKI | working on hardware |
 | [Jukebox](../apps/jukebox), JUKE and RAW | working on hardware |
@@ -114,6 +114,7 @@ What is still to do on the hardware and the firmware is in
 | [NES Radar](../apps/nes-radar), RADAR | working on hardware |
 | [National Public Radio](../apps/npr), TUNER | working on hardware, and for long runs |
 | [Weather](../apps/weather), WEATHER | working on hardware, the ROM by itself |
+| [Bluesky](../apps/bluesky), BSKY | on a simulated console against the firmware's code; not yet on hardware |
 
 ## What is where
 
@@ -175,6 +176,11 @@ make test
   code's picture; a zip code that does not exist told from a site that is
   down; and the fetches by the clock. Weather's ROM is run against this
   code in its own tests.
+- `test_bsky.py`: an account's posts to cards, from what Bluesky sent for
+  one; text as ASCII, wrapped and cut; ages and dates; posts offered as
+  they come; handles; an account that does not exist told from a site
+  that is down; and the favorites, kept. Bluesky's ROM is run against
+  this code in its own tests.
 - `test_put_files.py`: the image of the tracks that goes over USB.
 - `test_vgm.py`: the converter of rips, held to the same bytes as
   nes-jukebox's Python over its rips, over made-up ones, and over 300 made

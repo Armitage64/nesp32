@@ -25,10 +25,11 @@ ROMS = {"jukebox": ("cart", "jukebox", "jukebox_link.nes"),
         "radar": ("cart", "radar", "nes_radar_cart.nes"),
         "npr": ("cart", "npr", "npr.nes"),
         "weather": ("cart", "weather", "weather.nes"),
+        "bluesky": ("cart", "bluesky", "bluesky.nes"),
         "setup": ("setup.nes",)}
 # What each says it is in its hello.
 APPS = {"jukebox": b"JUKE", "wiki": b"WIKI", "throughput": b"THRU", "radar": b"RADR",
-        "npr": b"NPR ", "weather": b"WTHR", "setup": b"SETP"}
+        "npr": b"NPR ", "weather": b"WTHR", "bluesky": b"BSKY", "setup": b"SETP"}
 MMC1_CHR0 = 1                   # the mapper's registers, as the console numbers them
 CHR_WRITES = 5                  # to set one
 RAM_END = 0x0800
@@ -135,8 +136,8 @@ def test_power_on_is_the_menu(cart):
     assert at_menu(c)
     assert c.mapper[:2] == [0x0E, 2 * cart_layout.MENU_PAGE]
     for index, name in enumerate(("Jukebox", "NESpedia", "NES Radar",
-                                  "National Public Radio", "Weather", "Throughput Test",
-                                  "Setup")):
+                                  "National Public Radio", "Weather", "Bluesky",
+                                  "Throughput Test", "Setup")):
         assert c.line(cart_layout.LIST_ROW + cart_layout.LIST_STEP * index) == name
     assert c.line(layout.HELP_ROW) == "A:RUN"
     assert c.sprite() == cart_layout.arrow(0) + (c.chr.index(
