@@ -6,10 +6,11 @@ joined over Wi-Fi. The nesp32 is an M5Stack Stick with
 [nesp32](../..)'s firmware, the one firmware for every ROM that uses one;
 this ROM asks it for its PEER service, as Dr. Mario's and Contra's do.
 
-**Status: works on two simulated consoles, not yet tried on hardware.**
-With nesp32's own link and services between them, the menu hosts and
-joins, and a game plays at full speed, the same on both screens throughout
-(`make test`).
+**Status: works.** A network game has been played with it on hardware,
+between a real NES and a MiSTer, each with a nesp32. On two simulated
+consoles, with nesp32's own link and services between them, the menu hosts
+and joins, and a game plays at full speed, the same on both screens
+throughout (`make test`).
 
 The original game has no game for two. Its code has one that was never
 finished and never offered: a second player's state, a second playfield,
@@ -115,6 +116,9 @@ nesp32, and player 2 enters the host's public address.
 
 ## What has been learned
 
+From hardware: a real NES and a MiSTer, each with a nesp32, hosted, joined
+and played a game for two over the network. No figures were taken.
+
 From the simulation:
 
 - **The game's NMI is most of the game's timing.** It draws a playfield
@@ -148,8 +152,8 @@ From the simulation:
 What is left on the nesp32 itself is in nesp32's
 [`docs/TODO.md`](../../docs/TODO.md).
 
-- **Play it on hardware**, two consoles on one network, and take the
-  figures Dr. Mario's README has.
+- **Take the figures Dr. Mario's README has**, from the nesp32s' logs over
+  a game on hardware: the delay, the frames that waited, the network's times.
 - **Say who won.** The game ends with both curtains down and no word of it.
 - **B-type for two.** Its goal, its heights and its endings are left out.
 - **The game's own sound effects for garbage**, and a mark of it coming;
