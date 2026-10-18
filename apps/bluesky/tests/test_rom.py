@@ -5,7 +5,7 @@ import os
 import gen_screen as layout
 import nesp_proto as p
 from reader import (NOT_FOUND, PAD_A, PAD_B, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_SELECT,
-                    PAD_START, PAD_UP, PAGE, SCREEN_APP, SCREEN_POST, cards, slots)
+                    PAD_START, PAD_UP, PAGE, SCREEN_HER, cards, slots)
 
 DEFAULTS = ["levimaaia.com", "andyreitano.com", "adriansdigitalbasement.com",
             "jeriellsworth.bsky.social"]
@@ -17,15 +17,16 @@ def test_the_layout_is_the_nesp32s():
     assert (layout.HANDLE_MAX, layout.FAVORITES) == (p.NESP_BSKY_HANDLE_MAX,
                                                      p.NESP_BSKY_FAVORITES)
     assert set(layout.SIGNS) == {p.NESP_BSKY_REPLY, p.NESP_BSKY_REPOST, p.NESP_BSKY_LIKE}
-    assert layout.OTHER_ROW < layout.ROWS
     assert layout.LETTERS[0] == " " and len(set(layout.LETTERS)) == len(layout.LETTERS)
-    assert len(layout.POST_SLOT_ROWS) == 8 and layout.TEXT_SLOTS == 6     # hers
+    assert len(layout.SLOT_ROWS) == 8 and layout.TEXT_SLOTS == 6        # hers
+    assert max(len(handle) for handle in DEFAULTS) <= layout.WIDTH        # each whole on a line
 
 
 def test_her_page_is_as_she_made_it_but_for_tiles_that_were_empty():
-    data = layout.chr_data(layout.build_screen(), PAGE)
-    for code in range(0x21, 0x7F):
-        assert any(data[16 * code:16 * code + 16])          # the app's font
+    data = layout.chr_data(PAGE)
+    sprites = data[:layout.PAGE]
+    used = [number for number in range(256) if any(sprites[16 * number:16 * number + 16])]
+    assert used == sorted((layout.ARROW_TILE, layout.MARK_TILE))
     hers = layout.read("ascii.chr")[layout.PAGE:]
     ours = data[layout.PAGE:]
     changed = [number for number in range(256)
@@ -54,25 +55,28 @@ def test_the_splash_is_connectednes_with_its_words(sky):
     s.splash_is_up()
     assert s.c.ctrl & 0x10          # her page of tiles
     ours = bytearray(layout.splash(PAGE))
-    start = 32 * layout.SPLASH_STATUS_ROW + layout.HER_COLUMN
-    ours[start:start + layout.HER_STATUS_WIDTH] = layout.her_status("Press Start", page=PAGE)
+    layout.put(ours, layout.SPLASH_STATUS_ROW,
+               layout.status_tiles("Press Start", ground=False, page=PAGE))
     assert bytes(s.c.vram[0x2000:0x2400]) == bytes(ours)
     assert bytes(s.c.vram[0x3F00:0x3F20]) == layout.read("test.pal")
     assert s.c.sprite() is None
     s.writes_were_in_time()
 
 
-def test_start_brings_up_the_favorites_a_nesp32_begins_with(sky):
+def test_start_brings_up_the_favorites_a_nesp32_begins_with_on_her_screen(sky):
     s = sky()
     assert s.go() == DEFAULTS
-    assert s.screen == SCREEN_APP and not s.c.ctrl & 0x10
-    assert bytes(s.c.vram[0x3F00:0x3F20]) == layout.palette_data()
-    header = layout.build_screen().nametable()
-    width = 32 * layout.HEADER_ROWS
-    assert bytes(s.c.vram[0x2000:0x2000 + width]) == header[:width]
-    assert s.arrow == layout.LIST_ROW and s.status == ""
-    assert s.foot == layout.FOOT_LIST           # by itself, Select has no menu to go to
+    assert s.screen == SCREEN_HER and s.c.ctrl & 0x10
+    assert bytes(s.c.vram[0x3F00:0x3F20]) == layout.read("test.pal")
+    assert s.lines()[:5] == DEFAULTS + [layout.OTHER_TEXT]
+    assert s.arrow == 0 and s.status == "FAVORITES"
+    assert s.help == layout.HELP_LIST           # by itself, Select has no menu to go to
     assert s.asked(p.NESP_BSKY_FAVORITE) == [bytes((number,)) for number in range(4)]
+    # Her picture is round the lines: nothing of hers is gone but her words.
+    blank = layout.blank_screen(PAGE)
+    for row in range(30):
+        if row not in layout.SLOT_ROWS + (layout.STATUS_ROW, layout.HELP_ROW):
+            assert bytes(s.c.vram[0x2000 + 32 * row:][:32]) == blank[32 * row:32 * row + 32]
     s.writes_were_in_time()
 
 
@@ -82,17 +86,15 @@ def test_a_post_is_on_her_screen_as_a_tweet_was(sky, feed):
     s.press(PAD_A)
     expected = cards(feed)
     assert s.post_is_up() == slots(expected[0])
-    assert s.screen == SCREEN_POST and s.c.ctrl & 0x10
-    assert bytes(s.c.vram[0x3F00:0x3F20]) == layout.read("test.pal")
     assert s.status == "POST 1 OF 8 PAGE 1/3"
     assert s.served == ["levimaaia.com"]
     assert s.asked(p.NESP_BSKY_FEED)[0] == b"\x01levimaaia.com"
     # Her picture is under the lines' spaces: the slope at the end of her
     # last line is as she drew it.
-    post = layout.post_screen(PAGE)
-    row = layout.POST_SLOT_ROWS[-1]
-    assert bytes(s.c.vram[0x2000 + 32 * row + 24:0x2000 + 32 * row + 28]) == \
-        post[32 * row + 24:32 * row + 28]
+    blank = layout.blank_screen(PAGE)
+    row = layout.SLOT_ROWS[-1]
+    assert bytes(s.c.vram[0x2000 + 32 * row + 24:0x2000 + 32 * row + 30]) == \
+        blank[32 * row + 24:32 * row + 30]
     s.writes_were_in_time()
 
 
@@ -128,7 +130,7 @@ def test_left_and_right_go_through_the_posts(sky, feed):
     assert s.post_is_up() == slots(expected[6]) and s.status == "POST 7 OF 8"
     s.press(PAD_B)
     assert s.list_is_up() == DEFAULTS
-    assert s.screen == SCREEN_APP and s.arrow == layout.LIST_ROW
+    assert s.arrow == 0 and s.status == "FAVORITES"
     s.writes_were_in_time()
 
 
@@ -137,15 +139,37 @@ def test_the_arrow_goes_round(sky):
     s.go()
     s.press(PAD_UP)
     s.settle()
-    assert s.arrow == layout.OTHER_ROW
+    assert s.arrow == len(DEFAULTS)             # the way to the form
     s.press(PAD_DOWN)
     s.press(PAD_DOWN)
     s.press(PAD_DOWN)
     s.settle()
-    assert s.arrow == layout.LIST_ROW + 2
+    assert s.arrow == 2
     s.press(PAD_A)
     s.post_is_up()
     assert s.served == ["adriansdigitalbasement.com"]
+
+
+def test_ten_favorites_are_eight_lines_at_a_time(sky):
+    kept = [b"h%d.example" % number for number in range(p.NESP_BSKY_FAVORITES)]
+    s = sky(kept=kept)
+    assert s.go() == [handle.decode() for handle in kept]
+    assert s.lines() == ["h%d.example" % number for number in range(8)]
+    for _ in range(8):
+        s.press(PAD_DOWN)
+    assert s.list_is_up() and s.arrow == 7 and s.c.byte("list_top") == 1
+    assert s.lines()[-1] == "h8.example"
+    s.press(PAD_DOWN)
+    s.press(PAD_DOWN)
+    assert s.list_is_up() and s.arrow == 7 and s.c.byte("list_top") == 3
+    assert s.lines()[-1] == layout.OTHER_TEXT
+    s.press(PAD_DOWN)               # round to the first
+    assert s.list_is_up() and s.arrow == 0 and s.c.byte("list_top") == 0
+    s.press(PAD_UP)                 # and back to the last
+    assert s.list_is_up() and s.arrow == 7 and s.c.byte("list_top") == 3
+    s.press(PAD_A)
+    s.settle()
+    assert s.c.byte("view") == VIEW_FORM
 
 
 def test_start_twice_takes_a_favorite_off_and_the_nesp32_keeps_that(sky):
@@ -157,7 +181,7 @@ def test_start_twice_takes_a_favorite_off_and_the_nesp32_keeps_that(sky):
     assert s.status == "START AGAIN TO REMOVE"
     s.press(PAD_DOWN)               # anything else calls it off
     s.settle()
-    assert s.status == ""
+    assert s.status == "FAVORITES"
     s.press(PAD_UP)
     s.press(PAD_START)
     s.press(PAD_START)
@@ -182,8 +206,8 @@ def test_a_handle_typed_in_the_form(sky):
     s.press(PAD_UP)                 # the last line: the way to the form
     s.press(PAD_A)
     s.settle()
-    assert s.view == VIEW_FORM and s.foot == layout.FOOT_FORM
-    assert s.rows() == layout.form_rows()
+    assert s.view == VIEW_FORM and s.help == layout.HELP_FORM
+    assert s.lines() == [line.rstrip() for line in layout.form_lines()]
     s.type("bsky.app")
     sprite = s.c.sprite()
     s.run(16)
@@ -208,8 +232,8 @@ def test_start_in_the_form_saves_and_goes_to_the_favorites(sky):
     s.settle()
     s.type("jay")
     s.press(PAD_START)
+    s.run_until(lambda: s.status == "SAVED TO FAVORITES")
     assert s.list_is_up() == DEFAULTS + ["jay.bsky.social"]
-    assert s.status == "SAVED TO FAVORITES"
     assert s.served == []
 
 
@@ -243,9 +267,8 @@ def test_a_handle_no_one_has(sky):
     s.go()
     s.press(PAD_A)
     s.run_until(lambda: s.status == "NO ONE HAS THAT HANDLE")
-    blank = layout.post_screen(PAGE)
-    for row in layout.POST_SLOT_ROWS:
-        assert bytes(s.c.vram[0x2000 + 32 * row:][:32]) == blank[32 * row:32 * row + 32]
+    s.settle()
+    assert s.lines() == [""] * 8
 
 
 def test_a_fetch_that_fails_says_why(sky):
@@ -291,16 +314,16 @@ def test_kept_favorites_are_the_list(sky):
     s.press(PAD_DOWN)
     s.press(PAD_DOWN)
     s.settle()
-    assert s.arrow == layout.OTHER_ROW
+    assert s.arrow == 2
 
 
 def test_no_favorites_at_all(sky):
     s = sky(kept=[])
     assert s.go() == []
-    assert s.arrow == layout.OTHER_ROW
+    assert s.arrow == 0 and s.lines()[0] == layout.OTHER_TEXT
     s.press(PAD_START)              # there is nothing to remove
     s.run(10)
-    assert s.status == ""
+    assert s.status == "FAVORITES"
 
 
 def test_the_previews_are_up_to_date(tmp_path):

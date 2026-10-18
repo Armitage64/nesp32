@@ -3,28 +3,30 @@
 ; A nesp32 on controller port 2 asks Bluesky for an account's posts and
 ; lays each out in lines; this ROM asks for the lines and draws them. It is
 ; ConnectedNES's idea (Rachel Simone Weil, 2016), which put tweets on a NES
-; the same way through a Particle Photon, and a post is on her screen as a
-; tweet was: eight lines of 24 characters in her font, each after one of
-; her arrows, the handle first and the date last. What is new is on the
-; nesp32, its BSKY service (nesp32's docs/PROTOCOL.md).
+; the same way through a Particle Photon, and every screen is hers: her
+; picture, her font, her palettes, and eight lines of text where she drew a
+; tweet, each after one of her arrows. What is new is on the nesp32, its
+; BSKY service (nesp32's docs/PROTOCOL.md).
 ;
-; There are four views, on three screens:
+; There are four views, on two screens:
 ;
-;   the splash      hers, until the nesp32 has answered and Start is pressed
-;   the favorites   handles the nesp32 keeps: A reads one, Start twice takes
-;                   it off, Select is the cartridge's menu (on the
-;                   cartridge), and the last line is the way to the form
+;   the splash      hers, with this ROM's words, until the nesp32 has
+;                   answered and Start is pressed
+;   the favorites   handles the nesp32 keeps, a line each, eight at a time:
+;                   A reads one, Start twice takes it off, Select is the
+;                   cartridge's menu (on the cartridge), and the last line
+;                   is the way to the form
 ;   the form        a handle typed a letter at a time: Left and Right move,
 ;                   Up and Down change the letter, A reads it, Start saves
 ;                   it to the favorites, B goes back
-;   a post          on her screen: Left and Right go through the posts, Up
-;                   and Down through a post's text six lines at a time,
-;                   Start saves the account to the favorites, B goes back
+;   a post          as a tweet was: the handle, six lines of the text, and
+;                   when it was posted. Left and Right go through the posts,
+;                   Up and Down through a post's text, Start saves the
+;                   account to the favorites, B goes back
 ;
-; The favorites and the form are on NESpedia's screen, with its font and
-; header; the splash and a post on hers, with her font, palettes and page
-; of tiles. A status line on hers is on her blue ground, in letters of its
-; own.
+; The last three are on her screen with her words taken off. Her blue
+; ground at its foot has a status line and a line of what the buttons do,
+; in letters of its own.
 ;
 ; The link is nesp32's (its nes/lib/nesp.inc). Every use of it is one
 ; exchange, a request and its reply, made right after the NMI, at most one
@@ -37,15 +39,14 @@
 ;   BSKY FEED       a post is the view: this handle, and how it stands.
 ;                   Until it is known, and every 8 frames while it is
 ;                   being fetched
-;   BSKY LINE       the next of the eight lines on the screen, while there
-;                   is one to draw
+;   BSKY LINE       the next of her eight lines of the post, while there is
+;                   one to draw
 ;
 ; The NMI reads the controller, copies the sprite to the PPU, and draws
 ; what the main loop has staged: the status line when it has changed, and
 ; one row (row_buf, of row_len tiles). Nothing else writes to the PPU while
-; the screen is on. Going from one screen to another, the main loop turns
-; it off, loads the other's palettes and nametable itself, and turns it on
-; again.
+; the screen is on. Going from the splash to the rest, the main loop turns
+; it off, loads the other nametable itself, and turns it on again.
 
 PPUCTRL   = $2000
 PPUMASK   = $2001
@@ -61,8 +62,7 @@ JOY1      = $4016
 JOY2      = $4017
 APU_FRAME = $4017               ; writes; reads are JOY2
 
-PPUCTRL_NMI = $80
-PPUCTRL_BG_PAGE1 = $10          ; the background from the second page of tiles
+PPUCTRL_ON = $90                ; NMI on; her page of tiles behind, the sprites' in front
 PPUMASK_ON = $1E                ; background and sprites, left column included
 FRAME_IRQ_INHIBIT = $40
 NAMETABLE = $2000
@@ -92,16 +92,15 @@ CART_STUB_FIRST = $EE           ; inc absolute
 NESP_RX_MASK = $3F              ; replies of up to 63 bytes: a line, and what it is of
 NESP_TX_MAX  = 28               ; an id and a handle
 .define NESP_APP "BSKY"
-NESP_APP_VERSION = 2
+NESP_APP_VERSION = 3
 
 VIEW_SPLASH = 0
 VIEW_LIST   = 1
 VIEW_FORM   = 2
 VIEW_POST   = 3
 
-SCREEN_SPLASH = 0               ; which nametable, palettes and page are up
-SCREEN_APP    = 1
-SCREEN_POST   = 2
+SCREEN_SPLASH = 0               ; which nametable is up
+SCREEN_HER    = 1               ; hers with no words: the list, the form and a post
 SCREEN_NONE   = $FF
 
 PENDING_NONE   = 0
@@ -114,7 +113,8 @@ BLINK_MASK = $10                ; the form's mark is hidden for 16 frames in 32
 MISSED_MAX = 8                  ; exchanges in a row with no reply: the nesp32 is not there
 SPRITE_HIDDEN = $FF
 SPACE = ' '
-WHEN_SLOT = POST_SLOTS - 1      ; the last of her lines: when it was posted
+WHEN_SLOT = SLOTS - 1           ; the last of her lines: when it was posted
+HELP_ROW = SLOTS                ; what the ROM paints after her lines
 
 oam = $0200                     ; the sprite, copied to the PPU every NMI
 
@@ -143,21 +143,24 @@ presses:      .res 1            ; the main loop's copy of pad_new
 on_cart:      .res 1            ; this is on nesp32's cartridge, which has a menu
 screen_on:    .res 1            ; 0: the NMI leaves the PPU alone, and keeps it off
 screen:       .res 1            ; SCREEN_*
-ppu_ctrl:     .res 1            ; what the NMI writes to PPUCTRL
 status:       .res 1            ; STATUS_*: what the status line says
 status_dirty: .res 1            ; and it is not on the screen yet
 status_addr:  .res 2            ; where the status line is, high byte first,
-status_len:   .res 1            ; how long it is,
-status_buf:   .res COLUMNS      ; and its tiles
+status_buf:   .res WIDTH        ; and its tiles
+status_y:     .res 1            ; set_status's
 greeted:      .res 1            ; the nesp32 has answered this ROM's hello
 link_missed:  .res 1            ; exchanges in a row with no reply, up to MISSED_MAX
 link_failed:  .res 2            ; every exchange with none, for a debugger's watch list
 why_buf:      .res COLUMNS      ; the nesp32's words for what went wrong, as ASCII
 count_buf:    .res COLUMNS      ; "POST 3 OF 25 PAGE 1/2", likewise
+count_tmp:    .res COLUMNS      ; where count_status puts the words together,
+digits_len:   .res 1            ; and how long they are
 view:         .res 1            ; VIEW_*
-paint_at:     .res 1            ; the app's rows still to paint: from this one
+paint_at:     .res 1            ; rows still to paint: from this one
 paint_end:    .res 1            ; up to this one
-row_buf:      .res COLUMNS      ; a row for the NMI to draw,
+line_buf:     .res WIDTH        ; a line of text, as ASCII, before it is tiles
+line_len:     .res 1
+row_buf:      .res WIDTH        ; a row for the NMI to draw,
 row_addr:     .res 2            ; where, high byte first,
 row_len:      .res 1            ; how long,
 row_dirty:    .res 1            ; and that it has not yet
@@ -168,13 +171,14 @@ fav_next:     .res 1            ; from this one
 fav_lens:     .res FAVORITES
 favs:         .res FAVORITES * HANDLE_MAX
 choice:       .res 1            ; the line the arrow is at: a favorite, or fav_count for the form
+list_top:     .res 1            ; the one on her first line
 confirm:      .res 1            ; Start has been pressed once at it
 pending:      .res 1            ; PENDING_*
 pending_again: .res 1           ; it went, and no reply came: send it again as it was
 pending_arg:  .res 1            ; REMOVE's number
 from_form:    .res 1            ; an ADD is the form's: the favorites come up after
 ; The form: a letter a place, as its number in `letters`.
-form_at:      .res HANDLE_MAX
+form_at:      .res FORM_MAX
 form_cursor:  .res 1
 ; A post is the view: the handle, and the post on the screen.
 handle:       .res HANDLE_MAX
@@ -185,11 +189,8 @@ post_count:   .res 1            ; posts the nesp32 holds
 post_index:   .res 1            ; the one on the screen
 post_used:    .res 1            ; its lines of text
 text_top:     .res 1            ; the first of them on the screen
-row_next:     .res 1            ; the next of her lines to draw; POST_SLOTS when they all are
+row_next:     .res 1            ; the next of her lines to draw; SLOTS when they all are
 asked_line:   .res 1            ; the post's line that LINE asked for
-digits_len:   .res 1            ; count_status's,
-count_tmp:    .res COLUMNS      ; and where it puts the words together
-status_y:     .res 1            ; set_status's
 
 .include "nesp.inc"
 
@@ -200,19 +201,16 @@ status_y:     .res 1            ; set_status's
 .assert HANDLE_MAX = NESP_BSKY_HANDLE_MAX && FAVORITES = NESP_BSKY_FAVORITES, error, "and so are the favorites"
 .assert NESP_BSKY_HANDLE_ROW = 0 && NESP_BSKY_WHEN_ROW = 1, error, "slot_line"
 .assert NESP_BSKY_TEXT_ROW = 2, error, "slot_line"
-.assert POST_COLUMNS <= COLUMNS && NESP_BSKY_COLUMNS + 2 <= COLUMNS, error, "row_buf and why_buf"
+.assert POST_COLUMNS <= WIDTH && NESP_BSKY_COLUMNS + 2 <= COLUMNS, error, "row_buf and why_buf"
+.assert FORM_MAX <= HANDLE_MAX && FORM_MAX <= WIDTH, error, "the form's handle"
 
 .segment "RODATA"
 palette_data:
     .incbin "palette.bin"
-splash_palette:
-    .incbin "splash_palette.bin"
-screen_data:
-    .incbin "screen.bin"
 splash_data:
     .incbin "splash.bin"
-post_data:
-    .incbin "post.bin"
+her_data:
+    .incbin "her.bin"
 
 ; The status line's text, by STATUS_*.
 status_lo:
@@ -226,30 +224,16 @@ status_hi:
 .endrepeat
     .byte >why_buf, >count_buf
 
-; Each screen's palettes, nametable, PPUCTRL, and status line: where, how
-; long, from what character of a text, and through what table.
-screen_pal_lo:  .byte <splash_palette, <palette_data, <splash_palette
-screen_pal_hi:  .byte >splash_palette, >palette_data, >splash_palette
-screen_nam_lo:  .byte <splash_data, <screen_data, <post_data
-screen_nam_hi:  .byte >splash_data, >screen_data, >post_data
-screen_ctrl:    .byte PPUCTRL_NMI | PPUCTRL_BG_PAGE1, PPUCTRL_NMI, PPUCTRL_NMI | PPUCTRL_BG_PAGE1
-screen_st_lo:   .byte <SPLASH_STATUS_ADDR, <STATUS_ADDR, <POST_STATUS_ADDR
-screen_st_hi:   .byte >SPLASH_STATUS_ADDR, >STATUS_ADDR, >POST_STATUS_ADDR
-screen_st_len:  .byte HER_STATUS_WIDTH, COLUMNS, HER_STATUS_WIDTH
-screen_st_skip: .byte HER_STATUS_SKIP, 0, HER_STATUS_SKIP
-screen_map_lo:  .byte <her_font, 0, <her_ground
-screen_map_hi:  .byte >her_font, 0, >her_ground
-.assert SCREEN_SPLASH = 0 && SCREEN_APP = 1 && SCREEN_POST = 2, error, "the screen tables"
+; Each screen's nametable, and its status line: where, and in what font.
+screen_nam_lo:  .byte <splash_data, <her_data
+screen_nam_hi:  .byte >splash_data, >her_data
+screen_st_lo:   .byte <SPLASH_STATUS_ADDR, <STATUS_ADDR
+screen_st_hi:   .byte >SPLASH_STATUS_ADDR, >STATUS_ADDR
+screen_map_lo:  .byte <her_font, <her_ground
+screen_map_hi:  .byte >her_font, >her_ground
+.assert SCREEN_SPLASH = 0 && SCREEN_HER = 1, error, "the screen tables"
 
-; Where a row of the middle begins in a template, and where a favorite is.
-row_off_lo:
-.repeat ROWS, index
-    .byte <(index * COLUMNS)
-.endrepeat
-row_off_hi:
-.repeat ROWS, index
-    .byte >(index * COLUMNS)
-.endrepeat
+; Where a favorite is, and where a line of the form is in its template.
 fav_lo:
 .repeat FAVORITES, index
     .byte <(favs + index * HANDLE_MAX)
@@ -257,6 +241,14 @@ fav_lo:
 fav_hi:
 .repeat FAVORITES, index
     .byte >(favs + index * HANDLE_MAX)
+.endrepeat
+form_lo:
+.repeat SLOTS, index
+    .byte <(form_text + index * WIDTH)
+.endrepeat
+form_hi:
+.repeat SLOTS, index
+    .byte >(form_text + index * WIDTH)
 .endrepeat
 
 ; What the status line says of each of the nesp32's states, with no posts.
@@ -314,6 +306,18 @@ page_word:  .byte " PAGE "
     bit PPUSTATUS
     bpl @vblank2
 
+    lda #>PALETTE               ; her palettes, for every screen
+    sta PPUADDR
+    lda #<PALETTE
+    sta PPUADDR
+    ldx #0
+@color:
+    lda palette_data,x
+    sta PPUDATA
+    inx
+    cpx #32
+    bne @color
+
     lda #SCREEN_NONE
     sta screen
     lda #FEED_UNKNOWN
@@ -333,7 +337,7 @@ page_word:  .byte " PAGE "
     jsr load_screen             ; rendering is off; the first NMI turns it on
     lda #1
     sta screen_on
-    lda ppu_ctrl
+    lda #PPUCTRL_ON
     sta PPUCTRL
     ; fall through
 .endproc
@@ -362,7 +366,7 @@ main_wait:
 ; --- the screens -------------------------------------------------------------------
 
 ; Screen A is to be up (SCREEN_*). If another is, the picture goes off at
-; the next NMI, A's palettes and nametable go in, and it comes on again.
+; the next NMI, A's nametable goes in, and it comes on again.
 .proc switch_screen
     cmp screen
     bne @other
@@ -384,27 +388,11 @@ main_wait:
     rts
 .endproc
 
-; Screen A's palettes and nametable, and its status line drawn anew in it.
-; Rendering must be off.
+; Screen A's nametable, and its status line drawn anew in it. Rendering
+; must be off.
 .proc load_screen
     sta screen
     tax
-    lda screen_pal_lo,x
-    sta src_ptr
-    lda screen_pal_hi,x
-    sta src_ptr + 1
-    lda #>PALETTE
-    sta PPUADDR
-    lda #<PALETTE
-    sta PPUADDR
-    ldy #0
-@color:
-    lda (src_ptr),y
-    sta PPUDATA
-    iny
-    cpy #32
-    bne @color
-    ldx screen
     lda screen_nam_lo,x
     sta src_ptr
     lda screen_nam_hi,x
@@ -424,14 +412,10 @@ main_wait:
     dex
     bne @byte
     ldx screen
-    lda screen_ctrl,x
-    sta ppu_ctrl
     lda screen_st_hi,x
     sta status_addr
     lda screen_st_lo,x
     sta status_addr + 1
-    lda screen_st_len,x
-    sta status_len
     lda #0
     sta row_dirty               ; a row staged for the other screen is not drawn on this
     lda #PAINT_ROWS
@@ -443,40 +427,37 @@ main_wait:
 
 ; --- the status line ---------------------------------------------------------------
 
-; The status line is to say A (STATUS_*): its text, from the screen's first
-; character of it, through the screen's table, into status_buf. The NMI
-; draws it; it is told only once the tiles are whole.
+; The status line is to say A (STATUS_*): the middle WIDTH characters of its
+; text, through the screen's font, into status_buf. The NMI draws it; it is
+; told only once the tiles are whole.
 .proc set_status
     sta status
     tax
     lda #0
     sta status_dirty
     lda status_lo,x
-    ldy screen
     clc
-    adc screen_st_skip,y
+    adc #SKIP
     sta src_ptr
     lda status_hi,x
     adc #0
     sta src_ptr + 1
-    lda screen_map_lo,y
+    ldx screen
+    lda screen_map_lo,x
     sta dst_ptr
-    lda screen_map_hi,y
+    lda screen_map_hi,x
     sta dst_ptr + 1
     ldy #0
 @char:
     lda (src_ptr),y
-    ldx dst_ptr + 1
-    beq @put                    ; the app's screen: as it is
-    sty status_y                ; Y, while it indexes the table
+    sty status_y
     and #$7F
     tay
     lda (dst_ptr),y
     ldy status_y
-@put:
     sta status_buf,y
     iny
-    cpy status_len
+    cpy #WIDTH
     bne @char
     lda #1
     sta status_dirty
@@ -496,32 +477,69 @@ main_wait:
     jmp set_status
 @app:
     cmp #VIEW_POST
-    bne @none
+    bne @list
     lda #FEED_UNKNOWN           ; FEED will say
     sta feed_state
     rts
+@list:
+    cmp #VIEW_LIST
+    bne @none
+    lda #STATUS_FAVORITES
+    jmp set_status
 @none:
     lda #STATUS_NONE
     jmp set_status
 .endproc
 
-; --- the app's rows ----------------------------------------------------------------
+; --- her lines ---------------------------------------------------------------------
 
-; row_buf is whole, and is row X of the app's (the middle's rows, then the
-; foot): the NMI is to draw it there.
+; line_buf, line_len characters of it, into row_buf as her line X shows
+; them: her font, and where there is a space her picture as it was there.
+; Then the NMI is to draw it.
+.proc stage_line
+    lda slot_off_lo,x
+    clc
+    adc #<her_data
+    sta src_ptr
+    lda slot_off_hi,x
+    adc #>her_data
+    sta src_ptr + 1
+    ldy #0
+@char:
+    lda line_buf,y
+    cmp #SPACE
+    beq @under
+    and #$7F
+    sty status_y
+    tay
+    lda her_font,y
+    ldy status_y
+    jmp @put
+@under:
+    lda (src_ptr),y
+@put:
+    sta row_buf,y
+    iny
+    cpy line_len
+    bne @char
+    lda line_len
+    ; fall through
+.endproc
+
+; row_buf is whole, A tiles of it, and is for row X: one of her lines, or
+; the help. The NMI is to draw it there.
 .proc stage_row
-    lda paint_hi,x
-    sta row_addr
-    lda paint_lo,x
-    sta row_addr + 1
-    lda #COLUMNS
     sta row_len
+    lda slot_hi,x
+    sta row_addr
+    lda slot_lo,x
+    sta row_addr + 1
     lda #1
     sta row_dirty
     rts
 .endproc
 
-; All of the middle and the foot are to be painted anew.
+; All of her lines and the help are to be painted anew.
 .proc repaint
     lda #0
     sta paint_at
@@ -559,113 +577,134 @@ main_wait:
     ldx paint_at
     cpx paint_end
     beq @done
-    jsr fill_row
+    cpx #HELP_ROW
+    beq @help
+    jsr fill_line
     ldx paint_at
-    jsr stage_row
+    jsr stage_line
     inc paint_at
 @done:
     rts
+@help:
+    jsr help_row
+    ldx #HELP_ROW
+    lda #WIDTH
+    jsr stage_row
+    inc paint_at
+    rts
 .endproc
 
-; Row X of the app's view, into row_buf: the foot, or a row of the middle.
-.proc fill_row
-    cpx #ROWS
-    bne @middle
-    lda view
-    cmp #VIEW_FORM
-    beq @form_foot
-    lda on_cart
-    bne @cart_foot
-    lda #<foot_list
-    ldy #>foot_list
-    bne @foot
-@cart_foot:
-    lda #<foot_list_cart
-    ldy #>foot_list_cart
-    bne @foot
-@form_foot:
-    lda #<foot_form
-    ldy #>foot_form
-@foot:
-    sta src_ptr
-    sty src_ptr + 1
-    jmp copy_row
-@middle:
+; The help for the view, into row_buf: tiles of her ground, as they are.
+.proc help_row
     lda view
     cmp #VIEW_FORM
     beq @form
+    cmp #VIEW_POST
+    beq @post
+    lda on_cart
+    bne @cart
+    lda #<help_list
+    ldy #>help_list
+    bne @copy
+@cart:
+    lda #<help_list_cart
+    ldy #>help_list_cart
+    bne @copy
+@form:
+    lda #<help_form
+    ldy #>help_form
+    bne @copy
+@post:
+    lda #<help_post
+    ldy #>help_post
+@copy:
+    sta src_ptr
+    sty src_ptr + 1
+    ldy #WIDTH - 1
+@tile:
+    lda (src_ptr),y
+    sta row_buf,y
+    dey
+    bpl @tile
+    rts
+.endproc
+
+; Her line X of the view, into line_buf, as ASCII: a favorite or the way
+; to the form, a line of the form, or nothing, for a post's lines to come.
+.proc fill_line
+    lda #WIDTH
+    sta line_len
+    ldy #WIDTH - 1
+    lda #SPACE
+@blank:
+    sta line_buf,y
+    dey
+    bpl @blank
+    lda view
+    cmp #VIEW_LIST
+    beq @list
+    cmp #VIEW_FORM
+    beq @form
+    rts
+@list:
     txa
-    pha
-    lda #<list_text
-    ldy #>list_text
-    jsr template_row
-    pla
-    sec
-    sbc #LIST_ROW
-    bcc @done                   ; above the favorites
+    clc
+    adc list_top
     cmp fav_count
-    bcs @done                   ; below them
+    beq @other
+    bcs @done                   ; past the end
     tax
     lda fav_lo,x
     sta src_ptr
     lda fav_hi,x
     sta src_ptr + 1
-    lda #'@'
-    sta row_buf
     ldy fav_lens,x
-    beq @done
+    cpy #WIDTH + 1
+    bcc @handle
+    ldy #WIDTH
 @handle:
     dey
+    bmi @done
     lda (src_ptr),y
-    sta row_buf + 1,y
-    tya
-    bne @handle
+    sta line_buf,y
+    jmp @handle
+@other:
+    ldy #OTHER_LEN - 1
+@other_char:
+    lda other_text,y
+    sta line_buf,y
+    dey
+    bpl @other_char
 @done:
     rts
 @form:
-    txa
-    pha
-    lda #<form_text
-    ldy #>form_text
-    jsr template_row
-    pla
-    cmp #FORM_ROW
+    lda form_lo,x
+    sta src_ptr
+    lda form_hi,x
+    sta src_ptr + 1
+    ldy #WIDTH - 1
+@template:
+    lda (src_ptr),y
+    sta line_buf,y
+    dey
+    bpl @template
+    cpx #FORM_SLOT
     bne @done
-    ldx #HANDLE_MAX - 1
+    ldx #FORM_MAX - 1
 @letter:
     ldy form_at,x
     lda letters,y
-    sta row_buf + 1,x
+    sta line_buf,x
     dex
     bpl @letter
-    rts
-.endproc
-
-; Row X of a template of the middle's rows at YA, into row_buf.
-.proc template_row
-    clc
-    adc row_off_lo,x
-    sta src_ptr
-    tya
-    adc row_off_hi,x
-    sta src_ptr + 1
-    ; fall through
-.endproc
-
-; A row from src_ptr into row_buf.
-.proc copy_row
-    ldy #COLUMNS - 1
-@copy:
-    lda (src_ptr),y
-    sta row_buf,y
-    dey
-    bpl @copy
     rts
 .endproc
 
 ; The sprite: the arrow at a favorite, the form's mark, which blinks, or
 ; nothing.
 .proc place_sprite
+    lda screen_on
+    beq @hide
     lda view
     cmp #VIEW_LIST
     beq @list
@@ -676,18 +715,11 @@ main_wait:
     sta oam
     rts
 @list:
-    ldx choice
-    txa
-    cpx fav_count
-    bcc @favorite
-    lda #OTHER_ROW - LIST_ROW
-@favorite:
-    clc
-    adc #LIST_ROW
-    asl a
-    asl a
-    asl a
-    adc #BODY_Y - 1             ; a sprite is drawn a line below its Y
+    lda choice
+    sec
+    sbc list_top
+    tax
+    lda slot_y,x
     sta oam
     lda #ARROW_TILE
     sta oam + 1
@@ -700,7 +732,7 @@ main_wait:
     lda frame_count
     and #BLINK_MASK
     bne @hide
-    lda #BODY_Y + 8 * FORM_ROW - 1
+    lda slot_y + FORM_SLOT
     sta oam
     lda #MARK_TILE
     sta oam + 1
@@ -765,7 +797,7 @@ main_wait:
     beq @move
     lda #0
     sta confirm
-    lda #STATUS_NONE
+    lda #STATUS_FAVORITES
     jsr set_status
 @move:
     ldx choice
@@ -786,9 +818,11 @@ main_wait:
     ldx #0
 @a:
     stx choice
+    jsr follow_choice
     lda presses
     and #PAD_A
     beq @done
+    ldx choice
     cpx fav_count
     bcc @read
     jmp show_form
@@ -812,6 +846,28 @@ main_wait:
     sta pending
     lda #0
     sta pending_again
+@done:
+    rts
+.endproc
+
+; Her lines show the favorites from list_top: the arrow's line is to be
+; among them, and they are painted anew when it was not.
+.proc follow_choice
+    lda choice
+    cmp list_top
+    bcs @not_above
+    sta list_top
+    jmp repaint
+@not_above:
+    sec
+    sbc #SLOTS - 1
+    bcc @done
+    beq @done
+    cmp list_top
+    bcc @done
+    beq @done
+    sta list_top
+    jmp repaint
 @done:
     rts
 .endproc
@@ -858,13 +914,13 @@ main_wait:
     beq @right
     dex
     bpl @right
-    ldx #HANDLE_MAX - 1
+    ldx #FORM_MAX - 1
 @right:
     lda presses
     and #PAD_RIGHT
     beq @letter
     inx
-    cpx #HANDLE_MAX
+    cpx #FORM_MAX
     bne @letter
     ldx #0
 @letter:
@@ -889,7 +945,7 @@ main_wait:
 @changed:
     lda #STATUS_NONE
     jsr set_status
-    ldx #FORM_ROW
+    ldx #FORM_SLOT
     jmp repaint_row
 @done:
     rts
@@ -952,42 +1008,47 @@ main_wait:
 
 ; --- the views ---------------------------------------------------------------------
 
-.proc show_list
-    lda #VIEW_LIST
+; View A, on her screen: its lines and its help from the first.
+.proc show_view
     sta view
+    lda #SCREEN_HER
+    jsr switch_screen
+    jmp repaint
+.endproc
+
+.proc show_list
     lda #0
     sta confirm
     jsr clamp_choice
-    lda #STATUS_NONE
+    lda #STATUS_FAVORITES
     sta status
-    lda #SCREEN_APP
-    jsr switch_screen
-    lda #STATUS_NONE
-    jsr set_status
-    jmp repaint
+    lda #VIEW_LIST
+    jsr show_view
+    lda #STATUS_FAVORITES
+    jmp set_status
 .endproc
 
 .proc show_form
-    lda #VIEW_FORM
-    sta view
     lda #STATUS_NONE
     sta status
-    lda #SCREEN_APP
-    jsr switch_screen
+    lda #VIEW_FORM
+    jsr show_view
     lda #STATUS_NONE
-    jsr set_status
-    jmp repaint
+    jmp set_status
 .endproc
 
-; The arrow is never past the way to the form.
+; The arrow is never past the way to the form, and its line is on the
+; screen.
 .proc clamp_choice
     lda choice
     cmp fav_count
-    bcc @done
+    bcc @follow
     lda fav_count
     sta choice
-@done:
-    rts
+@follow:
+    lda #0
+    sta list_top
+    jmp follow_choice
 .endproc
 
 ; A: the favorite at the arrow is the handle whose posts are wanted.
@@ -1027,17 +1088,14 @@ main_wait:
     inc handle_len
 @space:
     inx
-    cpx #HANDLE_MAX
+    cpx #FORM_MAX
     bne @letter
     lda handle_len
     rts
 .endproc
 
-; `handle`'s posts are the view, on her screen: a new choice, from its
-; first post.
+; `handle`'s posts are the view: a new choice, from its first post.
 .proc show_post
-    lda #VIEW_POST
-    sta view
     inc feed_id
     lda #FEED_UNKNOWN
     sta feed_state
@@ -1045,10 +1103,8 @@ main_wait:
     sta post_count
     sta post_index
     jsr from_the_top
-    lda #STATUS_FETCHING
-    sta status
-    lda #SCREEN_POST
-    jsr switch_screen
+    lda #VIEW_POST
+    jsr show_view
     lda #STATUS_FETCHING
     jmp set_status
 .endproc
@@ -1225,12 +1281,15 @@ main_wait:
     jmp ask_feed
 @known:
     lda row_next
-    cmp #POST_SLOTS
+    cmp #SLOTS
     beq @poll
     lda post_index
     cmp post_count
     bcs @poll                   ; not held yet
-    lda row_dirty               ; a line at a time
+    lda row_dirty               ; a line at a time,
+    bne @idle
+    lda paint_at                ; and none over lines that are still being cleared
+    cmp paint_end
     bne @idle
     jmp ask_line
 @poll:
@@ -1503,9 +1562,7 @@ main_wait:
     rts
 .endproc
 
-; The next of her lines of the post on the screen, from the nesp32's line,
-; into row_buf in her font: where it has a space, her picture as it was
-; there.
+; The next of her lines of the post on the screen, from the nesp32's line.
 .proc ask_line
     lda post_index
     sta nesp_request
@@ -1546,39 +1603,16 @@ main_wait:
     sta post_used               ; how much text it has: the page count may be new
     jsr count_status
 @drawn:
-    ldx row_next
-    lda slot_off_lo,x
-    clc
-    adc #<post_data
-    sta src_ptr
-    lda slot_off_hi,x
-    adc #>post_data
-    sta src_ptr + 1
-    ldy #0
-@char:
+    ldy #POST_COLUMNS - 1
+@copy:
     lda nesp_reply + 4,y
-    cmp #SPACE
-    beq @under
-    and #$7F
-    tax
-    lda her_font,x
-    jmp @put
-@under:
-    lda (src_ptr),y
-@put:
-    sta row_buf,y
-    iny
-    cpy #POST_COLUMNS
-    bne @char
-    ldx row_next
-    lda slot_hi,x
-    sta row_addr
-    lda slot_lo,x
-    sta row_addr + 1
+    sta line_buf,y
+    dey
+    bpl @copy
     lda #POST_COLUMNS
-    sta row_len
-    lda #1
-    sta row_dirty
+    sta line_len
+    ldx row_next
+    jsr stage_line
     inc row_next
 @heard:
     jmp link_heard
@@ -1743,7 +1777,7 @@ main_wait:
     lda status_buf,y
     sta PPUDATA
     iny
-    cpy status_len
+    cpy #WIDTH
     bne @char
     lda #0
     sta status_dirty
@@ -1764,7 +1798,7 @@ main_wait:
     lda #0
     sta row_dirty
 @scroll:
-    lda ppu_ctrl
+    lda #PPUCTRL_ON
     sta PPUCTRL
     lda #0
     sta PPUSCROLL

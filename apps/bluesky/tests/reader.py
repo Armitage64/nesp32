@@ -22,21 +22,22 @@ from console import (PAD_A, PAD_B, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_SELECT, PA
 from wire import link
 
 __all__ = ["Reader", "PAD_A", "PAD_B", "PAD_DOWN", "PAD_LEFT", "PAD_RIGHT", "PAD_SELECT",
-           "PAD_START", "PAD_UP", "NOT_FOUND", "NOW", "cards", "slots", "PAGE", "SCREEN_APP",
-           "SCREEN_POST", "SCREEN_SPLASH"]
+           "PAD_START", "PAD_UP", "NOT_FOUND", "NOW", "cards", "slots", "PAGE", "SCREEN_HER",
+           "SCREEN_SPLASH"]
 
 VIEW_SPLASH, VIEW_LIST, VIEW_FORM, VIEW_POST = range(4)
-SCREEN_SPLASH, SCREEN_APP, SCREEN_POST = range(3)
+SCREEN_SPLASH, SCREEN_HER = range(2)
 PAGE = layout.HerPage()
 NOT_FOUND = object()                # Bluesky's answer to a handle no one has
 NOW = calendar.timegm((2026, 10, 18, 10, 0, 0))
 
 
 def her_text(tiles, ground=False):
-    """Tiles of her font, or of her ground's, as text."""
+    """Tiles of her font, or of her ground's, as text: what is neither (her
+    picture, under a space) as a space."""
     table = PAGE.ground if ground else PAGE.font
     back = {tile: char for char, tile in table.items()}
-    return "".join(back.get(tile, "^") for tile in tiles)
+    return "".join(back.get(tile, " ") for tile in tiles)
 
 
 def slots(lines, top=0):
@@ -44,7 +45,7 @@ def slots(lines, top=0):
     text from `top`, and when it was posted."""
     text = lines[layout.TEXT_ROW + top:layout.TEXT_ROW + top + layout.TEXT_SLOTS]
     shown = [lines[layout.HANDLE_ROW]] + text + [lines[layout.WHEN_ROW]]
-    return [layout.post_slot(line.decode("latin-1"), slot, PAGE)
+    return [layout.slot_tiles(line.decode("latin-1"), slot, PAGE, layout.POST_COLUMNS)
             for slot, line in enumerate(shown)]
 
 
@@ -135,7 +136,7 @@ class Reader:
     def type(self, handle):
         """Set the form's letters to a handle, from wherever its mark is."""
         letters = layout.LETTERS
-        for index in range(layout.HANDLE_MAX):
+        for index in range(layout.FORM_MAX):
             want = letters.index(handle[index]) if index < len(handle) else 0
             while self.c.byte("form_cursor") != index:
                 self.press(PAD_RIGHT)
@@ -159,44 +160,40 @@ class Reader:
     @property
     def status(self):
         """The status line, wherever the screen up has it."""
-        if self.screen == SCREEN_APP:
-            return self.c.line(layout.STATUS_ROW)
-        row = layout.SPLASH_STATUS_ROW if self.screen == SCREEN_SPLASH else layout.POST_STATUS_ROW
-        tiles = self.c.tiles(row, layout.HER_COLUMN, layout.HER_STATUS_WIDTH)
-        return her_text(tiles, ground=self.screen == SCREEN_POST).strip()
+        if self.screen == SCREEN_SPLASH:
+            tiles = self.c.tiles(layout.SPLASH_STATUS_ROW, layout.HER_COLUMN, layout.WIDTH)
+            return her_text(tiles).strip()
+        tiles = self.c.tiles(layout.STATUS_ROW, layout.HER_COLUMN, layout.WIDTH)
+        return her_text(tiles, ground=True).strip()
 
     @property
-    def foot(self):
-        return self.c.line(layout.FOOT_ROW)
+    def help(self):
+        """The line of what the buttons do, on her ground."""
+        tiles = self.c.tiles(layout.HELP_ROW, layout.HER_COLUMN, layout.WIDTH)
+        return her_text(tiles, ground=True).strip()
 
-    def row(self, number):
-        """A row of the middle of the app's screen, as its tiles."""
-        return self.c.tiles(layout.BODY_ROW + number, layout.LEFT, layout.COLUMNS)
-
-    def rows(self):
-        return [self.row(number) for number in range(layout.ROWS)]
-
-    def slots(self):
+    def slots(self, width=layout.WIDTH):
         """Her eight lines, as their tiles."""
-        return [self.c.tiles(row, layout.HER_COLUMN, layout.POST_COLUMNS)
-                for row in layout.POST_SLOT_ROWS]
+        return [self.c.tiles(row, layout.HER_COLUMN, width) for row in layout.SLOT_ROWS]
+
+    def lines(self):
+        """Her eight lines, as text."""
+        return [her_text(tiles).rstrip() for tiles in self.slots()]
 
     @property
     def arrow(self):
-        """The favorite the arrow is at, by its row of the middle; None if
-        it is not on the picture."""
+        """Which of her lines the arrow is at; None if it is not on the
+        picture."""
         sprite = self.c.sprite()
         if sprite is None or sprite[2] != layout.ARROW_TILE:
             return None
         x, y, _ = sprite
-        assert x == 8 * layout.ARROW_COLUMN and y % 8 == 0
-        return y // 8 - layout.BODY_ROW
+        assert x == 8 * layout.ARROW_COLUMN
+        return layout.SLOT_ROWS.index(y // 8)
 
     @property
     def typed(self):
-        row = self.row(layout.FORM_ROW).decode("ascii")
-        assert row[0] == "@"
-        return row[1:].rstrip()
+        return self.lines()[layout.FORM_SLOT]
 
     def painted(self):
         return (self.c.byte("screen_on") and self.c.byte("paint_at") == self.c.byte("paint_end")
@@ -210,17 +207,20 @@ class Reader:
                        and self.status == "Press Start" and self.painted(), frames)
 
     def list_is_up(self):
-        """The favorites, whole: their handles."""
-        self.run_until(lambda: self.view == VIEW_LIST and self.screen == SCREEN_APP
-                       and self.c.byte("screen_on") and not self.c.byte("fav_load")
-                       and self.painted())
-        rows = self.rows()
-        assert rows == layout.list_rows([row[1:].decode().rstrip() for row in
-                                         rows[layout.LIST_ROW:layout.LIST_ROW
-                                              + self.c.byte("fav_count")]])
-        assert self.foot == layout.FOOT_LIST
-        return [row[1:].decode().rstrip()
-                for row in rows[layout.LIST_ROW:layout.LIST_ROW + self.c.byte("fav_count")]]
+        """The favorites, whole: every handle the ROM holds, with her lines
+        showing those from its window."""
+        self.run_until(lambda: self.view == VIEW_LIST and self.screen == SCREEN_HER
+                       and not self.c.byte("fav_load") and self.painted())
+        handles = []
+        for index in range(self.c.byte("fav_count")):
+            length = self.c.byte("fav_lens", index)
+            start = self.c.labels["favs"] + index * layout.HANDLE_MAX
+            handles.append(bytes(self.c.memory[start:start + length]).decode("ascii"))
+        top = self.c.byte("list_top")
+        assert self.slots() == [layout.slot_tiles(text[:layout.WIDTH], slot, PAGE)
+                                for slot, text in enumerate(layout.list_lines(handles, top))]
+        assert self.help in (layout.HELP_LIST, layout.HELP_LIST_CART)
+        return handles
 
     def go(self):
         """From power-on to the favorites."""
@@ -230,13 +230,12 @@ class Reader:
 
     def post_is_up(self, frames=600):
         """A post, whole: her eight lines, as tiles."""
-        self.run_until(lambda: self.view == VIEW_POST and self.screen == SCREEN_POST
-                       and self.c.byte("row_next") == len(layout.POST_SLOT_ROWS) and self.painted(),
+        self.run_until(lambda: self.view == VIEW_POST and self.screen == SCREEN_HER
+                       and self.c.byte("row_next") == len(layout.SLOT_ROWS) and self.painted(),
                        frames)
         assert self.c.sprite() is None
-        help_row = self.c.tiles(layout.POST_HELP_ROW, layout.HER_COLUMN, layout.HER_STATUS_WIDTH)
-        assert her_text(help_row, ground=True).strip() == layout.POST_HELP
-        return self.slots()
+        assert self.help == layout.HELP_POST
+        return self.slots(layout.POST_COLUMNS)
 
     # --- what the console did ----------------------------------------------------
 

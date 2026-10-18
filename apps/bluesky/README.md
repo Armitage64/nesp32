@@ -52,8 +52,13 @@ With the nesp32 on a Wi-Fi network (the [setup ROM](../setup) joins one)
 and on controller port 2, start `build/bluesky.nes`. Her splash says
 `Looking for the nesp32...` until the nesp32 answers, then `Press Start`.
 
-**The favorites** come next: handles the nesp32 keeps, over power-off
-too. A nesp32 that has kept none begins with four: `@levimaaia.com`,
+Every screen after it is hers too, with eight lines where she drew a
+tweet, each after one of her arrows, and her blue ground at the foot saying
+how it stands and what the buttons do.
+
+**The favorites** come next, a handle a line, the chosen one's arrow
+white: handles the nesp32 keeps, over power-off too. With more than eight
+lines, they go by as the arrow moves. A nesp32 that has kept none begins with four: `@levimaaia.com`,
 `@andyreitano.com`, `@adriansdigitalbasement.com` and
 `@jeriellsworth.bsky.social`. Up to ten can be kept.
 
@@ -135,5 +140,5 @@ the vblank.
 The splash screen, the screen a post is on, their font and their palettes
 are Rachel Simone Weil's,
 from [ConnectedNES](https://github.com/hxlnt/connectedNES), under the MIT
-licence ([`connectednes/LICENSE`](connectednes/LICENSE)). The font of the
-rest and the header are NESpedia's.
+licence ([`connectednes/LICENSE`](connectednes/LICENSE)). The arrow and
+the form's mark are NESpedia's font's.

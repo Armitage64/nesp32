@@ -7,10 +7,10 @@
 #
 # The ROM's host is a nesp32, whose firmware is at the top of this
 # repository (two directories up). From it come the link's library for the
-# console and the numbers the two ends share. The font and the header come
-# from NESpedia's tools in ../wiki/tools, which load nesp32's code built for
-# this computer, as NESpedia's own build does; the splash comes from
-# ConnectedNES, in connectednes/.
+# console and the numbers the two ends share. Every screen is ConnectedNES's,
+# from connectednes/; the sprite's two tiles are NESpedia's font's, from its
+# tools in ../wiki/tools, which load nesp32's code built for this computer,
+# as NESpedia's own build does.
 
 BUILD ?= build
 NESP32 ?= ../..
@@ -41,8 +41,8 @@ $(BUILD)/link.inc: $(NESP_LIB) $(NESP)
 	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $@
 
 # gen_screen.py rewrites only the files whose contents changed.
-SCREEN := $(BUILD)/chr.bin $(BUILD)/screen.bin $(BUILD)/splash.bin $(BUILD)/palette.bin \
-	$(BUILD)/splash_palette.bin $(BUILD)/screen.inc
+SCREEN := $(BUILD)/chr.bin $(BUILD)/splash.bin $(BUILD)/her.bin $(BUILD)/palette.bin \
+	$(BUILD)/screen.inc
 CONNECTEDNES := $(wildcard connectednes/*.nam connectednes/*.chr connectednes/*.pal \
 	connectednes/*.atr)
 

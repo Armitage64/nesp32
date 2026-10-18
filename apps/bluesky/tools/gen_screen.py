@@ -1,39 +1,33 @@
 #!/usr/bin/env python3
-"""Write the Bluesky ROM's tiles, its three screens, their palettes, and the
-texts and tables it puts on them.
+"""Write the Bluesky ROM's tiles, its two screens, and the texts and tables
+it puts on them.
 
     tools/gen_screen.py build
     tools/gen_screen.py build --preview docs/screen.png
 
-    chr.bin             8 KB: this ROM's page of tiles, then ConnectedNES's
-    screen.bin          the app's nametable: the header, and nothing under it
-    splash.bin          the splash: ConnectedNES's, with this ROM's words
-    post.bin            a post: ConnectedNES's, with no words
-    palette.bin         the app's palettes, the background's and the sprites'
-    splash_palette.bin  hers
+    chr.bin             8 KB: a page of this ROM's sprites, then ConnectedNES's page
+    splash.bin          the splash: ConnectedNES's screen, with this ROM's words
+    her.bin             the rest: her screen, with no words
+    palette.bin         her palettes, the background's and the sprites'
     screen.inc          where things go, and what the ROM writes there
 
-Two of the screens are Rachel Simone Weil's, from ConnectedNES
-(../connectednes): her picture, her font, her palettes, on her page of
-tiles. The splash has this ROM's words in place of hers. A post is drawn
-where she drew a tweet: eight lines of 24 characters on every other row,
-each after one of her arrows, the handle first, six of the text, and when
-it was posted last; the nesp32 lays the lines out (nesp32's
-docs/PROTOCOL.md, BSKY). Her blue ground at the foot has a line of status,
-and a line of what the buttons do.
+Every screen is Rachel Simone Weil's, from ConnectedNES (../connectednes):
+her picture, her font, her palettes, on her page of tiles. The splash has
+this ROM's words in place of hers. The rest have eight lines where she
+drew a tweet, on every other row, each after one of her arrows: the
+favorites, a handle a line; the form a handle is typed in; and a post, as
+the nesp32 lays one out (nesp32's docs/PROTOCOL.md, BSKY), the handle
+first, six of the text, and when it was posted last. Her blue ground at the
+foot has a line of status, and a line of what the buttons do.
 
 Her font has each character at its ASCII code with the bits in the other
 order. Her ground has its own font, colour 1 on colour 3, of which she had
 only her own words' letters; this makes the rest it needs, in tiles of her
 page that are empty, with the three signs a post's line of when has.
 
-The favorites and the form are on the third screen, NESpedia's
-(../../wiki/tools/gen_screen.py): its 5 x 7 font with small letters, at the
-characters' ASCII codes in white and again with bit 7 set in blue, and its
-header with "Bluesky" for the name. Under the header are a status line,
-the middle of the screen, and a foot that says what the buttons do. One
-sprite is the arrow at a favorite, or the mark under the form's letter
-that Up and Down change.
+The one sprite is the arrow at a favorite, or the mark under the form's
+letter that Up and Down change, white in her sprites' first palette. Its
+tiles are the first page's, NESpedia's font's (../../wiki/tools).
 """
 
 import argparse
@@ -74,25 +68,27 @@ HANDLE_MAX = proto.NESP_BSKY_HANDLE_MAX
 FAVORITES = proto.NESP_BSKY_FAVORITES
 SIGN_CODES = (proto.NESP_BSKY_REPLY, proto.NESP_BSKY_REPOST, proto.NESP_BSKY_LIKE)
 
-# --- the app's screen, in tiles --------------------------------------------------
+# --- her screen ----------------------------------------------------------------------
 
-LOGO_ROW, LOGO_TEXT = wiki.LOGO_ROW, "Bluesky"
-HEADER_ROWS = wiki.HEADER_ROWS
-COLUMNS = 28                        # the app's lines, and every status text
-ROWS = 16                           # the middle's
-LEFT = (SCREEN_COLUMNS - COLUMNS) // 2
-STATUS_ROW = 8
-BODY_ROW = 10                       # the middle: ROWS rows from here
-FOOT_ROW = 27
-PAINT_ROWS = ROWS + 1               # what the ROM paints a row at a time: the middle, the foot
+HER_COLUMN = 4                      # where every line of hers began
+WIDTH = 26                          # from there to where her foot's line ended
+HER_BLANK = 0x00                    # her blank tile
+HER_GROUND = 0x37                   # her blue ground's
+HER_WORD_ROWS = (10, 12, 16, 20, 21)    # the rows her words were on, and the dots under "WiFi"
+SLOT_ROWS = (8, 10, 12, 14, 16, 18, 20, 22)     # her eight lines
+SLOTS = len(SLOT_ROWS)
+TEXT_SLOTS = SLOTS - 2              # a post's text's: between the handle and when
+STATUS_ROW, HELP_ROW = 25, 26       # on her ground
+PAINT_ROWS = SLOTS + 1              # what the ROM paints a row at a time: her lines, the help
 
-# In the order of the ROM's STATUS_* numbers, centered in COLUMNS. After the
-# last are the nesp32's own words (STATUS_WHY) and the count of posts the
-# ROM makes (STATUS_COUNT). The splash's are in her font, and the rest
-# where they are shown: on the app's screen in its font, and on a post's on
-# her ground.
+# In the order of the ROM's STATUS_* numbers, centered in COLUMNS, of which
+# her ground shows the middle WIDTH. After the last are the nesp32's own
+# words (STATUS_WHY) and the count of posts the ROM makes (STATUS_COUNT).
+COLUMNS = 28
+SKIP = (COLUMNS - WIDTH) // 2
 STATUS_TEXT = (
     ("NONE", ""),
+    ("FAVORITES", "FAVORITES"),
     ("WAITING", "WAITING FOR LINK"),
     ("OLD", "UPDATE THE NESP32"),
     ("NO_WIFI", "NO WI-FI"),
@@ -104,7 +100,7 @@ STATUS_TEXT = (
     ("REMOVE", "START AGAIN TO REMOVE"),
     ("REMOVED", "REMOVED FROM FAVORITES"),
     ("SAVED", "SAVED TO FAVORITES"),
-    ("FULL", "NO ROOM FOR MORE FAVORITES"),
+    ("FULL", "NO ROOM FOR MORE"),
     ("SPLASH_WAITING", "Looking for the nesp32..."),
     ("SPLASH_START", "Press Start"),
     ("SPLASH_OLD", "Update the nesp32"),
@@ -112,53 +108,29 @@ STATUS_TEXT = (
 COUNT_TEXT = "POST %d OF %d"        # STATUS_COUNT, which the ROM writes,
 PAGE_TEXT = " PAGE %d/%d"           # and this after it for a post of more than a page
 
-# The favorites, by the middle's rows: a title, a handle a row, and after
-# them the way to the form. The arrow is a sprite in the column before.
-LIST_TITLE_ROW, LIST_TITLE = 0, "Favorites"
-LIST_ROW = 2                        # the first favorite
-OTHER_ROW, OTHER_TEXT = LIST_ROW + FAVORITES + 1, "Read another handle"
-ARROW_COLUMN = LEFT - 1
+# The favorites: a handle a line, and after them the way to the form. The
+# lines show eight of them at a time, the arrow's among them.
+OTHER_TEXT = "Read another handle"
+ARROW_COLUMN = HER_COLUMN - 2       # over her arrow
 
-# The form, likewise. The handle is typed a letter at a time, from these,
-# in this order: Up is the next and Down the one before.
-FORM_TITLE_ROW, FORM_TITLE = 0, "Read a handle"
-FORM_ROW = 3                        # "@" and the handle
-FORM_HELP = ((6, "Up and Down change a letter,"),
-             (7, "Left and Right move along."),
-             (9, "A name with no dot in it"),
-             (10, "means name.bsky.social."))
+# The form, by her lines. The handle is typed a letter at a time, from
+# these, in this order: Up is the next and Down the one before.
+FORM_LINES = ((0, "Read a handle:"),
+              (4, "Up/Down: change a letter"),
+              (5, "Left/Right: move along"),
+              (6, "With no dot, a name is"),
+              (7, "name.bsky.social"))
+FORM_SLOT = 2                       # the handle's line
+FORM_MAX = WIDTH                    # letters in it
 LETTERS = " abcdefghijklmnopqrstuvwxyz0123456789.-"
 
-FOOT_LIST = "A:READ  START:REMOVE"
-FOOT_LIST_CART = "A:READ START:REMOVE SEL:MENU"     # on the cartridge, Select is its menu
-FOOT_FORM = "A:READ  START:SAVE  B:BACK"
+HELP_LIST = "A:read Start:remove"
+HELP_LIST_CART = "A:read St:remove Sel:menu"    # on the cartridge, Select is its menu
+HELP_FORM = "A:read Start:save B:back"
+HELP_POST = "L/R:post U/D:page B:back"
 
-PALETTES = (
-    (0x21, 0x10, 0x30),             # the text white, titles blue
-    (0x21, 0x10, 0x30),
-    (0x21, 0x10, 0x30),
-    wiki.PALETTES[wiki.PALETTE_LOGO],
-)
-SPRITE_PALETTE = (0x21, 0x10, 0x30)     # the arrow and the mark, white
-BACKDROP = wiki.BACKDROP
-ARROW_TILE = ord(">")
-MARK_TILE = ord("_")
-
-# --- her screens, in her tiles -------------------------------------------------------
-
-HER_COLUMN = 4                      # where every line of hers began
-HER_BLANK = 0x00                    # her blank tile
-HER_GROUND = 0x37                   # her blue ground's
-HER_CTRL_PAGE = 1                   # her picture and her font are on her second page
-HER_STATUS_WIDTH = 26               # to where her foot's line ended
-HER_STATUS_SKIP = (COLUMNS - HER_STATUS_WIDTH) // 2     # of a status text, which is centered
-
-# The rows her words were on, which come off both her screens: and the
-# dots under "WiFi".
-HER_WORD_ROWS = (10, 12, 16, 20, 21)
-
-# The splash: these words on her rows, from her column, and her status
-# line, and two lines on her ground where she had one.
+# The splash: these words on her rows, from her column, her status line,
+# and two lines on her ground where she had one.
 SPLASH_LINES = (
     (10, "Bluesky for the nesp32"),
     (12, "after ConnectedNES by"),
@@ -168,17 +140,11 @@ SPLASH_LINES = (
 SPLASH_STATUS_ROW = 20
 SPLASH_FOOT_LINES = ((25, "nesp32 port:"), (26, "youtube.com/@levimaaia"))
 
-# A post: her eight lines, each a line of the nesp32's; the status on her
-# ground, and under it what the buttons do.
-POST_SLOT_ROWS = (8, 10, 12, 14, 16, 18, 20, 22)
-TEXT_SLOTS = len(POST_SLOT_ROWS) - 2    # the text's, between the handle and when
-POST_STATUS_ROW = 25
-POST_HELP_ROW, POST_HELP = 26, "L/R:post U/D:page B:back"
-
 # Her ground's font: what any status may say (capitals, digits, and what
 # the nesp32's words may have), and every character of the fixed lines.
 GROUND_CHARS = (set(string.ascii_uppercase + string.digits + ":/.-'!?,")
-                | set("".join(text for _, text in SPLASH_FOOT_LINES) + POST_HELP)) - {" "}
+                | set("".join(text for _, text in SPLASH_FOOT_LINES)
+                      + HELP_LIST + HELP_LIST_CART + HELP_FORM + HELP_POST)) - {" "}
 
 # The signs a post's line of when has, in her font's colour.
 SIGNS = {
@@ -211,6 +177,11 @@ SIGNS = {
         ........""",            # a like: a heart
 }
 HER_FONT_COLOR = 1
+
+# The sprite's tiles, on the first page, in her sprites' white.
+ARROW_TILE = ord(">")
+MARK_TILE = ord("_")
+SPRITE_COLOR = 2
 
 
 def read(name):
@@ -290,11 +261,7 @@ class HerPage:
         return bytes(mapping.get(chr(code), blank) for code in range(128))
 
 
-def her_page():
-    return HerPage().page
-
-
-def her_screen(page=None):
+def her_screen():
     """Her nametable, with her words taken off."""
     names = bytearray(her_names()[:SCREEN_COLUMNS * SCREEN_ROWS])
     for row in HER_WORD_ROWS:
@@ -316,95 +283,70 @@ def splash(page=None):
     for row, text in SPLASH_LINES:
         put(names, row, page.text(text))
     for row, text in SPLASH_FOOT_LINES:
-        put(names, row, page.text(text, HER_STATUS_WIDTH, ground=True))
+        put(names, row, page.text(text, WIDTH, ground=True))
     return bytes(names) + read("test.atr")
 
 
-def post_screen(page=None):
-    """A post's screen with no post on it: her screen, her ground's two
-    lines with what the buttons do."""
+def blank_screen(page=None):
+    """The screen for the rest, with nothing on her lines or her ground."""
     page = page or HerPage()
     names = her_screen()
-    put(names, POST_STATUS_ROW, page.text("", HER_STATUS_WIDTH, ground=True))
-    put(names, POST_HELP_ROW, page.text(POST_HELP, HER_STATUS_WIDTH, ground=True))
+    for row in (STATUS_ROW, HELP_ROW):
+        put(names, row, page.text("", WIDTH, ground=True))
     return bytes(names) + read("test.atr")
 
 
-def her_status(text, ground=False, page=None):
+def status_tiles(text, ground=True, page=None):
     """A status text as her screens show it."""
     page = page or HerPage()
-    centered = text.center(COLUMNS)[HER_STATUS_SKIP:HER_STATUS_SKIP + HER_STATUS_WIDTH]
-    return page.text(centered, HER_STATUS_WIDTH, ground=ground)
+    centered = text.center(COLUMNS)[SKIP:SKIP + WIDTH]
+    return page.text(centered, WIDTH, ground=ground)
 
 
-def post_slot(text, slot, page=None):
-    """A line of a post as it is drawn in one of her eight: her font, and
-    where it has a space, her picture as it was there."""
+def slot_tiles(text, slot, page=None, width=WIDTH):
+    """Text on one of her eight lines: her font, and where it has a space,
+    her picture as it was there."""
     page = page or HerPage()
-    names = post_screen(page)
-    start = POST_SLOT_ROWS[slot] * SCREEN_COLUMNS + HER_COLUMN
-    under = names[start:start + POST_COLUMNS]
+    names = blank_screen(page)
+    start = SLOT_ROWS[slot] * SCREEN_COLUMNS + HER_COLUMN
+    under = names[start:start + width]
     return bytes(under[index] if char == " " else page.font.get(char, HER_BLANK)
-                 for index, char in enumerate(text.ljust(POST_COLUMNS)))
+                 for index, char in enumerate(text.ljust(width)[:width]))
 
 
-# --- the app's screen --------------------------------------------------------------
-
-def build_screen():
-    screen = wiki.Screen()
-    column = (SCREEN_COLUMNS - 2 * len(LOGO_TEXT)) // 2
-    for index, char in enumerate(LOGO_TEXT):
-        screen.picture(column + 2 * index, LOGO_ROW, wiki.big_letter(char))
-    screen.picture(wiki.CREDIT_COLUMN, wiki.CREDIT_ROW, wiki.credit_pixels())
-    screen.palette_rows(0, HEADER_ROWS - 1, wiki.PALETTE_LOGO)
-    return screen
+def help_tiles(text, page=None):
+    return (page or HerPage()).text(text, WIDTH, ground=True)
 
 
-def palette_data():
-    data = bytearray()
-    for colors in PALETTES + (SPRITE_PALETTE,) * 4:
-        data += bytes((BACKDROP,) + tuple(colors))
-    return bytes(data)
+def list_lines(handles, top=0):
+    """The favorites' eight lines from `top`, as text."""
+    entries = list(handles) + [OTHER_TEXT]
+    shown = entries[top:top + SLOTS]
+    return shown + [""] * (SLOTS - len(shown))
 
 
-def chr_data(screen, page=None):
-    return screen.chr()[:PAGE] + (page or HerPage()).page
+def form_lines(handle=""):
+    lines = [""] * SLOTS
+    for slot, text in FORM_LINES:
+        lines[slot] = text
+    lines[FORM_SLOT] = handle
+    return lines
 
 
-def line(text, alt=False):
-    """A row of the middle as tiles: text, padded with spaces."""
-    if len(text) > COLUMNS:
-        raise ValueError("too wide: %r" % text)
-    return bytes(ord(char) | (wiki.ALT if alt and char != " " else 0)
-                 for char in text.ljust(COLUMNS))
+def sprite_page():
+    """The first page: the sprite's two tiles."""
+    page = bytearray(PAGE)
+    for tile in (ARROW_TILE, MARK_TILE):
+        page[16 * tile:16 * tile + 16] = wiki.tile_bytes(wiki.font_tile(chr(tile), SPRITE_COLOR))
+    return bytes(page)
 
 
-def list_rows(handles):
-    """The favorites as the ROM paints them, the arrow aside."""
-    rows = [line("")] * ROWS
-    rows[LIST_TITLE_ROW] = line(LIST_TITLE, alt=True)
-    for index, handle in enumerate(handles):
-        rows[LIST_ROW + index] = line("@" + handle)
-    rows[OTHER_ROW] = line(OTHER_TEXT)
-    return rows
-
-
-def form_rows(handle=""):
-    rows = [line("")] * ROWS
-    rows[FORM_TITLE_ROW] = line(FORM_TITLE, alt=True)
-    rows[FORM_ROW] = line("@" + handle.ljust(HANDLE_MAX))
-    for row, text in FORM_HELP:
-        rows[row] = line(text)
-    return rows
+def chr_data(page=None):
+    return sprite_page() + (page or HerPage()).page
 
 
 def address(column, row):
     return NAMETABLE + SCREEN_COLUMNS * row + column
-
-
-def paint_addresses():
-    return ([address(LEFT, BODY_ROW + row) for row in range(ROWS)]
-            + [address(LEFT, FOOT_ROW)])
 
 
 def byte_lines(label, values, per_line=16):
@@ -425,60 +367,54 @@ def lo_hi(label, values):
 
 def screen_include(page):
     lines = ["; Generated by tools/gen_screen.py. Do not edit.", "",
-             "STATUS_ADDR = $%04X" % address(LEFT, STATUS_ROW),
              "SPLASH_STATUS_ADDR = $%04X" % address(HER_COLUMN, SPLASH_STATUS_ROW),
-             "POST_STATUS_ADDR = $%04X" % address(HER_COLUMN, POST_STATUS_ROW),
+             "STATUS_ADDR = $%04X" % address(HER_COLUMN, STATUS_ROW),
+             "HELP_ADDR = $%04X" % address(HER_COLUMN, HELP_ROW),
              "COLUMNS = %d" % COLUMNS,
-             "HER_STATUS_WIDTH = %d" % HER_STATUS_WIDTH,
-             "HER_STATUS_SKIP = %d" % HER_STATUS_SKIP]
+             "WIDTH = %d" % WIDTH,
+             "SKIP = %d" % SKIP]
     text = []
     for index, (name, words) in enumerate(STATUS_TEXT):
-        if len(words) > (COLUMNS if not name.startswith("SPLASH") else HER_STATUS_WIDTH):
+        if len(words) > WIDTH:
             raise ValueError("status text too wide: " + words)
         lines.append("STATUS_%s = %d" % (name, index))
         text += list(words.center(COLUMNS).encode("ascii"))
     lines += ["STATUS_WHY = %d          ; the nesp32's own words" % len(STATUS_TEXT),
               "STATUS_COUNT = %d        ; which post this is, of how many" % (len(STATUS_TEXT) + 1),
-              "HER_CTRL_PAGE = %d" % HER_CTRL_PAGE,
               "HER_BLANK = $%02X" % HER_BLANK,
-              "ROWS = %d" % ROWS,
-              "PAINT_ROWS = %d         ; the middle's rows, and the foot" % PAINT_ROWS,
+              "SLOTS = %d" % SLOTS,
+              "TEXT_SLOTS = %d" % TEXT_SLOTS,
+              "PAINT_ROWS = %d         ; her lines, and the help" % PAINT_ROWS,
               "POST_COLUMNS = %d" % POST_COLUMNS,
               "POST_LINES = %d" % POST_LINES,
-              "POST_SLOTS = %d" % len(POST_SLOT_ROWS),
-              "TEXT_SLOTS = %d" % TEXT_SLOTS,
               "HANDLE_MAX = %d" % HANDLE_MAX,
               "FAVORITES = %d" % FAVORITES,
-              "LIST_ROW = %d" % LIST_ROW,
-              "OTHER_ROW = %d" % OTHER_ROW,
-              "FORM_ROW = %d" % FORM_ROW,
+              "FORM_SLOT = %d" % FORM_SLOT,
+              "FORM_MAX = %d" % FORM_MAX,
               "LETTER_COUNT = %d" % len(LETTERS),
               "ARROW_X = %d" % (8 * ARROW_COLUMN),
-              "MARK_X = %d          ; under the form's first letter" % (8 * (LEFT + 1)),
-              "BODY_Y = %d          ; the middle's first row, in pixels" % (8 * BODY_ROW),
+              "MARK_X = %d          ; under the form's first letter" % (8 * HER_COLUMN),
               "ARROW_TILE = $%02X" % ARROW_TILE,
               "MARK_TILE = $%02X" % MARK_TILE,
               "", '.segment "RODATA"']
     lines += byte_lines("status_text", text, per_line=COLUMNS)
-    lines += lo_hi("paint", paint_addresses())
-    slots = [address(HER_COLUMN, row) for row in POST_SLOT_ROWS]
-    lines += lo_hi("slot", slots)
-    # Where in post.bin each line's tiles are, for what a space shows.
-    lines += ["slot_off_lo: .byte " + ", ".join("$%02X" % ((slot - NAMETABLE) & 0xFF)
-                                              for slot in slots),
-              "slot_off_hi: .byte " + ", ".join("$%02X" % ((slot - NAMETABLE) >> 8)
-                                              for slot in slots)]
-    rows = []
-    for row in list_rows([]):
-        rows += list(row)
-    lines += byte_lines("list_text", rows, per_line=COLUMNS)
-    rows = []
-    for row in form_rows():
-        rows += list(row)
-    lines += byte_lines("form_text", rows, per_line=COLUMNS)
-    for name, text in (("foot_list", FOOT_LIST), ("foot_list_cart", FOOT_LIST_CART),
-                       ("foot_form", FOOT_FORM)):
-        lines += byte_lines(name, line(text.center(COLUMNS)), per_line=COLUMNS)
+    slots = [address(HER_COLUMN, row) for row in SLOT_ROWS]
+    lines += lo_hi("slot", slots + [address(HER_COLUMN, HELP_ROW)])
+    # Where in her.bin each line's tiles are, for what a space shows.
+    lines += lo_hi("slot_off", [slot - NAMETABLE for slot in slots])
+    lines += ["slot_y: .byte " + ", ".join("%d" % (8 * row - 1) for row in SLOT_ROWS)
+              + "     ; a sprite on each, as a sprite's Y is written"]
+    form = []
+    for text in form_lines():
+        form += list(text.ljust(WIDTH).encode("ascii"))
+    lines += byte_lines("form_text", form, per_line=WIDTH)
+    lines += byte_lines("other_text", OTHER_TEXT.encode("ascii"))
+    lines.append("OTHER_LEN = %d" % len(OTHER_TEXT))
+    for name, text in (("help_list", HELP_LIST), ("help_list_cart", HELP_LIST_CART),
+                       ("help_form", HELP_FORM), ("help_post", HELP_POST)):
+        if len(text) > WIDTH:
+            raise ValueError("help too wide: " + text)
+        lines += byte_lines(name, help_tiles(text, page), per_line=WIDTH)
     lines += byte_lines("letters", LETTERS.encode("ascii"))
     lines += byte_lines("her_font", page.table())
     lines += byte_lines("her_ground", page.table(ground=True))
@@ -498,8 +434,7 @@ def write_if_changed(path, data):
 
 # --- the preview -------------------------------------------------------------------
 
-# The NES's 64 colours, as a 2C02 shows them, for the previews: her
-# screens have some that the jukebox's preview has no need of.
+# The NES's 64 colours, as a 2C02 shows them.
 NES_RGB = (
     (84, 84, 84), (0, 30, 116), (8, 16, 144), (48, 0, 136), (68, 0, 100), (92, 0, 48),
     (84, 4, 0), (60, 24, 0), (32, 42, 0), (8, 58, 0), (0, 64, 0), (0, 60, 0), (0, 50, 60),
@@ -521,32 +456,31 @@ def tile_pixel(page, tile, x, y):
     return (data[y] >> (7 - x) & 1) | (data[8 + y] >> (7 - x) & 1) << 1
 
 
-def render(page, names, palettes, backdrop, sprites=(), sprite_palette=SPRITE_PALETTE):
-    """The screen as rows of (r, g, b), from a page of tiles and a 1 KB
-    nametable, with sprites as (x, y, tile) from the same page."""
+def render(names, page=None, sprites=()):
+    """Her screen as rows of (r, g, b), from a 1 KB nametable, with sprites
+    as (x, y, tile) from the first page."""
+    page = page or HerPage()
+    pal = read("test.pal")
+    palettes = [pal[4 * index:4 * index + 4] for index in range(8)]
     rows = [[None] * (8 * SCREEN_COLUMNS) for _ in range(8 * SCREEN_ROWS)]
     for row in range(SCREEN_ROWS):
         for column in range(SCREEN_COLUMNS):
             tile = names[row * SCREEN_COLUMNS + column]
             attribute = names[960 + (row // 4) * 8 + column // 4]
             shift = ((row // 2) % 2) * 4 + ((column // 2) % 2) * 2
-            colors = (backdrop,) + tuple(palettes[(attribute >> shift) & 3])
+            colors = palettes[(attribute >> shift) & 3]
             for y in range(8):
                 for x in range(8):
-                    color = colors[tile_pixel(page, tile, x, y)]
-                    rows[8 * row + y][8 * column + x] = NES_RGB[color & 0x3F]
+                    rows[8 * row + y][8 * column + x] = NES_RGB[
+                        colors[tile_pixel(page.page, tile, x, y)] & 0x3F]
+    sprites_page = sprite_page()
     for x, y, tile in sprites:
         for dy in range(8):
             for dx in range(8):
-                color = tile_pixel(page, tile, dx, dy)
+                color = tile_pixel(sprites_page, tile, dx, dy)
                 if color:
-                    rows[y + 1 + dy][x + dx] = NES_RGB[sprite_palette[color - 1]]
+                    rows[y + 1 + dy][x + dx] = NES_RGB[palettes[4][color] & 0x3F]
     return rows
-
-
-def her_palettes():
-    pal = read("test.pal")
-    return [tuple(pal[4 * index + 1:4 * index + 4]) for index in range(4)], pal[0]
 
 
 def sample_post():
@@ -563,24 +497,13 @@ def sample_post():
             "2h  %s3 %s12 %s140" % (reply, repost, like)]
 
 
-def preview_post(page):
-    names = bytearray(post_screen(page))
-    for slot, text in enumerate(sample_post()):
-        put(names, POST_SLOT_ROWS[slot], post_slot(text, slot, page))
-    put(names, POST_STATUS_ROW, her_status("POST 1 OF 25 PAGE 1/2", ground=True, page=page))
-    palettes, backdrop = her_palettes()
-    return render(page.page, bytes(names), palettes, backdrop)
-
-
-def preview_app(screen, rows, foot, status="", sprites=()):
-    names = bytearray(screen.nametable())
-    for row, data in enumerate(rows):
-        start = SCREEN_COLUMNS * (BODY_ROW + row) + LEFT
-        names[start:start + COLUMNS] = data
-    for row, text in ((STATUS_ROW, status.center(COLUMNS)), (FOOT_ROW, foot.center(COLUMNS))):
-        start = SCREEN_COLUMNS * row + LEFT
-        names[start:start + COLUMNS] = text.encode("ascii")
-    return render(screen.chr()[:PAGE], names, PALETTES, BACKDROP, sprites)
+def screen_with(lines, status, help_text, page, width=WIDTH):
+    names = bytearray(blank_screen(page))
+    for slot, text in enumerate(lines):
+        put(names, SLOT_ROWS[slot], slot_tiles(text, slot, page, width))
+    put(names, STATUS_ROW, status_tiles(status, page=page))
+    put(names, HELP_ROW, help_tiles(help_text, page))
+    return bytes(names)
 
 
 def main(argv=None):
@@ -590,33 +513,28 @@ def main(argv=None):
                                           "a post on it, and -list, -form and -splash")
     args = parser.parse_args(argv)
     page = HerPage()
-    screen = build_screen()
     os.makedirs(args.out_dir, exist_ok=True)
-    for name, data in (("chr.bin", chr_data(screen, page)), ("screen.bin", screen.nametable()),
-                       ("splash.bin", splash(page)), ("post.bin", post_screen(page)),
-                       ("palette.bin", palette_data()),
-                       ("splash_palette.bin", read("test.pal")),
+    for name, data in (("chr.bin", chr_data(page)), ("splash.bin", splash(page)),
+                       ("her.bin", blank_screen(page)), ("palette.bin", read("test.pal")),
                        ("screen.inc", screen_include(page).encode("ascii"))):
         write_if_changed(os.path.join(args.out_dir, name), data)
     if args.preview:
         sys.path.insert(0, os.path.join(APP, "..", "jukebox", "tools"))
         import gen_ui
         base, extension = os.path.splitext(args.preview)
-        gen_ui.write_png(args.preview, preview_post(page))
+        gen_ui.write_png(args.preview, render(screen_with(
+            sample_post(), "POST 1 OF 25 PAGE 1/2", HELP_POST, page, POST_COLUMNS), page))
         handles = ["levimaaia.com", "andyreitano.com", "adriansdigitalbasement.com",
                    "jeriellsworth.bsky.social"]
-        arrow = (8 * ARROW_COLUMN, 8 * (BODY_ROW + LIST_ROW), ARROW_TILE)
-        gen_ui.write_png(base + "-list" + extension,
-                         preview_app(screen, list_rows(handles), FOOT_LIST_CART,
-                                     sprites=[arrow]))
-        mark = (8 * (LEFT + 1 + 6), 8 * (BODY_ROW + FORM_ROW), MARK_TILE)
-        gen_ui.write_png(base + "-form" + extension,
-                         preview_app(screen, form_rows("bsky.a"), FOOT_FORM, sprites=[mark]))
+        arrow = (8 * ARROW_COLUMN, 8 * SLOT_ROWS[0], ARROW_TILE)
+        gen_ui.write_png(base + "-list" + extension, render(screen_with(
+            list_lines(handles), "FAVORITES", HELP_LIST_CART, page), page, [arrow]))
+        mark = (8 * (HER_COLUMN + 6), 8 * SLOT_ROWS[FORM_SLOT], MARK_TILE)
+        gen_ui.write_png(base + "-form" + extension, render(screen_with(
+            form_lines("bsky.a"), "", HELP_FORM, page), page, [mark]))
         names = bytearray(splash(page))
-        put(names, SPLASH_STATUS_ROW, her_status("Press Start", page=page))
-        palettes, backdrop = her_palettes()
-        gen_ui.write_png(base + "-splash" + extension,
-                         render(page.page, bytes(names), palettes, backdrop))
+        put(names, SPLASH_STATUS_ROW, status_tiles("Press Start", ground=False, page=page))
+        gen_ui.write_png(base + "-splash" + extension, render(bytes(names), page))
     return 0
 
 
