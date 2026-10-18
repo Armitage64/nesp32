@@ -17,7 +17,7 @@ def test_from_the_editor_to_an_airports_aircraft(scope):
     assert "/lat/34.426200/lon/-119.840400/dist/10" in s.stick.fetch_url
     assert s.count == 0 and s.targets() == []
     s.land([plane(0.05, 0.0, flight="FAR", t="A320"), plane(0.0, 0.02, flight="NEAR", t="C172")])
-    assert s.link == "IDLE" and s.count == 2 and s.airport == "KSBA"
+    assert s.live and s.count == 2 and s.airport == "KSBA"
     assert s.row(0) == ("NEAR", "C172") and s.row(1) == ("FAR", "A320")
     assert s.calls()[2:] == [""] * 6
     assert s.selected == 1
@@ -40,7 +40,7 @@ def test_the_scope_follows_each_fetch(scope):
     # Another aircraft: its names first, and then the scene.
     s.land([plane(0.06, 0.0, flight="ONE"), plane(0.01, 0.0, flight="TWO")], frames=POLL_FRAMES)
     assert s.asked(p.NESP_RADAR_IDENTITY) == names + 8
-    assert s.calls()[:2] == ["TWO", "ONE"] and s.count == 2 and s.link == "IDLE"
+    assert s.calls()[:2] == ["TWO", "ONE"] and s.count == 2 and s.live
     s.land([], frames=POLL_FRAMES)
     assert s.count == 0 and s.targets() == [] and s.calls() == [""] * 8
     assert s.c.late_writes == [] and s.c.heard_in_nmi == 0
@@ -111,7 +111,7 @@ def test_an_asking_that_fails(scope):
     s.c.press(PAD_START)                        # the same letters once more
     s.locate("KSBA")
     s.land([plane(0.02, 0.0, flight="FOUND")])
-    assert s.calls()[0] == "FOUND" and s.link == "IDLE"
+    assert s.calls()[0] == "FOUND" and s.live
 
 
 def test_with_no_nesp32_the_editor_says_so(scope):
@@ -133,7 +133,7 @@ def test_a_nesp32_with_no_wifi(scope):
     s.c.press(PAD_START)
     s.locate("KSBA")
     s.land([plane(0.02, 0.0, flight="ONLINE")])
-    assert s.calls()[0] == "ONLINE" and s.link == "IDLE"
+    assert s.calls()[0] == "ONLINE" and s.live
 
 
 def test_a_nesp32_whose_firmware_has_no_radar(scope):
@@ -159,7 +159,7 @@ def test_select_is_the_editor_again_and_another_airport(scope):
     s.c.run(30)
     assert s.airport == "KLAX" and s.link == "WAITING" and s.count == 0 and s.calls() == [""] * 8
     s.land([plane(0.02, 0.0, PLACES["KLAX"], flight="LAX")])
-    assert s.calls()[0] == "LAX" and s.link == "IDLE"
+    assert s.calls()[0] == "LAX" and s.live
     assert s.c.late_writes == [] and s.c.heard_in_nmi == 0
 
 
@@ -173,9 +173,9 @@ def test_replies_lost_now_and_then_cost_nothing_but_time(scope):
     s.open()
     s.land([plane(0.01 * (number + 1), 0.0, flight="N%d" % number) for number in range(8)],
            frames=240)
-    assert s.calls() == ["N%d" % number for number in range(8)] and s.link == "IDLE"
+    assert s.calls() == ["N%d" % number for number in range(8)] and s.live
     s.land([plane(0.03, 0.0, flight="LAST")], frames=POLL_FRAMES + 120)
-    assert s.calls() == ["LAST"] + [""] * 7 and s.count == 1 and s.link == "IDLE"
+    assert s.calls() == ["LAST"] + [""] * 7 and s.count == 1 and s.live
 
 
 def test_damaged_replies_are_not_shown(scope):
@@ -191,7 +191,26 @@ def test_damaged_replies_are_not_shown(scope):
     s = scope(to_console=damaged)
     s.open()
     s.land([plane(0.02, 0.0, flight="GOOD", t="B738")], frames=240)
-    assert s.row(0) == ("GOOD", "B738") and s.count == 1 and s.link == "IDLE"
+    assert s.row(0) == ("GOOD", "B738") and s.count == 1 and s.live
+
+
+def test_the_dots_after_live_are_data_coming_in(scope):
+    s = scope()
+    s.open()
+    s.land([plane(0.02, 0.0, flight="ONE")], frames=0)
+    s.c.run_until(lambda: s.link == "LIVE.", 60)
+    seen = ["LIVE."]
+    for _ in range(120):
+        s.c.run(1)
+        if seen[-1] != s.link:
+            seen.append(s.link)
+    assert seen == ["LIVE.", "LIVE..", "LIVE...", "LIVE"]
+    # The next fetch's aircraft, and only then the dots again.
+    s.land([plane(0.03, 0.0, flight="ONE")], frames=0)
+    s.c.run_until(lambda: s.link == "LIVE.", POLL_FRAMES)
+    s.c.run(60)
+    assert s.link == "LIVE"
+    assert s.c.late_writes == [] and s.c.heard_in_nmi == 0
 
 
 def test_a_nesp32_that_stops_answering_and_starts_again(scope):
@@ -200,10 +219,10 @@ def test_a_nesp32_that_stops_answering_and_starts_again(scope):
     s.open()
     s.land([plane(0.02, 0.0, flight="HERE")])
     quiet[0] = True
-    s.c.run_until(lambda: s.link == "ERROR 1", 400)
+    s.c.run_until(lambda: s.link == "NO ANSWER", 400)
     assert s.calls()[0] == "HERE" and s.count == 1      # the last scene stays
     quiet[0] = False
-    s.c.run_until(lambda: s.link == "IDLE", 120)
+    s.c.run_until(lambda: s.live, 120)
     assert s.calls()[0] == "HERE"
 
 
@@ -218,7 +237,7 @@ def test_a_nesp32_switched_off_and_on_is_told_the_airport_again(scope):
     assert s.stick.hellos == hellos + 2 and s.stick.app == (b"RADR", 1)
     assert "adsb.fi" in s.stick.fetch_url       # where the airport is, it had kept
     s.land([plane(0.02, 0.0, flight="AFTER")])
-    assert s.calls()[0] == "AFTER" and s.link == "IDLE" and s.airport == "KSBA"
+    assert s.calls()[0] == "AFTER" and s.live and s.airport == "KSBA"
 
 
 def test_a_fetch_that_fails_and_a_scene_gone_stale(scope):
@@ -226,12 +245,12 @@ def test_a_fetch_that_fails_and_a_scene_gone_stale(scope):
     s.open()
     s.land([plane(0.02, 0.0, flight="KEPT")])
     s.fail(frames=POLL_FRAMES)
-    assert s.link == "ERROR" and s.calls()[0] == "KEPT" and s.count == 1
+    assert s.link == "ADSB DOWN" and s.calls()[0] == "KEPT" and s.count == 1
     s.land([plane(0.02, 0.0, flight="KEPT")], frames=POLL_FRAMES)
-    assert s.link == "IDLE"
+    assert s.live
     for _ in range(5):
         s.fail(frames=POLL_FRAMES)
-    assert s.link == "ERROR" and s.calls()[0] == "KEPT"
+    assert s.link == "ADSB DOWN" and s.calls()[0] == "KEPT"
     assert s.c.late_writes == []
 
 
@@ -241,7 +260,7 @@ def test_with_no_aircraft_to_be_had_the_scope_waits(scope):
     s.c.run(700)                                # the fetch never ends
     assert s.link == "WAITING" and s.count == 0
     s.fail()
-    assert s.link == "ERROR"                    # nothing good ever came: stale, and down
+    assert s.link == "ADSB DOWN"                    # nothing good ever came: stale, and down
 
 
 @pytest.mark.parametrize("turnaround_ms", [0.05, 1.0, 4.0])
@@ -250,7 +269,7 @@ def test_however_long_the_nesp32_takes_to_answer(scope, turnaround_ms):
     s = scope(turnaround=ms(turnaround_ms))
     s.open()
     s.land([plane(0.01 * (number + 1), 0.0, flight="N%d" % number) for number in range(8)])
-    assert s.calls() == ["N%d" % number for number in range(8)] and s.link == "IDLE"
+    assert s.calls() == ["N%d" % number for number in range(8)] and s.live
     assert s.c.late_writes == [] and s.c.heard_in_nmi == 0
 
 
@@ -259,7 +278,7 @@ def test_with_the_nesp32s_clock_out(scope, clock_error):
     s = scope(clock_error=clock_error)
     s.open()
     s.land([plane(0.01 * (number + 1), 0.0, flight="N%d" % number) for number in range(8)])
-    assert s.calls() == ["N%d" % number for number in range(8)] and s.link == "IDLE"
+    assert s.calls() == ["N%d" % number for number in range(8)] and s.live
 
 
 def test_the_editor_begins_at_the_airport_the_nesp32_kept(scope):
@@ -270,7 +289,7 @@ def test_the_editor_begins_at_the_airport_the_nesp32_kept(scope):
     s.c.run_until(lambda: s.stick.fetching, 200)
     assert s.stick.fetches == 1 and "/lat/51.470600/lon/-0.461941/" in s.stick.fetch_url
     s.land([plane(0.02, 0.0, PLACES["EGLL"], flight="LHR")])
-    assert s.airport == "EGLL" and s.calls()[0] == "LHR" and s.link == "IDLE"
+    assert s.airport == "EGLL" and s.calls()[0] == "LHR" and s.live
 
 
 def test_an_airport_found_is_where_the_editor_begins_next_time(scope, build):

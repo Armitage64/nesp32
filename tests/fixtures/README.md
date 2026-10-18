@@ -29,3 +29,13 @@ zip code 90210, and `openmeteo_90210.json` is
 names, as WEATHER asks for it, both on 2026-10-13 and as they were sent.
 Open-Meteo's data is under
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+
+`nes-radar-server/` is the source of nes-radar's server as it was at
+0.4.4, the last release with one, on its `legacy/ftdi-0.4.x` branch
+(commit `ba14bd5`, the files in `server/src` that `nes_radar_server.py`
+imports), unchanged. RADAR's tests hold the service's scenes to what this
+code makes of the same reply from adsb.fi; nothing else uses it. The ROM's
+records are the same from 0.5.0, which has no server. It is k6lcm's, from
+[nes-radar](https://github.com/k6lcm/nes-radar), under the
+[GPL-3.0](https://github.com/k6lcm/nes-radar/blob/legacy/ftdi-0.4.x/LICENSE),
+as nesp32 is.

@@ -1,67 +1,61 @@
 # NES Radar, on a nesp32
 
-[NES Radar](https://github.com/k6lcm/nes-radar), k6lcm's air traffic scope
-for the NES, with a [nesp32](../..) on controller port 2 in place of a
-computer and a serial cable. Four letters typed on the controller name an
-airport, and the aircraft within nine nautical miles of it are on the
-scope, from [adsb.fi](https://adsb.fi). The nesp32 fetches them itself,
-over Wi-Fi, and asks [Wikidata](https://www.wikidata.org) where the
-airport is.
+**NES Radar turns a real Nintendo Entertainment System into a live air
+traffic scope.** It is k6lcm's [nes-radar](https://github.com/k6lcm/nes-radar),
+which from 0.5.0 runs with a [nesp32](../..) on controller port 2.
 
-![The scope](docs/scope.png)
+Type any airport's four-letter ICAO code on the NES controller, press
+Start, and the aircraft actually flying near that airport *right now*
+appear as moving targets on your TV. It works for airports worldwide.
+Point it at your local field and watch the approach traffic line up, or at
+KLAX and watch it get busy. Watch this
+[video demo](https://youtu.be/hZ8sniz4Z2M?si=-s4Dm2YlZwRVx9xd).
 
-The picture is k6lcm's own, from nes-radar's `assets`.
+[![NES Radar and C64 Radar, in the video](docs/video.jpeg)](https://youtu.be/hZ8sniz4Z2M?si=-s4Dm2YlZwRVx9xd)
 
-**The program is not in this repository.** What is here is the code that
-puts it on nesp32's link, its tests, and a few lines to be put into the
-ROM's own source. The build takes the rest from
-[nes-radar](https://github.com/k6lcm/nes-radar), a submodule at
-`third_party/nes-radar`: its README is the place to read about the scope
-itself and what is on it.
+The NES can't reach the Internet, so the nesp32 does it instead: it
+fetches live traffic from [adsb.fi](https://adsb.fi) over Wi-Fi, asks
+[Wikidata](https://www.wikidata.org) where the airport is, and hands the
+scene to the ROM over nesp32's link. NES Radar is based on
+[c64u-radar](https://github.com/k6lcm/c64u-radar), a similar program for
+the Commodore 64.
 
-```sh
-git submodule update --init third_party/nes-radar
-make            # build/nes_radar.nes (the original) and build/nes_radar_link.nes
-make verify     # the original still matches its SHA-256, and passes nes-radar's own checks
-make cart CART_CHR=10    # build/nes_radar_cart.nes, for nesp32's cartridge, which asks for it itself
-make test       # needs: python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
-```
+![NES Radar's scope](docs/scope.png)
 
-Needs cc65 (`ca65`, `ld65`), Python 3, `patch`, and a C compiler: the
-link's library for the console is nesp32's, and the tests build its
-firmware's link and services for this computer.
+*The data blocks show TGT: Target #, TYPE: Aircraft Type, REG:
+Registration, SQWK: Squawk Code, CAT: Category, ALT: Altitude, SPD: Speed
+(kts), TRK: Track (degrees), V/S: Vertical Speed (ft/min), DIST: Distance
+From Airport/Center.*
 
-`build/nes_radar_link.nes` is the ROM for a nesp32. It says hello to
-nesp32's firmware as `RADR` and asks for the RADAR service. Like the
-original it is a CN-ROM (mapper 3) with 32 KB of PRG and 32 KB of CHR.
-`build/nes_radar.nes` is nes-radar's own ROM, for its own server and
-cable, built here only to show that the patch leaves it alone.
+## What you need
 
-It is also on [nesp32's cartridge](../../docs/DEVELOPMENT.md), from the
-menu. A CN-ROM changes its tiles by a write to the ROM, which the
-cartridge's MMC1 would take for itself, so the cartridge has a third
-build, `nes_radar_cart.nes`: the link ROM, asking the MMC1's CHR register
-for the splash's tiles and the scope's, with each page once in place of
-the CN-ROM's four. It is a part of that cartridge and not a ROM to run by
-itself: it counts on the menu having set the mapper, and is built for the
-place on the cartridge its tiles have (`CART_CHR`). It works on hardware,
-from the menu and back to it by reset.
+- A real NES, and either a flash cartridge with the ROM on it or
+  [nesp32's cartridge](../../docs/DEVELOPMENT.md#the-cartridge), where NES
+  Radar is on the menu
+- A nesp32 on controller port 2, with nesp32's firmware flashed
+  ([its README](../../firmware/README.md)) and put on Wi-Fi with
+  [Setup](../setup)
+- A normal controller in port 1, to enter the airport code
+- A Wi-Fi network with Internet access
 
-**It works on hardware** with nesp32's firmware: an airport is found, its
-aircraft are on the scope, and the nesp32 switched off and on begins at
-the same airport. It is also tested on a simulated console against
-nesp32's own RADAR service, over a cycle-exact line. No figures have been
-taken from a console, and no run has been of any length.
+The ROM is on nes-radar's
+[Releases page](https://github.com/k6lcm/nes-radar/releases), or built here
+(below).
 
 ## Using it
 
-Flash nesp32's firmware ([its README](../../firmware/README.md)) and put
-the nesp32 on Wi-Fi with [Setup](../setup). Then, as with nes-radar's own
-ROM: Up and Down change a letter, Left and Right move along the four,
-Start asks for the airport. On the scope the direction buttons choose
-among the aircraft, and Select is the editor again. The editor begins at
-the last airport the nesp32 found, which it keeps when it is switched
-off; with none kept, or no nesp32, at nes-radar's `KSBA`.
+1. Load the ROM with the nesp32 in port 2, or choose NES Radar from the
+   cartridge's menu. The splash shows the version, `V0.5.0`, for two
+   seconds; on a ROM by itself Start skips it.
+2. Up and Down change a letter, Left and Right (or A and B) move along the
+   four. The editor begins at the last airport the nesp32 found, which it
+   keeps when it is switched off; with none kept, or no nesp32, at `KSBA`.
+3. Press Start.
+
+On the scope the direction buttons choose among the aircraft, and Select
+is the editor again. **On the cartridge, Select in the editor is the menu
+again** (the editor says `SELECT MENU`), as Reset is. On a ROM by itself
+there is no menu, and Select in the editor does nothing.
 
 | The editor says | |
 |---|---|
@@ -74,29 +68,84 @@ off; with none kept, or no nesp32, at nes-radar's `KSBA`.
 
 | The scope's `LINK` says | |
 |---|---|
-| `IDLE` | the scene on the screen is the newest the nesp32 has, and it is good |
+| `LIVE` | the nesp32 answers, and the scene on the screen is good |
+| `LIVE...` | new data is coming in: a scene, or its aircraft's names. The dots go one, two, three, for half a second |
 | `WAITING` | nothing has come of the aircraft yet, or for ten seconds, or for thirty from adsb.fi |
-| `ERROR` | the nesp32's last fetch from adsb.fi failed. The last scene stays |
-| `ERROR 1` | the nesp32 has stopped answering. The last scene stays |
-| `ERROR 4` | the nesp32 sent an aircraft or a name that cannot be shown |
+| `NO ANSWER` | the nesp32 has stopped answering. The last scene stays |
+| `BAD DATA` | the nesp32 sent an aircraft or a name that cannot be shown |
+| `ADSB DOWN` | the nesp32's last fetch from adsb.fi failed. The last scene stays |
 
-nes-radar's `RECEIVING`, and its `ERROR 2`, `3` and `5`, are not seen:
-they are about its own packets on its own line.
+The nesp32 fetches the aircraft every eight seconds, so `LIVE...` comes
+round about that often.
 
-## What is changed, and what is not
+## Limits
+
+- The scope covers **9 nautical miles** and shows at most **eight
+  aircraft**. More than four markers sharing scanlines take turns in front,
+  with deliberate NES sprite-priority flicker.
+- Live traffic needs the nesp32 to reach adsb.fi and Wikidata over HTTPS.
+- Wikidata has most airports and not all: of 60 of nes-radar's taken at
+  random it had 55, the rest small fields. It puts some a little way from
+  where other databases have them.
+- PAL consoles are not claimed.
+
+**It works on hardware** with nesp32's firmware, as a ROM by itself and on
+nesp32's cartridge: an airport is found, its aircraft are on the scope,
+the nesp32 switched off and on begins at the same airport, and the
+cartridge's Select goes back to its menu. It is also tested on a simulated
+console against nesp32's own RADAR service, over a cycle-exact line. No
+figures have been taken from a console, and no run has been of any
+length.
+
+## Building it
+
+**The program is not in this repository.** It is nes-radar, a submodule
+at `third_party/nes-radar`: its ROM's source has nesp32's link in it, and
+a copy of nesp32's link library (`nes_radar/vendor/nesp32`), so nes-radar
+builds by itself with cc65. What is here builds it for the tests and for
+nesp32's cartridge, and its tests.
+
+```sh
+git submodule update --init third_party/nes-radar
+make            # build/nes_radar_link.nes
+make verify     # its size and header, and nes-radar's copy of the link library still nesp32's
+make cart CART_CHR=10    # build/nes_radar_cart.nes, for nesp32's cartridge, which asks for it itself
+make test       # needs: python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+```
+
+Needs cc65 (`ca65`, `ld65`), Python 3, and a C compiler: the tests build
+nesp32's firmware's link and services for this computer.
+
+`build/nes_radar_link.nes` is the ROM for a nesp32, the same as
+nes-radar's own build of it. It says hello to nesp32's firmware as `RADR`
+and asks for the RADAR service. It is a CN-ROM (mapper 3) with 32 KB of
+PRG and 32 KB of CHR.
+
+A CN-ROM changes its tiles by a write to the ROM, which the cartridge's
+MMC1 would take for itself, so the cartridge has a build of its own,
+`nes_radar_cart.nes`, with `CART` defined: it asks the MMC1's CHR register
+for the splash's tiles and the scope's, with each page once in place of the
+CN-ROM's four. It is a part of that cartridge and not a ROM to run by
+itself: it counts on the menu having set the mapper, and is built for the
+place on the cartridge its tiles have (`CART_CHR`). The same build makes
+Select in the editor the menu, says `SELECT MENU`, and leaves the splash
+up for its two seconds, since the Start that chose it from the menu is
+still held.
+
+## What the nesp32 changed, and what it did not
 
 Everything on the screen is nes-radar's, and so is every check of what
 goes there: the editor, the scope and its sprites, the selected aircraft,
 the table, the validation of a record. The nine bytes of an aircraft and
 the twenty-five of its names are nes-radar's, byte for byte, and nesp32's
-tests hold the service's to the ones nes-radar's own server makes of the
-same reply from adsb.fi.
+tests hold the RADAR service's to the ones nes-radar's 0.4.4 server makes
+of the same reply from adsb.fi.
 
 What is replaced is the line and everything that was there because of it.
-nes-radar's host streams packets at 9600 baud whenever it likes, so its
-ROM has a receiver calibrated by hand, chunks with gaps to draw in, a
-window in which the host promises to keep quiet, a heartbeat to keep the
-sprites turning, and a request to pause before the editor may be shown.
+The 0.4.x server streamed packets at 9600 baud whenever it liked, so its
+ROM had a receiver calibrated by hand, chunks with gaps to draw in, a
+window in which the host promised to keep quiet, a heartbeat to keep the
+sprites turning, and a request to pause before the editor could be shown.
 On nesp32's link the console asks and the nesp32 answers, at 85227 baud,
 so none of that is needed:
 
@@ -110,12 +159,12 @@ so none of that is needed:
 - **Select is the editor at once.** There is nobody to ask.
 - **A nesp32 switched off and on** is told who is on the console and
   which airport again, and the scope goes on.
-- **The nesp32 has no table of airports.** nes-radar's server has ten
-  thousand of them in a file; the nesp32 asks for the one it is given.
-  Wikidata has most of nes-radar's and not all: of 60 taken at random it
-  had 55, the rest small fields. It also puts some
-  a little way from where nes-radar has them, so the same aircraft can be
-  a point or two away on the two scopes.
+- **The nesp32 has no table of airports.** The 0.4.x server had ten
+  thousand of them in a file; the nesp32 asks Wikidata for the one it is
+  given, so the same aircraft can be a point or two away on the two
+  scopes.
+- **`LINK`'s states are the nesp32's.** `IDLE`, `RECEIVING` and the
+  numbered `ERROR 1` to `ERROR 5` were about the cable's packets.
 
 ## The airport the nesp32 keeps
 
@@ -127,8 +176,7 @@ than the link's, so an exchange never waits on the flash.
 
 - **The editor begins at it.** Just after the splash the ROM says hello
   and asks RADAR for the letters (`LAST`), and they take the place of
-  nes-radar's `KSBA`. That is at most eight frames of waiting with no
-  nesp32 there.
+  `KSBA`. That is at most eight frames of waiting with no nesp32 there.
 - **Start on it asks Wikidata nothing.** The place is known, so the first
   fetch is of the aircraft, and the scope comes up with Wikidata out of
   reach.
@@ -143,43 +191,53 @@ takes its place.
 ## The line
 
 The ROM keeps its NMI off but for the moment it waits for a vblank to
-write in, as nes-radar does. Every exchange is made with it off, just
-after such a write, and the receiver gives up by counting (nesp32's
-`gen_link.py --timeout`). The tests hold the ROM to nothing being written
-to the PPU outside a vblank, and to the line never being listened to with
-the NMI on.
+write in. Every exchange is made with it off, just after such a write,
+and the receiver gives up by counting (nesp32's `gen_link.py --timeout`).
+The tests hold the ROM to nothing being written to the PPU outside a
+vblank, and to the line never being listened to with the NMI on.
 
-[`docs/PROTOCOL.md`](../../docs/PROTOCOL.md) has the RADAR service.
+[`docs/PROTOCOL.md`](../../docs/PROTOCOL.md) has the RADAR service, and
+nes-radar's `nes_radar/PROTOCOL.md` its records.
 
 ## What is where
 
 | Path | Purpose |
 |---|---|
-| `nes/radar_link.inc` | the link's code: the hello, the airport, the scope's loop and its exchanges |
-| `nes/cnrom256_link.cfg` | nes-radar's linker configuration, with a place for the serial routines |
-| `nes/mmc1_cart.cfg` | the same for the cartridge's build, with two pages of CHR |
-| `patches/` | the lines that call it, for nes-radar's one source file. All are under `.ifdef NESP32`, or `CART` for the cartridge's |
+| `nes/mmc1_cart.cfg` | the linker configuration for the cartridge's build, with two pages of CHR |
 | `tests/` | a console on py65, a nesp32 and the line between them, and the test in place of Wikidata and adsb.fi |
+| `docs/` | the pictures here, from nes-radar's `assets` |
+
+In nes-radar, `nes_radar/nes/radar_link.inc` is the link's code (the
+hello, the airport, the scope's loop and its exchanges), and
+`nes_radar/nes/cnrom256.cfg` has a place for the serial routines.
 
 ## Changing nes-radar's code
 
-Edit the copy in `build/src/nes`, then `make patches`. nesp32's
-[`docs/DEVELOPMENT.md`](../../docs/DEVELOPMENT.md), "Changing a borrowed
-program's code", has how the patches are kept.
+Change it in nes-radar, in `third_party/nes-radar` if you like (it is a
+full clone of it), push it there first, and then move the submodule here
+to the commit. When nesp32's link protocol changes, run nes-radar's
+`tools/update_nesp32.sh` against this repository and commit what it
+writes there: `make verify` here says when it is needed.
+[`AGENTS.md`](../../AGENTS.md) at the top of this repository, and the one
+in nes-radar, have which change goes where and the rules for keeping the
+two in step.
 
 ## Not done
 
 - Figures from hardware, and a long run.
 
+![The prototype cartridge](docs/prototype_cart.jpeg)
+
 ## Licence
 
 nes-radar is k6lcm's, under the
-[GPL-3.0](https://github.com/k6lcm/nes-radar/blob/main/LICENSE). The ROM
-built here is nes-radar's with these changes, and so is under it too; the
-files in this directory are under the same licence, as all of nesp32 is
-([LICENSE](../../LICENSE)). nesp32's
-RADAR service is written from nes-radar's documents of its records
-(`nes_radar/PROTOCOL.md`), not from its server's code, which the tests
-only run beside it. The aircraft are adsb.fi's, from its open data API,
-and where an airport is comes from Wikidata, whose data is
+[GPL-3.0](https://github.com/k6lcm/nes-radar/blob/main/LICENSE), and so
+is the ROM built here; the files in this directory are under the same
+licence, as all of nesp32 is ([LICENSE](../../LICENSE)). The pictures in
+`docs/` are k6lcm's, from nes-radar's `assets`: the video's thumbnail
+made smaller, and the cartridge's photograph without its camera data.
+nesp32's RADAR service is written from nes-radar's documents of its
+records, not from its server's code, which the tests only run beside it.
+The aircraft are adsb.fi's, from its open data API, and where an airport
+is comes from Wikidata, whose data is
 [CC0](https://creativecommons.org/publicdomain/zero/1.0/).

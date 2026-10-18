@@ -148,6 +148,11 @@ class Scope:
         return self.c.field(LINK).strip()
 
     @property
+    def live(self):
+        """LINK says LIVE, with or without its dots."""
+        return self.link.rstrip(".") == "LIVE"
+
+    @property
     def airport(self):
         return self.c.field(AIRPORT)
 
