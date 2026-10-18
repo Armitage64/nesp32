@@ -178,9 +178,12 @@ SPLASH_STATUS = (
     ("START", "Press Start"),
     ("OLD", "Update the nesp32"),
 )
-SPLASH_FOOT_ROW, SPLASH_FOOT_COLUMN = 25, 4     # after her heart
-SPLASH_FOOT = "nesp32.retrobits.tv"
+SPLASH_FOOT_COLUMN = 4              # after her heart
 SPLASH_FOOT_END = 30                # where her line ended
+# Her line had room for 26 characters, so this ROM's is two, the second
+# under the first on her ground.
+SPLASH_FOOT_LINES = ((25, "nesp32 port:"), (26, "youtube.com/@levimaaia"))
+SPLASH_FOOT = "".join(text for _, text in SPLASH_FOOT_LINES)    # every character of them
 SPLASH_BLANK = 0x00                 # her blank tile, under the words
 # Her foot is on her blue ground, in letters of colour 1 on colour 3 in
 # place of colour 0: a font of their own, which she had only the letters of
@@ -257,9 +260,13 @@ def splash():
         start = row * SCREEN_COLUMNS + SPLASH_COLUMN
         names[start:start + len(text)] = her_text(text)
     _, tiles = foot_font()
-    foot = SPLASH_FOOT_ROW * SCREEN_COLUMNS
-    text = SPLASH_FOOT.ljust(SPLASH_FOOT_END - SPLASH_FOOT_COLUMN)
-    names[foot + SPLASH_FOOT_COLUMN:foot + SPLASH_FOOT_END] = bytes(tiles[char] for char in text)
+    for row, words in SPLASH_FOOT_LINES:
+        foot = row * SCREEN_COLUMNS
+        text = words.ljust(SPLASH_FOOT_END - SPLASH_FOOT_COLUMN)
+        if len(text) > SPLASH_FOOT_END - SPLASH_FOOT_COLUMN:
+            raise ValueError("too wide for her foot: %r" % words)
+        names[foot + SPLASH_FOOT_COLUMN:foot + SPLASH_FOOT_END] = bytes(tiles[char]
+                                                                       for char in text)
     return bytes(names) + read("test.atr")
 
 

@@ -15,5 +15,5 @@ controller port; this ROM is the same idea on a nesp32, with Bluesky.
 
 They are as she made them. `tools/gen_screen.py` takes the background's
 page and the nametable, and writes this ROM's own lines of text over hers
-in her font, whose characters are their ASCII codes with the bits in the
+(the last two on her blue ground, where she had one) in her font, whose characters are their ASCII codes with the bits in the
 other order.
