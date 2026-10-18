@@ -81,9 +81,9 @@ of what they compare.
 
 ## The menu
 
-As Dr. Mario's, with **Select** on the title in place of 2 PLAYER GAME,
+As Dr. Mario's, with 2 PLAYERS on the title in place of 2 PLAYER GAME,
 and the hello as `TTRS`, version 1. LOCAL GAME goes back to the game, to
-its game type menu for two.
+its game type menu for two, and B to its title.
 
 When the nesp32 says it is connected, as player 1 or as player 2, the
 console leaves the menu and starts a session: both consoles begin again

@@ -356,6 +356,76 @@ tp_spriteToEnd:
 
 
 
+; --- the title ------------------------------------------------------------------
+
+; Where PUSH START was: 1 PLAYER and 2 PLAYERS, the one chosen between two
+; arrows that flicker, as in the game's own menus. numberOfPlayers is the
+; choice, which is 1 at power-on and 2 when a game for two has come back.
+TP_TITLE_ARROW_Y    = $97       ; 1 PLAYER's row, 19, less the line a sprite is drawn down
+TP_TITLE_LEFT_X     = $30       ; columns 6 and 18
+TP_TITLE_RIGHT_X    = $90
+TP_ARROW            = $27       ; the game type menu's
+
+tp_titlePlayers:
+        .byte   $22, $87, $40 | 10, $FF                         ; no PUSH START
+        .byte   $22, $68, 8
+        .byte   $01,$FF,$19,$15,$0A,$22,$0E,$1B                 ; 1 PLAYER
+        .byte   $22, $A8, 9
+        .byte   $02,$FF,$19,$15,$0A,$22,$0E,$1B,$1C             ; 2 PLAYERS
+        .byte   $FF
+
+; A frame of the title, with player 1's new buttons in A: Up, Down or
+; Select to move between the two, and Start, which sets carry.
+tp_titleMenu:
+        cmp     #BUTTON_START
+        beq     @start
+        ldx     #$01
+        cmp     #BUTTON_UP
+        beq     @move
+        inx
+        cmp     #BUTTON_DOWN
+        beq     @move
+        cmp     #BUTTON_SELECT
+        bne     @arrows
+        lda     numberOfPlayers
+        eor     #$03                    ; the other
+        tax
+@move:  cpx     numberOfPlayers
+        beq     @arrows
+        stx     numberOfPlayers
+        lda     #$01
+        sta     soundEffectSlot1Init
+        lda     #$00
+        sta     frameCounter+1          ; and the demo waits again
+@arrows:
+        lda     frameCounter
+        and     #MENU_CURSOR_MASK
+        beq     @done
+        lda     #TP_TITLE_ARROW_Y
+        ldx     numberOfPlayers
+        cpx     #$02
+        bne     @row
+        lda     #TP_TITLE_ARROW_Y + 16
+@row:   sta     oamStaging
+        sta     oamStaging+4
+        lda     #TP_ARROW
+        sta     oamStaging+1
+        sta     oamStaging+5
+        lda     #$00
+        sta     oamStaging+2
+        lda     #$40                    ; the right one, turned round
+        sta     oamStaging+6
+        lda     #TP_TITLE_LEFT_X
+        sta     oamStaging+3
+        lda     #TP_TITLE_RIGHT_X
+        sta     oamStaging+7
+@done:  clc
+        rts
+@start: sec
+        rts
+
+
+
 ; --- the menus ------------------------------------------------------------------
 
 ; Over the level menu's top line: whose level it is.

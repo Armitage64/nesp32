@@ -6,6 +6,7 @@
 ;                 the address player 2 has to enter.
 ;   JOIN GAME     an address to edit, and the nesp32 calls it
 ;   LOCAL GAME    back to the game, for two players on this console
+;   B             back to the game's title
 ;
 ; When the nesp32s are connected it starts a session in the game's bank
 ; (net_go, with the role in Y and the delay to begin with in X), and does
@@ -201,12 +202,16 @@ mode_main:
 @down:
     LDA menu_press
     AND #BTN_DOWN
-    BEQ @pick
+    BEQ @back
     LDA menu_cursor
     CMP #$02
-    BEQ @pick
+    BEQ @back
     INC menu_cursor
     JSR cursor_moved
+@back:
+    LDA menu_press
+    AND #BTN_B
+    BNE leave_title
 @pick:
     LDA menu_press
     AND #BTN_A | BTN_START
@@ -243,8 +248,14 @@ cursor_moved:
 
 
 
-; Back to the game, with no session.
+; Back to the game, with no session: to its title, or on to its menus for
+; a game of two. net_far keeps Y, which says which (net_menu_back).
+leave_title:
+    LDY #$01
+    BNE leave_game
 leave_local:
+    LDY #$00
+leave_game:
     JSR screen_off
     LDA #$0F
     STA $4015
@@ -1021,6 +1032,7 @@ screen_main:
     text 11, 11, "JOIN GAME"
     text 13, 11, "LOCAL GAME"
     text 18, 7, "THIS NESP32 IS AT"
+    text 24, 12, "B - BACK"
     .byte 0
 
 screen_hosting:

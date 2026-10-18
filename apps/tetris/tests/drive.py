@@ -48,9 +48,10 @@ def to_one_player_game(console):
 
 def to_two_player_game(console):
     """The netplay ROM, from power-on to a game for two on this console:
-    Select on the title, and LOCAL GAME on the menu."""
+    2 PLAYERS on the title, and LOCAL GAME on the menu."""
     to_title(console)
-    press(console, PAD_SELECT, rest=30)
+    press(console, PAD_DOWN)
+    press(console, PAD_START, rest=30)
     press(console, PAD_DOWN)
     press(console, PAD_DOWN)
     press(console, PAD_A, rest=60)

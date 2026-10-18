@@ -18,7 +18,9 @@ twoplayer mod does, and plays it over the network the way
 [Dr. Mario](../drmario) does: both consoles run the whole game, and only
 the buttons cross.
 
-On the title, press **Select**. The console then asks how:
+The title has **1 PLAYER** and **2 PLAYERS** where the original says PUSH
+START: Up, Down or Select to choose, and Start. 1 PLAYER is the original's
+game for one, as it always was. For 2 PLAYERS the console asks how:
 
 - **HOST GAME**: the nesp32 waits for the other one. The console and the
   nesp32's screen both show the address player 2 has to enter.
@@ -28,7 +30,7 @@ On the title, press **Select**. The console then asks how:
 - **LOCAL GAME**: the game for two on this console, with a controller in
   each port.
 
-Start on the title is the original's game for one, as it always was.
+B goes back to the title.
 
 In a game for two, player 1 chooses the music and then a level, then player
 2 chooses a level. Both playfields are on each screen, player 1's on the
@@ -97,7 +99,7 @@ once a frame. What is in the game's bank is in the space the original
 leaves to unused data: the two-player screen, 1 KB of it whole, where
 `unreferenced_data1` was, and the game for two's code with the way to the
 menu's bank where `unreferenced_data4` was. 323 bytes are left in the one
-and 258 in the other. It needs a flashcart or an emulator.
+and 135 in the other. It needs a flashcart or an emulator.
 
 ## The nesp32
 

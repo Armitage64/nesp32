@@ -177,8 +177,9 @@ net_stall:
 
 
 
-; To the menu, in its own bank. It comes back to net_menu_back, or starts a
-; session and does not.
+; To the menu, in its own bank. It comes back to net_menu_back, with carry
+; clear for a game of two on this console and set for the title again, or
+; starts a session and does not.
 net_menu:
     LDA #$00
     STA PPUCTRL                 ; no NMI while the banks change
@@ -199,4 +200,5 @@ net_menu:
 net_menu_back:
     LDA currentPpuCtrl          ; the NMI on again
     STA PPUCTRL
+    CPY #$01                    ; the menu's Y: 1 for the title
     RTS

@@ -13,6 +13,7 @@ from drive import (
     MODE_TYPE_MENU,
     PLAYERS,
     moves,
+    press,
     screen_row,
     screen_text,
     to_title,
@@ -34,7 +35,9 @@ def tap(table, side, pad, rest=6):
 
 
 def open_menu(table, side):
-    tap(table, side, PAD_SELECT, rest=3 * STATUS_POLL)
+    """2 PLAYERS, on the title."""
+    tap(table, side, PAD_DOWN)
+    tap(table, side, PAD_START, rest=3 * STATUS_POLL)
     console = table.consoles[side]
     assert console.mapper[3] == MENU_BANK
     assert "NETWORK GAME" in screen_text(console)
@@ -45,7 +48,8 @@ def test_local_game_with_no_nesp32(net_console):
     to the game's menus for two players."""
     nes = net_console()
     to_title(nes)
-    nes.run(3, pads=(PAD_SELECT, 0))
+    press(nes, PAD_DOWN)
+    nes.run(3, pads=(PAD_START, 0))
     nes.run(10 * STATUS_POLL, pads=(0, 0))
     assert nes.mapper[3] == MENU_BANK
     assert screen_row(nes, 9).strip() == "> HOST GAME"
@@ -65,6 +69,71 @@ def test_local_game_with_no_nesp32(net_console):
     assert nes.ram[GAME_MODE] == MODE_TYPE_MENU
     assert nes.ram[PLAYERS] == 2
     assert nes.byte("net_mode") == 0
+
+
+# The title's two lines, in its own tiles, and the arrows' rows.
+ONE_PLAYER = bytes((0x01, 0xFF, 0x19, 0x15, 0x0A, 0x22, 0x0E, 0x1B))
+TWO_PLAYERS = b"\x02" + ONE_PLAYER[1:] + b"\x1C"
+ARROW_Y = {1: 0x97, 2: 0xA7}
+
+
+def title_arrows(nes):
+    """The rows of the title's two arrows, on a frame they are shown."""
+    for _ in range(2):
+        if nes.oam[0] < 0xEF:
+            break
+        nes.run(1)
+    return nes.oam[0], nes.oam[4]
+
+
+def test_the_title_offers_1_player_and_2_players(net_console):
+    """In place of PUSH START. Up, Down and Select move between the two,
+    and Start on 1 PLAYER goes on to the original's menus."""
+    nes = net_console()
+    to_title(nes)
+    assert nes.tiles(0x2287, 10) == b"\xFF" * 10
+    assert nes.tiles(0x2268, 8) == ONE_PLAYER
+    assert nes.tiles(0x22A8, 9) == TWO_PLAYERS
+    assert nes.ram[PLAYERS] == 1
+    assert title_arrows(nes) == (ARROW_Y[1],) * 2
+    for pad, players in ((PAD_DOWN, 2), (PAD_DOWN, 2), (PAD_UP, 1), (PAD_UP, 1),
+                         (PAD_SELECT, 2), (PAD_SELECT, 1)):
+        press(nes, pad)
+        assert nes.ram[PLAYERS] == players
+        assert title_arrows(nes) == (ARROW_Y[players],) * 2
+    nes.run(3, pads=(PAD_START, 0))
+    nes.run(30, pads=(0, 0))
+    assert nes.mapper[3] == 0
+    assert nes.ram[GAME_MODE] == MODE_TYPE_MENU
+    assert nes.ram[PLAYERS] == 1
+
+
+def test_b_on_the_network_menu_goes_back_to_the_title(net_console):
+    nes = net_console()
+    to_title(nes)
+    press(nes, PAD_DOWN)
+    nes.run(3, pads=(PAD_START, 0))
+    nes.run(3 * STATUS_POLL, pads=(0, 0))
+    assert nes.mapper[3] == MENU_BANK
+    assert screen_row(nes, 24).strip() == "B - BACK"
+    press(nes, PAD_B, rest=30)
+    assert nes.mapper[3] == 0
+    assert nes.ram[GAME_MODE] == MODE_TITLE
+    assert nes.tiles(0x2268, 8) == ONE_PLAYER
+    assert nes.ram[PLAYERS] == 2                    # still the one chosen
+    assert title_arrows(nes) == (ARROW_Y[2],) * 2
+    press(nes, PAD_START, rest=3 * STATUS_POLL)
+    assert nes.mapper[3] == MENU_BANK
+
+
+def test_the_demo_is_a_game_for_one(net_console):
+    """Even when the title was left at 2 PLAYERS."""
+    nes = net_console()
+    to_title(nes)
+    press(nes, PAD_DOWN)
+    nes.run(5 * 256)
+    assert nes.ram[GAME_MODE] == 5
+    assert nes.ram[PLAYERS] == 1
 
 
 def test_the_menu_says_hello_and_shows_the_nesp32s_address(net_console):
