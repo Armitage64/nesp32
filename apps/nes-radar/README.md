@@ -218,9 +218,21 @@ full clone of it), push it there first, and then move the submodule here
 to the commit. When nesp32's link protocol changes, run nes-radar's
 `tools/update_nesp32.sh` against this repository and commit what it
 writes there: `make verify` here says when it is needed.
-[`AGENTS.md`](../../AGENTS.md) at the top of this repository, and the one
-in nes-radar, have which change goes where and the rules for keeping the
-two in step.
+
+To keep the two in step:
+
+- Before pushing either repository, run `make -C apps/nes-radar verify
+  test` and `pytest tests/test_cart.py tests/test_radar.py` here against
+  the change.
+- Get the commit onto nes-radar's `main` with a merge commit, not a
+  squash, before pushing anything here. Never push a commit here whose
+  submodule points at a nes-radar commit GitHub doesn't have.
+- When `make verify` says nes-radar's copy of the link library
+  (`nes_radar/vendor/nesp32/`) differs from this repository's, fix it in
+  nes-radar with `update_nesp32.sh`, never by editing the copy.
+- `tests/fixtures/nes-radar-server/` is a frozen copy of nes-radar's 0.4.4
+  server, which the RADAR service's scenes are held to. Don't update it
+  from nes-radar: nes-radar has no server from 0.5.0.
 
 ## Not done
 
