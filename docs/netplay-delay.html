@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nesp32 Netplay Delay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one reading column; chart full width, band table and notes below. */
+:root {
+  --bg: #f7f8fa;
+  --surface: #ffffff;
+  --fg: #14171c;
+  --fg-2: #4a5160;
+  --muted: #7a8292;
+  --rule: #e2e5eb;
+  --grid: #eceef2;
+  --series: #2a78d6;
+  --need: #6b7383;
+  --stall: #eda100;
+  --stall-fill: rgba(237, 161, 0, .10);
+  --band-fill: rgba(42, 120, 214, .05);
+  --font-body: "Atkinson Hyperlegible", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111317; --surface: #191c21; --fg: #eef0f3; --fg-2: #b8bec9; --muted: #8790a0;
+    --rule: #2a2f37; --grid: #23272e; --series: #3987e5; --need: #9aa2b1;
+    --stall: #c98500; --stall-fill: rgba(201, 133, 0, .14); --band-fill: rgba(57, 135, 229, .07);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111317; --surface: #191c21; --fg: #eef0f3; --fg-2: #b8bec9; --muted: #8790a0;
+  --rule: #2a2f37; --grid: #23272e; --series: #3987e5; --need: #9aa2b1;
+  --stall: #c98500; --stall-fill: rgba(201, 133, 0, .14); --band-fill: rgba(57, 135, 229, .07);
+  color-scheme: dark;
+}
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 var(--font-body); }
+.wrap { max-width: 920px; margin: 0 auto; padding-inline: 16px; padding-block: 40px 64px; display: grid; gap: 28px; }
+header { display: grid; gap: 8px; }
+.eyebrow { font: 600 12px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font-size: clamp(26px, 4vw, 34px); line-height: 1.15; margin: 0; text-wrap: balance; }
+h2 { font-size: 19px; margin: 0; text-wrap: balance; }
+p { margin: 0; max-width: 66ch; color: var(--fg-2); }
+code { font: 13.5px var(--font-mono); color: var(--fg); }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 20px; display: grid; gap: 14px; min-width: 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 14px; color: var(--fg-2); }
+.legend span { display: inline-flex; align-items: center; gap: 8px; }
+.sw { width: 22px; height: 0; border-top: 2px solid var(--series); }
+.sw.need { border-top: 2px dashed var(--need); }
+.sw.stall { height: 12px; border: 0; background: var(--stall-fill); outline: 1px solid var(--stall); }
+.sw.dot { width: 9px; height: 9px; border: 2px solid var(--surface); outline: 1.5px solid var(--fg); border-radius: 50%; background: var(--fg); }
+.chart { position: relative; }
+svg { display: block; width: 100%; height: auto; overflow: visible; }
+svg text { font-family: var(--font-mono); font-size: 11px; fill: var(--muted); }
+svg .axis-title { fill: var(--fg-2); font-size: 11.5px; }
+svg .band-label { fill: var(--fg-2); font-size: 11px; }
+svg .stall-label { fill: var(--fg); font-size: 11px; font-weight: 600; }
+.tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 10px 12px; font: 12.5px/1.5 var(--font-mono); color: var(--fg); box-shadow: 0 6px 20px rgba(0,0,0,.12); min-width: 200px; }
+.tip b { font-weight: 600; }
+.tip .k { color: var(--muted); }
+.tip .warn { color: var(--fg); }
+.tip .warn::before { content: "▲ "; color: var(--stall); }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 9px 12px 9px 0; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th { font: 600 11.5px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+td.num { font-family: var(--font-mono); font-size: 13.5px; }
+tr.stall td:first-child::before { content: "▲ "; color: var(--stall); }
+.notes { display: grid; gap: 10px; }
+.notes ul { margin: 0; padding-left: 20px; display: grid; gap: 8px; color: var(--fg-2); max-width: 70ch; }
+.formula { font: 13.5px var(--font-mono); background: var(--bg); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; overflow-x: auto; white-space: pre; color: var(--fg); }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Contra · Dr. Mario · Tetris — shared PEER service</div>
+    <h1>How ping becomes input delay</h1>
+    <p>Each console holds its own button presses back a whole number of frames so they can reach the other console in time. The nesp32 picks that number from the measured network time, between 1 and 5 frames. Past 5, the game waits on the network and slows down.</p>
+  </header>
+
+  <section class="card" aria-label="Input delay by round-trip time">
+    <div class="legend">
+      <span><i class="sw"></i>Input delay the nesp32 advises</span>
+      <span><i class="sw need"></i>Time the buttons need (one-way + 9 ms)</span>
+      <span><i class="sw stall"></i>Beyond the 5-frame cap: stalls</span>
+      <span><i class="sw dot"></i>Where <code>test_lockstep.py</code> settles</span>
+    </div>
+    <div class="chart" id="chart"></div>
+  </section>
+
+  <section class="card">
+    <h2>The bands</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Ping (round trip)</th><th>One-way</th><th>Input delay</th><th>Added lag</th></tr></thead>
+        <tbody id="bands"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="notes">
+    <h2>How it is worked out</h2>
+    <div class="formula">delay = (rtt_us / 2 + 9000 + 16666) / 16667     // nesp_arq_ticks(), arq.c
+      = ceil((one-way + 9 ms) / 16.667 ms), clamped to 1…5   // peer.c clamp()</div>
+    <ul>
+      <li>The 9 ms is margin for the time between the controller read and the exchange with the nesp32 on each side. It is why a 0 ms network still costs 1 frame and why the first step comes at 15 ms of ping, not 33.</li>
+      <li>The ping fed in is not the average. During a game the nesp32 uses the delay that covers 90 in 100 of the round trips measured since the console's last report. A network with spikes is charted at its 90th-percentile ping.</li>
+      <li>The delay does not jump with every report. It rises after 2 reports in a row ask for more, and falls one frame after 8 ask for less. A session's first report sets it outright.</li>
+      <li>Past 148.7 ms of ping, 5 frames no longer cover the trip. The delay stays at 5 and the consoles wait for buttons, so the game runs slower than 60 fps. Here the chart follows the time the buttons need; the speed shown in the tooltip is an estimate of steady-state lockstep (5 ticks per one-way + 9 ms), not a measurement.</li>
+      <li>Lag is shown in NTSC frames of 16.64 ms. All three games use the same firmware code, so the chart applies to each.</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+(function () {
+  const FRAME = 1000 / 60.0988;          // NTSC frame, ms
+  const MAX = 5;
+  const ticks = rtt => Math.floor((rtt * 1000 / 2 + 9000 + 16666) / 16667);
+  const delayOf = rtt => Math.max(1, Math.min(MAX, ticks(rtt)));
+  const needOf = rtt => rtt / 2 + 9;
+  // Round-trip time at which the delay steps to d: (rtt/2 + 9000 + 16666) >= 16667 d
+  const stepAt = d => 2 * (16667 * d - 25666) / 1000;
+  const CAP = stepAt(MAX + 1);           // 148.7 ms
+
+  const X_MAX = 250, Y_MAX = 140;
+  const W = 860, H = 420, m = { l: 64, r: 18, t: 18, b: 52 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const x = v => m.l + v / X_MAX * iw;
+  const y = v => m.t + ih - v / Y_MAX * ih;
+  const ns = "http://www.w3.org/2000/svg";
+  const el = (tag, attrs, parent) => { const e = document.createElementNS(ns, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+
+  const host = document.getElementById("chart");
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Step chart: input delay in ms against round-trip time in ms" }, host);
+
+  // Alternate band shading, one per delay value.
+  for (let d = 1; d <= MAX; d++) {
+    const a = d === 1 ? 0 : stepAt(d), b = stepAt(d + 1);
+    if (d % 2 === 0) el("rect", { x: x(a), y: m.t, width: x(b) - x(a), height: ih, fill: "var(--band-fill)" }, svg);
+  }
+  el("rect", { x: x(CAP), y: m.t, width: x(X_MAX) - x(CAP), height: ih, fill: "var(--stall-fill)" }, svg);
+  el("line", { x1: x(CAP), x2: x(CAP), y1: m.t, y2: m.t + ih, stroke: "var(--stall)", "stroke-width": 1.5, "stroke-dasharray": "3 3" }, svg);
+  const sl = el("text", { x: x(CAP) + 8, y: m.t + 16, class: "stall-label" }, svg); sl.textContent = "▲ game stalls, slows below 60 fps";
+
+  // Grid at whole frames.
+  for (let f = 0; f * FRAME <= Y_MAX; f++) {
+    const v = f * FRAME;
+    el("line", { x1: m.l, x2: m.l + iw, y1: y(v), y2: y(v), stroke: f === 0 ? "var(--rule)" : "var(--grid)", "stroke-width": 1 }, svg);
+    const t = el("text", { x: m.l - 8, y: y(v) + 4, "text-anchor": "end" }, svg);
+    t.textContent = f === 0 ? "0" : `${f} fr`;
+    if (f > 0) { const t2 = el("text", { x: m.l - 8, y: y(v) + 15, "text-anchor": "end", "font-size": 9.5 }, svg); t2.textContent = `${v.toFixed(0)} ms`; }
+  }
+  for (let v = 0; v <= X_MAX; v += 25) {
+    el("line", { x1: x(v), x2: x(v), y1: m.t + ih, y2: m.t + ih + 5, stroke: "var(--rule)" }, svg);
+    const t = el("text", { x: x(v), y: m.t + ih + 19, "text-anchor": "middle" }, svg); t.textContent = v;
+  }
+  const xt = el("text", { x: m.l + iw / 2, y: H - 8, "text-anchor": "middle", class: "axis-title" }, svg); xt.textContent = "Ping, round trip between the nesp32s (ms)";
+  const yt = el("text", { x: 14, y: m.t + ih / 2, "text-anchor": "middle", class: "axis-title", transform: `rotate(-90 14 ${m.t + ih / 2})` }, svg); yt.textContent = "Added input lag";
+
+  // "Need" reference: one-way + 9 ms.
+  el("line", { x1: x(0), y1: y(needOf(0)), x2: x(X_MAX), y2: y(needOf(X_MAX)), stroke: "var(--need)", "stroke-width": 1.5, "stroke-dasharray": "5 4", fill: "none" }, svg);
+
+  // Delay: steps to the cap, then follows the need (the game waits).
+  let d = "M" + x(0) + "," + y(FRAME);
+  for (let k = 2; k <= MAX; k++) d += ` H${x(stepAt(k))} V${y(k * FRAME)}`;
+  d += ` H${x(CAP)}`;
+  el("path", { d, fill: "none", stroke: "var(--series)", "stroke-width": 2.5, "stroke-linejoin": "round" }, svg);
+  el("line", { x1: x(CAP), y1: y(needOf(CAP)), x2: x(X_MAX), y2: y(needOf(X_MAX)), stroke: "var(--series)", "stroke-width": 2.5, "stroke-dasharray": "1 5", "stroke-linecap": "round" }, svg);
+
+  // Band labels.
+  for (let k = 1; k <= MAX; k++) {
+    const a = k === 1 ? 0 : stepAt(k), b = stepAt(k + 1);
+    const t = el("text", { x: (x(a) + x(b)) / 2, y: y(k * FRAME) - 8, "text-anchor": "middle", class: "band-label" }, svg);
+    t.textContent = `${k}`;
+  }
+
+  // Test settle points: one-way 5, 20, 35 ms -> 1, 2, 3 (apps/*/tests/test_lockstep.py).
+  [[5, 1], [20, 2], [35, 3]].forEach(([ow, k]) => {
+    el("circle", { cx: x(ow * 2), cy: y(k * FRAME), r: 5, fill: "var(--fg)", stroke: "var(--surface)", "stroke-width": 2 }, svg);
+  });
+
+  // Hover layer.
+  const cross = el("line", { y1: m.t, y2: m.t + ih, stroke: "var(--fg-2)", "stroke-width": 1, visibility: "hidden" }, svg);
+  const dot = el("circle", { r: 5, fill: "var(--series)", stroke: "var(--surface)", "stroke-width": 2, visibility: "hidden" }, svg);
+  const hit = el("rect", { x: m.l, y: m.t, width: iw, height: ih, fill: "transparent" }, svg);
+  const tip = document.createElement("div"); tip.className = "tip"; tip.hidden = true; host.appendChild(tip);
+
+  function show(evt) {
+    const r = svg.getBoundingClientRect();
+    const px = (evt.clientX - r.left) / r.width * W;
+    const rtt = Math.max(0, Math.min(X_MAX, (px - m.l) / iw * X_MAX));
+    const dl = delayOf(rtt), need = needOf(rtt), stalled = rtt >= CAP;
+    const lag = stalled ? need : dl * FRAME;
+    const yy = y(lag);
+    cross.setAttribute("x1", x(rtt)); cross.setAttribute("x2", x(rtt)); cross.setAttribute("visibility", "visible");
+    dot.setAttribute("cx", x(rtt)); dot.setAttribute("cy", yy); dot.setAttribute("visibility", "visible");
+    const speed = stalled ? Math.round(MAX * FRAME / need * 100) : 100;
+    tip.innerHTML =
+      `<b>${rtt.toFixed(0)} ms ping</b> <span class="k">(${(rtt / 2).toFixed(1)} one-way)</span><br>` +
+      `<span class="k">delay</span> ${dl} frame${dl > 1 ? "s" : ""}${stalled ? " (cap)" : ""}<br>` +
+      `<span class="k">added lag</span> ${lag.toFixed(1)} ms<br>` +
+      (stalled
+        ? `<span class="warn">waits on network, ~${speed}% speed</span>`
+        : `<span class="k">slack</span> ${(dl * FRAME - need).toFixed(1)} ms`);
+    tip.hidden = false;
+    const hx = x(rtt) / W * r.width, hy = yy / H * r.height;
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    tip.style.left = (hx + 14 + tw > r.width ? Math.max(0, hx - tw - 14) : hx + 14) + "px";
+    tip.style.top = Math.max(0, hy - th - 12) + "px";
+  }
+  hit.addEventListener("pointermove", show);
+  hit.addEventListener("pointerdown", show);
+  hit.addEventListener("pointerleave", () => { tip.hidden = true; cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); });
+
+  // Table.
+  const tb = document.getElementById("bands");
+  const f1 = v => v.toFixed(1);
+  for (let k = 1; k <= MAX; k++) {
+    const a = k === 1 ? 0 : stepAt(k), b = stepAt(k + 1);
+    tb.insertAdjacentHTML("beforeend",
+      `<tr><td class="num">${f1(a)} – ${f1(b)} ms</td><td class="num">${f1(a / 2)} – ${f1(b / 2)} ms</td><td>${k} frame${k > 1 ? "s" : ""}</td><td class="num">${f1(k * FRAME)} ms</td></tr>`);
+  }
+  tb.insertAdjacentHTML("beforeend",
+    `<tr class="stall"><td class="num">over ${f1(CAP)} ms</td><td class="num">over ${f1(CAP / 2)} ms</td><td>5 frames + waits</td><td class="num">one-way + 9 ms</td></tr>`);
+})();
+</script>
