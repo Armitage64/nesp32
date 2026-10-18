@@ -13,6 +13,11 @@ the ESP32 microcontroller.
   <img src="apps/npr/docs/screen-news.png" width="32%" alt="National Public Radio with a headline" />
   <img src="apps/nes-radar/docs/scope.png" width="32%" alt="NES Radar's scope" />
 </p>
+<p float="left">
+  <img src="apps/bluesky/docs/screen-splash.png" width="32%" alt="Bluesky's splash, after ConnectedNES" />
+  <img src="apps/bluesky/docs/screen-list.png" width="32%" alt="Bluesky's favorites" />
+  <img src="apps/bluesky/docs/screen.png" width="32%" alt="A Bluesky post on the NES" />
+</p>
 
 ## About
 
