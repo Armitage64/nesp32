@@ -214,10 +214,13 @@ hello, the airport, the scope's loop and its exchanges), and
 ## Changing nes-radar's code
 
 Change it in nes-radar, in `third_party/nes-radar` if you like (it is a
-clone of it), and move the submodule to the commit. When nesp32's link
-protocol changes, run nes-radar's `tools/update_nesp32.sh` against this
-repository and commit what it writes there: `make verify` here says when
-it is needed.
+full clone of it), push it there first, and then move the submodule here
+to the commit. When nesp32's link protocol changes, run nes-radar's
+`tools/update_nesp32.sh` against this repository and commit what it
+writes there: `make verify` here says when it is needed.
+[`AGENTS.md`](../../AGENTS.md) at the top of this repository, and the one
+in nes-radar, have which change goes where and the rules for keeping the
+two in step.
 
 ## Not done
 
