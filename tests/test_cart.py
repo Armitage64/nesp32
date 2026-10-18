@@ -13,8 +13,8 @@ import os
 import gen_cart as cart_layout
 import gen_screen as layout
 import pytest
-from console import (BANK_SIZE, CHR_SIZE, INES_HEADER, PAD_A, PAD_DOWN, PAD_START, PAD_UP,
-                     PPUCTRL_NMI)
+from console import (BANK_SIZE, CHR_SIZE, INES_HEADER, PAD_A, PAD_DOWN, PAD_SELECT, PAD_START,
+                     PAD_UP, PPUCTRL_NMI)
 from nesp import Stick
 from wire import link
 
@@ -254,6 +254,46 @@ def test_nes_radar_has_its_splash_and_then_its_scopes_tiles(cart, images):
     c.strict = True
     c.run(6)
     assert at_menu(c) and c.mapper[1] == 2 * cart_layout.MENU_PAGE
+
+
+def test_nes_radars_splash_is_not_skipped_by_the_start_that_chose_it(cart, images):
+    index = next(index for index, image in enumerate(images) if image.program.key == "radar")
+    image = images[index]
+    splash = image.chr[:CHR_SIZE]
+    c = cart()
+    stick, _ = link(c, Stick)
+    c.run(4)
+    choose(c, index)
+    c.run(2, pad=PAD_START)             # Start chooses it, and is held
+    c.strict = False
+    c.run(88)
+    assert not c.home and c.chr == splash and not stick.hellos
+    c.run(10, pad=0)
+    assert c.chr == splash and not stick.hellos
+    c.run_until(lambda: stick.hellos, 120)      # and the splash's two seconds end it
+
+
+def test_select_in_nes_radars_editor_is_the_menu_again(cart, images):
+    index = next(index for index, image in enumerate(images) if image.program.key == "radar")
+    c = cart()
+    stick, _ = link(c, Stick)          # with no Wi-Fi: Start comes back to the editor
+    c.run(4)
+    start(c, index)
+    c.run_until(lambda: stick.hellos, 300)      # the splash is over: its editor is next
+    c.run(30)
+    assert not c.home
+    # Select held from before the editor came back is not a press of it.
+    c.run(4, pad=PAD_START | PAD_SELECT)
+    c.run(120, pad=PAD_SELECT)
+    c.run(10, pad=0)
+    assert not c.home
+    c.press(PAD_SELECT)
+    c.strict = True
+    c.run(6)
+    assert at_menu(c) and c.mapper[1] == 2 * cart_layout.MENU_PAGE
+    assert c.byte("choice") == 0
+    start(c, index)
+    assert not c.home
 
 
 def test_two_programs_cannot_have_the_same_tiles(images, menu, cart_build):

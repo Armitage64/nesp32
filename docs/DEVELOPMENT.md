@@ -21,26 +21,30 @@ The nesp32's firmware is built with ESP-IDF, from `firmware/`
 ([its README](../firmware/README.md)). Each program in `apps/` has a
 Makefile and a README of its own.
 
-Three programs are other people's, and are not in this repository: only
-what puts each on the link, and the few lines that call it, as patches.
-Their code is in submodules in `third_party/`, kept at the commits the
-patches were made for. Two are games with netplay, from disassemblies:
+Three programs are other people's, and are not in this repository. Their
+code is in submodules in `third_party/`. Two are games with netplay, from
+disassemblies, and here is only what puts each on the link and the few
+lines that call it, as patches, with each submodule kept at the commit the
+patches were made for:
 [nes-contra-us](https://github.com/vermiceli/nes-contra-us), vermiceli's,
 for [nes-contra](../apps/contra), and
 [NES-Games-Disassembly](https://github.com/cyneprepou4uk/NES-Games-Disassembly),
 cyneprepou4uk's, for [nes-drmario](../apps/drmario). Contra's build also needs a copy of the game, which whoever
 builds it supplies. The third is [nes-radar](https://github.com/k6lcm/nes-radar),
-k6lcm's, for [nes-radar](../apps/nes-radar): its ROM's source, and its
-server's code, which the tests of the firmware's RADAR service run beside
-it. Neither game is on the cartridge; NES Radar is, so the cartridge's
-build needs that submodule, and `patch`. Nothing else here needs any of
-the three.
+k6lcm's, for [nes-radar](../apps/nes-radar), which from its 0.5.0 is for a
+nesp32 and nothing else: its source has the link in it, and nothing here
+patches it. The tests of the firmware's RADAR service run its 0.4.4
+server's code beside the service, from a copy in `tests/fixtures`. Neither
+game is on the cartridge; NES Radar is, so the cartridge's build needs that
+submodule. Nothing else here needs any of the three.
 
 ### Changing a borrowed program's code
 
-The same for all three. The build copies the submodule's sources into the
-program's `build/` (`build/src` for Contra and NES Radar, `build/upstream`
-for Dr. Mario) and applies its `patches/` there; the submodule is never
+NES Radar's is changed in nes-radar itself, and the submodule moved to the
+commit ([its README](../apps/nes-radar/README.md) has how). For the two
+games, the build copies the submodule's sources into the program's
+`build/` (`build/src` for Contra, `build/upstream` for Dr. Mario) and
+applies its `patches/` there; the submodule is never
 written to. To change what nesp32 adds to their own files, edit the
 copies, then
 
@@ -50,7 +54,7 @@ make patches    # patches/ again, from the copies
 
 A patch is made with no context, so it holds our lines and where they go
 and none of the original. That is why each submodule is kept at one commit
-(`CONTRA_COMMIT`, `DRMARIO_COMMIT`, `RADAR_COMMIT` in the Makefiles): the
+(`CONTRA_COMMIT` and `DRMARIO_COMMIT` in the Makefiles): the
 patches are line numbers in that commit's files. `make clean` will not
 delete copies that have changes `patches/` has not.
 

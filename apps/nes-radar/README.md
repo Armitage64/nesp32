@@ -12,30 +12,31 @@ airport is.
 
 The picture is k6lcm's own, from nes-radar's `assets`.
 
-**The program is not in this repository.** What is here is the code that
-puts it on nesp32's link, its tests, and a few lines to be put into the
-ROM's own source. The build takes the rest from
+**The program is not in this repository.** It is
 [nes-radar](https://github.com/k6lcm/nes-radar), a submodule at
-`third_party/nes-radar`: its README is the place to read about the scope
-itself and what is on it.
+`third_party/nes-radar`, which from 0.5.0 is for a nesp32 and nothing
+else: its ROM source has the link in it, and a copy of nesp32's link
+library (`nes_radar/vendor/nesp32`). What is here builds it for the tests
+and for nesp32's cartridge, and its tests. nes-radar's README is the place
+to read about the scope itself and what is on it. The FTDI cable and its
+server are nes-radar's `legacy/ftdi-0.4.x` branch.
 
 ```sh
 git submodule update --init third_party/nes-radar
-make            # build/nes_radar.nes (the original) and build/nes_radar_link.nes
-make verify     # the original still matches its SHA-256, and passes nes-radar's own checks
+make            # build/nes_radar_link.nes
+make verify     # its size and header, and nes-radar's copy of the link library still nesp32's
 make cart CART_CHR=10    # build/nes_radar_cart.nes, for nesp32's cartridge, which asks for it itself
 make test       # needs: python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 ```
 
-Needs cc65 (`ca65`, `ld65`), Python 3, `patch`, and a C compiler: the
+Needs cc65 (`ca65`, `ld65`), Python 3, and a C compiler: the
 link's library for the console is nesp32's, and the tests build its
 firmware's link and services for this computer.
 
-`build/nes_radar_link.nes` is the ROM for a nesp32. It says hello to
-nesp32's firmware as `RADR` and asks for the RADAR service. Like the
-original it is a CN-ROM (mapper 3) with 32 KB of PRG and 32 KB of CHR.
-`build/nes_radar.nes` is nes-radar's own ROM, for its own server and
-cable, built here only to show that the patch leaves it alone.
+`build/nes_radar_link.nes` is the ROM for a nesp32, the same as nes-radar's
+own build of it. It says hello to nesp32's firmware as `RADR` and asks for
+the RADAR service. Like the original it is a CN-ROM (mapper 3) with 32 KB
+of PRG and 32 KB of CHR.
 
 It is also on [nesp32's cartridge](../../docs/DEVELOPMENT.md), from the
 menu. A CN-ROM changes its tiles by a write to the ROM, which the
@@ -74,14 +75,12 @@ off; with none kept, or no nesp32, at nes-radar's `KSBA`.
 
 | The scope's `LINK` says | |
 |---|---|
-| `IDLE` | the scene on the screen is the newest the nesp32 has, and it is good |
+| `LIVE...` | new scenes are coming: the dots go round for ten seconds after each |
+| `LIVE` | the nesp32 answers, and has had no new scene for ten seconds |
 | `WAITING` | nothing has come of the aircraft yet, or for ten seconds, or for thirty from adsb.fi |
-| `ERROR` | the nesp32's last fetch from adsb.fi failed. The last scene stays |
-| `ERROR 1` | the nesp32 has stopped answering. The last scene stays |
-| `ERROR 4` | the nesp32 sent an aircraft or a name that cannot be shown |
-
-nes-radar's `RECEIVING`, and its `ERROR 2`, `3` and `5`, are not seen:
-they are about its own packets on its own line.
+| `NO ANSWER` | the nesp32 has stopped answering. The last scene stays |
+| `BAD DATA` | the nesp32 sent an aircraft or a name that cannot be shown |
+| `ADSB DOWN` | the nesp32's last fetch from adsb.fi failed. The last scene stays |
 
 ## What is changed, and what is not
 
@@ -155,17 +154,20 @@ the NMI on.
 
 | Path | Purpose |
 |---|---|
-| `nes/radar_link.inc` | the link's code: the hello, the airport, the scope's loop and its exchanges |
-| `nes/cnrom256_link.cfg` | nes-radar's linker configuration, with a place for the serial routines |
-| `nes/mmc1_cart.cfg` | the same for the cartridge's build, with two pages of CHR |
-| `patches/` | the lines that call it, for nes-radar's one source file. All are under `.ifdef NESP32`, or `CART` for the cartridge's |
+| `nes/mmc1_cart.cfg` | the linker configuration for the cartridge's build, with two pages of CHR |
 | `tests/` | a console on py65, a nesp32 and the line between them, and the test in place of Wikidata and adsb.fi |
+
+In nes-radar, `nes_radar/nes/radar_link.inc` is the link's code (the
+hello, the airport, the scope's loop and its exchanges), and
+`nes_radar/nes/cnrom256.cfg` has a place for the serial routines.
 
 ## Changing nes-radar's code
 
-Edit the copy in `build/src/nes`, then `make patches`. nesp32's
-[`docs/DEVELOPMENT.md`](../../docs/DEVELOPMENT.md), "Changing a borrowed
-program's code", has how the patches are kept.
+Change it in nes-radar, in `third_party/nes-radar` if you like (it is a
+clone of it), and move the submodule to the commit. When nesp32's link
+protocol changes, run nes-radar's `tools/update_nesp32.sh` against this
+repository and commit what it writes there: `make verify` here says when
+it is needed.
 
 ## Not done
 

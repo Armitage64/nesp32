@@ -1,9 +1,10 @@
 """RADAR, NES Radar's service, with no console: requests in, replies out,
 and the test in place of Wikidata, of adsb.fi and of the clock.
 
-What a scene is to hold is nes-radar's to say: where its server's own code
-is here (the submodule in third_party), the service's scenes are held to
-the bytes that code makes of the same reply."""
+What a scene is to hold is nes-radar's to say: the service's scenes are
+held to the bytes its 0.4.4 server's own code makes of the same reply. From
+0.5.0 nes-radar has no server, so that code is a copy, in
+fixtures/nes-radar-server."""
 
 import json
 import os
@@ -23,7 +24,7 @@ TARGETS, MOTION, NAMES = p.NESP_RADAR_TARGETS_MAX, p.NESP_RADAR_MOTION_LEN, p.NE
 POLL, STALE_MS, UNASKED = p.NESP_RADAR_POLL_MS, p.NESP_RADAR_STALE_MS, p.NESP_RADAR_UNASKED_MS
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURES = os.path.join(HERE, "fixtures")
-SERVER = os.path.join(HERE, "..", "third_party", "nes-radar", "server", "src")
+SERVER = os.path.join(FIXTURES, "nes-radar-server")
 # Where Wikidata says a few airports are.
 PLACES = {"KLAX": (33.942501, -118.407997), "KSBA": (34.4262, -119.8404),
           "EGLL": (51.4706, -0.461941), "NZSP": (-90.0, 0.0), "AAAA": (0.0, 179.999)}
@@ -156,8 +157,6 @@ def theirs():
     """nes-radar's server, as a module. It is the scene's arithmetic that
     is wanted of it, so the two libraries it talks to the world with need
     not be here."""
-    if not os.path.isfile(os.path.join(SERVER, "nes_radar_server.py")):
-        pytest.skip("no nes-radar in third_party: git submodule update --init")
     stubs = {}
     for name in ("serial", "serial.tools", "serial.tools.list_ports", "certifi"):
         if name not in sys.modules:
@@ -172,7 +171,7 @@ def theirs():
         stubs["certifi"].where = lambda: os.devnull
     sys.path.insert(0, SERVER)
     dont = sys.dont_write_bytecode
-    sys.dont_write_bytecode = True      # nothing of ours in the submodule
+    sys.dont_write_bytecode = True      # nothing made in the fixtures
     try:
         import nes_radar_server
     finally:
