@@ -21,7 +21,7 @@ NEXT, PREVIOUS, PLAY = p.NESP_PRESS_NEXT, p.NESP_PRESS_PREVIOUS, p.NESP_PRESS_PL
 WAIT, GO, GONE = p.NESP_SOUND_WAIT, p.NESP_SOUND_GO, p.NESP_SOUND_GONE
 LAST = bytes((p.NESP_JUKE_SOUND_LAST,))
 END = b"\x80\x00"
-PERIODS = (21, 16, 14, 12, 10, 8)
+PERIODS = (21, 16, 14, 12, 10, 8, 7)
 ROOM = 56                       # what nes-jukebox's ROM asks for at most
 
 
@@ -461,7 +461,9 @@ def test_every_rate_a_sound_may_have(stick, period):
     record = intro(b"Tone", 0) + bytes((0x80, 0x05, rate))
     assert deck.pull(len(record)) == record
     assert deck.sound(rate) == GO
-    assert deck.hear() == SAMPLES[:50] + LAST
+    # At 8 cycles a bit and faster, after a lead the console settles on.
+    lead = b"\xff" * (p.NESP_SOUND_LEAD if period <= p.NESP_SOUND_TRACKED else 0)
+    assert deck.hear() == lead + SAMPLES[:50] + LAST
     assert stick.line.rates == [period, p.NESP_PERIOD]
     assert deck.pull(2) == END and deck.drained
 

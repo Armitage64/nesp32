@@ -29,8 +29,8 @@ from wire import SLICE, Port, ms
 __all__ = ["LinkConsole", "ms"]
 
 # Instructions that read $4017 on their fourth cycle: lda, and the sound
-# routines' cpy, cmp and eor.
-READS_ABS = (0xAD, 0xCC, 0xCD, 0x4D)
+# routines' cpy, cpx, cmp and eor.
+READS_ABS = (0xAD, 0xCC, 0xEC, 0xCD, 0x4D)
 STORE_ABS = (0x8C, 0x8D, 0x8E)  # sty, sta, stx absolute
 # The link's wait for a start bit (nesp32's nes/lib/gen_link.py): lda JOY2 /
 # lsr a / bcc, 9 cycles a look.

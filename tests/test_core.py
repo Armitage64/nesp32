@@ -236,6 +236,27 @@ def test_a_board_that_cannot_be_a_drive_says_so(stick):
         assert stick.ask(SYS, p.NESP_SYS_DRIVE, bytes((lend,))).payload == bytes((p.NESP_DRIVE_NONE,))
 
 
+def test_the_screen_is_turned_either_way_up_and_asked_after(stick):
+    def screen(turn):
+        return stick.ask(SYS, p.NESP_SYS_SCREEN, bytes((turn,))).payload
+
+    assert screen(p.NESP_TURN_ASK) == bytes((p.NESP_SCREEN_FLIPPED,))     # as it is built
+    assert screen(p.NESP_TURN_UPRIGHT) == bytes((p.NESP_SCREEN_UPRIGHT,))
+    assert screen(p.NESP_TURN_UPRIGHT) == bytes((p.NESP_SCREEN_UPRIGHT,))   # again is no turn
+    assert screen(p.NESP_TURN_ASK) == bytes((p.NESP_SCREEN_UPRIGHT,))
+    assert screen(p.NESP_TURN_FLIPPED) == bytes((p.NESP_SCREEN_FLIPPED,))
+    assert stick.screen == p.NESP_SCREEN_FLIPPED
+    assert stick.ask(SYS, p.NESP_SYS_SCREEN).status == p.NESP_ST_BAD_ARG
+    assert stick.ask(SYS, p.NESP_SYS_SCREEN, bytes((3,))).status == p.NESP_ST_BAD_ARG
+
+
+def test_a_firmware_that_cannot_turn_its_screen_says_so(stick):
+    stick.set_screen(p.NESP_SCREEN_NONE)
+    for turn in (p.NESP_TURN_ASK, p.NESP_TURN_UPRIGHT, p.NESP_TURN_FLIPPED):
+        assert stick.ask(SYS, p.NESP_SYS_SCREEN, bytes((turn,))).payload \
+            == bytes((p.NESP_SCREEN_NONE,))
+
+
 def test_events_raise_attention_on_every_reply_until_they_are_taken(stick):
     assert not stick.ask(SYS, p.NESP_SYS_STATUS).attention
     stick.event(p.NESP_EVENT_BUTTON_A)

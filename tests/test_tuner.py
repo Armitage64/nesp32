@@ -52,6 +52,14 @@ def levels(sent):
     return [pcm.raw_byte(byte) & (pcm.LEVELS - 1) for byte in sent]
 
 
+def samples(run, period=PERIOD):
+    """A run from its first byte, less the lead the console's routine
+    settles on and does not play."""
+    lead = pcm.lead(period)
+    assert run[:len(lead)] == lead
+    return run[len(lead):]
+
+
 def heard(sent):
     """A run as sound, -1 to 1: each level through the DAC's curve."""
     return [2 * wav2pcm.DAC[level] / wav2pcm.DAC[-1] - 1 for level in levels(sent)]
@@ -77,15 +85,33 @@ class Set:
         self.stick = stick
         self.now = 0
         stick.set_wifi(p.NESP_WIFI_JOINED)
-        # A UART takes what it has room for: about what leaves in a
-        # millisecond, so that a millisecond of the clock is one of sound.
-        stick.line.room = 20
+        # A UART takes what it has room for: what leaves in a millisecond,
+        # so that a millisecond of the clock is one of sound. The room is a
+        # millisecond's, however many writes it is taken in.
+        line = stick.line
+        if not hasattr(line, "paced"):     # once for a Stick that has more sets than one
+            write = line.line_write
+
+            def paced(data):
+                count = write(data)
+                line.room -= count
+                return count
+
+            line.line_write = line.paced = paced
+        line.room = 0
+        self.owed = 0.0
         assert stick.hello(app=b"NPR ", services=services).ok
 
+    rate = RATE                     # samples a second: the mode's
+
     def wait(self, ms=5):
+        line = self.stick.line
         for _ in range(ms):
             self.now += 1
+            self.owed = min(self.owed, 1.0) + self.rate / 1000
+            line.room = int(self.owed)
             self.stick.tick(self.now)
+            self.owed -= int(self.owed) - line.room
 
     def ask(self, op, payload=b""):
         reply = self.stick.ask(TUNER, op, payload)
@@ -278,7 +304,7 @@ def test_the_sound_rises_from_the_dacs_rest(radio):
     assert radio.sound() == GO
     radio.stick.line.sent.clear()
     radio.wait(p.NESP_RAW_START_MS + 60)
-    played = levels(radio.stick.line.sent)
+    played = levels(samples(radio.stick.line.sent))
     assert played[0] == 0
     assert max(played[:RAMP // 4]) < max(played[RAMP // 2:RAMP]) < max(played[RAMP:])
     middle = wav2pcm.nearest_level(0.5)
@@ -376,7 +402,7 @@ def test_the_button_before_the_sound_begins_ends_it_as_it_begins(radio):
     radio.tune()
     assert radio.sound() == GO
     radio.stick.event(p.NESP_EVENT_BUTTON_A)
-    sent = radio.hear(p.NESP_RAW_START_MS + 100)
+    sent = samples(radio.hear(p.NESP_RAW_START_MS + 100))
     assert sent[-1] == LAST and set(levels(sent)) == {0}
     assert radio.state() == OFF
 
@@ -410,7 +436,7 @@ def test_a_console_heard_during_the_sound_pauses_the_station(radio):
     assert radio.sound() == GONE
     assert radio.play() == READY and radio.stick.fetches == 1
     assert radio.sound() == GO
-    again = radio.hear(p.NESP_RAW_START_MS + 300)
+    again = samples(radio.hear(p.NESP_RAW_START_MS + 300))
     assert LAST not in again and len(again) > 0.25 * RATE
     assert levels(again[:1]) == [0]                     # from the DAC's rest, as the first time
 
@@ -520,9 +546,7 @@ def pages(bursts):
 class NewsSet(Set):
     """A console that asks for the station with the headlines."""
 
-    def __init__(self, stick):
-        super().__init__(stick)
-        stick.line.room = 12        # about what leaves in a millisecond at this rate
+    rate = NEWS_RATE
 
     def play(self, feed=FEED, fed=True):
         """PLAY with the headlines, and unless told not to, what becomes of

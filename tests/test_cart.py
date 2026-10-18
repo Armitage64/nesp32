@@ -231,6 +231,31 @@ def test_a_program_starts_and_reset_is_the_menu_again(cart, images, index):
     assert (c.mapper[0], c.mapper[1], c.mapper[3]) == registers(images[other])
 
 
+@pytest.mark.parametrize("with_stick", (True, False), ids=("stick", "no-stick"))
+def test_setups_quit_is_the_menu_again(cart, images, with_stick):
+    index = next(index for index, image in enumerate(images) if image.program.key == "setup")
+    c = cart()
+    if with_stick:
+        stick, _ = link(c, Stick)
+    c.run(4)
+    start(c, index)
+    if with_stick:
+        c.run_until(lambda: stick.hellos, 300)
+    c.run(30)
+    row = layout.BODY_ROW + 9 + 4               # the status screen's menu, its last
+    assert c.text(row, layout.LEFT + 2, 4) == "QUIT"    # on the cartridge, there is one
+    for _ in range(4):
+        c.press(PAD_DOWN)
+    c.press(PAD_A)
+    c.strict = True
+    c.run(6)
+    assert at_menu(c)
+    assert c.byte("choice") == 0
+    start(c, index)                             # and it can be run again
+    assert not c.home
+    assert (c.mapper[0], c.mapper[1], c.mapper[3]) == registers(images[index])
+
+
 def test_nes_radar_has_its_splash_and_then_its_scopes_tiles(cart, images):
     index = next(index for index, image in enumerate(images) if image.program.key == "radar")
     image = images[index]

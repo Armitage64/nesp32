@@ -12,9 +12,33 @@ its own list in its README.
   packet's way and differ from day to day; marking the packets for the
   class Wi-Fi sends first, and never holding one back to send with others,
   were not seen to help ([nes-contra's figures](../apps/contra/docs/Netplay.md)).
+- Why a real NES's receiver that hunts for each start bit fails at 8
+  cycles a bit and the MiSTer's does not. A sweep of the throughput test
+  on a real NES passed every rate from 14 cycles to 6 but 8, which lost
+  about one byte in nine every time, so the hat carries the console's
+  fastest rate ([the wiring](WIRING.md), "Speed"); no simulated line gives
+  that pattern. From 8 cycles down the console's receivers track the start
+  bit instead, and the slower ones still hunt: a cause found might be one
+  that shows at those too, on another console.
+- What stops the hat at 223722 baud from the console, on a real NES as on
+  the MiSTer: 298296 fails. The 100 kΩ RX base resistor slows that
+  stage's edges, which the SNAC adapter needs; nothing the console sends
+  needs more than 85227 today.
 
 ## Not started
 
+- A release pipeline on GitHub, for the firmware and the cartridge
+  together. Today the web site (`.github/workflows/web.yml`) is built
+  again from every push to main that touches the firmware, the cartridge
+  or the pages, so the flash page and the cartridge to download are
+  whatever main is, named by `git describe` and the commit's date
+  (`tools/gen_web.py`). Instead, only a numbered release, a tag such as
+  `v1.2.0`, would build and publish them, with the firmware for both
+  Sticks and the cartridge attached to a GitHub release of that number.
+  The firmware would carry the number, built in from the tag (ESP-IDF's
+  `PROJECT_VER`, which `esp_app_get_description()` gives back), and show
+  it on the Stick's screen; a build that is not a release would say so.
+  The cartridge's menu could show it too, and the flash page would name it.
 - A way for two nesp32s to meet across the Internet without a port
   forwarded: a server that introduces them, or a relay. Today the host
   forwards UDP port 6502.
@@ -37,5 +61,8 @@ its own list in its README.
   further than that. The port's CLK pin, which every read of `$4017`
   pulses, is the other line the hat leaves alone
   ([the jukebox's plan](../apps/jukebox/PLAN.md), "clocked link").
-- PAL consoles. The console's library counts NTSC cycles, and so does
-  every program on it.
+- PAL consoles ([the plan](PAL.md)). The console's library counts cycles,
+  not time, and works as it is on a PAL CPU; what assumes NTSC is the
+  nesp32's rates, worked out from the NTSC clock, and the programs' times
+  and sounds made for 60 frames a second. Dr. Mario and Contra would also
+  need their patches made again for the PAL releases.

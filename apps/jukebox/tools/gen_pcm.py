@@ -28,7 +28,29 @@ From 13 cycles a bit up the padding is long enough to need a loop, which
 counts in Y. The hunt then compares with A, and since a byte's code is
 longer than a branch reaches, its ways out are jumps.
 
-Button A is looked at once a byte, in the stop bits. The line to the nesp32
+At the rates pcm.tracked names, 8 and 7 cycles a bit, the hunt is too
+coarse: a look every 6 cycles leaves a sample up to 3.5 cycles off the
+middle of a bit of 8, and on a real NES that rate lost bytes where 7 and
+6 with the throughput test's tracking receiver lost none. So these
+routines are that receiver (../throughput/tools/gen_rates.py). Once a
+byte it reads the line where the start bit's edge should be (cpx, with X
+holding PORT_START). Already low, it is late or on time and takes 4
+cycles to its first sample; still high, it is early and takes 6. A byte is
+so a cycle shorter or longer than the line's, and the edge stays within a
+cycle of the look. At 7 cycles a bit the gaps between samples are 6 and 8
+by turns, since a gap of 7 has 1 cycle of padding, which cannot be.
+
+The first byte is found by a hunt, up to 6 cycles out, and the nesp32
+sends pcm.LEAD bytes of $FF ahead of the samples for the routine to work
+that off on: it counts them in Y, and neither plays nor looks at them.
+After them it takes its bytes two to a loop, the same but for what comes
+after the last sample: the first of the two looks at button A, the
+second jumps back. A tracking routine goes by the clock and has no hunt
+after the first byte, so a gap in the samples, which a nesp32 does not
+leave, would put it out of step.
+
+Button A is looked at once a byte, in the stop bits, or at the tracked
+rates once every two. The line to the nesp32
 is OUT0, which is at rest for as long as a sound plays, and at rest it
 keeps the controller loading its buttons: a read of $4016 then gives A as
 it is now, as PORT_START if it is down, with nothing put on the line. The
@@ -64,26 +86,26 @@ PADS = ((2, 1, ["    nop"]), (3, 2, ["    bit $00"]), (7, 2, ["    pha", "    pl
 LOOP_BYTES = 5          # ldy #n, then dey / bne: 5n + 1 cycles
 
 
-def delay(cycles, _memo={0: (0, [])}):
+def delay(cycles, _memo={0: (0, [])}, _memo_y={0: (0, [])}, y=True):
     """Lines of code that take exactly this many cycles, in the fewest
-    bytes. Uses Y from 12 cycles up."""
+    bytes. Uses Y from 12 cycles up, unless y is False."""
     if cycles == 1 or cycles < 0:
         raise ValueError("cannot pad %d cycles" % cycles)
-    return list(_pad(cycles, _memo)[1])
+    return list(_pad(cycles, _memo if y else _memo_y, y)[1])
 
 
-def _pad(cycles, memo):
+def _pad(cycles, memo, y=True):
     if cycles not in memo:
         choices = []
         for cost, size, lines in PADS:
             if cycles - cost >= 0 and cycles - cost != 1:
-                rest = _pad(cycles - cost, memo)
+                rest = _pad(cycles - cost, memo, y)
                 choices.append((size + rest[0], lines + rest[1]))
         loops, rest = divmod(cycles - 1, 5)
         if rest == 1:
             loops, rest = loops - 1, 6
-        if 1 <= loops <= 255 and cycles >= 12:
-            tail = _pad(rest, memo)
+        if y and 1 <= loops <= 255 and cycles >= 12:
+            tail = _pad(rest, memo, y)
             choices.append((LOOP_BYTES + tail[0],
                             ["    ldy #%d" % loops, ":   dey", "    bne :-"] + tail[1]))
         memo[cycles] = min(choices, key=lambda choice: choice[0])
@@ -130,6 +152,74 @@ def stream_routine(name, period):
         lines += ["    bit $00         ; evens out the two ways out", "    jmp @byte",
                   "@found:", "    nop"]
     lines += ["    jmp @byte", "@done:", "    clc", "    rts", "@pressed:", "    sec", "    rts",
+              '    .assert >(%s) = >(* - 1), error, "%s crosses a page"' % (name, name)]
+    return lines
+
+
+TRACK_TO_SAMPLE = 9     # from the look to the first sample's code: 8 if late, 10 if early
+LOOK_AND_LOAD = 13      # that, and lda JOY2: from the look to the end of the first sample
+SETTLE_TAIL = 5         # dey, bne: after the last sample of a byte that is not played
+PAIR_TAILS = (9, 12)    # sta, bpl, jmp after the second of a pair; then cpx / beq (button A)
+                        # after the first, the tail before the second's look
+
+
+def tracked_gaps(period):
+    """Cycles between a byte's 8 samples: a gap is 6 or at least 8."""
+    if period - SAMPLE == 1:
+        return [6, 8] * 3 + [6]
+    return [period] * 7
+
+
+def tracked_routine(name, period):
+    byte = pcm.FRAME_BITS * period
+    gaps = tracked_gaps(period)
+    first = int(1.5 * period) - TRACK_TO_SAMPLE
+    first += first == 1
+    # From one look to the next is a byte: the look and the first sample,
+    # the other seven, what comes after them and the turn to the next. A
+    # look's turn so follows the byte before it: the first of a pair's,
+    # the second's; the second's, the first's.
+    turns = [byte - LOOK_AND_LOAD - sum(gaps) - tail - first
+             for tail in (SETTLE_TAIL,) + PAIR_TAILS]
+    assert all(turn >= 0 and turn != 1 for turn in turns), (period, turns)
+    settle_turn, turn_one, turn_two = turns
+    # Out of the last byte not played: bne not taken, and to the first
+    # pair's look as if from a byte played.
+    into = 1 + settle_turn - turn_one
+
+    def receive(label, turn, early, y=True):
+        lines = ["@look%s:" % label]
+        lines += delay(turn, y=y)
+        lines += ["    cpx JOY2            ; where the start bit's edge should be",
+                  "    bne %s       ; still at mark: a longer way round" % early,
+                  "    nop", "@sample%s:" % label]
+        lines += delay(first, y=y)
+        lines.append("    lda JOY2")
+        for gap in gaps:
+            lines += delay(gap - SAMPLE, y=y)
+            lines += ["    asl a", "    eor JOY2"]
+        return lines
+
+    lines = ["", ".align 256",
+             "; %d cycles a bit, %d baud, %d samples a second, tracking" % (
+                 period, pcm.baud(period), round(pcm.sample_rate(period))),
+             "%s:" % name, "    ldx #PORT_START", "    ldy #%d" % pcm.LEAD,
+             "@hunt:"]
+    lines += ["    cpx JOY2", "    beq @sample_lead"] * 3
+    lines += ["    cpx JOY2", "    bne @hunt",
+              "@early_lead:", "    jmp @sample_lead"]
+    lines += receive("_lead", settle_turn, "@early_lead", y=False)
+    lines += ["    dey                 ; a byte of the lead, not played", "    bne @look_lead"]
+    lines += delay(into)
+    lines += receive("_one", turn_one, "@early_one")
+    lines += ["    sta APU_DMC_LEVEL   ; the sample; bit 7 is not the DAC's",
+              "    bpl @done           ; and clear in the last byte",
+              "    cpx JOY1            ; button A, with the line at rest",
+              "    beq @pressed"]
+    lines += receive("_two", turn_two, "@early_two")
+    lines += ["    sta APU_DMC_LEVEL", "    bpl @done", "    jmp @look_one",
+              "@early_one:", "    jmp @sample_one", "@early_two:", "    jmp @sample_two",
+              "@done:", "    clc", "    rts", "@pressed:", "    sec", "    rts",
               '    .assert >(%s) = >(* - 1), error, "%s crosses a page"' % (name, name)]
     return lines
 
@@ -205,7 +295,8 @@ def include():
              "", '.segment "SOUND"']
     names = ["pcm_stream_%d" % index for index in range(len(pcm.PERIODS))]
     for name, period in zip(names, pcm.PERIODS):
-        lines += stream_routine(name, period)
+        lines += (tracked_routine(name, period) if pcm.tracked(period)
+                  else stream_routine(name, period))
     lines += HUSH.splitlines()
     lines += ["", '.segment "RODATA"',
               "pcm_stream_lo: .byte " + ", ".join("<" + name for name in names),

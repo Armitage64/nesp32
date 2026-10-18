@@ -419,8 +419,12 @@ class Bench:
         """Button A on the nesp32."""
         self.stick.event(p.NESP_EVENT_BUTTON_A)
 
-    def press_start(self, frames=3):
+    def press_start(self, frames=3, button=PAD_START):
         """Start on controller 1, held for some frames."""
-        self.machine.pad = PAD_START
+        self.machine.pad = button
         self.machine.run(frames)
         self.machine.pad = 0
+
+    def press_select(self, frames=3):
+        """Select on controller 1: a sweep."""
+        self.press_start(frames, PAD_SELECT)

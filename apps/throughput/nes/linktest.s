@@ -18,6 +18,12 @@
 ; rate, and ends early at a block with a bad byte. Each direction is
 ; climbed by itself (README.md).
 ;
+; Select in place of Start sweeps the direction to the console instead:
+; every rate of its ladder from SWEEP_FIRST up, each a whole trial however
+; many bytes come wrong, with no climb that stops at the first to fail. The
+; screen's two halves become a table of them, and the next climb puts the
+; halves back.
+;
 ; A frame: the NMI writes what has been staged for the screen, and the main
 ; program then makes one exchange, with most of the frame left for the
 ; reply. The NMI is also what ends an exchange that got no reply
@@ -56,6 +62,7 @@ NAMETABLE = $2000
 PALETTE   = $3F00
 OUT0_MARK = $01
 PAD_START = $10
+PAD_SELECT = $20
 
 TRIAL_BLOCKS = 4                ; a trial: 1024 bytes
 ; For finding out what a line cannot do: `make TX_FIRST=8` builds a ROM that
@@ -65,6 +72,9 @@ TRIAL_BLOCKS = 4                ; a trial: 1024 bytes
 TX_FIRST = 0
 .endif
 NO_RATE = $FF
+; The sweep's rates: the last of the ladder to the console, 14 cycles a bit
+; to 5. The tests check that they are.
+SWEEP_RATES = 10
 ASK_TRIES = 90                  ; frames a request is made for before the nesp32 is given up
 DRAW_MAX = 96                   ; bytes staged for one NMI: what it writes well inside vblank
 SETTLE_LOOP = 1286              ; cycles of one pass of settle's outer loop
@@ -102,7 +112,8 @@ digits:       .res 1
 tries:        .res 1
 count:        .res 1
 ran:          .res 1            ; a test has run, and its results are up
-start_up:     .res 1            ; Start has been seen up since the ROM last waited for it
+start_up:     .res 1            ; Start and Select have been seen up since the ROM last waited
+swept:        .res 1            ; the halves of the screen have a sweep's table over them
 port:         .res 1            ; what JOY2 read with the line at rest
 base:         .res 1            ; the direction under test: its first row in the tables
 half:         .res 1            ; and its title's row on the screen
@@ -129,6 +140,17 @@ SETTLE_LOOPS = (NESP_RAW_SETTLE_MS * (NESP_CPU_HZ / 1000) + SETTLE_LOOP - 1) / S
 .assert SETTLE_LOOPS < 256, error, "settle counts in X"
 .assert NESP_TX_MAX = NESP_HELLO_FIXED + 1, error, "the hello names one service"
 .assert TX_FIRST < TX_COUNT, error, "TX_FIRST is a rate of the ladder from the console"
+
+SWEEP_FIRST = RX_COUNT - SWEEP_RATES
+; The table: a title, a heading, and a row a rate under it, in the rows the
+; halves have, from HALF_RX to the last of HALF_TX's.
+SWEEP_LAST_ROW = HALF_TX + ROW_FAILED
+SWEEP_TOP = HALF_RX + 2
+SWEEP_CYCLES = STATE_COLUMN + 1     ; its columns, and their widths
+SWEEP_SPEED = STATE_COLUMN + 5
+SWEEP_BAD = STATE_COLUMN + 16
+.assert SWEEP_TOP + SWEEP_RATES - 1 <= SWEEP_LAST_ROW, error, "the sweep's table fits"
+.assert SWEEP_BAD + 12 = STATE_COLUMN + STATE_WIDTH, error, "the sweep's rows are the state's width"
 
 .segment "RODATA"
 
@@ -162,6 +184,10 @@ bytes_text:    .byte " BYTES", 0
 comma_text:    .byte ", ", 0
 bad_text:      .byte " BAD", 0
 port_text:     .byte "$4017 READS $", 0
+sweeping_text: .byte "SWEEPING", 0
+sweep_title:   .byte "NESP32 TO NES, EVERY RATE", 0
+sweep_heading: .byte " CYC SPEED      BAD OF SENT", 0
+of_text:       .byte " OF ", 0
 
 ; Add a text to the field being staged.
 .macro put text
@@ -281,14 +307,19 @@ port_text:     .byte "$4017 READS $", 0
     ; A request a frame keeps watch on the nesp32 meanwhile.
 @idle:
     lda pad
-    and #PAD_START
+    and #PAD_START | PAD_SELECT
     bne @down
     lda #1
     sta start_up
     bne @watch
 @down:
     lda start_up
-    bne @go
+    beq @watch
+    lda pad
+    and #PAD_SELECT
+    beq @go
+    jsr sweep
+    jmp @ran
 @watch:
     lda #NESP_SVC_RAW
     ldx #NESP_RAW_RESULT
@@ -305,6 +336,7 @@ port_text:     .byte "$4017 READS $", 0
     bne @idle
 @go:
     jsr run_test
+@ran:
     lda #0
     sta testing
     lda #1
@@ -359,10 +391,11 @@ main_wait:
 
 ; Both directions, from a screen with no figures on it.
 .proc run_test
-    lda #1
-    sta testing
-    lda #0
-    sta pad
+    jsr begin
+    lda swept
+    beq @paint
+    jsr restore_halves
+@paint:
     jsr paint
     say testing_text
     ; The receivers count on what the port's unused bits read (rates.inc).
@@ -467,6 +500,202 @@ main_wait:
     ldy #TEXT_FASTEST
     jsr put_str
     jmp field_end
+.endproc
+
+; A test is under way: the controller is not read, and what it last read
+; is let go of.
+.proc begin
+    lda #1
+    sta testing
+    lda #0
+    sta pad
+    rts
+.endproc
+
+; Every rate to the console from SWEEP_FIRST, each a whole trial, and a row
+; of the table for each: its cycles a bit, its speed, and the bytes of the
+; trial that came wrong of those it checked.
+.proc sweep
+    jsr begin
+    say sweeping_text
+    lda #1
+    sta swept
+    jsr sweep_table
+    lda JOY2                    ; the receivers count on it, as in run_test
+    sta port
+    cmp #PORT_IDLE
+    beq @port
+    lda #SWEEP_TOP
+    ldx #STATE_COLUMN
+    ldy #STATE_WIDTH
+    jsr field
+    put port_text
+    lda port
+    jsr put_hex
+    jmp field_end
+@port:
+    lda #0
+    sta base
+    lda #SWEEP_FIRST
+    sta rate
+@rate:
+    jsr sweep_row
+    put sweeping_text
+    jsr field_end
+    lda #0
+    sta bad
+    sta bad + 1
+    sta blocks
+@block:
+    jsr block
+    inc blocks
+    lda blocks
+    cmp trial_blocks
+    bcc @block
+    jsr sweep_row
+    lda bad
+    sta num
+    lda bad + 1
+    sta num + 1
+    jsr put_dec
+    put of_text
+    ; Bytes checked: a block's, less the ones the receiver settles on.
+    ldx rate
+    sec
+    lda #<BLOCK
+    sbc rate_lead,x
+    sta ptr
+    lda #>BLOCK
+    sbc #0
+    sta ptr + 1
+    lda #0
+    sta num
+    sta num + 1
+    ldx trial_blocks
+@sent:
+    clc
+    lda num
+    adc ptr
+    sta num
+    lda num + 1
+    adc ptr + 1
+    sta num + 1
+    dex
+    bne @sent
+    jsr put_dec
+    jsr field_end
+    inc rate
+    lda rate
+    cmp #RX_COUNT
+    bcc @rate
+    rts
+.endproc
+.assert BLOCK = 256, error, "sweep takes BLOCK as its high byte and low"
+
+; The rate's row of the table: its cycles and its speed written, and its
+; last column begun.
+.proc sweep_row
+    lda rate
+    clc
+    adc #SWEEP_TOP - SWEEP_FIRST
+    pha
+    ldx #SWEEP_CYCLES
+    ldy #SWEEP_SPEED - SWEEP_CYCLES
+    jsr field
+    ldx rate
+    lda rate_period,x
+    sta num
+    lda #0
+    sta num + 1
+    jsr put_dec
+    jsr field_end
+    pla
+    pha
+    ldx #SWEEP_SPEED
+    ldy #SWEEP_BAD - SWEEP_SPEED
+    jsr field
+    jsr rate_texts
+    ldy #TEXT_SPEED
+    jsr put_str
+    jsr field_end
+    pla
+    ldx #SWEEP_BAD
+    ldy #STATE_COLUMN + STATE_WIDTH - SWEEP_BAD
+    jmp field
+.endproc
+
+; The halves' rows blanked, and the table's title and heading over them.
+.proc sweep_table
+    lda #HALF_RX
+    sta row
+@row:
+    lda row
+    ldx #STATE_COLUMN
+    ldy #STATE_WIDTH
+    jsr field
+    lda row
+    cmp #HALF_RX
+    bne @heading
+    put sweep_title
+    jmp @end
+@heading:
+    cmp #HALF_RX + 1
+    bne @end
+    put sweep_heading
+@end:
+    jsr field_end
+    inc row
+    lda row
+    cmp #SWEEP_LAST_ROW + 1
+    bcc @row
+    rts
+.endproc
+
+; The halves' rows as the screen came up with them, from screen_data.
+.proc restore_halves
+    lda #0
+    sta swept
+    lda #HALF_RX
+    sta row
+@row:
+    lda row
+    ldx #STATE_COLUMN
+    ldy #STATE_WIDTH
+    jsr field
+    ; ptr = screen_data + 32 * row + STATE_COLUMN
+    lda row
+    sta ptr
+    lda #0
+    sta ptr + 1
+    ldy #5
+@times32:
+    asl ptr
+    rol ptr + 1
+    dey
+    bne @times32
+    clc
+    lda ptr
+    adc #<(screen_data + STATE_COLUMN)
+    sta ptr
+    lda ptr + 1
+    adc #>(screen_data + STATE_COLUMN)
+    sta ptr + 1
+    ldx draw_at
+    ldy #0
+@tile:
+    lda (ptr),y
+    sta draw_buf,x
+    inx
+    iny
+    cpy #STATE_WIDTH
+    bne @tile
+    stx draw_at
+    jsr field_end
+    inc row
+    lda row
+    cmp #SWEEP_LAST_ROW + 1
+    bcc @row
+    rts
 .endproc
 
 ; A trial: blocks at one rate, stopping after the first that is not clean.

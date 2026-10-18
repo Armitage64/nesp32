@@ -59,6 +59,16 @@ def version():
         return "unknown"
 
 
+def date():
+    """The day of the commit the firmware was built from, as YYYY-MM-DD:
+    the same for every build of it, wherever and whenever that is."""
+    try:
+        return subprocess.check_output(
+            ["git", "-C", ROOT, "log", "-1", "--format=%cs"], text=True).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return ""
+
+
 def build(family, directory, prefix, out):
     """Copy one board's files to `out` and return its entry in the manifest."""
     with open(os.path.join(directory, "flasher_args.json")) as f:
@@ -95,6 +105,8 @@ def main(out, cart):
     manifest = {
         "name": "nesp32",
         "version": version(),
+        # Not ESP Web Tools': the flash page shows it beside the version.
+        "date": date(),
         # The browser asks whether to erase first. Not erasing keeps the
         # saved networks and the music.
         "new_install_prompt_erase": True,
@@ -111,7 +123,7 @@ def main(out, cart):
     shutil.copyfile(cart, os.path.join(out, "nesp32.nes"))
     for name, path in PICTURES:
         shutil.copyfile(os.path.join(ROOT, path), os.path.join(out, "img", name))
-    print("%s: nesp32 %s" % (os.path.relpath(out), manifest["version"]))
+    print("%s: nesp32 %s, %s" % (os.path.relpath(out), manifest["version"], manifest["date"]))
 
 
 if __name__ == "__main__":

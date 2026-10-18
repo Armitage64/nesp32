@@ -21,30 +21,32 @@ The nesp32's firmware is built with ESP-IDF, from `firmware/`
 ([its README](../firmware/README.md)). Each program in `apps/` has a
 Makefile and a README of its own.
 
-Three programs are other people's, and are not in this repository. Their
-code is in submodules in `third_party/`. Two are games with netplay, from
+Four programs are other people's, and are not in this repository. Their
+code is in submodules in `third_party/`. Three are games with netplay, from
 disassemblies, and here is only what puts each on the link and the few
 lines that call it, as patches, with each submodule kept at the commit the
 patches were made for:
 [nes-contra-us](https://github.com/vermiceli/nes-contra-us), vermiceli's,
-for [nes-contra](../apps/contra), and
+for [nes-contra](../apps/contra),
 [NES-Games-Disassembly](https://github.com/cyneprepou4uk/NES-Games-Disassembly),
-cyneprepou4uk's, for [nes-drmario](../apps/drmario). Contra's build also needs a copy of the game, which whoever
-builds it supplies. The third is [nes-radar](https://github.com/k6lcm/nes-radar),
+cyneprepou4uk's, for [nes-drmario](../apps/drmario), and
+[TetrisNESDisasm](https://github.com/CelestialAmber/TetrisNESDisasm),
+CelestialAmber's, for [nes-tetris](../apps/tetris). Contra's build also needs a copy of the game, which whoever
+builds it supplies. The fourth is [nes-radar](https://github.com/k6lcm/nes-radar),
 k6lcm's, for [nes-radar](../apps/nes-radar), which from its 0.5.0 is for a
 nesp32 and nothing else: its source has the link in it, and nothing here
 patches it. The tests of the firmware's RADAR service run its 0.4.4
-server's code beside the service, from a copy in `tests/fixtures`. Neither
-game is on the cartridge; NES Radar is, so the cartridge's build needs that
-submodule. Nothing else here needs any of the three.
+server's code beside the service, from a copy in `tests/fixtures`. None of
+the games is on the cartridge; NES Radar is, so the cartridge's build needs
+that submodule. Nothing else here needs any of the four.
 
 ### Changing a borrowed program's code
 
 NES Radar's is changed in nes-radar itself, and the submodule moved to the
-commit ([its README](../apps/nes-radar/README.md) has how). For the two
+commit ([its README](../apps/nes-radar/README.md) has how). For the three
 games, the build copies the submodule's sources into the program's
-`build/` (`build/src` for Contra, `build/upstream` for Dr. Mario) and
-applies its `patches/` there; the submodule is never
+`build/` (`build/src` for Contra, `build/upstream` for Dr. Mario and
+Tetris) and applies its `patches/` there; the submodule is never
 written to. To change what nesp32 adds to their own files, edit the
 copies, then
 
@@ -54,7 +56,7 @@ make patches    # patches/ again, from the copies
 
 A patch is made with no context, so it holds our lines and where they go
 and none of the original. That is why each submodule is kept at one commit
-(`CONTRA_COMMIT` and `DRMARIO_COMMIT` in the Makefiles): the
+(`CONTRA_COMMIT`, `DRMARIO_COMMIT` and `TETRIS_COMMIT` in the Makefiles): the
 patches are line numbers in that commit's files. `make clean` will not
 delete copies that have changes `patches/` has not.
 
@@ -108,6 +110,7 @@ What is still to do on the hardware and the firmware is in
 | [Jukebox](../apps/jukebox), JUKE and RAW | working on hardware |
 | [Throughput](../apps/throughput), RAW | working on hardware |
 | [Dr. Mario](../apps/drmario) and [Contra](../apps/contra), PEER | working on hardware, two consoles on one network |
+| [Tetris](../apps/tetris), PEER | the game for two, finished, and a session, on two simulated consoles; not yet on hardware |
 | [NES Radar](../apps/nes-radar), RADAR | working on hardware |
 | [National Public Radio](../apps/npr), TUNER | working on hardware, and for long runs |
 | [Weather](../apps/weather), WEATHER | working on hardware, the ROM by itself |

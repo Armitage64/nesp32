@@ -33,7 +33,7 @@ def test_a_sample_is_the_byte_the_receiver_turns_into_its_level():
 
 def test_the_rates_are_a_byte_of_11_bits_at_whole_cycles_a_bit():
     assert [round(pcm.sample_rate(period)) for period in pcm.PERIODS] == [
-        7748, 10169, 11622, 13559, 16271, 20338]
+        7748, 10169, 11622, 13559, 16271, 20338, 23244]
     assert pcm.baud(pcm.DEFAULT_PERIOD) == 111861 and pcm.DEFAULT_PERIOD in pcm.PERIODS
     assert list(pcm.PERIODS) == sorted(pcm.PERIODS, reverse=True)
 

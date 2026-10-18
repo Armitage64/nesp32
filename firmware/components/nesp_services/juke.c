@@ -85,7 +85,7 @@ enum {
 #define CTRL_SOUND 0x05
 
 /* A sound's rates, in CPU cycles a bit; the console is told the index. */
-static const uint8_t periods[NESP_JUKE_SOUND_RATES] = {21, 16, 14, 12, 10, 8};
+static const uint8_t periods[NESP_JUKE_SOUND_RATES] = {21, 16, 14, 12, 10, 8, 7};
 
 typedef struct {
     bool sound;
@@ -335,6 +335,14 @@ static uint8_t quieter(uint8_t byte, uint32_t part, uint32_t whole)
     return mirror((uint8_t)((level | MORE) ^ 0x3F));
 }
 
+/* The bytes of $FF a sound at this rate begins with: the console's routine
+ * at the fastest rates tracks each byte's start bit from the one before,
+ * and settles on them first. */
+static uint8_t sound_lead(uint8_t period)
+{
+    return period <= NESP_SOUND_TRACKED ? NESP_SOUND_LEAD : 0;
+}
+
 /* Samples a second at the sound's rate: the nesp32 sends a byte as 11 bits. */
 static uint32_t sound_hz(const nesp_juke_t *juke)
 {
@@ -397,6 +405,7 @@ static uint32_t hushed_at(const nesp_juke_t *juke)
 {
     uint32_t played = (uint32_t)((uint64_t)(juke->sound_spoke_ms - juke->sound_began)
                                  * sound_hz(juke) / 1000u);
+    played = played > juke->run.lead ? played - juke->run.lead : 0;     /* not samples */
     uint32_t read = juke->sound_at - juke->sound_from;
     return juke->sound_from + (played < read ? played : read);
 }
@@ -677,6 +686,7 @@ static void sound(nesp_juke_t *juke, const nesp_request_t *request, nesp_reply_t
             juke->run.read = sound_read;
             juke->run.done = sound_done;
             juke->run.heard = sound_heard;
+            juke->run.lead = sound_lead(juke->sound_period);
             juke->sound_ended = juke->sound_hushed = false;
             juke->sound_spoke = 0;
             if (request->data[1] == juke->sound_rate

@@ -60,7 +60,9 @@ def dac_writes(rom, labels, sound, clock_error=0.0):
     """Every (cycle, level) the stream routine writes for a sound."""
     machine = Console(rom, labels)
     machine.level_log = []
-    line = Line(sound.samples + pcm.LAST_BYTE, START, sound.period / (1.0 + clock_error))
+    # As a nesp32 sends it: at the fastest rates, after a lead to settle on.
+    line = Line(pcm.lead(sound.period) + sound.samples + pcm.LAST_BYTE, START,
+                sound.period / (1.0 + clock_error))
     # The port's buffer inverts D0, and the rest reads as the routines
     # count on. Every read is on its instruction's fourth cycle.
     machine.memory.subscribe_to_read(

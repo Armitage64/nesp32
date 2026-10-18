@@ -26,8 +26,13 @@ come out frame for frame and sample for sample, over a line that models
 every bit, whatever is lost or damaged on the way. **Sampled sound has
 played on a real NES from a StickC Plus2**, with the hat on its PCB, at
 10169, 11622 and 20338 samples a second, and pausing a sound with A and
-playing it on works there. Still untried with a nesp32: a long run, and
-the three other rates of sound.
+playing it on works there; and at 16271 on the hat with its 3.3 kΩ TX
+pull-up. Later runs on that hat did not play 20338: the routine at 8
+cycles a bit hunted for each start bit, and on a real NES that hunt lost
+bytes where the throughput test's tracking receiver lost none at 8, 7 and
+6 cycles. The two fastest rates, 20338 and 23244 (new), have a tracking
+routine now, and **both play correctly on a real NES** from the hat.
+Still untried with a nesp32: a long run, and sound at 7748 and 13559.
 
 | Part | State |
 |---|---|
@@ -35,7 +40,7 @@ the three other rates of sound.
 | Player ROM, with a song built in (`build/jukebox.nes`) | tested on py65, where every song plays frame-exact; confirmed by ear in Mesen 2 and on a real NES |
 | The screen and the controller, on both ROMs | tested on py65; they worked on a real NES before the link changed, and are unchanged |
 | Link ROM (`build/jukebox_link.nes`): the ROM on nesp32's library, and nesp32's JUKE and RAW services | working on a StickS3 with the MiSTer's NES core, at 85227 baud; tested together over a cycle-exact simulated line |
-| Sampled sound through `$4011`, at 7748 to 20338 samples a second | heard from a nesp32 on the MiSTer at the fastest rate, and on a real NES from a StickC Plus2 at 10169, 11622 and 20338; all six rates are tested on the simulated line |
+| Sampled sound through `$4011`, at 7748 to 23244 samples a second | heard from a nesp32 on the MiSTer at 20338, and on a real NES at 10169, 11622, 16271, 20338 and 23244; all seven rates are tested on the simulated line |
 
 Until October 2026 the jukebox had a link protocol of its own, at 38400
 baud, a MicroPython firmware for the Stick, and a desktop streamer for an
@@ -210,8 +215,8 @@ tools/pcm_preview.py music/song.pcm build/song_nes.wav
   `wav2pcm.py` needs nothing, and is slow on a long file (about a third
   of the file's length).
 - `--period` picks the rate, in CPU cycles a bit: 21, 16 (the default,
-  10169 samples a second), 14, 12, 10 or 8 (20338). A minute is 465 KB at
-  the slowest and 1220 KB at the fastest.
+  10169 samples a second), 14, 12, 10, 8 (20338) or 7 (23244). A minute is
+  465 KB at the slowest and 1395 KB at the fastest.
 - `--seconds` keeps only that much from the start, for a nesp32 with
   little flash to spare.
 - `--title` is what the console shows, "game - track" as for music. It
@@ -235,7 +240,7 @@ button A is looked at. **A pauses the sound**: the console leaves it, the
 clock flashes as it does when music is paused, and the whole controller
 works again, so Left and Right change the track from there. Start or A
 plays the sound on from where it was left, to within a few hundredths of
-a second. This is tested on the simulated console at all six rates, and
+a second. This is tested on the simulated console at all seven rates, and
 works on hardware.
 
 A button on the nesp32 ends the sound and then does what it always does,
@@ -258,8 +263,14 @@ the rest. Starting the nesp32 again frees it; so does Reset.
   console that has left. At 14 CPU cycles a bit and slower there looks to
   be room to read all eight inside one sample. Neither is begun, and
   neither has been worked out further than on paper.
-- A long run with nesp32's firmware, and sound at 7748, 13559 and 16271
-  samples a second on hardware.
+- A long run with nesp32's firmware, and sound at 7748 and 13559 samples a
+  second on hardware.
+- **A gap in a sound at 20338 or 23244 samples a second.** Their routines
+  track each start bit from the one before and go by the clock, so they
+  read a gap as bytes of mark, which they play at the DAC's middle, and
+  come out of it out of step. The nesp32 leaves no gap: its UART has 2 KB
+  in hand, some 90 ms of sound. The slower routines hunt for every start
+  bit, and wait out a gap.
 
 ## Converting music
 

@@ -18,8 +18,10 @@ own now; it still has the jukebox's font and header.
 before October 2026, when it was a ROM with the same receive and send
 routines and a MicroPython script on a StickC Plus2; that script, its
 protocol and its tests are in this repository's history. It has also run
-on a real NES with a StickC Plus2 wired through a breadboard. See
-"Hardware results" and "What the runs taught".
+on a real NES with a StickC Plus2 wired through a breadboard, and with the
+hat on its PCB, where it reaches 298296 baud to the console too, once 8
+cycles a bit had moved to the tracking receiver. See "Hardware
+results" and "What the runs taught".
 
 ## What it measures
 
@@ -36,7 +38,7 @@ Above those each direction goes as far as its routines can:
 
 | Direction | Extra rates | Why it ends there |
 |---|---|---|
-| to NES | 12, 11, 10, 9 and 8 cycles (223722 baud) with the fast receiver; 7 and 6 (298296 baud) with the tracking one | a sample takes 6 cycles: shift, XOR the port in. Then 5 cycles (357955 baud), which is there to fail |
+| to NES | 12, 11, 10 and 9 cycles (198864 baud) with the fast receiver; 8, 7 and 6 (298296 baud) with the tracking one | a sample takes 6 cycles: shift, XOR the port in. Then 5 cycles (357955 baud), which is there to fail |
 | to nesp32 | 12, 11, 10, 8 and 6 cycles (298296 baud) | a bit takes 6 cycles: write, shift |
 
 **Two receivers, neither of them the link's.** The link takes 11 cycles to
@@ -47,10 +49,12 @@ left, XOR the port: 6 cycles), and it hunts by comparing the port with what
 it reads at a start bit (6 cycles a look). It leaves every byte
 bit-reversed, inverted and with the port's other bits mixed in, and the
 console puts the block right from a table once it has all arrived. It
-takes every rate down to 8 cycles a bit.
+takes every rate down to 9 cycles a bit.
 
-At 8 cycles a bit that hunt is nearly a bit long, so at 7 and 6 the
-tracking receiver does not hunt. Once a byte it looks at the line at the
+At 8 cycles a bit that hunt is nearly a bit long. On a real NES it lost
+about one byte in nine there, every time, where the tracking receiver lost
+none at 7 and 6; so from 8 cycles down the tracking receiver takes the
+rates, and does not hunt. Once a byte it looks at the line at the
 moment the start bit should fall. If the line is already low it is late,
 and takes a cycle less to reach its first sample; if still high it is
 early, and takes a cycle more. That holds its samples within 2.5 cycles of
@@ -107,6 +111,36 @@ make                      # build/linktest.nes
 2. Press Start on controller 1, or button A on the nesp32. Nothing is
    tested until then.
 3. When it says `DONE. PRESS START`, either button runs it again.
+
+**A sweep**, for finding out what a line does past the first rate it
+fails: press **Select** on controller 1 in place of Start. The console
+runs every rate to the NES from 14 cycles a bit (127841 baud) to 5, each a
+whole trial of four blocks however many of its bytes come wrong, and
+stops at none. Nothing is run from the console. The two halves of the
+screen become a table, a row a rate:
+
+```text
+  NESP32 TO NES, EVERY RATE
+   CYC SPEED      BAD OF SENT
+   14  127841 BPS 0 OF 1024
+   ...
+   9   198864 BPS 0 OF 1024
+   8   223722 BPS 0 OF 992
+   7   255682 BPS 0 OF 992
+   6   298296 BPS 0 OF 992
+   5   357955 BPS 990 OF 992
+```
+
+`BAD OF SENT` is the bytes that came wrong of those checked: at 8 cycles
+and faster the first 8 bytes of each block are for the tracking receiver
+to settle on, and are not.
+The next press of Start runs the climb and puts the halves back.
+
+The climb stops at the first rate that fails, and how late a rising edge
+may come is not the less the faster the rate: each rate's routine samples
+at its own points in a bit. On a simulated line whose rising edges are 4
+cycles late, 13 and 12 cycles a bit fail, 11, 10 and 9 pass, and 8 and
+faster fail; the climb from that line says 127841 baud and never tries 11.
 
 A nesp32 that is plugged in late, or switched off and on between tests, is
 found again by itself. One that loses its power in the middle of a block
@@ -167,7 +201,7 @@ either way, since the routines count cycles.
 
 | | 9622 baud | 38080 | 137675 | 149148 | 162707 | 223722 | 255682 | 298296 | 357955 |
 |---|---|---|---|---|---|---|---|---|---|
-| to NES | 3% | 13% | 48% | 48% | 53% | 73% | 86% | 100% | 120% |
+| to NES | 3% | 13% | 48% | 48% | 53% | 75% | 86% | 100% | 120% |
 | to nesp32 | 4% | 14% | 52% | 55% | 61% | 81% | | 97% | |
 
 The figure rises all the way up each ladder. The run on hardware bore it
@@ -192,8 +226,11 @@ On a line with no limit of its own, the upper half ends like this:
 - The console's receivers are the tighter side by design. The fast one
   finds a start bit with a loop, so its samples sit up to 3.5 cycles off
   the center of a bit. The sender has no such slack to lose. In simulation
-  the baud error the fast receiver takes falls from 5.5% at 9622 baud to
-  1.5% at 223722; the tracking one takes 1% at 255682 and 298296.
+  the baud error the fast receiver takes falls from 5.5% at 9622 baud as
+  the rate rises; the tracking one takes 1% from 223722 up.
+- A climb stops at the first rate that fails, and a rate above it may
+  pass: each routine samples at its own points in a bit. A sweep (Select)
+  tries them all.
 - A direction that ends on the last rate of its ladder passed everything
   there is. Its limit is then the console's routine, not the wire.
 - A trial is 1024 bytes, so "stable" means no bad byte in about a
@@ -302,6 +339,28 @@ through a breadboard, with long runs of wire in place of the hat's board:
 That was the breadboard: on the hat's board the same Plus2 plays sampled
 sound at 223722 baud to a real NES, which failed on the breadboard.
 
+With this ROM and nesp32's firmware, on the hat's PCB and a real NES,
+from a StickS3 and from a StickC Plus2, and on two consoles, with the
+climb:
+
+| TX pull-up | to NES |
+|---|---|
+| 10 kΩ | 149148 baud; 162707 failed |
+| 3.3 kΩ | 198864 baud; 223722 failed |
+
+A second hat of the same PCB, with 10 kΩ, on two other consoles, stopped
+at 111861. A stronger pull-up than 3.3 kΩ, and a series resistor of 470 Ω
+in place of the 1 kΩ, did no better. A sweep then showed why: with
+3.3 kΩ, on four runs, every rate from 14 cycles a bit to 6 passed but 8,
+which lost 114 of 1024 bytes every time; 7 and 6, faster but with the
+tracking receiver, lost none. So the line carries the console's fastest
+rate, and what failed at 8 cycles was the fast receiver's hunt. With the
+tracking receiver at 8 cycles too, **the climb on that real NES reaches
+298296 baud**, the last rate the console's CPU can do, and 223722 baud
+from it, as on the MiSTer: 298296 failed that way. On a simulated line no edge, late or
+early, fails 8 and passes 7 and 6, so what a real console does
+differently there is not known.
+
 The first run on the MiSTer passed nothing from the console: 194 of 256 bytes
 came, at 9622 baud and at 85227 alike. The nesp32's UART was set for the
 two stop bits it sends with, and a StickS3's receiver then waits for both,
@@ -328,10 +387,14 @@ two bits.
   and XORing the port into it. The price is that it counts on bits 1 to 7
   of `$4017` always reading `$40`, which this console's do, and that bytes
   must be unscrambled afterwards.
-- **Hunting for each start bit stops working near 8 cycles a bit**, where
-  a look every 6 or 7 cycles is most of a bit. Past that the receiver has
-  to predict the start bit and correct by a cycle a byte, which needs a
-  few bytes to lock and a sender within about 1% of the right rate.
+- **Hunting for each start bit stops working at 8 cycles a bit**, where
+  a look every 6 or 7 cycles is most of a bit: on the MiSTer it passed,
+  and on a real NES it lost about one byte in nine. From there the
+  receiver has to predict the start bit and correct by a cycle a byte,
+  which needs a few bytes to lock and a sender within about 1% of the right
+  rate, and it held at 8, 7 and 6 cycles a bit on a real NES.
+- **A climb hides what is past its first failure.** On the real NES it
+  stopped at 8 cycles a bit, and never tried 7 and 6, which passed.
 - **An ESP32 UART leaves a byte of junk in its receiver when its rate is
   changed.** Its transmitter is clean across the change. Anything that
   changes rate and then counts bytes by position has to drop what is there
@@ -345,10 +408,6 @@ two bits.
 
 Still untried:
 
-- **This ROM on a real NES with the hat on its board**, with either Stick.
-- **The fast receiver below 162707 baud**, where it has taken over from
-  the one the first run used. It is the same sampling and hunt as the
-  rates it passed at, with longer padding.
 - **OUT1 and OUT2.** The send routines write the whole byte to `$4016` and
   shift it, so bits 1 and 2 toggle OUT1 and OUT2 as well. Those reach only
   the expansion port on a stock console.

@@ -48,14 +48,69 @@ On a **StickC Plus2**, G36 is input‑only and shares its pad with G25, which
 must stay an input. G0 is that board's boot‑mode pin too, and it carries the
 TX base resistor there; a Plus2 started from off a number of times with the
 hat on, the console on and off, and came up in nesp32's firmware every time.
-No level on it has been measured. A Plus2 with the hat on a real NES played
-NPR at 223722 baud, the link's fastest rate for sound.
+No level on it has been measured.
 
 The rest of this page names the StickS3's pins. On a Plus2, read G8 as G0,
 G1 as G36 and 3V3_L2 as 3V3.
 
 G3 (a JTAG strapping pin) and G43/G44 (UART0, which carries the boot ROM's
 log) are avoided on purpose. The even row is out of the proto hat's reach.
+
+## The NES controller plug
+
+The hat reaches the console through a controller pigtail: a controller plug
+on a cable with bare wires at the other end. Four of its seven pins are used.
+The pin numbers on this page are the ones below, **viewed looking into the
+jack on the front of the console**:
+
+```
+               .
+pin 1 GND  -- |o\
+pin 2 CLK  -- |o o\ -- pin 5 +5V
+pin 3 OUT0 -- |o o| -- pin 6 D3
+pin 4 D0   -- |o o| -- pin 7 D4
+               '--'
+```
+
+The pigtail's plug is the mirror image, **viewed looking at its pins**:
+
+```
+                .
+               /o| -- pin 1 GND
+pin 5 +5V -- /o o| -- pin 2 CLK
+pin 6 D3  -- |o o| -- pin 3 OUT0
+pin 7 D4  -- |o o| -- pin 4 D0
+             '--'
+```
+
+> **Check your orientation before soldering.** The plug's mating face and its
+> wire/solder side are mirrored. Confirm you are counting pins in the direction
+> above — not from the back of the connector. See the
+> [NESdev controller port pinout](https://www.nesdev.org/wiki/Controller_port_pinout).
+
+The column of four, with GND at the end beside the slanted corner, carries
+everything nesp32 uses except +5 V, which is at the top of the column of
+three. CLK, D3 and D4 are not connected.
+
+| Pin | Signal | Direction | Hat pad | Official wire colour |
+|---|---|---|---|---|
+| 1 | GND | – | GND(1) | brown |
+| 2 | CLK | console → controller | – | red |
+| 3 | OUT0 (strobe) | console → controller | OUT(3) | orange |
+| 4 | D0 | controller → console | D0(4) | yellow |
+| 5 | +5 V | console → controller | 5V(5) | white |
+| 6 | D3 | controller → console | – | – |
+| 7 | D4 | controller → console | – | – |
+
+On the hat's board the four pads at the edge opposite the 8‑pin header are,
+from the end nearest the header's GND pin, 5V(5), OUT(3), D0(4) and
+GND(1), the last on the square pad. Each is labelled on the silkscreen.
+
+**Find each wire with a multimeter, not by its colour.** The colours are the
+ones Nintendo's own controllers use; aftermarket pigtails and extension
+cables often use others. With the cable unplugged, set the meter to
+continuity, hold one probe on a pin of the plug and touch the other to each
+bare wire until it beeps. Mark each wire as you find it.
 
 ## NPN shifter (default, through‑hole)
 
@@ -67,7 +122,7 @@ which has the parts to buy.
 
  NES +5 V (pin 5)                          Stick 3V3_L2
      │                                         │
-   [10 kΩ]                                   [10 kΩ]
+   [3.3 kΩ]                                  [10 kΩ]
      │                                         │
      ├──[1 kΩ]──► NES D0 (pin 4)               ├──────► Stick G1
      │                                         │
@@ -80,15 +135,15 @@ which has the parts to buy.
  EXT_5V, 5V_IN, BAT, G0 ── not connected
 ```
 
-**Parts:** two 2N3904 (TO‑92), three 10 kΩ, one 100 kΩ, and one 1 kΩ
-resistor. Any small NPN works (2N2222A, BC547, PN2222); check the E‑B‑C lead
+**Parts:** two 2N3904 (TO‑92), two 10 kΩ, one 3.3 kΩ, one 100 kΩ, and one
+1 kΩ resistor. Any small NPN works (2N2222A, BC547, PN2222); check the E‑B‑C lead
 order, which differs between parts and makers.
 
 | From | Through | To |
 |---|---|---|
 | Stick G8 | 10 kΩ | TX 2N3904 base |
 | TX 2N3904 emitter | – | GND |
-| TX 2N3904 collector | 10 kΩ | NES pin 5 (+5 V) |
+| TX 2N3904 collector | 3.3 kΩ | NES pin 5 (+5 V) |
 | TX 2N3904 collector | 1 kΩ | NES pin 4 (D0) |
 | NES pin 3 (OUT0) | 100 kΩ | RX 2N3904 base |
 | RX 2N3904 emitter | – | GND |
@@ -100,7 +155,7 @@ order, which differs between parts and makers.
 hardware to cancel it (`BOARD_LINK_INVERTED` 1, the default).
 
 - **TX:** the UART idles with G8 low, so the transistor is off and the
-  10 kΩ pull‑up holds D0 at the NES's own 5 V, which is idle (mark). A space
+  3.3 kΩ pull‑up holds D0 at the NES's own 5 V, which is idle (mark). A space
   bit turns the transistor on and pulls D0 to about 0.1 V. A 2N3904 switches at
   about 0.7 V on its base, so 3.3 V drives it hard, and both levels sit far
   inside the NES input's limits.
@@ -126,13 +181,35 @@ hardware to cancel it (`BOARD_LINK_INVERTED` 1, the default).
     through a transistor's base junction (a fraction of a milliamp, via
     10 kΩ) are about a tenth of what the tested FTDI cable pushes into an
     unpowered NES through its 1 kΩ.
-- **Speed:** a pull‑up makes the rising edge take about 0.3 µs, about a
-  fortieth of a bit at the link's 85227 baud. The ROM samples mid‑bit. The
-  100 kΩ base resistor slows the RX transistor's edges to a few µs
-  (estimated, not measured); the slowest is turn‑off, when OUT0 falls. In
-  practice the board carries 298296 baud to the console and 223722 from it
-  ([the throughput test](../apps/throughput/README.md)), so the RX stage's
-  edges are what limit the direction from the console.
+- **Why the TX pull‑up is 3.3 kΩ:** D0 falls as fast as the transistor
+  turns on, but rises only as fast as the pull‑up charges the cable and the
+  console's input. With 10 kΩ the throughput test's climb on a real NES
+  stopped at 149148 baud to the console, and on another hat and two other
+  consoles at 111861. With about 3.2 kΩ (a 4.7 kΩ across the 10 kΩ) it
+  reached 198864; about 2.1 kΩ, or a 470 Ω in place of the 1 kΩ, did no
+  better. The rates it gained, 162707 to 198864, are ones the jukebox and
+  NPR play at with receivers that hunt for each start bit, which a late
+  edge costs most. The transistor sinks about 1.5 mA when D0 is low, a
+  milliamp more than with 10 kΩ and under one on average, and its 0.26 mA
+  of base current still saturates it, with five times what it needs.
+- **Speed:** the board carries 298296 baud to the console, the last rate
+  the console's CPU can take, on a real NES as on the MiSTer through a SNAC
+  adapter ([the throughput test](../apps/throughput/README.md)). On a real
+  NES the climb stopped at 198864 all the same: a sweep passed every rate
+  from 14 cycles a bit to 6 but 8, which lost about one byte in nine,
+  every time. 8 cycles had the receiver that hunts for each start
+  bit, and 7 and 6 the one that tracks it, so it was the hunt that failed
+  there, not the line; why a real console's hunt fails at 8 cycles and the
+  MiSTer's does not is not known. From 8 cycles down the console's
+  receivers track now, in the throughput test and in the jukebox's and
+  NPR's sound, whose fastest rate is 7 cycles, 255682 baud; with them the
+  climb on a real NES reaches 298296 baud, and sound and NPR play at
+  255682. The 100 kΩ base
+  resistor slows the RX transistor's edges to a few µs (estimated, not
+  measured); the slowest is turn‑off, when OUT0 falls. From the console
+  the board carries 223722 baud, on a real NES as on the MiSTer, and
+  298296 fails; nothing the console sends is near that fast, its
+  requests going at 85227.
 - **Why the 1 kΩ stays:** it is the same fault‑current limiter the FTDI
   cable uses on D0. On the RX side the 100 kΩ base resistor does that job.
 

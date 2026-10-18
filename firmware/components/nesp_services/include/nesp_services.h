@@ -68,6 +68,11 @@ typedef struct {
      * Returns how it stands (NESP_DRIVE_*). The doing of it is another
      * task's. */
     uint8_t (*drive)(void *ctx, uint8_t lend);
+    /* May be NULL: a firmware that cannot. Which way up the nesp32's
+     * screen is: asked, or turned (NESP_TURN_*), and kept over power-off.
+     * Returns which way up it is (NESP_SCREEN_*). The turning of it is the
+     * screen's own task's. */
+    uint8_t (*screen)(void *ctx, uint8_t turn);
     /* Shown on the Stick's screen: the application now on the console. */
     void (*app)(void *ctx, const char *id, uint8_t version);
     /* Fetch an https address, in place of any fetch under way. The reply
@@ -416,6 +421,9 @@ typedef struct {
      * being sent: it is not listening for it, whatever they were (they
      * came at the run's rate, and mean nothing). */
     void (*heard)(void *ctx, size_t len);
+    /* Bytes of $FF the run begins with, before read's: for a console's
+     * receiver that settles on them. */
+    uint8_t lead;
 } nesp_run_t;
 
 #define NESP_RAW_HELD 128

@@ -2,8 +2,10 @@
 ; the one every other comes back to.
 ;
 ;   Up, Down    move the arrow among what can be done from here
-;   A           do it: set up Wi-Fi, test the link, or lend the nesp32's
-;               files to a computer as a USB drive
+;   A           do it: set up Wi-Fi, test the link, lend the nesp32's
+;               files to a computer as a USB drive, turn the nesp32's
+;               screen the other way up, or, on the cartridge, go back to
+;               its menu
 ;
 ; Every few frames it does one step of a round: say hello if the Stick has
 ; not been heard from, ask for something, and write the line that shows it.
@@ -26,10 +28,20 @@ LINE_BATTERY  = 7
 ; The menu, under the lines.
 MENU_ROW    = BODY_ROW + 9
 MENU_COLUMN = LEFT + 2          ; after the arrow
-MENU_ITEMS  = 3
+MENU_FLIP   = 3
+MENU_QUIT   = 4                 ; the last, and only on the cartridge
+
+; The cartridge's reset stub (nes/cart/gen_cart.py) is at the same place in
+; every program's bank: an `inc` of itself, which resets the mapper and puts
+; the menu's bank at $C000, and a jump to the menu. Built by itself, this
+; ROM has padding there.
+CART_STUB   = $FFDA
+CART_STUB_FIRST = $EE           ; inc absolute
 
 .segment "ZEROPAGE"
 menu_item:     .res 1           ; where the arrow is
+menu_items:    .res 1           ; how many there are: Quit is on the cartridge alone
+flipping:      .res 1           ; FLIP_*: how far turning the screen has got
 status_step:   .res 1
 hello_status:  .res 1           ; what the Stick said to the last hello
 ; SYS STATUS, as it came: Wi-Fi state, signal, address (4), battery, events.
@@ -53,6 +65,7 @@ status_screen:
     text  MENU_ROW, MENU_COLUMN, "WI-FI SETUP"
     text  MENU_ROW + 1, MENU_COLUMN, "TEST INTERFACE"
     text  MENU_ROW + 2, MENU_COLUMN, "ENABLE USB DRIVE"
+    text  MENU_ROW + MENU_FLIP, MENU_COLUMN, "FLIP LCD"
     text  HELP_ROW, LEFT, "UP/DOWN:MOVE  A:CHOOSE"
     .byte 0
 
@@ -82,6 +95,8 @@ stick_old:     .byte "NEEDS AN UPDATE", 0
 none_text:     .byte "-", 0
 dbm_text:      .byte " DBM", 0
 
+quit_text:     .byte "QUIT", 0
+
 wifi_texts_lo: .lobytes wifi_none, wifi_idle, wifi_joining, wifi_joined, wifi_failed
 wifi_texts_hi: .hibytes wifi_none, wifi_idle, wifi_joining, wifi_joined, wifi_failed
 wifi_none:     .byte "NOT SET UP", 0
@@ -102,6 +117,18 @@ wifi_failed:   .byte "COULD NOT JOIN", 0
     sta status_step
     lda #0
     sta menu_item
+    sta flipping
+    lda #MENU_QUIT
+    sta menu_items
+    lda CART_STUB
+    cmp #CART_STUB_FIRST
+    bne menu_arrow
+    inc menu_items              ; on the cartridge: Quit too, from the next frame
+    point quit_text
+    ldx #0
+    jsr put_text
+    at MENU_ROW + MENU_QUIT, MENU_COLUMN
+    stx draw_len
     ; fall through
 .endproc
 
@@ -120,6 +147,11 @@ wifi_failed:   .byte "COULD NOT JOIN", 0
 .endproc
 
 .proc status_frame
+    lda flipping                ; turning the screen has this frame's request
+    beq @round
+    jsr flip_step
+    jmp @input
+@round:
     lda frame_count
     and #STATUS_EVERY
     bne @input
@@ -154,18 +186,24 @@ wifi_failed:   .byte "COULD NOT JOIN", 0
     lda pad_new
     and #PAD_DOWN
     beq @choose
-    lda menu_item
-    cmp #MENU_ITEMS - 1
+    ldx menu_item
+    inx
+    cpx menu_items
     bcs @choose
-    inc menu_item
+    stx menu_item
     jsr menu_arrow
 @choose:
-    lda linked                  ; nothing can be done without a nesp32
-    beq @done
     lda pad_new
     and #PAD_A
     beq @done
     ldx menu_item
+    cpx #MENU_QUIT
+    beq quit                    ; which needs no nesp32
+    lda linked                  ; everything else does
+    beq @done
+    cpx #MENU_FLIP
+    beq @flip
+    txa
     beq @wifi
     dex
     beq @test
@@ -174,7 +212,67 @@ wifi_failed:   .byte "COULD NOT JOIN", 0
     jmp open_scan
 @test:
     jmp open_test
+@flip:
+    lda flipping                ; a press while one is under way is not another
+    bne @done
+    lda #FLIP_ASK
+    sta flipping
 @done:
+    rts
+.endproc
+
+; Back to the cartridge's menu, as reset would go: through its stub, with
+; the NMI off first, since the stub's `inc` puts the menu's bank, and its
+; NMI, under this. The menu says nothing to the nesp32; the next program's
+; hello is what tells it this one has gone.
+.proc quit
+    lda #0
+    sta PPUCTRL
+    sta ctrl
+    jmp CART_STUB
+.endproc
+
+; Turning the nesp32's screen the other way up: a frame to ask which way up
+; it is, and the next to turn it.
+FLIP_NONE = 0
+FLIP_ASK  = 1
+FLIP_TURN = 2
+
+.proc flip_step
+    ldx #NESP_TURN_ASK
+    lda flipping
+    cmp #FLIP_ASK
+    beq @ask
+    ldx #NESP_TURN_FLIPPED
+    lda nesp_reply
+    cmp #NESP_SCREEN_FLIPPED
+    bne @ask
+    ldx #NESP_TURN_UPRIGHT
+@ask:
+    stx nesp_request
+    lda #NESP_SVC_SYS
+    ldx #NESP_SYS_SCREEN
+    ldy #1
+    jsr call
+    bcs @failed
+    lda nesp_status
+    and #NESP_ST_ERROR
+    bne @over                   ; a firmware older than this op says NO_OP
+    lda nesp_reply
+    beq @over                   ; NESP_SCREEN_NONE: nothing to turn
+    lda flipping
+    cmp #FLIP_ASK
+    bne @over                   ; turned: the nesp32's screen says so itself
+    lda #FLIP_TURN
+    sta flipping
+    rts
+@failed:
+    lda linked
+    beq @over                   ; the status lines say so
+    say no_answer_text
+@over:
+    lda #FLIP_NONE
+    sta flipping
     rts
 .endproc
 

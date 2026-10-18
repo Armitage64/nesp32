@@ -18,7 +18,8 @@ The circuit, the pins it uses on each Stick, and why the levels have to be shift
 ## Bill of Materials
 * 2 x 2N3904 Transistors
 * 1 x 1K Axial-0.3 Resistor
-* 3 x 10K Axial-0.3 Resistors
+* 2 x 10K Axial-0.3 Resistors
+* 1 x 3.3K Axial-0.3 Resistor (the TX pull-up, from NES +5V to the TX transistor's collector)
 * 1 x 100k Axial-0.3 Resistor
 * 1 x 8-pin 2.54mm 90 Degree Right Angle Single Row Male Pin Header (reverse) [Amazon](https://amzn.to/4e4FZ7i)
 * 1 x NES Controller Pigtail [Amazon](https://amzn.to/4dVqi2r)

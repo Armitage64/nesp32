@@ -25,7 +25,7 @@
  * A feed that cannot be had is no
  * headlines, and the station plays without.
  *
- * PLAY says which of two modes: the station at 20338 samples a second and
+ * PLAY says which of two modes: the station at 23244 samples a second and
  * nothing else, or at 11622 with the headlines, which leaves the console
  * the cycles to draw them in. With the headlines, they go to the console
  * in the samples themselves: the DAC takes seven bits of a byte, and the
@@ -707,6 +707,9 @@ static void sound(nesp_tuner_t *tuner, const nesp_request_t *request, nesp_reply
             tuner->run.read = run_read;
             tuner->run.done = run_done;
             tuner->run.heard = run_heard;
+            /* The console's routine at the fastest rates tracks each
+             * byte's start bit from the one before, and settles first. */
+            tuner->run.lead = tuner->period <= NESP_SOUND_TRACKED ? NESP_SOUND_LEAD : 0;
             tuner->ended = tuner->lost = tuner->holding = tuner->hushed = false;
             tuner->last = 0;
             tuner->rise = tuner->fall = 0;

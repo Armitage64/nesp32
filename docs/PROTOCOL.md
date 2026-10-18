@@ -221,6 +221,7 @@ Multi-byte numbers are low byte first, except the CRC.
 | `$04` | TIME | | `KNOWN`, `SECONDS[4]` since 1970 |
 | `$05` | EVENT | | `CODE`, `ARG`: the oldest event waiting, or 0, 0 |
 | `$06` | DRIVE | `LEND` | `DRIVE`: how the nesp32's files stand as a USB drive |
+| `$07` | SCREEN | `TURN` | `SCREEN`: which way up the nesp32's screen is |
 
 - `WIFI`: 0 none set up, 1 not joined, 2 joining, 3 joined, 4 the last
   join failed.
@@ -236,6 +237,12 @@ Multi-byte numbers are low byte first, except the CRC.
   while it is a drive. It stops being one by restarting, when it is told to
   stop or the computer ejects it, and a ROM then hears nothing until it has
   said hello again.
+- SCREEN turns the nesp32's own screen. `TURN`: 0 only ask, 1 M5Stack's
+  landscape, 2 the same a half turn round. `SCREEN`: 0 this firmware
+  cannot turn it, 1 M5Stack's landscape, 2 a half turn round. The nesp32
+  keeps the way up over power-off; until a console has chosen one, it is
+  the firmware's build's (`CONFIG_NESP_DISPLAY_FLIPPED`). A turn to the way
+  up it already is changes nothing, so a request sent again is harmless.
 - Events: 1 button A, 2 button B, 3 the power button. Eight are kept; more
   are dropped. A service in use may take a button for itself, and the
   console then hears nothing of it: JUKE takes all three.
@@ -285,8 +292,8 @@ Two consoles play one two-player game, each with a nesp32, and the nesp32s
 joined over the network. Both consoles run the whole game, and only buttons
 cross: a byte for each *tick* of the game, each way. A console takes a tick
 only when it holds both players' buttons for it, so the two games see the
-same buttons at the same tick and stay the same game. nes-drmario's and
-nes-contra's netplay ROMs are the console's side, and their docs have what
+same buttons at the same tick and stay the same game. nes-drmario's,
+nes-contra's and nes-tetris's netplay ROMs are the console's side, and their docs have what
 a tick is in each game and how the games are kept the same. How long a
 console's delay should be is this service's to advise ("The delay",
 below), and the games' docs point here for it.
@@ -366,8 +373,8 @@ The reply is four bytes: one tick of the other console's buttons, if its
 `N` is 1. It names no ticks. That it comes at all says the nesp32 holds
 every tick it was sent, and the console counts them as held; if the nesp32
 could not take them all it makes no reply. An `N` of 3 is `LOST`. The two
-forms may be mixed in one session. nes-contra's ROM and nes-drmario's make
-their exchange this way.
+forms may be mixed in one session. nes-contra's ROM, nes-drmario's and
+nes-tetris's make their exchange this way.
 
 #### Between the nesp32s
 
@@ -691,8 +698,8 @@ answer is not WAIT.
 | `$01` | GO | the samples follow, as a run of RAW's at the sound's rate |
 | `$02` | GONE | there is no such sound to play: ask for the stream, which is in another epoch by now |
 
-- `RATE` is the record's: 0 to 5, for 21, 16, 14, 12, 10 and 8 CPU cycles
-  a bit, which are 7748 to 20338 samples a second. A console that cannot
+- `RATE` is the record's: 0 to 6, for 21, 16, 14, 12, 10, 8 and 7 CPU
+  cycles a bit, which are 7748 to 23244 samples a second. A console that cannot
   play it says `$FF`, and is told GONE; so is one whose hello did not ask
   for RAW. The nesp32 goes on to the next track.
 - `EPOCH` is the console's. A sound asked for from before a jump is GONE,
@@ -701,6 +708,13 @@ answer is not WAIT.
   nesp32 says GO again and starts the wait again. A sample is a byte, as
   its file holds it; the run ends with `$FC`, which the console's routines
   take for the last and which leaves its DAC at 0.
+- **At `SOUND_TRACKED` (8) CPU cycles a bit and fewer the run begins with
+  `SOUND_LEAD` (8) bytes of `$FF`**, before the samples. The console's
+  routines there track each byte's start bit from the one before rather
+  than hunt for every one: they find the first by a hunt, up to 6 cycles
+  out, settle on these, and do not play them. On a real NES the hunt lost
+  bytes at 8 cycles a bit where tracking lost none at 8, 7 and 6. TUNER's
+  runs do the same.
 - The music after a sound is a new epoch.
 - **A console may leave a sound**, and nes-jukebox's does when button A of
   its controller goes down, which is all of the controller it can look at
@@ -906,7 +920,7 @@ one channel, brought from its own rate to the run's by a windowed sinc
 (the one nes-jukebox's `tools/wav2pcm.py` has, worked out once for 64
 places between two samples), and each sample made the level whose output
 from the console's DAC is nearest, through the DAC's curve. Levels go into
-a ring of 256 KB, about twelve seconds, or 22 at the lower rate. The run takes them from there and
+a ring of 256 KB, about eleven seconds, or 22 at the lower rate. The run takes them from there and
 sends each as the byte the console's receiver turns into it.
 
 - **PLAY** starts the fetch, unless one is under way, and makes a station
@@ -917,8 +931,9 @@ sends each as the byte the console's receiver turns into it.
   the station with the headlines at a rate that leaves the console the
   cycles to draw them. With no `MODE` it is `$00`, as it was before there
   were two. A station that is PAUSED is made READY in the mode it has.
-- **SOUND** is JUKE's, with no epoch: `RATE` is the mode's, 5 (8 CPU cycles
-  a bit, 223722 baud, 20338 samples a second) or with the headlines 2 (14
+- **SOUND** is JUKE's, with no epoch: `RATE` is the mode's, 6 (7 CPU cycles
+  a bit, 255682 baud, 23244 samples a second, after JUKE's lead of 8
+  bytes) or with the headlines 2 (14
   cycles, 127841 baud, 11622 samples a second), or `$FF` from
   a console that cannot play it. The answer is WAIT while TUNING, GO when
   READY, and GONE otherwise. After GO the run is RAW's in every way.
@@ -969,7 +984,7 @@ sends each as the byte the console's receiver turns into it.
   station off.
 - **Paused, the station is fetched still.** The ring loses its oldest
   second as it fills, so what PLAY has ready is what was on the air up to
-  twelve seconds before (or 22), and a station lost while it is paused is FAILED.
+  eleven seconds before (or 22), and a station lost while it is paused is FAILED.
 - After the run the console asks for STATE, and is told OFF, PAUSED or
   FAILED.
 
@@ -1109,7 +1124,7 @@ There are two receivers, for the two places an exchange can be made:
 | Where the exchange is made | in the main loop, between two NMIs | inside the NMI |
 | What ends a wait | the NMI: its handler ends with `nesp_nmi_hook`, which returns to the exchange's caller with carry set | a count: `NESP_TIMEOUT` passes of 4.15 ms |
 | Start-bit hunt | 9 cycles a look | for a frame's first byte, four looks to a count: 6 cycles apart, and 11 across the count. For each byte after it, six looks 6 cycles apart, where it is due |
-| From | nes-jukebox and nes-wiki | nes-drmario and nes-contra |
+| From | nes-jukebox and nes-wiki | nes-drmario, nes-contra and nes-tetris |
 
 The counting receiver is made for a console that is playing samples.
 Each byte a sample fetches stops the CPU for up to four cycles, which a

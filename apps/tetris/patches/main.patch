@@ -1,0 +1,457 @@
+--- a/main.asm
++++ b/main.asm
+@@ -3,0 +4,3 @@
++.ifdef NETPLAY
++.include "net/common.inc"   ; a session's numbers, and the code both banks share
++.endif
+@@ -252,0 +256,4 @@
++.ifdef NETPLAY
++        jsr     net_nmi_head
++        bcs     net_nmi_end
++.endif
+@@ -281,0 +289,3 @@
++.ifdef NETPLAY
++net_nmi_input:
++.endif
+@@ -282,0 +293,3 @@
++.ifdef NETPLAY
++net_nmi_end:
++.endif
+@@ -404,0 +418,9 @@
++.ifdef NETPLAY
++        ; A session starts at the menus of a two-player game.
++        lda     net_mode
++        beq     @noSession
++        lda     #$02
++        sta     gameMode
++        sta     numberOfPlayers
++@noSession:
++.endif
+@@ -457,0 +480,3 @@
++.ifdef NETPLAY
++        jsr     tp_savePlayer2State     ; and their pieces in their own colours
++.else
+@@ -458,0 +484 @@
++.endif
+@@ -580,0 +607,4 @@
++.ifdef NETPLAY
++        jsr     bulkCopyToPpu
++        .addr   tp_titlePlayers         ; in place of PUSH START
++.endif
+@@ -611,0 +642,17 @@
++.ifdef NETPLAY
++        ; 1 PLAYER or 2 PLAYERS, and Start. 2 PLAYERS goes to the netplay
++        ; menu. It comes back for a game of two on this console, or for the
++        ; title again, and not at all for a session.
++        jsr     tp_titleMenu
++        bcc     @startNotPressed
++        lda     numberOfPlayers
++        cmp     #$02
++        bne     @startButtonPressed
++        jsr     net_menu
++        bcs     @title
++        lda     #$00
++        sta     gameType                ; a game of two is A-type
++        beq     @menus
++@title: rts                             ; drawn again from the start
++@startNotPressed:
++.else
+@@ -613,0 +661 @@
++.endif
+@@ -623,0 +672,3 @@
++.ifdef NETPLAY
++@menus:
++.endif
+@@ -630,0 +682,4 @@
++.ifdef NETPLAY
++        lda     #$01
++        sta     numberOfPlayers         ; the demo is a game for one
++.endif
+@@ -658,0 +714,3 @@
++.ifndef NETPLAY
++        ; Not in the netplay ROM: resetting the mapper puts its last bank at
++        ; C000, which is the menu's, until the control register is written.
+@@ -659,0 +718 @@
++.endif
+@@ -686,0 +746,5 @@
++.ifdef NETPLAY
++        lda     numberOfPlayers
++        cmp     #$02
++        beq     @rightNotPressed        ; a game of two is A-type
++.endif
+@@ -740,0 +805,4 @@
++.ifdef NETPLAY
++        lda     net_mode
++        bne     @bNotPressed            ; a session has no title to go back to
++.endif
+@@ -800,0 +869,3 @@
++.ifndef NETPLAY
++        ; Not in the netplay ROM: resetting the mapper puts its last bank at
++        ; C000, which is the menu's, until the control register is written.
+@@ -801,0 +873 @@
++.endif
+@@ -823,0 +896,8 @@
++.ifdef NETPLAY
++        lda     numberOfPlayers
++        cmp     #$02
++        bne     @onePlayerMenu
++        jsr     bulkCopyToPpu
++        .addr   tp_bannerPlayer1
++@onePlayerMenu:
++.endif
+@@ -878,0 +959,9 @@
++.ifdef NETPLAY
++        lda     numberOfPlayers
++        cmp     #$02
++        bne     @onePlayerStart
++        lda     #$02
++        sta     soundEffectSlot1Init
++        jmp     tp_levelMenuPlayer2     ; and then player 2 chooses
++@onePlayerStart:
++.endif
+@@ -1105,0 +1195,8 @@
++.ifdef NETPLAY
++        lda     numberOfPlayers
++        cmp     #$02
++        bne     @onePlayerScreen
++        jsr     tp_drawScreen
++        jmp     gameModeState_initGameBackground_finish
++@onePlayerScreen:
++.endif
+@@ -1192,0 +1290,3 @@
++.ifdef NETPLAY
++        ldy     #>playfieldForSecondPlayer      ; both
++.else
+@@ -1193,0 +1294 @@
++.endif
+@@ -1241,0 +1343,3 @@
++.ifdef NETPLAY
++        jsr     tp_seedPieces
++.endif
+@@ -1251,0 +1356,3 @@
++.ifdef NETPLAY
++        jsr     tp_seededPieces
++.endif
+@@ -1462 +1569,12 @@
+-@ret:   inc     gameModeState
++@ret:
++.ifdef NETPLAY
++        ; Player 2's Select, their own next piece.
++        lda     newlyPressedButtons_player2
++        and     #BUTTON_SELECT
++        beq     @player2Done
++        lda     displayNextPiece
++        eor     #$02
++        sta     displayNextPiece
++@player2Done:
++.endif
++        inc     gameModeState
+@@ -1679,0 +1798,3 @@
++.ifdef NETPLAY
++        sbc     #$50
++.else
+@@ -1680,0 +1802 @@
++.endif
+@@ -1685,0 +1808,3 @@
++.ifdef NETPLAY
++        adc     #$8F
++.else
+@@ -1686,0 +1812 @@
++.endif
+@@ -1833,0 +1960,3 @@
++.ifdef NETPLAY
++        and     #$01                    ; player 1's: player 2 has the other bit
++.endif
+@@ -1838,0 +1968,10 @@
++.ifdef NETPLAY
++        lda     numberOfPlayers
++        cmp     #$02
++        bne     @onePlayer
++        lda     #TP_P1_PREVIEW_X
++        sta     spriteXOffset
++        lda     #TP_P1_PREVIEW_Y
++        sta     spriteYOffset
++@onePlayer:
++.endif
+@@ -2484,0 +2624,13 @@
++.ifdef NETPLAY
++        ; Four rows of each of two playfields would not fit in a vblank, as
++        ; the game copies them.
++        lda     numberOfPlayers
++        cmp     #$02
++        bne     @onePlayerRows
++        ldx     player1_vramRow
++        lda     #$00
++        jsr     tp_copyFourRows
++        stx     player1_vramRow
++        jmp     @renderPlayer2Playfield
++@onePlayerRows:
++.endif
+@@ -2525,0 +2678,7 @@
++.ifdef NETPLAY
++        ldx     player2_vramRow
++        lda     #$01
++        jsr     tp_copyFourRows
++        stx     player2_vramRow
++        jmp     @renderLines
++.endif
+@@ -2556,0 +2716,5 @@
++.ifdef NETPLAY
++        lda     #>TP_P1_LINES
++        sta     PPUADDR
++        lda     #<TP_P1_LINES
++.else
+@@ -2559,0 +2724 @@
++.endif
+@@ -2564,0 +2730,5 @@
++.ifdef NETPLAY
++        lda     #>TP_P2_LINES
++        sta     PPUADDR
++        lda     #<TP_P2_LINES
++.else
+@@ -2567,0 +2738 @@
++.endif
+@@ -2598,0 +2770,6 @@
++.ifdef NETPLAY
++        bne     @onePlayerScore
++        jsr     tp_renderLevelAndScore  ; both players'
++        jmp     @renderStats
++@onePlayerScore:
++.else
+@@ -2599,0 +2777 @@
++.endif
+@@ -2649,0 +2828,13 @@
++.ifdef NETPLAY
++        ; Either player's Tetris, in a game of two: at an NMI that has the
++        ; game's frame done, the active player is always player 2.
++        lda     numberOfPlayers
++        cmp     #$02
++        bne     @onePlayerTetris
++        lda     player1_completedLines
++        ora     player2_completedLines
++        and     #$04
++        beq     @setPaletteColor
++        bne     @tetris
++@onePlayerTetris:
++.endif
+@@ -2652,0 +2844,3 @@
++.ifdef NETPLAY
++@tetris:
++.endif
+@@ -2724,0 +2919,3 @@
++.ifdef NETPLAY
++        sbc     #<-TP_P1_COLUMN
++.else
+@@ -2725,0 +2923 @@
++.endif
+@@ -2731,0 +2930,3 @@
++.ifdef NETPLAY
++        adc     #TP_P2_COLUMN
++.else
+@@ -2732,0 +2934 @@
++.endif
+@@ -2785,0 +2988,3 @@
++.ifdef NETPLAY
++        sbc     #<-TP_P1_COLUMN
++.else
+@@ -2786,0 +2992 @@
++.endif
+@@ -2792,0 +2999,3 @@
++.ifdef NETPLAY
++        adc     #TP_P2_COLUMN
++.else
+@@ -2793,0 +3003 @@
++.endif
+@@ -2899,0 +3110,11 @@
++.ifdef NETPLAY
++        ; Each player has a next piece of their own: player 2's is
++        ; twoPlayerPieceDelayPiece. The game's own way, a piece handed from
++        ; one player to the other after a wait, is not used.
++        ldx     nextPiece
++        lda     activePlayer
++        cmp     #$02
++        bne     @spawnPiece
++        ldx     twoPlayerPieceDelayPiece
++        jmp     @spawnPiece
++.endif
+@@ -2928,0 +3150 @@
++.ifndef NETPLAY
+@@ -2929,0 +3152 @@
++.endif
+@@ -2932,0 +3156,11 @@
++.ifdef NETPLAY
++        jsr     chooseNextTetrimino
++        ldx     activePlayer
++        cpx     #$02
++        bne     @player1Next
++        sta     twoPlayerPieceDelayPiece
++        jmp     @resetDownHold
++@player1Next:
++        sta     nextPiece
++        jmp     @resetDownHold
++.endif
+@@ -2948,0 +3183,7 @@
++.ifdef NETPLAY
++        lda     numberOfPlayers
++        cmp     #$02
++        bne     @onePlayer
++        jmp     tp_chooseNextTetrimino  ; from the active player's own generator
++@onePlayer:
++.endif
+@@ -3185,0 +3427,6 @@
++.ifdef NETPLAY
++        lda     numberOfPlayers
++        cmp     #$02
++        bne     @ret2
++        jmp     tp_curtainDown          ; the game is over for both
++.endif
+@@ -3310,0 +3558,3 @@
++.ifdef NETPLAY
++        lda     #tileEmpty              ; the game's own was a block nobody saw
++.else
+@@ -3311,0 +3562 @@
++.endif
+@@ -3316,0 +3568,3 @@
++.ifdef NETPLAY
++        jsr     tp_garbageRowFilled
++.endif
+@@ -3545,0 +3800,16 @@
++.ifdef NETPLAY
++        lda     numberOfPlayers
++        cmp     #$02
++        bne     @onePlayer
++        lda     player1_playState
++        ora     player2_playState
++        beq     @twoPlayerGameOver
++        lda     #$00                    ; not gameModeState: no wait
++        inc     gameModeState
++        rts
++@twoPlayerGameOver:
++        lda     #$03
++        sta     renderMode
++        jmp     @resetGameState         ; no high scores
++@onePlayer:
++.endif
+@@ -3607,0 +3878,3 @@
++.ifdef NETPLAY
++        ; allegro has a bit for each player whose blocks are high, and the
++        ; music is slow again when neither has.
+@@ -3608,0 +3882 @@
++        and     activePlayer
+@@ -3609,0 +3884,6 @@
++        eor     allegro
++        sta     allegro
++        bne     @ret
++.else
++        lda     allegro
++        beq     @ret
+@@ -3611,0 +3892 @@
++.endif
+@@ -3617,0 +3899 @@
++.ifdef NETPLAY
+@@ -3618,0 +3901,4 @@
++        tax
++        ora     activePlayer
++        sta     allegro
++        txa
+@@ -3619,0 +3906,3 @@
++.else
++        lda     allegro
++        bne     @ret
+@@ -3621,0 +3911 @@
++.endif
+@@ -3630,0 +3921,6 @@
++.ifdef NETPLAY
++        lda     net_mode
++        beq     @local
++        jmp     net_read_input
++@local:
++.endif
+@@ -3757,0 +4054,4 @@
++.ifdef NETPLAY
++        lda     net_mode
++        bne     @noReset                ; a session has no title to go back to
++.endif
+@@ -3760,0 +4061,3 @@
++.endif
++.ifdef NETPLAY
++@noReset:
+@@ -4276,0 +4580 @@
++.ifndef NETPLAY
+@@ -4277,0 +4582 @@
++.endif
+@@ -4492,0 +4798,3 @@
++.ifdef NETPLAY
++        jsr     tp_startPressed         ; either player's
++.else
+@@ -4494,0 +4803 @@
++.endif
+@@ -4525,0 +4835,4 @@
++.ifdef NETPLAY
++        jsr     tp_startPressed
++        bne     @resume
++.else
+@@ -4528,0 +4842 @@
++.endif
+@@ -4539,0 +4854,3 @@
++.ifdef NETPLAY
++        sta     player2_vramRow
++.endif
+@@ -5295,0 +5613,3 @@
++.ifdef NETPLAY
++        jsr     net_wait_nmi
++.else
+@@ -5302,0 +5623 @@
++.endif
+@@ -5309,0 +5631,3 @@
++.ifdef NETPLAY
++        jmp     net_wait_nmi
++.else
+@@ -5317,0 +5642 @@
++.endif
+@@ -5512,0 +5838,6 @@
++.ifdef NETPLAY
++        ; OUT0 is the line to the nesp32 and rests at mark, which keeps the
++        ; controllers loading their buttons. It was low for the 8 reads.
++        ldx     #OUT0_MARK
++        stx     JOY1
++.endif
+@@ -5834 +6165,5 @@
+-.if PAL = 1
++.ifdef NETPLAY
++; The two-player game's screen (net/twoplayer.inc), whole.
++tp_screen:
++        .incbin "net/twoplayer_game.nam"
++.elseif PAL = 1
+@@ -7682,0 +8018,4 @@
++.ifdef NETPLAY
++.include "net/net.inc"
++.include "net/twoplayer.inc"
++.else
+@@ -7683,0 +8023 @@
++.endif
+@@ -7690,0 +8031,22 @@
++.ifdef NETPLAY
++; The menu's bank may be the one here at reset: see net_common. Its first
++; byte is still the one that resets the mapper.
++reset:
++        net_common
++net_boot:
++@vsyncWait1:
++        lda     PPUSTATUS
++        bpl     @vsyncWait1
++@vsyncWait2:
++        lda     PPUSTATUS
++        bpl     @vsyncWait2
++        dex
++        txs
++        lda     #CHR_TITLE_MENU
++        jsr     changeCHRBank0
++        lda     #CHR_TITLE_MENU
++        jsr     changeCHRBank1
++        jsr     net_reset
++        jmp     initRam
++.else
++
+@@ -7753,0 +8116 @@
++.endif ; NETPLAY

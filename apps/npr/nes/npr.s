@@ -21,7 +21,7 @@
 ;   TUNER STATE     otherwise: how it stands, for the status line
 ;
 ; There are two modes, and a menu in the middle of the screen to choose
-; between them for as long as no station is tuned in: the station at 20338
+; between them for as long as no station is tuned in: the station at 23244
 ; samples a second and nothing else, or at 11622 with the news headlines.
 ; Up, Down and Select move between them.
 ;
