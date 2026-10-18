@@ -447,8 +447,13 @@ measurement of the network's time by the delay that would cover it, and
 advises its console the delay that covers 90 in 100 of those since the
 console's last report. A press that meets one of the rest waits, and the
 game stands still a frame or two for it. The delay each network's time
-comes to, from 1 tick to 5 and past them, is charted in
-[`netplay-delay.html`](netplay-delay.html) (open it in a browser).
+comes to, from 1 tick to 5 and past them:
+
+![Input delay advised by the network's time there and back](netplay-delay.svg)
+
+The same, with each point's figures under the pointer and a table of
+them, is [`netplay-delay.html`](netplay-delay.html), to be opened in a
+browser.
 
 The console asks one exchange in 128: a short TICKS frame whose count is 3
 carries one tick of buttons and then the console's report in place of a

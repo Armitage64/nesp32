@@ -1,0 +1,148 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 470" width="860" height="470" role="img" aria-label="Input delay against round-trip network time">
+<style>
+text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+.t { font-size: 15px; font-weight: 600; font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+.ax { }
+.bl { }
+.lg { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 12.5px; }
+.st { font-weight: 600; }
+text { fill: #6b7383; }
+.t { fill: #14171c; }
+.ax { fill: #4a5160; }
+.bl { fill: #4a5160; }
+.lg { fill: #4a5160; }
+.st { fill: #14171c; }
+.f-bg { fill: #ffffff; }
+.f-fg { fill: #14171c; }
+.f-fg2 { fill: #4a5160; }
+.f-muted { fill: #6b7383; }
+.f-rule { fill: #d5d9e0; }
+.f-grid { fill: #eceef2; }
+.f-series { fill: #2a78d6; }
+.f-need { fill: #6b7383; }
+.f-stall { fill: #c98500; }
+.f-stallfill { fill: #fdf3dc; }
+.f-band { fill: #f2f6fc; }
+.s-bg { stroke: #ffffff; }
+.s-fg { stroke: #14171c; }
+.s-fg2 { stroke: #4a5160; }
+.s-muted { stroke: #6b7383; }
+.s-rule { stroke: #d5d9e0; }
+.s-grid { stroke: #eceef2; }
+.s-series { stroke: #2a78d6; }
+.s-need { stroke: #6b7383; }
+.s-stall { stroke: #c98500; }
+.s-stallfill { stroke: #fdf3dc; }
+.s-band { stroke: #f2f6fc; }
+@media (prefers-color-scheme: dark) {
+text { fill: #8790a0; }
+.t { fill: #eef0f3; }
+.ax { fill: #b8bec9; }
+.bl { fill: #b8bec9; }
+.lg { fill: #b8bec9; }
+.st { fill: #eef0f3; }
+.f-bg { fill: #0d1117; }
+.f-fg { fill: #eef0f3; }
+.f-fg2 { fill: #b8bec9; }
+.f-muted { fill: #8790a0; }
+.f-rule { fill: #3a404a; }
+.f-grid { fill: #21262d; }
+.f-series { fill: #3987e5; }
+.f-need { fill: #9aa2b1; }
+.f-stall { fill: #d99a1c; }
+.f-stallfill { fill: #2a2210; }
+.f-band { fill: #131b27; }
+.s-bg { stroke: #0d1117; }
+.s-fg { stroke: #eef0f3; }
+.s-fg2 { stroke: #b8bec9; }
+.s-muted { stroke: #8790a0; }
+.s-rule { stroke: #3a404a; }
+.s-grid { stroke: #21262d; }
+.s-series { stroke: #3987e5; }
+.s-need { stroke: #9aa2b1; }
+.s-stall { stroke: #d99a1c; }
+.s-stallfill { stroke: #2a2210; }
+.s-band { stroke: #131b27; }
+}
+</style>
+<rect class="f-bg" width="860" height="470" rx="8"/>
+<text x="70" y="26" class="t">Input delay PEER advises, by the network's time there and back</text>
+<line class="s-series" x1="70" y1="46" x2="92" y2="46" stroke-width="2.5"/>
+<text x="100" y="50" class="lg">delay advised</text>
+<line class="s-need" x1="210" y1="46" x2="232" y2="46" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="240" y="50" class="lg">time the buttons need (one way + 9 ms)</text>
+<circle class="f-fg s-bg" cx="516" cy="46" r="5" stroke-width="2"/>
+<text x="528" y="50" class="lg">where test_lockstep.py settles</text>
+<rect class="f-band" x="117.2" y="70" width="102.7" height="342"/>
+<rect class="f-band" x="322.6" y="70" width="102.7" height="342"/>
+<rect class="f-stallfill" x="527.9" y="70" width="312.1" height="342"/>
+<line class="s-stall" x1="527.9" x2="527.9" y1="70" y2="412" stroke-width="1.5" stroke-dasharray="3 3"/>
+<text x="535.9" y="100" class="st">past 5 ticks the game waits,</text>
+<text x="535.9" y="116" class="st">and runs below 60 fps</text>
+<line class="s-rule" x1="70" x2="840" y1="412.0" y2="412.0"/>
+<text x="62" y="416.0" text-anchor="end">0</text>
+<line class="s-grid" x1="70" x2="840" y1="371.4" y2="371.4"/>
+<text x="62" y="370.4" text-anchor="end">1 fr</text>
+<text x="62" y="383.4" text-anchor="end" font-size="10.5">17 ms</text>
+<line class="s-grid" x1="70" x2="840" y1="330.7" y2="330.7"/>
+<text x="62" y="329.7" text-anchor="end">2 fr</text>
+<text x="62" y="342.7" text-anchor="end" font-size="10.5">33 ms</text>
+<line class="s-grid" x1="70" x2="840" y1="290.1" y2="290.1"/>
+<text x="62" y="289.1" text-anchor="end">3 fr</text>
+<text x="62" y="302.1" text-anchor="end" font-size="10.5">50 ms</text>
+<line class="s-grid" x1="70" x2="840" y1="249.4" y2="249.4"/>
+<text x="62" y="248.4" text-anchor="end">4 fr</text>
+<text x="62" y="261.4" text-anchor="end" font-size="10.5">67 ms</text>
+<line class="s-grid" x1="70" x2="840" y1="208.8" y2="208.8"/>
+<text x="62" y="207.8" text-anchor="end">5 fr</text>
+<text x="62" y="220.8" text-anchor="end" font-size="10.5">83 ms</text>
+<line class="s-grid" x1="70" x2="840" y1="168.1" y2="168.1"/>
+<text x="62" y="167.1" text-anchor="end">6 fr</text>
+<text x="62" y="180.1" text-anchor="end" font-size="10.5">100 ms</text>
+<line class="s-grid" x1="70" x2="840" y1="127.5" y2="127.5"/>
+<text x="62" y="126.5" text-anchor="end">7 fr</text>
+<text x="62" y="139.5" text-anchor="end" font-size="10.5">116 ms</text>
+<line class="s-grid" x1="70" x2="840" y1="86.8" y2="86.8"/>
+<text x="62" y="85.8" text-anchor="end">8 fr</text>
+<text x="62" y="98.8" text-anchor="end" font-size="10.5">133 ms</text>
+<line class="s-rule" x1="70.0" x2="70.0" y1="412" y2="417"/>
+<text x="70.0" y="431" text-anchor="middle">0</text>
+<line class="s-rule" x1="147.0" x2="147.0" y1="412" y2="417"/>
+<text x="147.0" y="431" text-anchor="middle">25</text>
+<line class="s-rule" x1="224.0" x2="224.0" y1="412" y2="417"/>
+<text x="224.0" y="431" text-anchor="middle">50</text>
+<line class="s-rule" x1="301.0" x2="301.0" y1="412" y2="417"/>
+<text x="301.0" y="431" text-anchor="middle">75</text>
+<line class="s-rule" x1="378.0" x2="378.0" y1="412" y2="417"/>
+<text x="378.0" y="431" text-anchor="middle">100</text>
+<line class="s-rule" x1="455.0" x2="455.0" y1="412" y2="417"/>
+<text x="455.0" y="431" text-anchor="middle">125</text>
+<line class="s-rule" x1="532.0" x2="532.0" y1="412" y2="417"/>
+<text x="532.0" y="431" text-anchor="middle">150</text>
+<line class="s-rule" x1="609.0" x2="609.0" y1="412" y2="417"/>
+<text x="609.0" y="431" text-anchor="middle">175</text>
+<line class="s-rule" x1="686.0" x2="686.0" y1="412" y2="417"/>
+<text x="686.0" y="431" text-anchor="middle">200</text>
+<line class="s-rule" x1="763.0" x2="763.0" y1="412" y2="417"/>
+<text x="763.0" y="431" text-anchor="middle">225</text>
+<line class="s-rule" x1="840.0" x2="840.0" y1="412" y2="417"/>
+<text x="840.0" y="431" text-anchor="middle">250</text>
+<text x="455.0" y="458" text-anchor="middle" class="ax">network time there and back (ms)</text>
+<text x="18" y="241.0" text-anchor="middle" class="ax" transform="rotate(-90 18 241.0)">added input lag</text>
+<line class="s-need" x1="70.0" y1="390.0" x2="840.0" y2="84.7" stroke-width="1.5" stroke-dasharray="5 4"/>
+<path class="s-series" d="M70.0,371.4 H117.2 V330.7 H219.9 V290.1 H322.6 V249.4 H425.2 V208.8 H527.9" fill="none" stroke-width="2.5" stroke-linejoin="round"/>
+<line class="s-series" x1="527.9" y1="208.4" x2="840.0" y2="84.7" stroke-width="2.5" stroke-dasharray="1 5" stroke-linecap="round"/>
+<text x="93.6" y="349.4" text-anchor="middle" class="bl" font-weight="600" font-size="11">1 tick</text>
+<text x="93.6" y="363.4" text-anchor="middle" font-size="9.5">0–15 ms</text>
+<text x="168.6" y="308.7" text-anchor="middle" class="bl" font-weight="600" font-size="12">2 ticks</text>
+<text x="168.6" y="322.7" text-anchor="middle" font-size="10.5">15–49 ms</text>
+<text x="271.2" y="268.1" text-anchor="middle" class="bl" font-weight="600" font-size="12">3 ticks</text>
+<text x="271.2" y="282.1" text-anchor="middle" font-size="10.5">49–82 ms</text>
+<text x="373.9" y="227.4" text-anchor="middle" class="bl" font-weight="600" font-size="12">4 ticks</text>
+<text x="373.9" y="241.4" text-anchor="middle" font-size="10.5">82–115 ms</text>
+<text x="476.6" y="186.8" text-anchor="middle" class="bl" font-weight="600" font-size="12">5 ticks</text>
+<text x="476.6" y="200.8" text-anchor="middle" font-size="10.5">115–149 ms</text>
+<circle class="f-fg s-bg" cx="100.8" cy="371.4" r="5" stroke-width="2"/>
+<circle class="f-fg s-bg" cx="193.2" cy="330.7" r="5" stroke-width="2"/>
+<circle class="f-fg s-bg" cx="285.6" cy="290.1" r="5" stroke-width="2"/>
+</svg>
