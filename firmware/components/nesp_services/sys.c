@@ -126,6 +126,17 @@ static void drive(nesp_sys_t *sys, const nesp_request_t *request, nesp_reply_t *
     reply->len = 1;
 }
 
+static void screen(nesp_sys_t *sys, const nesp_request_t *request, nesp_reply_t *reply)
+{
+    if (request->len != 1 || request->data[0] > NESP_TURN_FLIPPED) {
+        reply->status = NESP_ST_BAD_ARG;
+        return;
+    }
+    reply->data[0] = sys->hal->screen != NULL ? sys->hal->screen(sys->hal->ctx, request->data[0])
+                                              : NESP_SCREEN_NONE;
+    reply->len = 1;
+}
+
 static void handle(void *ctx, const nesp_request_t *request, nesp_reply_t *reply)
 {
     nesp_sys_t *sys = ctx;
@@ -144,6 +155,9 @@ static void handle(void *ctx, const nesp_request_t *request, nesp_reply_t *reply
         break;
     case NESP_SYS_DRIVE:
         drive(sys, request, reply);
+        break;
+    case NESP_SYS_SCREEN:
+        screen(sys, request, reply);
         break;
     case NESP_SYS_TIME: {
         uint32_t seconds = 0;

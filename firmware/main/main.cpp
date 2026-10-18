@@ -65,6 +65,7 @@ const struct {
 const char *const WIFI_STATES[] = {"not set up", "not joined", "joining", "joined", "failed"};
 
 char shown[ROWS][RADIO_SHOWN_MAX];
+bool flipped;           // the way up the screen is drawn
 int battery_level = -1; // 0 to 100, or -1 while the charge is not known
 
 // Write a line of the screen, if it has changed. The top one is the title:
@@ -138,6 +139,23 @@ void split(const char *text, char *first, char *second)
     }
     first[cut] = 0;
     std::strcpy(second, text + cut + (text[cut] == ' '));
+}
+
+// The screen the way up the console last chose (radio_screen_flipped): 1
+// is M5Stack's landscape, and 3 the same turned a half turn round. Turned,
+// it is cleared, and every line is written again.
+void turn(bool first)
+{
+    bool wanted = radio_screen_flipped();
+    if (!first && wanted == flipped) {
+        return;
+    }
+    flipped = wanted;
+    M5.Display.setRotation(flipped ? 3 : 1);
+    M5.Display.fillScreen(TFT_BLACK);
+    for (auto &row : shown) {
+        row[0] = 0;
+    }
 }
 
 // While the store makes the rips of music playable, at start.
@@ -237,17 +255,11 @@ extern "C" void app_main(void)
     usb_start();
     auto config = M5.config();
     M5.begin(config);
-    // 1 is M5Stack's landscape, and 3 the same turned a half turn round
-    // (CONFIG_NESP_DISPLAY_FLIPPED, in main/Kconfig.projbuild).
-#if CONFIG_NESP_DISPLAY_FLIPPED
-    M5.Display.setRotation(3);
-#else
-    M5.Display.setRotation(1);
-#endif
+    radio_settings();                   // the way up the screen is, among them
     M5.Display.setTextSize(1);
     M5.Display.setFont(&fonts::FreeSans9pt7b);
     M5.Display.setTextWrap(false);      // a long name is cut off, not run into the next line
-    M5.Display.fillScreen(TFT_BLACK);
+    turn(true);
 
     // The UART first, before anything slow, so that TX rests at mark. The
     // files next: a ROM that asks for them is not answered until they are
@@ -346,6 +358,7 @@ extern "C" void app_main(void)
         }
         if (now - screen_at >= SCREEN_MS) {
             screen_at = now;
+            turn(false);
             draw();
         }
         vTaskDelay(pdMS_TO_TICKS(20));

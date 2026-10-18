@@ -14,7 +14,7 @@ from console import VBLANK_CYCLES
 from drive import (PAD_A, PAD_B, PAD_DOWN, PAD_SELECT, PAD_START, PAD_UP, STATE_FAILED,
                    STATE_JOINING, STATE_KEYS, STATE_LIST, STATE_SCAN, STATE_STATUS, STATE_TEST,
                    STATE_USB, Setup)
-from drive import MENU_TEST, MENU_USB
+from drive import MENU_FLIP, MENU_TEST, MENU_USB
 from nesp import Stick
 from wire import link, ms
 
@@ -592,8 +592,9 @@ def test_the_link_test_tells_wrong_from_missing(setup):
 def test_the_status_screens_menu_is_worked_with_an_arrow(setup):
     s = setup()
     row = layout.BODY_ROW + 9
-    assert [s.c.text(row + item, layout.LEFT + 2, 16).rstrip() for item in range(3)] \
-        == ["WI-FI SETUP", "TEST INTERFACE", "ENABLE USB DRIVE"]
+    # Built by itself, it is on no cartridge, and has no menu to quit to.
+    assert [s.c.text(row + item, layout.LEFT + 2, 16).rstrip() for item in range(5)] \
+        == ["WI-FI SETUP", "TEST INTERFACE", "ENABLE USB DRIVE", "FLIP LCD", ""]
 
     def arrow():
         x, y, tile = s.c.sprite()
@@ -603,9 +604,10 @@ def test_the_status_screens_menu_is_worked_with_an_arrow(setup):
     assert arrow() == 0
     s.press(PAD_UP)
     assert arrow() == 0                         # it stops at the ends
-    for expected in (1, 2, 2):
+    for expected in (1, 2, 3, 3):
         s.press(PAD_DOWN)
         assert arrow() == expected
+    s.press(PAD_UP)
     s.press(PAD_UP)
     assert arrow() == 1
     s.press(PAD_B)
@@ -617,6 +619,29 @@ def test_the_status_screens_menu_is_worked_with_an_arrow(setup):
     s.press(PAD_B)
     s.wait_for(STATE_STATUS)
     assert arrow() == 0                         # and it is at the top again
+
+
+# --- the nesp32's screen ---------------------------------------------------------
+
+def test_flip_screen_turns_the_nesp32s_screen_one_way_up_and_then_the_other(setup):
+    s = setup()
+    assert s.stick.screen == p.NESP_SCREEN_FLIPPED
+    s.menu(MENU_FLIP)
+    s.c.run_until(lambda: s.stick.screen == p.NESP_SCREEN_UPRIGHT, 60)
+    assert s.state == STATE_STATUS              # it stays where it is
+    s.press(PAD_A)                              # and back
+    s.c.run_until(lambda: s.stick.screen == p.NESP_SCREEN_FLIPPED, 60)
+    s.c.run(30)
+    assert s.stick.screen == p.NESP_SCREEN_FLIPPED   # once: the frame after asks, not turns
+
+
+def test_a_nesp32_that_cannot_flip_its_screen_is_left_as_it_is(setup):
+    s = setup()
+    s.stick.set_screen(p.NESP_SCREEN_NONE)
+    s.menu(MENU_FLIP)
+    s.c.run(30)
+    assert s.stick.screen == p.NESP_SCREEN_NONE
+    assert s.state == STATE_STATUS
 
 
 # --- the USB drive ---------------------------------------------------------------

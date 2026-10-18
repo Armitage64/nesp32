@@ -67,6 +67,7 @@ INFO = 0x03             # a string by number (enum INFO)
 TIME = 0x04             # the time of day, if the Stick knows it
 EVENT = 0x05            # the oldest event waiting
 DRIVE = 0x06            # the nesp32's files as a USB drive: ask, start or stop (enum LEND)
+SCREEN = 0x07           # which way up the nesp32's screen is: ask, or turn it (enum TURN)
 
 [services.NET]
 id = 0x01
@@ -279,6 +280,16 @@ OFF = 1
 WAITING = 2             # it is one, and no computer has taken it
 MOUNTED = 3             # a computer has it
 EJECTED = 4             # the computer has let it go: the nesp32 is about to restart
+
+[enums.TURN]            # SYS SCREEN: what is asked of the screen
+ASK = 0                 # only which way up it is
+UPRIGHT = 1             # M5Stack's landscape
+FLIPPED = 2             # the same, a half turn round
+
+[enums.SCREEN]          # and which way up it is
+NONE = 0                # this firmware cannot turn it
+UPRIGHT = 1
+FLIPPED = 2
 
 [enums.EVENT]
 NONE = 0

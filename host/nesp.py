@@ -49,6 +49,9 @@ def library():
         lib.host_drive.argtypes = [ctypes.c_void_p]
         lib.host_drive_stops.restype = ctypes.c_uint32
         lib.host_drive_stops.argtypes = [ctypes.c_void_p]
+        lib.host_set_screen.argtypes = [ctypes.c_void_p, ctypes.c_uint8]
+        lib.host_screen.restype = ctypes.c_uint8
+        lib.host_screen.argtypes = [ctypes.c_void_p]
         lib.host_set_time.argtypes = [ctypes.c_void_p, ctypes.c_bool, ctypes.c_uint32]
         lib.host_scan_clear.argtypes = [ctypes.c_void_p]
         lib.host_scan_add.restype = ctypes.c_bool
@@ -430,6 +433,15 @@ class Stick:
     @property
     def drive_stops(self):
         return self._lib.host_drive_stops(self._host)
+
+    def set_screen(self, state):
+        """Which way up the nesp32's screen is (NESP_SCREEN_*); NONE for a
+        firmware that cannot turn it."""
+        self._lib.host_set_screen(self._host, state)
+
+    @property
+    def screen(self):
+        return self._lib.host_screen(self._host)
 
     def set_time(self, seconds):
         self._lib.host_set_time(self._host, seconds is not None, seconds or 0)

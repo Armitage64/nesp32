@@ -221,6 +221,7 @@ Multi-byte numbers are low byte first, except the CRC.
 | `$04` | TIME | | `KNOWN`, `SECONDS[4]` since 1970 |
 | `$05` | EVENT | | `CODE`, `ARG`: the oldest event waiting, or 0, 0 |
 | `$06` | DRIVE | `LEND` | `DRIVE`: how the nesp32's files stand as a USB drive |
+| `$07` | SCREEN | `TURN` | `SCREEN`: which way up the nesp32's screen is |
 
 - `WIFI`: 0 none set up, 1 not joined, 2 joining, 3 joined, 4 the last
   join failed.
@@ -236,6 +237,12 @@ Multi-byte numbers are low byte first, except the CRC.
   while it is a drive. It stops being one by restarting, when it is told to
   stop or the computer ejects it, and a ROM then hears nothing until it has
   said hello again.
+- SCREEN turns the nesp32's own screen. `TURN`: 0 only ask, 1 M5Stack's
+  landscape, 2 the same a half turn round. `SCREEN`: 0 this firmware
+  cannot turn it, 1 M5Stack's landscape, 2 a half turn round. The nesp32
+  keeps the way up over power-off; until a console has chosen one, it is
+  the firmware's build's (`CONFIG_NESP_DISPLAY_FLIPPED`). A turn to the way
+  up it already is changes nothing, so a request sent again is harmless.
 - Events: 1 button A, 2 button B, 3 the power button. Eight are kept; more
   are dropped. A service in use may take a button for itself, and the
   console then hears nothing of it: JUKE takes all three.

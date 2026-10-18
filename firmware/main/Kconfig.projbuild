@@ -6,5 +6,7 @@ config NESP_DISPLAY_FLIPPED
     help
         On, the screen is drawn a half turn round from M5Stack's landscape
         (rotation 3). Off draws it M5Stack's way up again (rotation 1).
+        This is the way up until a console chooses one (Flip LCD in
+        Setup, SYS SCREEN), which the nesp32 then keeps in NVS.
 
 endmenu

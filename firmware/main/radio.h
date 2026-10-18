@@ -12,8 +12,19 @@ extern "C" {
  * needs nothing started. */
 const nesp_hal_t *radio_hal(void);
 
+/* Open the settings kept in flash and read what is kept there: the screen's
+ * way up, RADAR's airport and WEATHER's zip code. Before radio_start, and
+ * before anything is drawn. */
+void radio_settings(void);
+
 /* Start Wi-Fi and join the saved network, if there is one. */
 void radio_start(void);
+
+/* Which way up the screen should be: a half turn round from M5Stack's
+ * landscape, or not. The build's (CONFIG_NESP_DISPLAY_FLIPPED) until the
+ * console chooses (SYS SCREEN), and then the console's, kept over
+ * power-off. Read by the task that owns M5Unified. */
+bool radio_screen_flipped(void);
 
 /* The battery's charge, 0 to 100, or 0xFF if not known. Set by the task
  * that owns M5Unified; read by the link task. */

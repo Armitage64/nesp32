@@ -47,10 +47,12 @@
 
 static const char *TAG = "radio";
 
-typedef enum { ORDER_SCAN, ORDER_JOIN, ORDER_FORGET, ORDER_AIRPORT, ORDER_ZIP } order_kind_t;
+typedef enum { ORDER_SCAN, ORDER_JOIN, ORDER_FORGET, ORDER_AIRPORT, ORDER_ZIP,
+               ORDER_SCREEN } order_kind_t;
 #define SETTINGS "nesp32"           /* conn.c's too */
 #define SETTING_AIRPORT "airport"
 #define SETTING_ZIP "zip"
+#define SETTING_SCREEN "screen"     /* NESP_SCREEN_UPRIGHT or _FLIPPED */
 
 typedef struct {
     order_kind_t kind;
@@ -82,6 +84,9 @@ static airport_t airport;                   /* under lock */
 static bool have_airport;                   /* under lock */
 static zip_t zip;                           /* under lock */
 static bool have_zip;                       /* under lock */
+/* Which way up the screen is: the build's, until the console chooses. */
+static uint8_t screen = CONFIG_NESP_DISPLAY_FLIPPED ? NESP_SCREEN_FLIPPED
+                                                    : NESP_SCREEN_UPRIGHT;  /* under lock */
 static nesp_wifi_t wifi;                    /* under lock */
 static uint8_t scan_state = NESP_SCAN_IDLE; /* under lock */
 static uint8_t scan_count;                  /* under lock */
@@ -469,9 +474,40 @@ static void hal_zip_keep(void *ctx, const char *digits, int32_t latitude, int32_
     xQueueSend(orders, &order, 0);  /* the flash is the worker's to write */
 }
 
+static uint8_t hal_screen(void *ctx, uint8_t turn)
+{
+    (void)ctx;
+    bool turned = false;
+    portENTER_CRITICAL(&lock);
+    if (turn != NESP_TURN_ASK) {
+        uint8_t wanted = turn == NESP_TURN_FLIPPED ? NESP_SCREEN_FLIPPED : NESP_SCREEN_UPRIGHT;
+        turned = wanted != screen;
+        screen = wanted;
+    }
+    uint8_t now = screen;
+    portEXIT_CRITICAL(&lock);
+    if (turned) {
+        order_t order = {.kind = ORDER_SCREEN};
+        xQueueSend(orders, &order, 0);  /* the flash is the worker's to write */
+    }
+    return now;
+}
+
 static void do_order(order_t *order)
 {
     switch (order->kind) {
+    case ORDER_SCREEN: {
+        nvs_handle_t settings;
+        portENTER_CRITICAL(&lock);
+        uint8_t kept = screen;
+        portEXIT_CRITICAL(&lock);
+        if (nvs_open(SETTINGS, NVS_READWRITE, &settings) == ESP_OK) {
+            nvs_set_u8(settings, SETTING_SCREEN, kept);
+            nvs_commit(settings);
+            nvs_close(settings);
+        }
+        break;
+    }
     case ORDER_ZIP: {
         zip_t kept;
         nvs_handle_t settings;
@@ -571,7 +607,7 @@ static void worker(void *arg)
     }
 }
 
-void radio_start(void)
+void radio_settings(void)
 {
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -587,8 +623,17 @@ void radio_start(void)
         size = sizeof(zip);
         have_zip = nvs_get_blob(settings, SETTING_ZIP, &zip, &size) == ESP_OK
                    && size == sizeof(zip);
+        uint8_t kept;
+        if (nvs_get_u8(settings, SETTING_SCREEN, &kept) == ESP_OK
+            && (kept == NESP_SCREEN_UPRIGHT || kept == NESP_SCREEN_FLIPPED)) {
+            screen = kept;
+        }
         nvs_close(settings);
     }
+}
+
+void radio_start(void)
+{
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     esp_netif_create_default_wifi_sta();
@@ -636,6 +681,7 @@ const nesp_hal_t *radio_hal(void)
     hal.board_name = hal_board_name;
     hal.battery = hal_battery;
     hal.drive = usb_drive;
+    hal.screen = hal_screen;
     hal.time = hal_time;
     hal.wifi = hal_wifi;
     hal.scan_start = hal_scan_start;
@@ -676,6 +722,14 @@ const nesp_hal_t *radio_hal(void)
     hal.peer_noted = conn_noted;
     hal.peer_spread = conn_spread;
     return &hal;
+}
+
+bool radio_screen_flipped(void)
+{
+    portENTER_CRITICAL(&lock);
+    bool flipped = screen == NESP_SCREEN_FLIPPED;
+    portEXIT_CRITICAL(&lock);
+    return flipped;
 }
 
 void radio_set_battery(uint8_t percent)
