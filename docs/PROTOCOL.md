@@ -285,8 +285,8 @@ Two consoles play one two-player game, each with a nesp32, and the nesp32s
 joined over the network. Both consoles run the whole game, and only buttons
 cross: a byte for each *tick* of the game, each way. A console takes a tick
 only when it holds both players' buttons for it, so the two games see the
-same buttons at the same tick and stay the same game. nes-drmario's and
-nes-contra's netplay ROMs are the console's side, and their docs have what
+same buttons at the same tick and stay the same game. nes-drmario's,
+nes-contra's and nes-tetris's netplay ROMs are the console's side, and their docs have what
 a tick is in each game and how the games are kept the same. How long a
 console's delay should be is this service's to advise ("The delay",
 below), and the games' docs point here for it.
@@ -366,8 +366,8 @@ The reply is four bytes: one tick of the other console's buttons, if its
 `N` is 1. It names no ticks. That it comes at all says the nesp32 holds
 every tick it was sent, and the console counts them as held; if the nesp32
 could not take them all it makes no reply. An `N` of 3 is `LOST`. The two
-forms may be mixed in one session. nes-contra's ROM and nes-drmario's make
-their exchange this way.
+forms may be mixed in one session. nes-contra's ROM, nes-drmario's and
+nes-tetris's make their exchange this way.
 
 #### Between the nesp32s
 
@@ -1117,7 +1117,7 @@ There are two receivers, for the two places an exchange can be made:
 | Where the exchange is made | in the main loop, between two NMIs | inside the NMI |
 | What ends a wait | the NMI: its handler ends with `nesp_nmi_hook`, which returns to the exchange's caller with carry set | a count: `NESP_TIMEOUT` passes of 4.15 ms |
 | Start-bit hunt | 9 cycles a look | for a frame's first byte, four looks to a count: 6 cycles apart, and 11 across the count. For each byte after it, six looks 6 cycles apart, where it is due |
-| From | nes-jukebox and nes-wiki | nes-drmario and nes-contra |
+| From | nes-jukebox and nes-wiki | nes-drmario, nes-contra and nes-tetris |
 
 The counting receiver is made for a console that is playing samples.
 Each byte a sample fetches stops the CPU for up to four cycles, which a

@@ -10,3 +10,7 @@
 	path = third_party/nes-radar
 	url = https://github.com/k6lcm/nes-radar.git
 	shallow = true
+[submodule "third_party/TetrisNESDisasm"]
+	path = third_party/TetrisNESDisasm
+	url = https://github.com/CelestialAmber/TetrisNESDisasm.git
+	shallow = true

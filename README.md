@@ -55,6 +55,7 @@ Please join our [Discord](https://discord.gg/kwSC7pwtmb)!
 | [Throughput](apps/throughput) | Test the bandwidth of the NES<>ESP32 interface |
 | [Dr. Mario 2P](apps/drmario) | Dr. Mario two-player over a LAN or WAN |
 | [Contra, 2P](apps/contra) | Contra's two-player over a LAN or WAN |
+| [Tetris 2P](apps/tetris) | Tetris two-player, side by side, over a LAN or WAN |
 | [NES Radar](apps/nes-radar) | [k6lcm](https://github.com/k6lcm)'s live air traffic scope, no PC required |
 | [National Public Radio](apps/npr) | NPR's live .mp3 radio stream with optional headline news |
 | [Weather](apps/weather) | Current conditions and a 5-day forecast for a US zip code, which the NESP32 remembers |
@@ -102,6 +103,7 @@ build, a released image can be flashed from a browser at [Firmware Updates](http
 make cart                   # the cartridge
 make -C apps/drmario        # Dr. Mario 2P
 make -C apps/contra         # Contra 2P
+make -C apps/tetris         # Tetris 2P
 ```
 
 Contra's build needs your own copy of the game (US release) at `apps/contra/baserom.nes`.
@@ -113,6 +115,7 @@ Contra's build needs your own copy of the game (US release) at `apps/contra/base
 | `build/nesp32.nes` | The cartridge: every program above but the two games, behind one menu (MMC1, 256 KB PRG, 128 KB CHR) |
 | `build/setup.nes` | Setup as a ROM of its own. For any other program on the cartridge, `make -C apps/<name>` builds one into `apps/<name>/build/` |
 | `apps/drmario/build/drmario_net.nes` | Dr. Mario 2P, which is not on the cartridge |
+| `apps/tetris/build/tetris_net.nes` | Tetris 2P, which is not on the cartridge |
 | `apps/contra/build/contra_net.nes` | Contra 2P, which is not on the cartridge. `make -C apps/contra ines` also makes `contra_net_ines.nes`, with an iNES header in place of the NES 2.0 one |
 
 ## Further Reading
@@ -141,11 +144,17 @@ Not everything in the repository is nesp32's to license:
 - **`third_party/`** is other people's, each under its own terms:
   [nes-radar](https://github.com/k6lcm/nes-radar) (GPL-3.0, as this is),
   [minimp3](third_party/minimp3/LICENSE) (CC0), and the disassemblies of
-  Dr. Mario and Contra that the two-player ROMs are built from.
-- **The games.** `apps/drmario` and `apps/contra` hold nesp32's patches and
-  the code they add, which are under this licence; Dr. Mario and Contra are
-  their publishers', and no ROM of either is here. Contra's build wants your
-  own copy.
+  Dr. Mario, Contra and Tetris that the two-player ROMs are built from.
+- **The games.** `apps/drmario`, `apps/contra` and `apps/tetris` hold
+  nesp32's patches and the code they add, which are under this licence;
+  Dr. Mario, Contra and Tetris are their publishers', and no ROM of any of
+  them is here. Contra's build wants your own copy.
+- **Tetris's game for two** follows ejona86's
+  [TAUS](https://github.com/ejona86/taus) twoplayer mod, Eric Anderson's,
+  under the MIT License ([its terms](apps/tetris/net/TAUS-LICENSE)): its
+  screen and tiles (`apps/tetris/net/twoplayer_game.nam`, `twoplayer.chr`)
+  are TAUS's files, and `apps/tetris/net/twoplayer.inc` is its code,
+  rewritten for the disassembly.
 - **NES Radar's ROM** is k6lcm's with nesp32's changes
   ([apps/nes-radar](apps/nes-radar)), and the cartridge has it on it.
 - **The CRC routine without a table** (`nesp_crc` in
