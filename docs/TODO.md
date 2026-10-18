@@ -27,18 +27,6 @@ its own list in its README.
 
 ## Not started
 
-- A release pipeline on GitHub, for the firmware and the cartridge
-  together. Today the web site (`.github/workflows/web.yml`) is built
-  again from every push to main that touches the firmware, the cartridge
-  or the pages, so the flash page and the cartridge to download are
-  whatever main is, named by `git describe` and the commit's date
-  (`tools/gen_web.py`). Instead, only a numbered release, a tag such as
-  `v1.2.0`, would build and publish them, with the firmware for both
-  Sticks and the cartridge attached to a GitHub release of that number.
-  The firmware would carry the number, built in from the tag (ESP-IDF's
-  `PROJECT_VER`, which `esp_app_get_description()` gives back), and show
-  it on the Stick's screen; a build that is not a release would say so.
-  The cartridge's menu could show it too, and the flash page would name it.
 - A way for two nesp32s to meet across the Internet without a port
   forwarded: a server that introduces them, or a relay. Today the host
   forwards UDP port 6502.
@@ -61,8 +49,4 @@ its own list in its README.
   further than that. The port's CLK pin, which every read of `$4017`
   pulses, is the other line the hat leaves alone
   ([the jukebox's plan](../apps/jukebox/PLAN.md), "clocked link").
-- PAL consoles ([the plan](PAL.md)). The console's library counts cycles,
-  not time, and works as it is on a PAL CPU; what assumes NTSC is the
-  nesp32's rates, worked out from the NTSC clock, and the programs' times
-  and sounds made for 60 frames a second. Dr. Mario and Contra would also
-  need their patches made again for the PAL releases.
+
