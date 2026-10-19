@@ -82,6 +82,11 @@ lines, they go by as the arrow moves. A nesp32 that has kept none begins with fo
 Spaces are left out. A name with no dot in it is taken as
 `name.bsky.social`, which is where most accounts are.
 
+The form holds 26 letters, and the nesp32 keeps a handle of up to 27, so
+that `@` and the handle fit a line. A `.bsky.social` name of more than 15
+letters, or a handle of more than 26 letters on a domain of its own, can't
+be read here; Bluesky allows longer ones, but few are.
+
 **A post** is on her screen: the author's handle, six lines of its text
 (who reposted it first, for a repost), and how long ago it was posted with
 its replies, reposts and likes. Her blue ground under it says which post it

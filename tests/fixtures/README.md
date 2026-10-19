@@ -44,5 +44,9 @@ as nesp32 is.
 (`app.bsky.feed.getAuthorFeed`) for the handle `bsky.app`, as BSKY asks
 for it, on 2026-10-18, cut down to eight of its items: Bluesky's own posts
 and its reposts of others', with curly quotes, dashes, newlines and counts
-in the thousands. The rest is as the API sent it. The posts are their
-authors'.
+in the thousands. Bluesky's own posts are as the API sent them, less the
+lists of replies it hid (`threadgate`) and the mentions' account IDs. Every
+other account in it, the reposted ones and the ones Bluesky quotes, is
+made up: a handle under `example.com`, made-up text, and IDs that point at
+nothing. Their shape and counts are as the API sent them, and one handle is
+longer than a line.

@@ -176,10 +176,10 @@ def test_posts_from_what_bluesky_really_sent(reader):
     assert reader.line(0, 0) and reader.used == 14
     # A handle longer than a line is cut; a repost says who reposted it,
     # first; a count of thousands is in k.
-    assert posts[1][:4] == lines("@stephenjudkins.bsky.soc", when("3d", 47, 360, "3k"),
-                                 "Reposted by @bsky.app", "The Bob's Burgers")
+    assert posts[1][:4] == lines("@an-example-of-a-long-ha", when("3d", 47, 360, "3k"),
+                                 "Reposted by @bsky.app", "The town in this made-up")
     assert reader.line(1, 0) and reader.used == 15      # all of it, as there is room now
-    assert posts[1][15:18] == lines("under-sink plumbing is", "detailed and correct", "")
+    assert posts[1][15:18] == lines("box out front and it is", "emptied twice a day", "")
     # Newlines: a blank line between paragraphs, and no more than one.
     assert posts[2][2:7] == lines("v1.135 is live!", "", "You can now browse quote",
                                   "posts by Top in addition", "to Latest. And posts")
