@@ -27,9 +27,6 @@ its own list in its README.
 
 ## Not started
 
-- A way for two nesp32s to meet across the Internet without a port
-  forwarded: a server that introduces them, or a relay. Today the host
-  forwards UDP port 6502.
 - An idle opponent on the nesp32, as `host/serial_host.py --idle` has, to
   test one console with a nesp32 alone.
 - A fetch that drops partway made again; today what came is read, if it
