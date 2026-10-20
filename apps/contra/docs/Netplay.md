@@ -305,6 +305,12 @@ on and its own leavings in memory, which the handler acted on.
   scenes, which is the least this can come to.
 - **A message** when a session ends. The console goes back to the title
   and says nothing of why.
+- **Games that differ** (for later): a dump of each console's RAM to its
+  nesp32 when the digests differ, to learn why ([nesp32's
+  `docs/TODO.md`](../../../docs/TODO.md)). Copying the host's game to the
+  other in place of ending the session is harder here than in Tetris or
+  Dr. Mario: the screen's tiles and the 8 KB of CHR RAM would go with the
+  RAM, about 12 KB, and going back to the title may well stay.
 - **Across the Internet.** The host forwards UDP port 6502 to its nesp32,
   and player 2 enters the host's public address. Nothing has been played
   that way. The delay will be what the distance makes it: three ticks

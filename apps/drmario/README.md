@@ -263,6 +263,12 @@ nesp32s, and a way to meet across the Internet without a port forwarded.
 - **Say why on the console** when a session ends (the other console left,
   the nesp32 went quiet, the games differed); it only goes back to the
   title now.
+- **Games that differ** (for later): a dump of each console's RAM to its
+  nesp32 when the digests differ, to learn why; and if it comes back, the
+  host's game copied to the other in place of ending the session
+  (nesp32's [`docs/TODO.md`](../../docs/TODO.md)). The bottles are in
+  RAM; whether the game can draw them again from there, or the screen's
+  tiles have to be sent too, is not known.
 - **The menu**: held buttons do not repeat in the address editor, and its
   colours and layout have only been looked at once.
 

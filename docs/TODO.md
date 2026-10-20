@@ -27,6 +27,31 @@ its own list in its README.
 
 ## Not started
 
+- **Games that differ: find out why, then perhaps mend them.** For later
+  consideration. Today a session whose digests differ ends, and both
+  consoles go back to the title; no session on hardware is known to have
+  ended that way, since the console does not say why it ended.
+  1. *A dump when they differ.* Each console sends its 2 KB of RAM to its
+     nesp32 before going back to the title, about a quarter of a second
+     at 85227 baud, and the nesp32 logs it. The two logs, side by side,
+     say which bytes went apart, and from that why. It wants a service to
+     take the dump, and is worth doing first: it is a fraction of the
+     work below, whose RAM-sending code it shares.
+  2. *Resync, if differing turns out to be real and to come back.* The
+     console that hosted is taken as right, and its game is copied to the
+     other while both screens stand: RAM, the mapper's state, and the
+     screen's tiles and palette unless the game draws them again from
+     RAM. Between the nesp32s that wants a bulk way, ARQ carrying 32
+     bytes a packet and holding 96. A second or less of a black screen in
+     place of a session lost; but the digest is one byte in 256 ticks,
+     and the player who did not host may see their game jump by up to
+     eight seconds. Tetris first (its NMI draws the playfields again from
+     RAM), then Dr. Mario; Contra would need its 8 KB of CHR RAM sent too,
+     about 12 KB in all, and its going back to the title may well stay.
+
+  Rolling back, as newer games do, is not for any of the three: a
+  cartridge with no RAM has nowhere to keep a copy of the game, and no
+  frame has the time to run the game again.
 - An idle opponent on the nesp32, as `host/serial_host.py --idle` has, to
   test one console with a nesp32 alone.
 - A fetch that drops partway made again; today what came is read, if it

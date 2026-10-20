@@ -161,6 +161,12 @@ What is left on the nesp32 itself is in nesp32's
 - **Say why on the console** when a session ends (the other console left,
   the nesp32 went quiet, the games differed); it only goes back to the
   title now.
+- **Games that differ** (for later): a dump of each console's RAM to its
+  nesp32 when the digests differ, to learn why; and if it comes back, the
+  host's game copied to the other in place of ending the session
+  (nesp32's [`docs/TODO.md`](../../docs/TODO.md)). This game would be the
+  first: its NMI draws the playfields again from RAM, so the RAM is most
+  of what has to be sent.
 
 ## Known limits
 
