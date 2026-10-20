@@ -135,6 +135,9 @@ def main(argv=None):
                         help="one end of a game for two consoles, on this computer's network")
     parser.add_argument("--idle", action="store_true",
                         help="a game for two consoles with no other: an opponent who presses nothing")
+    parser.add_argument("--rendezvous", metavar="URL",
+                        help="where rooms are met in place of the firmware's own: "
+                             "host/rendezvous.py's stand-in, or a `wrangler dev`")
     args = parser.parse_args(argv)
     port = SerialPort(args.device)
     stick = nesp.Stick(port)
@@ -147,6 +150,8 @@ def main(argv=None):
         stick.set_saved(b"This computer")
         stick.set_wifi(p.NESP_WIFI_JOINED, rssi=-50, address=address or bytes(4))
         network = peer_net.IdleNetwork(stick) if args.idle else peer_net.SocketNetwork(stick)
+        if args.rendezvous:
+            stick.set_rendezvous(args.rendezvous)
     for track in tracks_in(args.tracks) if args.tracks else ():
         stick.add_track(track)
     keys = Keys()

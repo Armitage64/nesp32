@@ -21,7 +21,7 @@
  * to send.
  *
  *   0  'N', 'E'
- *   2  kind          NESP_ARQ_CALL, _ANSWER, _DATA or _BYE; bit 7 set if
+ *   2  kind          NESP_ARQ_CALL, _ANSWER, _DATA, _BYE or _PUNCH; bit 7 set if
  *                    the clock given back is one
  *   3  count         bytes carried
  *   4  session[4]    the connection's name, of the caller's choosing
@@ -138,6 +138,15 @@ size_t nesp_arq_packet(nesp_arq_t *arq, uint8_t kind, uint32_t now_us, uint8_t *
     arq->fresh = false;
     arq->sent_at = now_us;
     return (size_t)NESP_ARQ_HEADER + count;
+}
+
+size_t nesp_arq_punch(uint8_t *out)
+{
+    memset(out, 0, NESP_ARQ_HEADER);
+    out[0] = 'N';
+    out[1] = 'E';
+    out[AT_KIND] = NESP_ARQ_PUNCH;
+    return NESP_ARQ_HEADER;            /* session 0, which no connection is */
 }
 
 int nesp_arq_take(nesp_arq_t *arq, uint32_t now_us, const uint8_t *data, size_t len)

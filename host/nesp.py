@@ -155,6 +155,14 @@ def library():
                      "host_peer_requests", "host_peer_repeats"):
             getattr(lib, name).restype = ctypes.c_uint32
             getattr(lib, name).argtypes = [ctypes.c_void_p]
+        for name in ("host_meets", "host_punches"):
+            getattr(lib, name).restype = ctypes.c_uint32
+            getattr(lib, name).argtypes = [ctypes.c_void_p]
+        lib.host_set_candidates.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint8]
+        lib.host_punch.restype = ctypes.c_uint8
+        lib.host_punch.argtypes = [ctypes.c_void_p, ctypes.c_char_p,
+                                   ctypes.POINTER(ctypes.c_bool), ctypes.POINTER(ctypes.c_uint32)]
+        lib.host_set_rendezvous.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
         lib.host_conn_take.restype = ctypes.c_size_t
         lib.host_conn_take.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t]
         lib.host_conn_give.restype = ctypes.c_size_t
@@ -307,7 +315,7 @@ def parse(data):
 
 # How a nesp32's connection to another stands (nesp_services.h's NESP_CONN_*).
 (CONN_NONE, CONN_LISTENING, CONN_CALLING, CONN_ANSWERED, CONN_CALLED, CONN_FAILED,
- CONN_LOST) = range(7)
+ CONN_LOST, CONN_MEETING, CONN_MET) = range(9)
 CONN_UP = (CONN_ANSWERED, CONN_CALLED)
 
 
@@ -650,6 +658,43 @@ class Stick:
     @property
     def keeps(self):
         return self._lib.host_keeps(self._host)
+
+    @property
+    def meets(self):
+        return self._lib.host_meets(self._host)
+
+    @property
+    def punches(self):
+        return self._lib.host_punches(self._host)
+
+    @property
+    def candidates(self):
+        raise AttributeError("the nesp32's addresses are set, not read")
+
+    @candidates.setter
+    def candidates(self, pairs):
+        """The addresses the meeting's socket has: (4-byte address, port)
+        each, its own on its network first."""
+        data = b"".join(bytes(address) + port.to_bytes(2, "big") for address, port in pairs)
+        self._lib.host_set_candidates(self._host, data, len(pairs))
+
+    @property
+    def punch(self):
+        """What the nesp32 was told of the other at the rendezvous:
+        (listen, session, [(address, port), ...])."""
+        buffer = ctypes.create_string_buffer(6 * 4)
+        listen = ctypes.c_bool()
+        session = ctypes.c_uint32()
+        count = self._lib.host_punch(self._host, buffer, ctypes.byref(listen),
+                                     ctypes.byref(session))
+        raw = buffer.raw
+        return listen.value, session.value, [
+            (raw[6 * index:6 * index + 4], int.from_bytes(raw[6 * index + 4:6 * index + 6], "big"))
+            for index in range(count)]
+
+    def set_rendezvous(self, url):
+        self._url = url.encode()
+        self._lib.host_set_rendezvous(self._host, self._url)
 
     @property
     def peer_requests(self):

@@ -302,6 +302,9 @@ below), and the games' docs point here for it.
 
 The service is a lobby, in which one nesp32 waits and the other calls it,
 and then a relay. It does not know what a button is, and keeps no time.
+The two meet either by an address entered (HOST and JOIN) or, across the
+Internet with no port forwarded, by a room's code at the rendezvous
+(HOST_ROOM and JOIN_ROOM: "Meeting in a room", below).
 
 | `OP` | Name | Request | Reply |
 |---|---|---|---|
@@ -311,9 +314,14 @@ and then a relay. It does not know what a button is, and keeps no time.
 | `$03` | LEAVE | | the same: drop whatever connection there is, or is being made |
 | `$04` | LAST | | `STATE`, and in `ADDRESS` the address last joined (zeros if none) |
 | `$05` | TICKS | `FIRST`, `WANTED`, `BUTTONS` ... | `NEXT`, `FROM`, `LOST`, `BUTTONS` ... |
+| `$06` | HOST_ROOM | | `STATE`, `ADDRESS[4]`, `DELAY`, `CODE[4]`, `WHY`: open a room, and wait in it |
+| `$07` | JOIN_ROOM | `CODE[4]` | the same: join the room of that code |
+| `$08` | ROOM | | the same, and nothing done |
 | short | TICKS again, in five bytes and four | `N` ticks: `FIRST` and `WANTED`, `BUTTONS[1 or 2]` | `N` ticks: `BUTTONS[1]` |
 
 In every reply but LAST's, `ADDRESS` is the nesp32's own IPv4 address.
+STATUS and the other first five keep their six bytes; only the three room
+ops have the room's.
 
 | `STATE` | Name | |
 |---|---|---|
@@ -324,6 +332,7 @@ In every reply but LAST's, `ADDRESS` is the nesp32's own IPv4 address.
 | 4 | HOST | connected, and this console is player 1 |
 | 5 | GUEST | connected, and this console is player 2 |
 | 6 | FAILED | the last call was not answered, or the connection was lost |
+| 7 | MEETING | finding where this nesp32 can be reached, or asking the rendezvous |
 
 **An order that is already what the nesp32 is doing changes nothing**, so
 the console sends one again until it is answered, and acts on a state only
@@ -337,6 +346,55 @@ address, over power-off, for LAST to offer the next time.
 
 **A hello ends a game**, as it ends everything: a console that is reset is
 in none, and its nesp32 hangs up.
+
+#### Meeting in a room
+
+Across the Internet a nesp32 that hosts cannot be called unless its router
+forwards it the port, which many players cannot arrange, and none behind a
+carrier's shared address can. So the two meet at a rendezvous on the
+Internet instead ([`server/rendezvous`](../server/rendezvous/README.md)),
+and each opens its own router to the other.
+
+1. HOST_ROOM. The nesp32 opens the socket the game will be played on, at
+   port 6502, and finds where it can be reached (`MEETING`): its own
+   address on its network, and what two STUN servers see of the socket
+   from outside.
+2. It asks the rendezvous for a room, and is given its code: four of
+   `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`, with no 0 or O and no 1 or I. The
+   console shows it, and so does the nesp32's screen (`HOSTING`, with
+   `CODE`). Every two seconds it asks whether player 2 has come.
+3. Player 2 enters the code: JOIN_ROOM. Its nesp32 finds its own
+   addresses the same way, and asks to join. Another game's room, or
+   another version's, is refused.
+4. Each is told the other's addresses. Both send to all of them at once:
+   player 2 calls, and the host sends *punches*, datagrams that carry
+   nothing (`KIND` 4, below). A router lets a datagram in only as an
+   answer to one sent out from inside, so each one's sending opens the way
+   for the other's. The first to arrive is the path, whether across the
+   Internet or, for two on one network, the network itself.
+5. From there it is a connection like any other: the greetings, and the
+   game. The one that opened the room is player 1.
+
+The two are told one session, which the host's nesp32 takes the only call
+of. A code is not an address to keep, so LAST is unchanged.
+
+`CODE` is four spaces until there is one. `WHY` is 0 unless `STATE` is
+FAILED, when it says why the meeting did:
+
+| `WHY` | Name | |
+|---|---|---|
+| 0 | NONE | |
+| 1 | NO_SERVER | the rendezvous could not be asked, or said nothing that made sense |
+| 2 | NO_ROOM | there is no room of that code |
+| 3 | MISMATCH | the room is another game's, or another version's |
+| 4 | FULL | player 2 is already in the room |
+| 5 | UNREACHABLE | the two were introduced, and could not reach each other |
+| 6 | GONE | the room was given up while its host waited |
+
+UNREACHABLE is what two routers that each give a socket a new port for
+every address it sends to come to, with no forwarded port at either; and
+a network that lets no datagrams out at all. HOST and JOIN, with a port
+forwarded at the host, are still there for those.
 
 #### A session
 
@@ -396,8 +454,9 @@ on waiting for the right caller; one that called says FAILED.
 
 Then one byte a tick each way, in order: a byte's place in the stream is
 its tick. On one network that needs nothing more. Across the Internet the
-hosting side has to forward UDP port 6502 to its nesp32, and player 2
-enters the host's public address.
+two meet in a room ("Meeting in a room", above), or the hosting side
+forwards UDP port 6502 to its nesp32 and player 2 enters the host's public
+address.
 
 **The datagrams.** A game sends a byte for each of its frames and wants
 each there soon. A TCP connection that loses a packet stops until it has
@@ -415,7 +474,7 @@ Numbers are low byte first.
 
 | Field | Meaning |
 |---|---|
-| `KIND` | 0 a call, 1 its answer, 2 neither, 3 goodbye. Bit 7 says `BACK` is a clock |
+| `KIND` | 0 a call, 1 its answer, 2 neither, 3 goodbye, 4 a punch. Bit 7 says `BACK` is a clock |
 | `COUNT` | bytes of the stream carried, 32 at the most |
 | `SESSION` | the connection's name, chosen by the one that calls |
 | `BASE` | where in the sender's stream the first byte carried is |
@@ -430,6 +489,13 @@ calls sends calls, ten a second for three seconds, until one is answered;
 the one that waits answers the first caller and from then on takes only
 that session's datagrams, from wherever they come. An end that hears
 nothing for three seconds takes the other for gone.
+
+In a room the caller calls each of the host's addresses at once, for eight
+seconds, since the host hears of it only when it next asks the
+rendezvous; and the host, for as long, sends a punch ten times a second
+to each of the caller's, and answers only the session the two were given.
+A punch is the header alone, its `SESSION` 0, which names no connection:
+an end that gets one passes it over.
 
 `BACK` gives each end how long the network takes, there and back, from
 every datagram: its own clock now, less the clock it gets back. PEER uses

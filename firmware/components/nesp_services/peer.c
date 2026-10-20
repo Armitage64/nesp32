@@ -19,11 +19,18 @@
  * ticks from what this side holds, so that is enough to tell which is
  * meant.
  *
+ * Across the Internet two nesp32s meet at a rendezvous (server/rendezvous
+ * in this repo) instead: the host opens a room there and shows its code,
+ * player 2 enters the code, each is told the other's addresses, and both
+ * send to each other's at once, which opens each one's router to the
+ * other (issue #12). From there it is the same connection.
+ *
  * Every op may be asked again with nothing done twice: an order that is
  * already what the nesp32 is doing changes nothing, and buttons it has
  * taken are passed over. So no reply here is held for a repeat.
  */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "nesp_services.h"
@@ -34,6 +41,25 @@ _Static_assert(NESP_PEER_PER_FRAME == 2, "a short frame's length is by counts of
 #define SHOW_MS 500
 #define WATCH_MS 2000
 #define RADIO_TEXT 256             /* a line of the log */
+#define RENDEZVOUS "https://nesp32-rendezvous.retrobits.workers.dev"
+#define AGENT "nesp32-peer/0.1 (PEER on a nesp32; +https://github.com/Armitage64/nesp32)"
+#define URL_MAX 256
+#define CANDIDATES_TEXT (NESP_PEER_CANDIDATES * 22)
+#define ROOM_REPLY 11
+#define LANDED_WELL 1
+#define LANDED_BADLY 2
+/* A room's code is these letters: no 0 or O, no 1 or I. */
+static const char alphabet[] = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+/* How far a meeting at the rendezvous has got. */
+enum {
+    MEET_NONE,                      /* there is none: an address was entered, or nothing */
+    MEET_GATHERING,                 /* finding this one's addresses */
+    MEET_OPENING,                   /* asking for a room */
+    MEET_WAITING,                   /* in it, asking whether player 2 has come */
+    MEET_JOINING,                   /* player 2, asking for the host's addresses */
+    MEET_PUNCHING                   /* each sends to the other: the connection's, from here */
+};
 _Static_assert(NESP_ARQ_NEEDS == 6, "watch() names six counts");
 
 static const char greeting_mark[4] = {'N', 'E', 'S', 'P'};
@@ -59,9 +85,36 @@ static bool online(const nesp_peer_t *peer, uint8_t *address)
 }
 
 /* Whatever connection there is, or is being made, is over. */
+static void lock(nesp_peer_t *peer)
+{
+    peer->hal->lock(peer->hal->ctx);
+}
+
+static void unlock(nesp_peer_t *peer)
+{
+    peer->hal->unlock(peer->hal->ctx);
+}
+
+/* No fetch is wanted any more: a sink hears no more of the last. */
+static void unask(nesp_peer_t *peer)
+{
+    if (peer->asking) {
+        peer->hal->fetch_stop(peer->hal->ctx);
+    }
+    lock(peer);
+    peer->generation++;
+    peer->landed = 0;
+    unlock(peer);
+    peer->asking = false;
+}
+
 static void drop(nesp_peer_t *peer)
 {
     peer->hal->peer_close(peer->hal->ctx);
+    unask(peer);
+    peer->meet = MEET_NONE;
+    peer->hosting_room = false;
+    peer->reason = NESP_MEET_NONE;
     peer->lobby = NESP_LOBBY_IDLE;
     peer->greeting = false;
     peer->lost = false;
@@ -85,8 +138,12 @@ static void refuse(nesp_peer_t *peer)
 {
     peer->greeting = false;
     peer->hal->peer_close(peer->hal->ctx);
-    if (peer->lobby != NESP_LOBBY_HOSTING
-        || !peer->hal->peer_listen(peer->hal->ctx, NESP_PEER_PORT)) {
+    if (peer->meet != MEET_NONE) {
+        /* The rendezvous let only the same game in: it is not one. */
+        peer->lobby = NESP_LOBBY_FAILED;
+        peer->reason = NESP_MEET_MISMATCH;
+    } else if (peer->lobby != NESP_LOBBY_HOSTING
+               || !peer->hal->peer_listen(peer->hal->ctx, NESP_PEER_PORT)) {
         peer->lobby = NESP_LOBBY_FAILED;
     }
     peer->show = true;
@@ -133,7 +190,7 @@ static void greet(nesp_peer_t *peer, uint8_t conn, uint32_t now)
             peer->hal->peer_note(peer->hal->ctx, none);
         }
         peer->show = true;
-        if (called) {
+        if (called && peer->meet == MEET_NONE) {
             peer->hal->peer_keep(peer->hal->ctx, peer->target);
         }
     } else if (!up(conn) || now - peer->greeting_at >= NESP_PEER_GREET_MS) {
@@ -399,13 +456,289 @@ static int quick(void *ctx, uint8_t count, const uint8_t *in, uint8_t *reply_cou
     return 1;
 }
 
+/* --- meeting at the rendezvous ------------------------------------------------ */
+
+/* The fetch's task: the answer, one line of it, for the link's to take. */
+static bool body(void *ctx, uint32_t id, const uint8_t *data, size_t len)
+{
+    nesp_peer_t *peer = ctx;
+    lock(peer);
+    bool wanted = peer->generation == id;
+    for (size_t index = 0; wanted && index < len; index++) {
+        if (data[index] == '\n' || peer->answer_len >= NESP_PEER_ANSWER - 1) {
+            break;
+        }
+        peer->answer[peer->answer_len++] = (char)data[index];
+    }
+    unlock(peer);
+    return wanted;
+}
+
+static void done(void *ctx, uint32_t id, bool ok, const char *why)
+{
+    nesp_peer_t *peer = ctx;
+    (void)why;
+    lock(peer);
+    if (peer->generation == id) {
+        peer->landed = ok ? LANDED_WELL : LANDED_BADLY;
+    }
+    unlock(peer);
+}
+
+/* Ask the rendezvous: the path and query after its address. */
+static bool ask(nesp_peer_t *peer, const char *path)
+{
+    char url[URL_MAX];
+    snprintf(url, sizeof(url), "%s%s", peer->rendezvous, path);
+    unask(peer);
+    lock(peer);
+    uint32_t id = peer->generation;
+    peer->answer_len = 0;
+    unlock(peer);
+    peer->asking = peer->hal->fetch(peer->hal->ctx, url, AGENT, id, &peer->sink);
+    return peer->asking;
+}
+
+/* The answer, once there is one: LANDED_WELL with its line in `line`, or
+ * LANDED_BADLY; 0 while it has not come. */
+static uint8_t answered(nesp_peer_t *peer, char *line)
+{
+    lock(peer);
+    uint8_t landed = peer->landed;
+    memcpy(line, peer->answer, peer->answer_len);
+    line[peer->answer_len] = '\0';
+    peer->landed = 0;
+    unlock(peer);
+    if (landed != 0) {
+        peer->asking = false;
+    }
+    return landed;
+}
+
+/* This one's addresses, as the rendezvous takes them: a.b.c.d:port, with
+ * commas between. */
+static void candidates_text(const nesp_peer_t *peer, char *out, size_t size)
+{
+    nesp_peer_candidate_t mine[NESP_PEER_CANDIDATES];
+    uint8_t count = peer->hal->peer_candidates(peer->hal->ctx, mine);
+    size_t length = 0;
+    out[0] = '\0';
+    for (uint8_t index = 0; index < count && length < size; index++) {
+        const uint8_t *at = mine[index].address;
+        length += (size_t)snprintf(out + length, size - length, "%s%u.%u.%u.%u:%u",
+                                   index == 0 ? "" : ",", at[0], at[1], at[2], at[3],
+                                   (unsigned)mine[index].port);
+    }
+}
+
+/* The other's addresses, from the answer's text, less any that is one of
+ * this nesp32's own: a host behind the same carrier's router may have the
+ * same private address in another house, and this one would be calling
+ * itself. Returns how many. */
+static uint8_t candidates_of(const nesp_peer_t *peer, const char *text,
+                             nesp_peer_candidate_t *out)
+{
+    nesp_peer_candidate_t own[NESP_PEER_CANDIDATES];
+    uint8_t owned = peer->hal->peer_candidates(peer->hal->ctx, own);
+    uint8_t count = 0;
+    while (*text != '\0' && count < NESP_PEER_CANDIDATES) {
+        unsigned long parts[5];
+        int part = 0;
+        for (; part < 5; part++) {
+            char *end;
+            parts[part] = strtoul(text, &end, 10);
+            if (end == text || parts[part] > (part == 4 ? 65535ul : 255ul)) {
+                return count;
+            }
+            text = end;
+            char after = part < 3 ? '.' : part == 3 ? ':' : ',';
+            if (*text == after) {
+                text++;
+            } else if (part != 4 || *text != '\0') {
+                return count;
+            }
+        }
+        nesp_peer_candidate_t *candidate = &out[count];
+        for (int index = 0; index < 4; index++) {
+            candidate->address[index] = (uint8_t)parts[index];
+        }
+        candidate->port = (uint16_t)parts[4];
+        bool mine = false;
+        for (uint8_t index = 0; index < owned; index++) {
+            mine = mine || (memcmp(candidate->address, own[index].address, 4) == 0
+                            && candidate->port == own[index].port);
+        }
+        count = (uint8_t)(count + !mine);
+    }
+    return count;
+}
+
+static bool is_code(const char *code)
+{
+    for (int index = 0; index < NESP_PEER_CODE; index++) {
+        if (code[index] == '\0' || strchr(alphabet, code[index]) == NULL) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void meet_failed(nesp_peer_t *peer, uint8_t reason)
+{
+    peer->hal->peer_close(peer->hal->ctx);
+    unask(peer);
+    peer->meet = MEET_NONE;
+    peer->lobby = NESP_LOBBY_FAILED;
+    peer->reason = reason;
+    peer->show = true;
+}
+
+/* Open the socket the game will be played on, and find its addresses. */
+static void meet(nesp_peer_t *peer, bool hosting, const char *code)
+{
+    drop(peer);
+    peer->hosting_room = hosting;
+    memcpy(peer->code, code != NULL ? code : "    ", NESP_PEER_CODE);
+    if (peer->hal->peer_meet == NULL || !peer->hal->peer_meet(peer->hal->ctx, NESP_PEER_PORT)) {
+        peer->lobby = NESP_LOBBY_FAILED;
+        peer->reason = NESP_MEET_UNREACHABLE;
+        return;
+    }
+    peer->lobby = NESP_LOBBY_MEETING;
+    peer->meet = MEET_GATHERING;
+}
+
+/* Hand the other's addresses to the connection: from here it is made as
+ * any connection is. */
+static void punch(nesp_peer_t *peer, const char *text)
+{
+    nesp_peer_candidate_t other[NESP_PEER_CANDIDATES];
+    uint8_t count = candidates_of(peer, text, other);
+    if (count == 0 || !peer->hal->peer_punch(peer->hal->ctx, peer->hosting_room, peer->session,
+                                             other, count)) {
+        meet_failed(peer, NESP_MEET_UNREACHABLE);
+        return;
+    }
+    peer->meet = MEET_PUNCHING;
+    peer->lobby = peer->hosting_room ? NESP_LOBBY_HOSTING : NESP_LOBBY_CONNECTING;
+    peer->show = true;
+}
+
+/* A session as the rendezvous writes it, eight hex digits; 0 if not. */
+static uint32_t session_of(const char *text)
+{
+    char *end;
+    unsigned long session = strtoul(text, &end, 16);
+    return end == text + 8 ? (uint32_t)session : 0;
+}
+
+/* The meeting, a tick at a time, until the connection is the thing. */
+static void meeting(nesp_peer_t *peer, uint8_t conn, uint32_t now)
+{
+    char path[URL_MAX];
+    char line[NESP_PEER_ANSWER];
+    char mine[CANDIDATES_TEXT];
+    switch (peer->meet) {
+    case MEET_GATHERING:
+        if (conn == NESP_CONN_MET) {
+            candidates_text(peer, mine, sizeof(mine));
+            if (peer->hosting_room) {
+                snprintf(path, sizeof(path), "/v1/host?app=%.4s&ver=%u&c=%s", peer->sys->app,
+                         (unsigned)peer->sys->app_version, mine);
+            } else {
+                snprintf(path, sizeof(path), "/v1/join/%.4s?app=%.4s&ver=%u&c=%s", peer->code,
+                         peer->sys->app, (unsigned)peer->sys->app_version, mine);
+            }
+            if (!ask(peer, path)) {
+                meet_failed(peer, NESP_MEET_NO_SERVER);
+                return;
+            }
+            peer->meet = peer->hosting_room ? MEET_OPENING : MEET_JOINING;
+        } else if (conn != NESP_CONN_MEETING) {
+            meet_failed(peer, NESP_MEET_UNREACHABLE);       /* the socket went */
+        }
+        break;
+    case MEET_OPENING: {
+        uint8_t landed = answered(peer, line);
+        if (landed == 0) {
+            break;
+        }
+        /* ROOM CODE SESSION */
+        if (landed != LANDED_WELL || strncmp(line, "ROOM ", 5) != 0
+            || strlen(line) != 5 + NESP_PEER_CODE + 1 + 8 || line[5 + NESP_PEER_CODE] != ' '
+            || !is_code(line + 5) || (peer->session = session_of(line + 10)) == 0) {
+            meet_failed(peer, NESP_MEET_NO_SERVER);
+            break;
+        }
+        memcpy(peer->code, line + 5, NESP_PEER_CODE);
+        peer->lobby = NESP_LOBBY_HOSTING;
+        peer->meet = MEET_WAITING;
+        peer->asked_at = now;
+        peer->fails = 0;
+        peer->show = true;
+        break;
+    }
+    case MEET_WAITING: {
+        uint8_t landed = answered(peer, line);
+        if (landed == LANDED_WELL && strcmp(line, "WAIT") == 0) {
+            peer->fails = 0;
+        } else if (landed == LANDED_WELL && strncmp(line, "GUEST ", 6) == 0) {
+            punch(peer, line + 6);
+            break;
+        } else if (landed == LANDED_WELL && strcmp(line, "GONE") == 0) {
+            meet_failed(peer, NESP_MEET_GONE);
+            break;
+        } else if (landed != 0 && ++peer->fails >= NESP_PEER_POLL_FAILS) {
+            meet_failed(peer, NESP_MEET_NO_SERVER);
+            break;
+        }
+        /* Every little while, and with its addresses as they are now: the
+         * router's way in may have moved. */
+        if (!peer->asking && now - peer->asked_at >= NESP_PEER_POLL_MS) {
+            peer->asked_at = now;
+            candidates_text(peer, mine, sizeof(mine));
+            snprintf(path, sizeof(path), "/v1/room/%.4s?s=%08lX&c=%s", peer->code,
+                     (unsigned long)peer->session, mine);
+            if (!ask(peer, path) && ++peer->fails >= NESP_PEER_POLL_FAILS) {
+                meet_failed(peer, NESP_MEET_NO_SERVER);
+            }
+        }
+        break;
+    }
+    case MEET_JOINING: {
+        uint8_t landed = answered(peer, line);
+        if (landed == 0) {
+            break;
+        }
+        /* HOST SESSION CANDIDATES, or why not */
+        if (landed == LANDED_WELL && strncmp(line, "HOST ", 5) == 0 && strlen(line) > 14
+            && line[13] == ' ' && (peer->session = session_of(line + 5)) != 0) {
+            punch(peer, line + 14);
+        } else if (landed == LANDED_WELL && strcmp(line, "NOROOM") == 0) {
+            meet_failed(peer, NESP_MEET_NO_ROOM);
+        } else if (landed == LANDED_WELL && strcmp(line, "MISMATCH") == 0) {
+            meet_failed(peer, NESP_MEET_MISMATCH);
+        } else if (landed == LANDED_WELL && strcmp(line, "FULL") == 0) {
+            meet_failed(peer, NESP_MEET_FULL);
+        } else {
+            meet_failed(peer, NESP_MEET_NO_SERVER);
+        }
+        break;
+    }
+    default:
+        break;
+    }
+}
+
 /* --- the lobby ------------------------------------------------------------------ */
 
 static void lobby(nesp_peer_t *peer, const nesp_request_t *request, nesp_reply_t *reply)
 {
     uint8_t address[4];
     bool on = online(peer, address);
-    if (request->len != (request->op == NESP_PEER_JOIN ? 4 : 0)) {
+    bool coded = request->op == NESP_PEER_JOIN || request->op == NESP_PEER_JOIN_ROOM;
+    if (request->len != (coded ? 4 : 0)
+        || (request->op == NESP_PEER_JOIN_ROOM && !is_code((const char *)request->data))) {
         reply->status = NESP_ST_BAD_ARG;
         return;
     }
@@ -432,6 +765,26 @@ static void lobby(nesp_peer_t *peer, const nesp_request_t *request, nesp_reply_t
         }
         break;
     }
+    case NESP_PEER_HOST_ROOM: {
+        bool hosting = peer->meet != MEET_NONE && peer->hosting_room
+                       && (peer->lobby == NESP_LOBBY_MEETING || peer->lobby == NESP_LOBBY_HOSTING
+                           || (peer->lobby == NESP_LOBBY_HOST && !peer->lost));
+        if (on && !hosting) {
+            meet(peer, true, NULL);
+        }
+        break;
+    }
+    case NESP_PEER_JOIN_ROOM: {
+        bool joining = peer->meet != MEET_NONE && !peer->hosting_room
+                       && memcmp(peer->code, request->data, NESP_PEER_CODE) == 0
+                       && (peer->lobby == NESP_LOBBY_MEETING
+                           || peer->lobby == NESP_LOBBY_CONNECTING
+                           || (peer->lobby == NESP_LOBBY_GUEST && !peer->lost));
+        if (on && !joining) {
+            meet(peer, false, (const char *)request->data);
+        }
+        break;
+    }
     case NESP_PEER_LEAVE:
         drop(peer);
         break;
@@ -440,7 +793,7 @@ static void lobby(nesp_peer_t *peer, const nesp_request_t *request, nesp_reply_t
             memset(address, 0, sizeof(address));
         }
         break;
-    default:                        /* NESP_PEER_STATUS */
+    default:                        /* NESP_PEER_STATUS, NESP_PEER_ROOM */
         break;
     }
     uint8_t state = peer->lobby;
@@ -454,6 +807,15 @@ static void lobby(nesp_peer_t *peer, const nesp_request_t *request, nesp_reply_t
     /* And for a console about to start a session, the delay to begin with. */
     reply->data[5] = in_session(peer) && !peer->lost ? first_delay(peer) : 0;
     reply->len = 6;
+    /* And a room's: its code, once there is one, and why a meeting failed. */
+    if (request->op == NESP_PEER_HOST_ROOM || request->op == NESP_PEER_JOIN_ROOM
+        || request->op == NESP_PEER_ROOM) {
+        bool coded_room = peer->meet != MEET_NONE && (!peer->hosting_room
+                                                      || peer->meet >= MEET_WAITING);
+        memcpy(reply->data + 6, coded_room ? peer->code : "    ", NESP_PEER_CODE);
+        reply->data[10] = state == NESP_LOBBY_FAILED ? peer->reason : NESP_MEET_NONE;
+        reply->len = ROOM_REPLY;
+    }
 }
 
 static void handle(void *ctx, const nesp_request_t *request, nesp_reply_t *reply)
@@ -466,6 +828,9 @@ static void handle(void *ctx, const nesp_request_t *request, nesp_reply_t *reply
     case NESP_PEER_JOIN:
     case NESP_PEER_LEAVE:
     case NESP_PEER_LAST:
+    case NESP_PEER_HOST_ROOM:
+    case NESP_PEER_JOIN_ROOM:
+    case NESP_PEER_ROOM:
         lobby(peer, request, reply);
         break;
     case NESP_PEER_TICKS:
@@ -491,7 +856,29 @@ static void show(nesp_peer_t *peer, uint32_t now)
     }
     char text[2][48] = {"", ""};
     uint8_t address[4];
-    switch (peer->lobby) {
+    static const char *const why[] = {
+        [NESP_MEET_NONE] = "No game was joined",
+        [NESP_MEET_NO_SERVER] = "No rendezvous",
+        [NESP_MEET_NO_ROOM] = "No such room",
+        [NESP_MEET_MISMATCH] = "Another game's room",
+        [NESP_MEET_FULL] = "The room is full",
+        [NESP_MEET_UNREACHABLE] = "Could not reach player",
+        [NESP_MEET_GONE] = "The room was closed",
+    };
+    /* A meeting's lines until it is a session. */
+    bool meeting_shown = peer->meet != MEET_NONE
+                         && (peer->lobby == NESP_LOBBY_MEETING || peer->lobby == NESP_LOBBY_HOSTING
+                             || peer->lobby == NESP_LOBBY_CONNECTING);
+    switch (meeting_shown ? NESP_LOBBY_MEETING : peer->lobby) {
+    case NESP_LOBBY_MEETING:
+        if (peer->hosting_room && peer->meet < MEET_WAITING) {
+            snprintf(text[0], sizeof(text[0]), "Opening a room");
+        } else {
+            snprintf(text[0], sizeof(text[0]), "Room %.4s", peer->code);
+        }
+        snprintf(text[1], sizeof(text[1]), "%s",
+                 peer->hosting_room ? "Waiting for player 2" : "Joining the game");
+        break;
     case NESP_LOBBY_HOSTING:
         /* Player 2 has this to enter: where the screen has the address
          * when there is no game. */
@@ -518,7 +905,8 @@ static void show(nesp_peer_t *peer, uint32_t now)
                  (unsigned long)(tenths / 10u), (unsigned long)(tenths % 10u));
         break;
     case NESP_LOBBY_FAILED:
-        snprintf(text[0], sizeof(text[0]), "No game was joined");
+        snprintf(text[0], sizeof(text[0]), "%s",
+                 peer->reason < sizeof(why) / sizeof(why[0]) ? why[peer->reason] : why[0]);
         break;
     default:
         break;
@@ -567,6 +955,12 @@ static bool tick(void *ctx, uint32_t now)
     peer->now = now;
     watch(peer, now);
     uint8_t conn = peer->hal->peer_state(peer->hal->ctx);
+    if (peer->meet != MEET_NONE && peer->meet != MEET_PUNCHING
+        && peer->lobby != NESP_LOBBY_FAILED) {
+        meeting(peer, conn, now);
+        show(peer, now);
+        return false;
+    }
     switch (peer->lobby) {
     case NESP_LOBBY_HOSTING:
     case NESP_LOBBY_CONNECTING:
@@ -582,6 +976,9 @@ static bool tick(void *ctx, uint32_t now)
             /* Nobody answered the call, or the wait for one broke. */
             peer->hal->peer_close(peer->hal->ctx);
             peer->lobby = NESP_LOBBY_FAILED;
+            if (peer->meet != MEET_NONE) {
+                peer->reason = NESP_MEET_UNREACHABLE;
+            }
             peer->show = true;
         }
         break;
@@ -605,9 +1002,21 @@ static void reset(nesp_peer_t *peer)
 {
     const nesp_hal_t *hal = peer->hal;
     const nesp_sys_t *sys = peer->sys;
+    const char *rendezvous = peer->rendezvous;
+    uint32_t generation = peer->generation;
+    if (peer->asking) {
+        hal->fetch_stop(hal->ctx);
+    }
+    hal->lock(hal->ctx);
     memset(peer, 0, sizeof(*peer));
+    peer->generation = generation + 1;  /* a fetch that was out is no longer wanted */
+    hal->unlock(hal->ctx);
     peer->hal = hal;
     peer->sys = sys;
+    peer->rendezvous = rendezvous;
+    peer->sink.ctx = peer;
+    peer->sink.body = body;
+    peer->sink.done = done;
     peer->lobby = NESP_LOBBY_IDLE;
 }
 
@@ -636,7 +1045,8 @@ void nesp_peer_service(nesp_service_t *service, nesp_peer_t *peer, const nesp_sy
     memset(peer, 0, sizeof(*peer));
     peer->hal = hal;
     peer->sys = sys;
-    peer->lobby = NESP_LOBBY_IDLE;
+    peer->rendezvous = RENDEZVOUS;
+    reset(peer);
     memset(service, 0, sizeof(*service));
     service->id = NESP_SVC_PEER;
     service->name = "PEER";

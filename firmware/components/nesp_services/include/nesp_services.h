@@ -37,6 +37,12 @@ typedef struct {
     char name[NESP_NAME_MAX];
 } nesp_network_t;
 
+/* An address another nesp32 may reach this one at, or the other at. */
+typedef struct {
+    uint8_t address[4];
+    uint16_t port;
+} nesp_peer_candidate_t;
+
 /* Where a fetch's reply goes. Both are called from the task that does the
  * fetching, never from the link's. */
 /* BSKY's favorites, as they are kept: handles, each with zeros after it
@@ -181,6 +187,24 @@ typedef struct {
      * up, counted by the delay it would take to cover it: NESP_ARQ_NEEDS
      * counts, for 1 tick, 2, and so on, the last for all beyond. */
     void (*peer_spread)(void *ctx, uint32_t *counts);
+    /* All three may be NULL: a board that cannot meet across the Internet.
+     * Open the socket a game will be played on, at this port, and find the
+     * addresses it may be reached at (NESP_CONN_MEETING, and NESP_CONN_MET
+     * once they are found, or as many as could be), in place of whatever
+     * connection there was. False: it could not even be begun. */
+    bool (*peer_meet)(void *ctx, uint16_t port);
+    /* Those addresses, as they are now: its own on its network first.
+     * Returns how many, NESP_PEER_CANDIDATES at the most. */
+    uint8_t (*peer_candidates)(void *ctx, nesp_peer_candidate_t *out);
+    /* From the socket peer_meet opened: wait for the other nesp32's call,
+     * or call it, at each of the other's addresses at once, the connection
+     * named by the session. The one that waits sends to them too, which
+     * opens its own router to them, and answers only that session's call.
+     * NESP_CONN_LISTENING or _CALLING, and then as peer_listen's and
+     * peer_call's are, the wait failing too if nothing comes. False: there
+     * is no socket that met. */
+    bool (*peer_punch)(void *ctx, bool listen, uint32_t session,
+                       const nesp_peer_candidate_t *other, uint8_t count);
 } nesp_hal_t;
 
 /* A stream of bytes over datagrams (arq.c): what a port needs to carry
@@ -191,7 +215,7 @@ typedef struct {
 #define NESP_ARQ_NOTE 4
 #define NESP_ARQ_NEEDS (NESP_PEER_DELAY_MAX + 1)
 #define NESP_ARQ_PACKET (NESP_ARQ_HEADER + NESP_ARQ_CARRY)
-enum { NESP_ARQ_CALL, NESP_ARQ_ANSWER, NESP_ARQ_DATA, NESP_ARQ_BYE };
+enum { NESP_ARQ_CALL, NESP_ARQ_ANSWER, NESP_ARQ_DATA, NESP_ARQ_BYE, NESP_ARQ_PUNCH };
 
 typedef struct {
     uint32_t session;
@@ -232,6 +256,10 @@ bool nesp_arq_due(const nesp_arq_t *arq, uint32_t now_us);
 size_t nesp_arq_packet(nesp_arq_t *arq, uint8_t kind, uint32_t now_us, uint8_t *out);
 /* One that came. Its kind, or -1 if it is not this connection's. */
 int nesp_arq_take(nesp_arq_t *arq, uint32_t now_us, const uint8_t *data, size_t len);
+/* A datagram that carries nothing and names no connection, sent to open
+ * this end's router to the other's: NESP_ARQ_HEADER bytes, into out.
+ * Every connection's nesp_arq_take passes it over. */
+size_t nesp_arq_punch(uint8_t *out);
 
 /* STUN (stun.c): what address and port a socket's datagrams come from, as
  * a server on the Internet sees them. */
@@ -252,7 +280,9 @@ enum {
     NESP_CONN_ANSWERED,             /* up: the other nesp32 called this one */
     NESP_CONN_CALLED,               /* up: this one called */
     NESP_CONN_FAILED,               /* it could not listen, or its call was not answered */
-    NESP_CONN_LOST                  /* it was up, and is gone */
+    NESP_CONN_LOST,                 /* it was up, and is gone */
+    NESP_CONN_MEETING,              /* a socket is open, and its addresses are being found */
+    NESP_CONN_MET                   /* and they are found, as far as they can be */
 };
 
 typedef struct {
@@ -604,6 +634,7 @@ typedef struct {
 #define NESP_PEER_GREETING (4 + 1 + NESP_APP_ID + 1)
 #define NESP_PEER_HELD 64
 #define NESP_PEER_PADS 10           /* changes in a console's buttons kept for a line of the log */
+#define NESP_PEER_ANSWER 128        /* the longest line the rendezvous answers that is kept */
 
 typedef struct {
     const nesp_hal_t *hal;
@@ -647,6 +678,24 @@ typedef struct {
                                        the console did not hear the reply before */
     bool show;
     uint32_t shown_at;
+    /* A meeting at the rendezvous (peer.c), and the line its last answer
+     * was. What the link's task and the fetch's both touch is under the
+     * hal's lock: which fetch is wanted, its answer, and that it ended. */
+    const char *rendezvous;         /* its address, with no "/" after it */
+    nesp_sink_t sink;
+    uint32_t generation;
+    uint8_t landed;                 /* 0, or how the fetch ended: 1 well, 2 badly */
+    uint8_t answer_len;
+    char answer[NESP_PEER_ANSWER];
+    /* The link's task alone. */
+    uint8_t meet;                   /* how far the meeting has got (peer.c) */
+    bool hosting_room;              /* this one opened the room */
+    char code[NESP_PEER_CODE];
+    uint32_t session;
+    uint8_t reason;                 /* NESP_MEET_*, when the lobby is FAILED */
+    bool asking;                    /* a fetch is out, and has not been taken */
+    uint32_t asked_at;
+    uint8_t fails;                  /* of the host's asks, in a row */
 } nesp_peer_t;
 
 /* TUNER: a radio station as sampled sound (tuner.c). */

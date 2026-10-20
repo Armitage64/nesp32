@@ -25,6 +25,10 @@ uint32_t conn_rtt(void *ctx);
 void conn_note(void *ctx, const uint8_t *note);
 void conn_noted(void *ctx, uint8_t *note);
 void conn_spread(void *ctx, uint32_t *counts);
+bool conn_meet(void *ctx, uint16_t port);
+uint8_t conn_candidates(void *ctx, nesp_peer_candidate_t *out);
+bool conn_punch(void *ctx, bool listen, uint32_t session, const nesp_peer_candidate_t *other,
+                uint8_t count);
 
 /* How long the network has taken between the two nesp32s, there and back,
  * since they connected: every one of the connection's packets measures it.
