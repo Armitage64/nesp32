@@ -100,6 +100,17 @@ typedef struct {
     uint32_t listens;
     uint32_t calls;
     uint32_t closes;
+    /* A meeting across the Internet: the caller says what addresses the
+     * socket has, and takes what the nesp32 was told of the other's. */
+    uint32_t meets;
+    uint32_t punches;
+    nesp_peer_candidate_t candidates[NESP_PEER_CANDIDATES];    /* set by the caller */
+    uint8_t candidate_count;
+    bool punch_listen;
+    uint32_t punch_session;
+    nesp_peer_candidate_t punch_other[NESP_PEER_CANDIDATES];
+    uint8_t punch_count;
+    char rendezvous[256];
     bool have_last;
     uint8_t last[4];
     uint32_t keeps;
@@ -431,6 +442,37 @@ static void hal_peer_spread(void *ctx, uint32_t *counts)
     memcpy(counts, ((host_t *)ctx)->spread, sizeof(((host_t *)ctx)->spread));
 }
 
+static bool hal_peer_meet(void *ctx, uint16_t port)
+{
+    host_t *host = ctx;
+    host->meets++;
+    host->punch_count = 0;
+    return conn_begin(host, NESP_CONN_MEETING, port);
+}
+
+static uint8_t hal_peer_candidates(void *ctx, nesp_peer_candidate_t *out)
+{
+    host_t *host = ctx;
+    memcpy(out, host->candidates, sizeof(host->candidates[0]) * host->candidate_count);
+    return host->candidate_count;
+}
+
+static bool hal_peer_punch(void *ctx, bool listen, uint32_t session,
+                           const nesp_peer_candidate_t *other, uint8_t count)
+{
+    host_t *host = ctx;
+    if (host->conn != NESP_CONN_MEETING && host->conn != NESP_CONN_MET) {
+        return false;
+    }
+    host->punches++;
+    host->punch_listen = listen;
+    host->punch_session = session;
+    host->punch_count = count < NESP_PEER_CANDIDATES ? count : NESP_PEER_CANDIDATES;
+    memcpy(host->punch_other, other, sizeof(other[0]) * host->punch_count);
+    host->conn = listen ? NESP_CONN_LISTENING : NESP_CONN_CALLING;
+    return true;
+}
+
 static bool hal_airport_last(void *ctx, char *code, int32_t *latitude, int32_t *longitude)
 {
     host_t *host = ctx;
@@ -562,6 +604,9 @@ host_t *host_new(void)
     host->hal.peer_note = hal_peer_note;
     host->hal.peer_noted = hal_peer_noted;
     host->hal.peer_spread = hal_peer_spread;
+    host->hal.peer_meet = hal_peer_meet;
+    host->hal.peer_candidates = hal_peer_candidates;
+    host->hal.peer_punch = hal_peer_punch;
     host->battery = 0xFF;
     host->drive = NESP_DRIVE_OFF;
     host->screen = NESP_SCREEN_FLIPPED;     /* as the firmware is built */
@@ -724,6 +769,39 @@ uint32_t host_listens(const host_t *host) { return host->listens; }
 uint32_t host_calls(const host_t *host) { return host->calls; }
 uint32_t host_closes(const host_t *host) { return host->closes; }
 uint32_t host_keeps(const host_t *host) { return host->keeps; }
+uint32_t host_meets(const host_t *host) { return host->meets; }
+uint32_t host_punches(const host_t *host) { return host->punches; }
+
+/* The socket's addresses, as 6 bytes each: the address, and the port high
+ * byte first. */
+void host_set_candidates(host_t *host, const uint8_t *data, uint8_t count)
+{
+    host->candidate_count = count < NESP_PEER_CANDIDATES ? count : NESP_PEER_CANDIDATES;
+    for (uint8_t index = 0; index < host->candidate_count; index++) {
+        memcpy(host->candidates[index].address, data + 6 * index, 4);
+        host->candidates[index].port = (uint16_t)(data[6 * index + 4] << 8 | data[6 * index + 5]);
+    }
+}
+
+/* What the nesp32 was told of the other, likewise; how many addresses. */
+uint8_t host_punch(const host_t *host, uint8_t *out, bool *listen, uint32_t *session)
+{
+    for (uint8_t index = 0; index < host->punch_count; index++) {
+        memcpy(out + 6 * index, host->punch_other[index].address, 4);
+        out[6 * index + 4] = (uint8_t)(host->punch_other[index].port >> 8);
+        out[6 * index + 5] = (uint8_t)host->punch_other[index].port;
+    }
+    *listen = host->punch_listen;
+    *session = host->punch_session;
+    return host->punch_count;
+}
+
+/* Where PEER asks for rooms, in place of the real rendezvous. */
+void host_set_rendezvous(host_t *host, const char *url)
+{
+    snprintf(host->rendezvous, sizeof(host->rendezvous), "%s", url);
+    host->stick.peer.rendezvous = host->rendezvous;
+}
 
 /* What the nesp32 has sent to the other, and not yet been taken. */
 size_t host_conn_take(host_t *host, uint8_t *out, size_t max)

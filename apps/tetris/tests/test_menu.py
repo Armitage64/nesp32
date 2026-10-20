@@ -1,6 +1,7 @@
 """The netplay ROM's menu, in its own bank: what it shows, what it tells the
 nesp32, and that HOST GAME on one console and JOIN GAME on the other end in
-one game on both."""
+one game on both, whether they meet by a room's code or, with Select on
+either screen, by an address."""
 
 import nesp
 import nesp_proto as p
@@ -24,6 +25,8 @@ from wire import ms
 
 MENU_BANK = 2                   # the MMC1's PRG register with the menu in place
 OWN_ROW, HOST_ROW, DIGITS_ROW, MARK_ROW, STATUS_ROW = 20, 14, 12, 13, 16
+TIP_ROW = 26                    # what Select does
+LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 STATUS_POLL = 16                # frames between the menu's questions
 
 
@@ -41,6 +44,14 @@ def open_menu(table, side):
     console = table.consoles[side]
     assert console.mapper[3] == MENU_BANK
     assert "NETWORK GAME" in screen_text(console)
+
+
+def host_by_address(table, side=0):
+    """HOST GAME, and Select: by address."""
+    open_menu(table, side)
+    tap(table, side, PAD_A, rest=2 * STATUS_POLL)
+    tap(table, side, PAD_SELECT, rest=2 * STATUS_POLL)
+    assert "PLAYER 2 JOINS AT" in screen_text(table.consoles[side])
 
 
 def test_local_game_with_no_nesp32(net_console):
@@ -225,8 +236,7 @@ def test_a_nesp32_with_no_wifi(net_console):
 def test_host_and_back(net_console):
     table = Table(net_console)
     table.boot()
-    open_menu(table, 0)
-    tap(table, 0, PAD_A, rest=2 * STATUS_POLL)
+    host_by_address(table, 0)
     console = table.consoles[0]
     assert "WAITING FOR PLAYER 2" in screen_text(console)
     assert screen_row(console, HOST_ROW).strip() == "192.168.001.023"
@@ -242,8 +252,7 @@ def test_a_nesp32_switched_off_and_on_while_it_hosts(net_console):
     it wait again."""
     table = Table(net_console)
     table.boot()
-    open_menu(table, 0)
-    tap(table, 0, PAD_A, rest=2 * STATUS_POLL)
+    host_by_address(table, 0)
     stick = table.restart(0)
     table.run(3 * STATUS_POLL)
     assert stick.hellos == 1 and stick.lobby == p.NESP_LOBBY_HOSTING
@@ -265,9 +274,11 @@ def edit_last_octet_to_23(table, side):
 
 
 def open_join(table, side):
+    """JOIN GAME, and Select: by address."""
     open_menu(table, side)
     tap(table, side, PAD_DOWN)
-    tap(table, side, PAD_A, rest=3 * STATUS_POLL)
+    tap(table, side, PAD_A)
+    tap(table, side, PAD_SELECT, rest=3 * STATUS_POLL)
     assert "JOIN THE GAME AT" in screen_text(table.consoles[side])
 
 
@@ -292,8 +303,7 @@ def test_host_and_join_start_one_game(net_console, delay_ms, ticks):
     long the network took while the two connected."""
     table = Table(net_console, delay=ms(delay_ms))
     table.boot()
-    open_menu(table, 0)
-    tap(table, 0, PAD_A, rest=2 * STATUS_POLL)
+    host_by_address(table, 0)
     open_join(table, 1)
     edit_last_octet_to_23(table, 1)
     tap(table, 1, PAD_START, rest=6 * STATUS_POLL)
@@ -327,3 +337,180 @@ def test_the_title_comes_back_after_a_session_is_lost(net_console):
     assert console.byte("net_mode") == 0
     assert console.ram[GAME_MODE] in (0, MODE_TITLE)   # the legal screen, then the title
     assert console.mapper[3] == 0
+
+
+# --- by a room's code ----------------------------------------------------------------
+
+def host_room(table, side=0):
+    """HOST GAME, by a room's code: the room's code, once it is shown."""
+    open_menu(table, side)
+    console = table.consoles[side]
+    tap(table, side, PAD_A, rest=4 * STATUS_POLL)
+    assert "THE ROOM CODE IS" in screen_text(console)
+    code = screen_row(console, HOST_ROW).strip()
+    assert len(code) == 4 and all(letter in LETTERS for letter in code)
+    return code
+
+
+def enter_code(table, side, code):
+    """On the join screen, from the code it shows, to this one."""
+    console = table.consoles[side]
+    shown = screen_row(console, DIGITS_ROW).strip()
+    for place, (now, wanted) in enumerate(zip(shown, code)):
+        steps = (LETTERS.index(wanted) - LETTERS.index(now)) % len(LETTERS)
+        pad = PAD_UP if steps <= len(LETTERS) // 2 else PAD_DOWN
+        for _ in range(steps if pad == PAD_UP else len(LETTERS) - steps):
+            tap(table, side, pad, rest=2)
+        if place < 3:
+            tap(table, side, PAD_RIGHT, rest=2)
+    assert screen_row(console, DIGITS_ROW).strip() == code
+
+
+def join_room(table, side, code):
+    open_menu(table, side)
+    tap(table, side, PAD_DOWN)
+    tap(table, side, PAD_A, rest=2 * STATUS_POLL)
+    console = table.consoles[side]
+    assert "JOIN THE ROOM OF CODE" in screen_text(console)
+    assert screen_row(console, DIGITS_ROW).strip() == "AAAA"
+    enter_code(table, side, code)
+    tap(table, side, PAD_START, rest=2)
+
+
+def test_select_changes_how_the_host_waits(net_console):
+    """By room code first, and Select says it changes that: on the host's
+    screen, not the first one."""
+    table = Table(net_console)
+    table.boot()
+    open_menu(table, 0)
+    console, stick = table.consoles[0], table.sticks[0]
+    assert "SELECT" not in screen_text(console)
+    tap(table, 0, PAD_A, rest=4 * STATUS_POLL)
+    assert "THE ROOM CODE IS" in screen_text(console)
+    assert screen_row(console, TIP_ROW).strip() == "SELECT - BY IP"
+    tap(table, 0, PAD_SELECT, rest=2 * STATUS_POLL)
+    assert "PLAYER 2 JOINS AT" in screen_text(console)
+    assert screen_row(console, HOST_ROW).strip() == "192.168.001.023"
+    assert screen_row(console, TIP_ROW).strip() == "SELECT - BY ROOM CODE"
+    assert stick.lobby == p.NESP_LOBBY_HOSTING and stick.listens == 1
+    tap(table, 0, PAD_SELECT, rest=4 * STATUS_POLL)
+    assert "THE ROOM CODE IS" in screen_text(console)
+    assert stick.meets == 2
+    # And the way holds: back, and HOST GAME again, is by room code.
+    tap(table, 0, PAD_SELECT, rest=2 * STATUS_POLL)
+    tap(table, 0, PAD_B, rest=2 * STATUS_POLL)
+    tap(table, 0, PAD_A, rest=2 * STATUS_POLL)
+    assert "PLAYER 2 JOINS AT" in screen_text(console)
+
+
+def test_select_changes_how_player_2_joins(net_console):
+    table = Table(net_console)
+    table.boot()
+    open_menu(table, 1)
+    tap(table, 1, PAD_DOWN)
+    tap(table, 1, PAD_A, rest=2 * STATUS_POLL)
+    console = table.consoles[1]
+    assert "JOIN THE ROOM OF CODE" in screen_text(console)
+    assert screen_row(console, TIP_ROW).strip() == "SELECT - BY IP"
+    tap(table, 1, PAD_SELECT, rest=2 * STATUS_POLL)
+    assert "JOIN THE GAME AT" in screen_text(console)
+    assert screen_row(console, DIGITS_ROW).strip() == "192.168.001.042"
+    assert screen_row(console, TIP_ROW).strip() == "SELECT - BY ROOM CODE"
+    tap(table, 1, PAD_SELECT, rest=2 * STATUS_POLL)
+    assert "JOIN THE ROOM OF CODE" in screen_text(console)
+    assert screen_row(console, DIGITS_ROW).strip() == "AAAA"
+
+
+def test_a_host_by_room_shows_its_code_and_back(net_console):
+    table = Table(net_console)
+    table.boot()
+    code = host_room(table)
+    stick = table.sticks[0]
+    assert stick.lobby == p.NESP_LOBBY_HOSTING
+    assert code in table.lan.rooms.rooms
+    table.run(STATUS_POLL)
+    assert stick.shown(0) == "Room " + code
+    tap(table, 0, PAD_B, rest=2 * STATUS_POLL)
+    assert "HOST GAME" in screen_text(table.consoles[0])
+    assert stick.lobby == p.NESP_LOBBY_IDLE
+
+
+def test_host_and_join_by_code_start_one_game(net_console):
+    table = Table(net_console, delay=ms(5))
+    table.boot()
+    code = host_room(table, 0)
+    join_room(table, 1, code)
+    assert screen_row(table.consoles[1], STATUS_ROW).strip() == "CONNECTING"
+    # The host hears of player 2 when it next asks the rendezvous.
+    table.run(p.NESP_PEER_POLL_MS * 60 // 1000 + 6 * STATUS_POLL)
+    for side, console in enumerate(table.consoles):
+        assert console.byte("net_mode") == 1
+        assert console.byte("net_role") == side
+    to_game(table)
+    table.play(200, moves(seed=5))
+    assert table.same_game() > 200
+    # A code is not an address: nothing is kept for next time.
+    assert table.sticks[1].last is None
+
+
+def test_a_code_with_no_room(net_console):
+    table = Table(net_console)
+    table.boot()
+    join_room(table, 1, "K7QF")
+    table.run(4 * STATUS_POLL)
+    console = table.consoles[1]
+    assert screen_row(console, STATUS_ROW).strip() == "NO SUCH ROOM"
+    # And the code can be edited again, from where it was.
+    tap(table, 1, PAD_UP)
+    assert screen_row(console, DIGITS_ROW).strip() == "K7QG"
+
+
+def test_two_that_cannot_reach_each_other_are_told(net_console):
+    table = Table(net_console)
+    table.lan.reachable = False
+    table.boot()
+    code = host_room(table, 0)
+    join_room(table, 1, code)
+    table.run(p.NESP_PEER_POLL_MS * 60 // 1000 + 6 * STATUS_POLL)
+    assert screen_row(table.consoles[1], STATUS_ROW).strip() == "CANNOT REACH IT"
+
+
+def test_another_versions_room_is_not_joined(net_console):
+    table = Table(net_console)
+    table.boot()
+    status, line = table.lan.rooms.answer("/v1/host?app=TTRS&ver=2&c=192.168.1.23:6502")
+    join_room(table, 1, line.split()[1])
+    table.run(4 * STATUS_POLL)
+    assert screen_row(table.consoles[1], STATUS_ROW).strip() == "NOT THIS GAME"
+
+
+def test_a_nesp32_whose_firmware_has_no_rooms(net_console):
+    """It has PEER, but none of the room ops: the screen says what to do
+    about it, and Select still finds the other by address."""
+    def old(data):
+        reply = nesp.parse(data)
+        if reply.svc == p.NESP_SVC_PEER and len(reply.payload) == 11:
+            return nesp.reply_frame(reply.svc, p.NESP_ST_NO_OP, reply.seq, b"")
+        return data
+    table = Table(net_console, port_options=({"to_console": old}, {}))
+    table.boot()
+    open_menu(table, 0)
+    console = table.consoles[0]
+    tap(table, 0, PAD_A, rest=4 * STATUS_POLL)
+    assert screen_row(console, STATUS_ROW).strip() == "UPDATE NESP32"
+    assert screen_row(console, TIP_ROW).strip() == "SELECT - BY IP"
+    tap(table, 0, PAD_SELECT, rest=2 * STATUS_POLL)
+    assert screen_row(console, HOST_ROW).strip() == "192.168.001.023"
+    assert table.sticks[0].lobby == p.NESP_LOBBY_HOSTING
+
+
+def test_a_nesp32_switched_off_and_on_while_it_hosts_a_room(net_console):
+    """It is told to open a room again, which has a new code."""
+    table = Table(net_console)
+    table.boot()
+    host_room(table, 0)
+    stick = table.restart(0)
+    table.run(4 * STATUS_POLL)
+    assert stick.hellos == 1 and stick.lobby == p.NESP_LOBBY_HOSTING
+    code = screen_row(table.consoles[0], HOST_ROW).strip()
+    assert code in table.lan.rooms.rooms

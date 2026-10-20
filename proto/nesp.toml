@@ -101,6 +101,9 @@ JOIN = 0x02             # call the nesp32 at an address
 LEAVE = 0x03            # drop whatever connection there is, or is being made
 LAST = 0x04             # the lobby's state, and the address last joined
 TICKS = 0x05            # this console's buttons for some ticks, and the other's back
+HOST_ROOM = 0x06        # open a room at the rendezvous, and wait in it for the other nesp32
+JOIN_ROOM = 0x07        # code (4): join the other nesp32's room
+ROOM = 0x08             # the lobby's state, with the room's code and why a meeting failed
 
 [services.DIAG]
 id = 0x05
@@ -274,6 +277,16 @@ CONNECTING = 3          # calling it
 HOST = 4                # connected: it called, and this console is player 1
 GUEST = 5               # connected: this one called, and this console is player 2
 FAILED = 6              # the last call was not answered, or the connection was lost
+MEETING = 7             # finding where this one can be reached, or asking the rendezvous
+
+[enums.MEET]            # PEER: why a meeting at the rendezvous failed, with FAILED
+NONE = 0
+NO_SERVER = 1           # the rendezvous could not be asked, or said nothing that made sense
+NO_ROOM = 2             # there is no room of that code
+MISMATCH = 3            # the room is another game's, or another version's
+FULL = 4                # player 2 is already in the room
+UNREACHABLE = 5         # the two were introduced, and could not reach each other
+GONE = 6                # the room was given up while its host waited
 
 [enums.INFO]            # SYS INFO's strings
 FIRMWARE = 0            # "0.1.0"
@@ -395,6 +408,10 @@ PEER_PORT = 6502        # UDP, on the nesp32 that hosts
 PEER_VERSION = 1        # of what two nesp32s say to each other
 PEER_PER_FRAME = 2      # ticks of buttons a TICKS frame may carry, each way
 PEER_GREET_MS = 2000    # how long the other nesp32 has to say what it is
+PEER_CODE = 4           # letters of a room's code
+PEER_POLL_MS = 2000     # how often a host in a room asks whether player 2 has come
+PEER_POLL_FAILS = 5     # asks in a row that fail before the host gives up
+PEER_CANDIDATES = 4     # addresses a nesp32 may be reached at, at most
 # The delay between a button and the game, in ticks, which each console
 # keeps for its own buttons and its nesp32 advises it on.
 PEER_DELAY_MAX = 5

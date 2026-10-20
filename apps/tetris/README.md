@@ -100,8 +100,9 @@ and 135 in the other. It needs a flashcart or an emulator.
 
 ## The nesp32
 
-As for the other netplay games: the hat, the firmware, the Wi-Fi network
-and the port to forward across the Internet are in nesp32's
+As for the other netplay games: the hat, the firmware, the Wi-Fi network,
+meeting by a room's code, and the port to forward to meet by address
+instead, are in nesp32's
 [`docs/MULTIPLAYER.md`](../../docs/MULTIPLAYER.md), "The nesp32".
 
 ## What has been learned
@@ -109,7 +110,10 @@ and the port to forward across the Internet are in nesp32's
 From hardware: a real NES and a MiSTer, each with a nesp32, hosted, joined
 and played a game for two over the network. Tetris has since been played
 on hardware across the Internet, and works: the first of the netplay games
-to be. No figures were taken of either.
+to be, by address with a port forwarded. Then by a room's code, between a
+fiber connection and a phone's 5G hotspot, with nothing forwarded at
+either; and by address again on one home network. No figures were taken
+of any.
 
 From the simulation:
 

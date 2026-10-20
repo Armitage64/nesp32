@@ -767,6 +767,9 @@ const nesp_hal_t *radio_hal(void)
     hal.peer_note = conn_note;
     hal.peer_noted = conn_noted;
     hal.peer_spread = conn_spread;
+    hal.peer_meet = conn_meet;
+    hal.peer_candidates = conn_candidates;
+    hal.peer_punch = conn_punch;
     return &hal;
 }
 

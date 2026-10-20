@@ -5,7 +5,9 @@ The nesp32s are the firmware's own link and services, built for this
 computer (nesp32's host/nesp.py), each on a simulated serial line
 (wire.py). What the firmware asks of its hardware for a connection to
 another nesp32 is answered here: Lan is the network, on which a call is
-answered and bytes cross, each after a delay.
+answered and bytes cross, each after a delay. It is the Internet too, as
+far as rooms need one: the rendezvous is nesp32's stand-in for it, asked
+directly, and two nesp32s that each punch toward the other meet.
 
 The consoles have a clock each (console.py) and the table has one more,
 which the network's delay is counted on. A slice at a time, each console is
@@ -24,7 +26,8 @@ from console import FRAME_CYCLES
 from console import PAD_START
 from drive import BOOT_FRAMES, LEGAL_FRAMES
 from nesp import CONN_ANSWERED, CONN_CALLED, CONN_CALLING, CONN_FAILED, CONN_LISTENING
-from nesp import CONN_LOST, CONN_UP, Stick
+from nesp import CONN_LOST, CONN_MEETING, CONN_MET, CONN_UP, Stick
+from rendezvous import Rooms
 from nesp_proto import NESP_CPU_HZ
 from wire import SLICE, link, ms
 
@@ -64,6 +67,12 @@ class Lan:
         self.noted = []             # how many notes each had left, as last seen
         self.notes = []             # for each: (cycle, note) on their way to it
         self.up = False
+        self.rooms = Rooms()
+        self.meets = []             # each one's meetings, fetches and punches, as last seen
+        self.fetches = []
+        self.punches = []
+        self.punched = []           # each one's punch: (listen, session, addresses), or None
+        self.reachable = True       # whether two that punch toward each other meet
 
     def add(self, stick, address):
         self.sticks.append(stick)
@@ -74,6 +83,10 @@ class Lan:
         self.last_due.append(0.0)
         self.noted.append(stick.notes)
         self.notes.append([])
+        self.meets.append(stick.meets)
+        self.fetches.append(stick.fetches)
+        self.punches.append(stick.punches)
+        self.punched.append(None)
 
     def latency(self):
         return self.delay() if callable(self.delay) else self.delay
@@ -86,10 +99,52 @@ class Lan:
             self.arriving[side].clear()
         self.up = False
 
-    def poll(self):
+    def _meet(self):
+        """Rooms: each socket's address is found at once, the rendezvous
+        answers at once, and two that punch toward each other with one
+        session are connected a trip there and back later."""
         now = self.table.now
         for side, stick in enumerate(self.sticks):
-            if stick.conn != CONN_CALLING:
+            if stick.meets != self.meets[side]:
+                self.meets[side] = stick.meets
+                self.punched[side] = None
+                if stick.conn == CONN_MEETING:
+                    stick.candidates = [(self.addresses[side], 6502)]
+                    stick.conn = CONN_MET
+            if stick.fetches != self.fetches[side]:
+                self.fetches[side] = stick.fetches
+                if stick.fetching:
+                    _, line = self.rooms.answer("/v1/" + stick.fetch_url.split("/v1/", 1)[1])
+                    stick.fetch_body(line.encode() + b"\n")
+                    stick.fetch_done()
+            if stick.punches != self.punches[side]:
+                self.punches[side] = stick.punches
+                listen, session, others = stick.punch
+                self.punched[side] = (listen, session, [address for address, _ in others])
+                self.answer_at[side] = now + 2 * self.latency()
+        caller = next((side for side, punch in enumerate(self.punched)
+                       if punch and not punch[0] and self.sticks[side].conn == CONN_CALLING), None)
+        if caller is None or now < self.answer_at[caller]:
+            return
+        host = 1 - caller
+        theirs = self.punched[host]
+        if (self.reachable and theirs and theirs[0] and theirs[1] == self.punched[caller][1]
+                and self.sticks[host].conn == CONN_LISTENING
+                and self.addresses[host] in self.punched[caller][2]):
+            self.sticks[caller].conn, self.sticks[host].conn = CONN_CALLED, CONN_ANSWERED
+            self.punched = [None, None]
+            self.up = True
+        elif not self.reachable:
+            # Routers neither of which lets the other in: the call is given
+            # up (after seconds, on a nesp32: no matter here).
+            self.sticks[caller].conn = CONN_FAILED
+            self.punched[caller] = None
+
+    def poll(self):
+        now = self.table.now
+        self._meet()
+        for side, stick in enumerate(self.sticks):
+            if stick.conn != CONN_CALLING or self.punched[side] is not None:
                 continue
             if stick.calls != self.calls[side]:     # a new call: there and back
                 self.calls[side] = stick.calls
@@ -175,6 +230,10 @@ class Table:
         self.lan.cut()
         self.lan.sticks[side] = self.sticks[side] = stick
         self.lan.calls[side] = stick.calls
+        self.lan.meets[side] = stick.meets
+        self.lan.fetches[side] = stick.fetches
+        self.lan.punches[side] = stick.punches
+        self.lan.punched[side] = None
         return stick
 
     def boot(self, apart=0.3):
