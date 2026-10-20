@@ -36,11 +36,13 @@ WEB = os.path.join(ROOT, "web")
 # The product page's pictures: (its name for one, where it is)
 PICTURES = [("cart-menu.png", "docs/cart-menu.png"),
             ("search.png", "apps/wiki/docs/search.png"),
+            ("drmario.png", "apps/drmario/docs/network-game.png"),
             ("jukebox.png", "apps/jukebox/docs/screen.png"),
             ("status.png", "apps/setup/docs/status.png"),
             ("weather.png", "apps/weather/docs/screen.png"),
             ("npr-news.png", "apps/npr/docs/screen-news.png"),
-            ("radar.png", "apps/nes-radar/docs/scope.png")]
+            ("radar.png", "apps/nes-radar/docs/scope.png"),
+            ("bluesky.png", "apps/bluesky/docs/screen-splash.png")]
 
 # (ESP Web Tools' name for the chip, the build's directory, a prefix for its
 # files). ESP Web Tools asks the chip what it is and writes the build for it:

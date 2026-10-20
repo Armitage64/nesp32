@@ -44,7 +44,7 @@ nav { display: flex; gap: 20px; flex-wrap: wrap; margin: 0 0 40px; font-size: 15
 .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
 .grid .card { padding: 20px; }
 .grid .card p { margin: 0; color: var(--dim); }
-.shots { display: grid; gap: 12px; grid-template-columns: repeat(3, 1fr); }
+.shots { display: grid; gap: 12px; grid-template-columns: repeat(4, 1fr); }
 .shots img { width: 100%; height: auto; display: block; border-radius: 6px;
              border: 1px solid var(--line); image-rendering: pixelated; }
 footer { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--line);
