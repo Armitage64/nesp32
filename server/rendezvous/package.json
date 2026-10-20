@@ -1,0 +1,13 @@
+{
+  "name": "nesp32-rendezvous",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.20.0"
+  }
+}
