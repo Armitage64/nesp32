@@ -206,6 +206,7 @@ nothing done on the nesp32.
 | `$12` | RADAR | NES Radar: an airport, and the aircraft round it | done |
 | `$13` | TUNER | a radio station from the Internet, as sampled sound | done |
 | `$14` | WEATHER | the weather at a zip code, as rows for the screen | done |
+| `$15` | BSKY | Bluesky: an account's posts as lines, and favorites | done |
 | `$80`-`$FF` | | experiments and other people's | |
 
 Multi-byte numbers are low byte first, except the CRC.
@@ -1092,6 +1093,93 @@ longer than 2 KB is FAILED.
 
 A row's exchange is 9 bytes out and 39 back, so a ROM that asks for one
 takes replies of 63 (a shorter `REPLY_MAX` is BAD_ARG).
+
+### BSKY `$15`: Bluesky
+
+A Bluesky account's latest posts, laid out by the nesp32 as 20 lines of
+24 characters each, which the console asks for a line at a time; and
+a list of favorite accounts to choose them from, which the nesp32 keeps.
+The console names an account by its handle. The nesp32 asks Bluesky's
+public API (`public.api.bsky.app`, `app.bsky.feed.getAuthorFeed`) for its
+25 latest posts, replies to others left out, reposts in. Reading them
+needs no account and no password.
+
+| `OP` | Name | Request | Reply |
+|---|---|---|---|
+| `$00` | FAVORITE | `NUMBER` | `COUNT`, `NUMBER`, and if there is such a favorite its handle |
+| `$01` | ADD | a handle | `COUNT`, and the handle's `NUMBER` among the favorites, or `$FF` if there was no room |
+| `$02` | REMOVE | `NUMBER` | `COUNT` |
+| `$03` | FEED | `ID`, a handle | `STATE`, `ID`, `POSTS`, and with FAILED 24 characters for the screen |
+| `$04` | LINE | `POST`, `ROW` | `STATE`, `POST`, `ROW`, `POSTS`, `TEXT[24]`, `USED`; with no such post, bit 7 of `STATE` is set and there is neither `TEXT` nor `USED` |
+
+| `STATE` | Name | Meaning |
+|---|---|---|
+| `$00` | IDLE | no handle is chosen, or not the one with the request's `ID` |
+| `$01` | NO_WIFI | the nesp32 is not on a network |
+| `$02` | FETCHING | the posts are being fetched; `POSTS` is how many have come so far, and those can be read |
+| `$03` | READY | the fetch has ended; `POSTS` is all there are, which may be none |
+| `$04` | NOT_FOUND | Bluesky has no one by that handle |
+| `$05` | FAILED | the fetch failed; the reply says how |
+
+**A handle** is up to 27 characters, so that an `@` and it fill a line:
+letters, digits, `.` and `-`. The nesp32 takes it as Bluesky has it: an
+`@` before it is dropped, capitals are made small, and a name with no dot
+in it is given `.bsky.social`, where most accounts are. Anything that
+cannot be a handle is BAD_ARG.
+
+**FEED is both "this handle" and "how does it stand"**, as WIKI's SEARCH
+is. The console gives each choice an id, one more than the last, and may
+send the same request as often as it likes. The nesp32 fetches when the id
+or the handle differ from the one it has, and otherwise only answers. So a
+console asks again for a newer look at the same account with a new id.
+Bluesky answers a handle it has no one by with a 400, and that alone is
+NOT_FOUND; any other failure is FAILED, with words: `THE SITE DID NOT
+ANSWER`, `THE SITE SAID 503`. A reply that stops partway is READY with the
+posts that came whole. Neither FEED's reply nor LINE's is held for a
+repeat.
+
+**A post is offered as soon as it is laid out**, the newest first, so the
+first can be on the screen while the rest arrive; a post laid out never
+changes. A hello drops them, so a console that is reset fetches again.
+
+**The favorites** are up to 10 handles, kept in the nesp32's flash over
+power-off, written when they change and not otherwise. A nesp32 that has
+kept none begins with four: `levimaaia.com`, `andyreitano.com`,
+`adriansdigitalbasement.com` and `jeriellsworth.bsky.social`. ADD puts a
+handle at the end, unless it is there already, and its reply says where
+it is. REMOVE takes one off by its number, and those after it move up; a
+number with no favorite removes nothing. Both are held for a repeat, as
+any reply is that does not say otherwise, so a remove sent twice removes
+one. FAVORITE's reply is not held: the list may have changed.
+
+`TEXT` is ASCII, `$20` to `$7E`, small letters too, and three signs
+besides: `$1C` for replies, `$1D` for reposts and `$1E` for likes, a
+heart. A ROM maps them to its own tiles. What is not ASCII becomes the
+nearest thing that is, as WIKI's text does; pictures (emoji) are left out,
+and a run of other characters with no likeness becomes one `?`.
+
+The lines are ConnectedNES's: Rachel Simone Weil's ROM printed a tweet in
+eight lines of 24 characters, the handle, six of text and the date. A
+post's text is longer than a tweet was, so it has up to 18 lines, which a
+ROM shows a few at a time. `USED` is how many it has, to the last that is
+not blank. The lines of a post, as
+`firmware/components/nesp_services/bsky.c` lays them out:
+
+| Line | |
+|---|---|
+| 0 | `@` and the author's handle, cut to the line |
+| 1 | when it was posted, then its replies, reposts and likes, each after its sign: `2h  ↩3 ⟲12 ♥140`, kept to the left. A count of a thousand or more is in thousands, `3k` |
+| 2 to 19 | the text, wrapped at spaces, after `Reposted by @` and a handle for a repost. A newline ends a line, and newlines in a row leave one blank line. Text that does not fit ends with `...` after the last word that does |
+
+When it was posted is how long ago, `now`, `5m`, `3h` or `2d`, if the
+nesp32 knows the time and it was within a week; otherwise its date,
+`Oct 18`, in UTC.
+
+A line's exchange is 9 bytes out and 36 back, so a ROM that asks for one
+takes replies of 63 (a shorter `REPLY_MAX` is BAD_ARG). A reply from
+Bluesky is a few dozen kilobytes, most of it what no console has a use
+for; the nesp32 reads it as it comes, and keeps only the 25 posts it lays
+out, 12 KB.
 
 ## 6. Timing
 

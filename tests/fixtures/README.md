@@ -39,3 +39,14 @@ records are the same from 0.5.0, which has no server. It is k6lcm's, from
 [nes-radar](https://github.com/k6lcm/nes-radar), under the
 [GPL-3.0](https://github.com/k6lcm/nes-radar/blob/legacy/ftdi-0.4.x/LICENSE),
 as nesp32 is.
+
+`bsky_feed.json` is a reply from Bluesky's public API
+(`app.bsky.feed.getAuthorFeed`) for the handle `bsky.app`, as BSKY asks
+for it, on 2026-10-18, cut down to eight of its items: Bluesky's own posts
+and its reposts of others', with curly quotes, dashes, newlines and counts
+in the thousands. Bluesky's own posts are as the API sent them, less the
+lists of replies it hid (`threadgate`) and the mentions' account IDs. Every
+other account in it, the reposted ones and the ones Bluesky quotes, is
+made up: a handle under `example.com`, made-up text, and IDs that point at
+nothing. Their shape and counts are as the API sent them, and one handle is
+longer than a line.

@@ -39,6 +39,13 @@ typedef struct {
 
 /* Where a fetch's reply goes. Both are called from the task that does the
  * fetching, never from the link's. */
+/* BSKY's favorites, as they are kept: handles, each with zeros after it
+ * where it is shorter than NESP_BSKY_HANDLE_MAX. */
+typedef struct {
+    uint8_t count;
+    char handles[NESP_BSKY_FAVORITES][NESP_BSKY_HANDLE_MAX];
+} nesp_bsky_favorites_t;
+
 typedef struct {
     void *ctx;
     /* More of the reply's body. False: no more of it is wanted. */
@@ -157,6 +164,10 @@ typedef struct {
     bool (*zip_last)(void *ctx, char *zip, int32_t *latitude, int32_t *longitude, char *name);
     void (*zip_keep)(void *ctx, const char *zip, int32_t latitude, int32_t longitude,
                      const char *name);
+    /* Either may be NULL, likewise. BSKY's favorites, kept over power-off:
+     * the last list written, whole. False: none has been kept. */
+    bool (*favorites_last)(void *ctx, nesp_bsky_favorites_t *out);
+    void (*favorites_keep)(void *ctx, const nesp_bsky_favorites_t *favorites);
     /* How long the network takes to the other nesp32 and back, in
      * microseconds, smoothed. 0: not known. */
     uint32_t (*peer_rtt)(void *ctx);
@@ -405,6 +416,66 @@ typedef struct {
     char said[NESP_WEATHER_COLUMNS];    /* the fetch's own words for how it failed */
     uint8_t said_len;
 } nesp_weather_t;
+
+/* BSKY: a Bluesky account's posts, laid out as lines for a console's
+ * screen, and the favorites they are chosen from (bsky.c). */
+#define NESP_BSKY_DEPTH 12          /* containers deep in a reply that are followed */
+#define NESP_BSKY_KEY 16            /* characters of a key that are kept */
+#define NESP_BSKY_FIELD 64          /* of a handle in a reply */
+#define NESP_BSKY_TEXT 640          /* of a post's text, as ASCII */
+
+typedef struct {
+    const nesp_hal_t *hal;
+    nesp_sink_t sink;
+    /* What the link's task and the fetch's both touch, under the hal's
+     * lock: the posts, and the fetch they are from. */
+    uint8_t *posts;                 /* NESP_BSKY_POSTS of NESP_BSKY_ROWS lines */
+    uint8_t count;                  /* posts laid out */
+    uint8_t used[NESP_BSKY_POSTS];  /* lines of text each has */
+    uint8_t state;                  /* NESP_FEED_* */
+    uint32_t generation;            /* which fetch the posts are being filled by */
+    char why[NESP_BSKY_COLUMNS];    /* with FAILED, for the console's screen */
+    uint32_t clock;                 /* the time when the fetch began, */
+    bool clock_known;               /* if the nesp32 knew it */
+    /* The link's task alone. */
+    nesp_bsky_favorites_t favorites;
+    bool chosen;
+    uint8_t feed_id;
+    uint8_t handle_len;
+    char handle[NESP_BSKY_HANDLE_MAX];
+    /* The fetch's task alone: where in the reply it has got to, and the
+     * post being read. */
+    uint32_t parsing;               /* the fetch the rest is in the middle of */
+    uint8_t depth;                  /* containers open, the root being 1 */
+    uint8_t deep;                   /* and past NESP_BSKY_DEPTH, not followed */
+    uint16_t lists;                 /* bit n: the container at depth n is a list */
+    bool listed;                    /* inside "feed" */
+    bool whole;                     /* the reply's last brace has come */
+    bool in_string;
+    bool is_key;
+    bool want_key;                  /* the next string in this object is a key */
+    uint8_t field;                  /* what the value being read is (bsky.c) */
+    uint8_t escape;                 /* 0, 1 after a backslash, 2 to 5 in \uXXXX */
+    uint8_t need;                   /* bytes still to come of a UTF-8 character */
+    bool unknown;                   /* the last character kept was a "?" */
+    bool bad_hex;
+    uint16_t unit;
+    uint16_t high;                  /* the first half of a \u surrogate pair */
+    uint32_t code;
+    char keys[NESP_BSKY_DEPTH][NESP_BSKY_KEY];  /* the key being read or last read, by depth */
+    uint8_t key_lens[NESP_BSKY_DEPTH];
+    size_t handle_field_len;
+    char handle_field[NESP_BSKY_FIELD];
+    size_t text_len;
+    char text[NESP_BSKY_TEXT];
+    size_t when_len;
+    char when[32];
+    size_t reposter_len;
+    char reposter[NESP_BSKY_FIELD];
+    uint32_t replies;
+    uint32_t reposts;
+    uint32_t likes;
+} nesp_bsky_t;
 
 /* RAW: the line with framing off (raw.c). A run is a stretch of bytes at a
  * rate of its own, one way: the test pattern, or whatever another service
@@ -662,7 +733,8 @@ typedef struct {
     nesp_radar_t radar;
     nesp_tuner_t tuner;
     nesp_weather_t weather;
-    nesp_service_t services[10];
+    nesp_bsky_t bsky;
+    nesp_service_t services[11];
 } nesp_stick_t;
 
 void nesp_stick_init(nesp_stick_t *stick, const nesp_hal_t *hal);
@@ -700,6 +772,7 @@ void nesp_tuner_service(nesp_service_t *service, nesp_tuner_t *tuner, nesp_raw_t
                         const nesp_hal_t *hal);
 void nesp_weather_service(nesp_service_t *service, nesp_weather_t *weather,
                           const nesp_hal_t *hal);
+void nesp_bsky_service(nesp_service_t *service, nesp_bsky_t *bsky, const nesp_hal_t *hal);
 
 /* For a service with something to send as a run (JUKE's sampled sound).
  *

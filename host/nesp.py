@@ -206,6 +206,11 @@ def library():
                                  ctypes.POINTER(ctypes.c_int32), ctypes.c_char_p]
         lib.host_zip_keeps.restype = ctypes.c_uint32
         lib.host_zip_keeps.argtypes = [ctypes.c_void_p]
+        lib.host_set_favorites.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint8]
+        lib.host_favorites.restype = ctypes.c_int
+        lib.host_favorites.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        lib.host_favorites_keeps.restype = ctypes.c_uint32
+        lib.host_favorites_keeps.argtypes = [ctypes.c_void_p]
         lib.host_last.restype = ctypes.c_bool
         lib.host_last.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
         lib.host_checks.argtypes = [ctypes.c_char_p, ctypes.c_size_t, _u8p]
@@ -598,6 +603,32 @@ class Stick:
     @property
     def zip_keeps(self):
         return self._lib.host_zip_keeps(self._host)
+
+    @property
+    def favorites(self):
+        """BSKY's favorites as the nesp32 keeps them over power-off: a list
+        of handles, or None if it keeps none."""
+        size = proto.NESP_BSKY_HANDLE_MAX
+        handles = ctypes.create_string_buffer(proto.NESP_BSKY_FAVORITES * size)
+        count = self._lib.host_favorites(self._host, handles)
+        if count < 0:
+            return None
+        return [handles.raw[index * size:(index + 1) * size].rstrip(b"\0")
+                for index in range(count)]
+
+    @favorites.setter
+    def favorites(self, kept):
+        if kept is None:
+            self._lib.host_set_favorites(self._host, None, 0)
+        else:
+            size = proto.NESP_BSKY_HANDLE_MAX
+            self._lib.host_set_favorites(
+                self._host, b"".join(bytes(handle).ljust(size, b"\0") for handle in kept),
+                len(kept))
+
+    @property
+    def favorites_keeps(self):
+        return self._lib.host_favorites_keeps(self._host)
 
     @property
     def listens(self):

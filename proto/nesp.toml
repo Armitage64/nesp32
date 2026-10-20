@@ -145,6 +145,15 @@ ZIP = 0x00              # an id, then five digits: choose it, or say how it stan
 ROW = 0x01              # a row of the report, by its number
 LAST = 0x02             # the digits of the last zip code found, if one is kept
 
+[services.BSKY]
+id = 0x15
+[services.BSKY.ops]
+FAVORITE = 0x00         # how many favorites there are, and one's handle by its number
+ADD = 0x01              # a handle onto the favorites, kept
+REMOVE = 0x02           # a favorite off them, by its number
+FEED = 0x03             # an id, then a handle: fetch its posts, or say how it stands
+LINE = 0x04             # a line of a post, by the post's number and the line's
+
 [enums.WIFI]            # the state of the Stick's Wi-Fi
 NONE = 0                # no network has been set up
 IDLE = 1                # one is saved, and the Stick is not on it
@@ -237,6 +246,15 @@ FETCHING = 3            # that is known, and nothing has come of its weather yet
 READY = 4               # a report is held
 NOT_FOUND = 5           # no place has that zip code
 FAILED = 6              # the asking or the fetching failed; the reply says how
+
+[enums.FEED]            # BSKY: how it stands with a handle and its posts
+IDLE = 0                # no handle chosen, or not the one the request is about
+NO_WIFI = 1
+FETCHING = 2            # its posts are being fetched; those laid out so far may be read
+READY = 3               # all of them are held
+NOT_FOUND = 4           # Bluesky has no one by that handle
+FAILED = 5              # the fetch failed; the reply says how
+NO_LINE = 0x80          # on a LINE reply: no such post is held
 
 [enums.PICTURE]         # WEATHER: the pictures a row may have, four tiles each
 SUN = 0
@@ -361,6 +379,18 @@ WEATHER_PICTURE = 0x60  # a quarter of a picture: this, and 4 x its PICTURE, and
 WEATHER_POLL_MS = 900000    # between one fetch of the weather and the next
 WEATHER_RETRY_MS = 60000    # or this, after one that failed
 WEATHER_UNASKED_MS = 30000  # no fetch for a console that has not asked for this long
+BSKY_HANDLE_MAX = 27    # characters of a handle: with an "@" before it, a line
+BSKY_FAVORITES = 10     # handles kept
+BSKY_POSTS = 25         # posts fetched, the newest first
+BSKY_ROWS = 20          # lines to a post: these two, then its text, which may not fill the rest
+BSKY_HANDLE_ROW = 0     # "@" and its author's handle
+BSKY_WHEN_ROW = 1       # when it was posted, and its counts
+BSKY_TEXT_ROW = 2
+BSKY_COLUMNS = 24       # characters to a line, as ConnectedNES had a tweet's
+# A line is ASCII, $20 to $7E. Besides those:
+BSKY_REPLY = 0x1C       # the sign for replies
+BSKY_REPOST = 0x1D      # for reposts
+BSKY_LIKE = 0x1E        # for likes: a heart
 PEER_PORT = 6502        # UDP, on the nesp32 that hosts
 PEER_VERSION = 1        # of what two nesp32s say to each other
 PEER_PER_FRAME = 2      # ticks of buttons a TICKS frame may carry, each way
