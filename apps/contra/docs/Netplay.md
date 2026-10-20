@@ -201,7 +201,13 @@ throughout.
 
 ## On hardware
 
-Two consoles on one home network, each nesp32 joined to the same access
+Across the Internet by a room's code, between a console on a fiber
+connection and one on a phone's 5G hotspot, with nothing forwarded at
+either, and by address with Select on one home network: both met and
+played, with the menu's screens drawn from bank 6 as they should be. No
+figures were taken.
+
+Before that, two consoles on one home network, each nesp32 joined to the same access
 point, with the build before the datagrams and the delay that sets itself:
 
 - With the delay at 1, about one frame in seven waited for buttons.

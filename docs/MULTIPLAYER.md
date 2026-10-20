@@ -185,11 +185,17 @@ eight seconds:
 For those, meet by address with a port forwarded at the host. A relay
 that carried the game for them would cost per gigabyte, and is not here.
 
-**On hardware** (Dr. Mario, 2026-10-20), a console on a fiber connection
-and one on a phone's 5G hotspot met by room code and played. The
-hotspot's side is behind its carrier's shared address (STUN saw port 6502
-as 41747), where no port can be forwarded. Both routers kept one public
-port for every address the socket sent to, which is what punching needs.
+**On hardware** (October 2026), all three games have been played both
+ways:
+
+- **By room code**, between a console on a fiber connection and one on a
+  phone's 5G hotspot, Dr. Mario first and then Tetris and Contra. The
+  hotspot's side is behind its carrier's shared address (STUN saw port
+  6502 as 41747), where no port can be forwarded. Both routers kept one
+  public port for every address the socket sent to, which is what
+  punching needs.
+- **By address**, with Select, between two consoles on one home network.
+
 The nesp32's log (`firmware/deploy.sh watch`) says the same of any
 network: `stun:` lines with what each server saw, and whether the router
 keeps the port.

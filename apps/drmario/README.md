@@ -18,7 +18,9 @@ frames, with an input delay that sets itself (1 frame on a quick network,
 where it was always 3) and a check that the two games are still the same.
 A game has been played with it on hardware too, at a delay of 1: it
 answers to the buttons at once, and does not slow ("What has been
-learned").
+learned"). And across the Internet, by a room's code, between a fiber
+connection and a phone's 5G hotspot, with nothing forwarded at either;
+and by address on one home network.
 
 On the title, choose **2 PLAYER GAME**, and then HOST GAME, JOIN GAME or
 LOCAL GAME. How the three netplay games are played, and how they keep the
@@ -249,8 +251,7 @@ left on the nesp32 itself in its [`docs/TODO.md`](../../docs/TODO.md).
   newer games do, is not for this one: there is nowhere to keep a copy of
   the game.
 - **The menu**: held buttons do not repeat in the address editor or the
-  code's, and its colours and layout have only been looked at once (the
-  room screens not yet on hardware).
+  code's, and its colours and layout have only been looked at once.
 
 ## Known limits
 

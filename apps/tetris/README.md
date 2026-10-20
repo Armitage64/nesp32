@@ -110,7 +110,10 @@ instead, are in nesp32's
 From hardware: a real NES and a MiSTer, each with a nesp32, hosted, joined
 and played a game for two over the network. Tetris has since been played
 on hardware across the Internet, and works: the first of the netplay games
-to be. No figures were taken of either.
+to be, by address with a port forwarded. Then by a room's code, between a
+fiber connection and a phone's 5G hotspot, with nothing forwarded at
+either; and by address again on one home network. No figures were taken
+of any.
 
 From the simulation:
 
