@@ -746,17 +746,23 @@ static void lobby(nesp_peer_t *peer, const nesp_request_t *request, nesp_reply_t
         drop(peer);                 /* the network went, and the connection with it */
     }
     switch (request->op) {
-    case NESP_PEER_HOST:
-        if (on && peer->lobby != NESP_LOBBY_HOSTING
-            && !(peer->lobby == NESP_LOBBY_HOST && !peer->lost)) {
+    case NESP_PEER_HOST: {
+        /* Waiting already, or a session from it; not in a room, which is
+         * another way of waiting. */
+        bool hosting = peer->meet == MEET_NONE
+                       && (peer->lobby == NESP_LOBBY_HOSTING
+                           || (peer->lobby == NESP_LOBBY_HOST && !peer->lost));
+        if (on && !hosting) {
             drop(peer);
             peer->lobby = peer->hal->peer_listen(peer->hal->ctx, NESP_PEER_PORT)
                               ? NESP_LOBBY_HOSTING : NESP_LOBBY_FAILED;
         }
         break;
+    }
     case NESP_PEER_JOIN: {
-        bool joining = peer->lobby == NESP_LOBBY_CONNECTING
-                       || (peer->lobby == NESP_LOBBY_GUEST && !peer->lost);
+        bool joining = peer->meet == MEET_NONE
+                       && (peer->lobby == NESP_LOBBY_CONNECTING
+                           || (peer->lobby == NESP_LOBBY_GUEST && !peer->lost));
         if (on && !(joining && memcmp(peer->target, request->data, 4) == 0)) {
             drop(peer);
             memcpy(peer->target, request->data, 4);

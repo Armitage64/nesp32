@@ -26,11 +26,33 @@ and from hardware) is in its own docs:
 Choose the game for two on the title, and the console asks how:
 
 - **HOST GAME**: the nesp32 waits for the other one. The console and the
-  nesp32's screen both show the address player 2 has to enter.
-- **JOIN GAME**: edit the address (Left/Right to move, Up/Down to change a
-  digit) and press Start. It starts as the address last joined, or this
-  nesp32's own.
+  nesp32's screen both show what player 2 has to enter.
+- **JOIN GAME**: enter it (Left/Right to move, Up/Down to change a letter
+  or a digit) and press Start.
 - **LOCAL GAME**: two controllers on this console, as the original.
+
+The two nesp32s meet one of two ways. HOST GAME and JOIN GAME start by
+room code, and Select on either screen changes to the other way, as the
+foot of the screen says (`SELECT - BY IP`, `SELECT - BY ROOM CODE`). Both
+players have to choose the same way. The choice holds until the menu is
+left.
+
+- **By room code**, the first: across the Internet with no port
+  forwarded. HOST GAME opens a room at the rendezvous and shows its four
+  letters (no 0 or O, no 1 or I); player 2 enters them. Then each nesp32
+  is told where the other is, and the two reach each other themselves
+  ([`PROTOCOL.md`](PROTOCOL.md), "Meeting in a room"). It needs the
+  Internet, even for two on one network, and a nesp32 whose firmware has
+  rooms: an older one is UPDATE NESP32 here.
+- **By address**, as before rooms: HOST GAME shows this nesp32's address,
+  and JOIN GAME starts with the address last joined, or this nesp32's own.
+  On one network that needs nothing more; across the Internet the host
+  forwards UDP port 6502. It is for a network with no way to the
+  Internet, for a nesp32 that has no rooms, and for two networks that
+  rooms cannot get through.
+
+So far Dr. Mario's menu has rooms. Contra's and Tetris's are by address
+only.
 
 | Game | The title's choice | Its hello |
 |---|---|---|
@@ -44,8 +66,9 @@ player uses controller 1 of their own console. The game for one never
 shows the menu, and says nothing to a nesp32.
 
 The menu says the hello, asking for PEER, and from then on asks a few
-times a second how the nesp32 stands (PEER's STATUS) and tells it what the
-player chose (HOST, JOIN, LEAVE, LAST). It sends an order again until it
+times a second how the nesp32 stands (PEER's STATUS, or in a room ROOM)
+and tells it what the player chose (HOST_ROOM, JOIN_ROOM, HOST, JOIN,
+LEAVE, LAST). It sends an order again until it
 is answered, and acts on a state only once the order that should lead to
 it has been. A nesp32 that was switched off and on answers that the
 service is not in use; the menu says the hello again, and gives again the
@@ -56,7 +79,12 @@ order the screen is waiting on. It shows how the nesp32 stands:
 | the nesp32's address | it is on a network |
 | `NO WIFI` | it is on none: nesp32's setup ROM joins one |
 | `NO NESP32` | 8 requests in a row had no answer |
-| `UPDATE NESP32` | its firmware answered the hello and has no PEER |
+| `UPDATE NESP32` | its firmware answered the hello and has no PEER, or, by room code, has PEER but no rooms |
+
+By room code the host's screen says how its room stands, and the join
+screen why a room could not be met in: `OPENING A ROOM`, `NO RENDEZVOUS`,
+`NO SUCH ROOM`, `NOT THIS GAME` (another game's room, or another
+version's), `ROOM IS FULL`, `CANNOT REACH IT`, `ROOM CLOSED`.
 
 ## The nesp32
 
@@ -70,11 +98,106 @@ pairs two nesp32s whose consoles said the same name and version in their
 hello.
 
 The nesp32s talk over UDP port 6502. On one network that needs nothing
-more. Across the Internet the hosting side has to forward that port to its
-nesp32, and player 2 enters the host's public address. Tetris has been
-played that way on hardware, and works; no figures were taken. The delay
-will be what the distance makes it, three ticks across a continent, five
-or more across an ocean.
+more. Across the Internet they meet by a room's code, with nothing to set
+up on either router ("Meeting across the Internet", below), or by address,
+with the hosting side forwarding that port to its nesp32 and player 2
+entering the host's public address. Tetris has been played by address
+with a port forwarded on hardware, and works; no figures were taken. The
+delay will be what the distance makes it, three ticks across a continent,
+five or more across an ocean.
+
+## Meeting across the Internet
+
+A router lets a datagram in from the Internet only as an answer to one
+sent out from inside, so a nesp32 behind one cannot simply be called.
+Forwarding a port gets round that, but many players cannot arrange it,
+and none can behind a carrier's shared address, as on many phone
+hotspots. A room gets round it with nothing set up on either router: each
+nesp32 is told where the other is, and both send at once, so that each
+one's sending opens its own router to the other's.
+
+Five things take part:
+
+| | What it does |
+|---|---|
+| the console's menu | asks for a room, shows its code, takes player 2's, says how it stands |
+| the nesp32 (PEER, and its connection task) | finds where it can be reached, asks the rendezvous, sends to the other |
+| two STUN servers (Cloudflare's and Google's) | tell a nesp32 what address and port its datagrams come from, as the Internet sees them |
+| the rendezvous ([`server/rendezvous`](../server/rendezvous/README.md)) | hands out codes, and tells each nesp32 the other's addresses |
+| the two routers | let the other's datagrams in once their own nesp32 has sent to it |
+
+From HOST GAME to the first tick:
+
+1. **Player 1's nesp32 opens its socket and finds its addresses.** It
+   opens the socket at port 6502 that the whole game will be played on.
+   It asks the two STUN servers from that socket, and has two addresses:
+   its own on its network, and the public one the servers saw, which may
+   have another port. That takes a second or so (`OPENING A ROOM`). It
+   asks STUN again every 20 seconds while it waits, which also keeps its
+   router's way in open.
+2. **It asks the rendezvous for a room.** It is given a code and a
+   session, and the console shows the code. From then on the nesp32 asks
+   every two seconds whether player 2 has come, with its addresses as they
+   are then.
+3. **Player 2's nesp32 does the same, and joins.** It enters the code,
+   opens its own socket at 6502, finds its own two addresses, and asks to
+   join. The rendezvous refuses another game, or another version of this
+   one (`NOT THIS GAME`), a code it does not know (`NO SUCH ROOM`), and a
+   third player (`ROOM IS FULL`). Otherwise it tells player 2 the host's
+   addresses and the session.
+4. **Player 1 hears of player 2** when it next asks, two seconds at the
+   most, and is told player 2's addresses.
+5. **Both send at once, for up to eight seconds.** Player 2 calls each of
+   the host's addresses, ten times a second. The host sends punches to each
+   of player 2's, which are datagrams that carry nothing. Each one's
+   datagrams going out are what let the other's in. The host answers only
+   a call that names the session. The first address that answers is the
+   path.
+6. **From there it is a connection like any other:** the greetings, then
+   the game, at the delay the network's time calls for. The one that
+   opened the room is player 1. The rendezvous forgets the room a minute
+   later. It never sees the game.
+
+**On one network** the path is the network itself. Each nesp32's
+addresses include its own on the network, which the other reaches
+directly, as by address, with the urgent marking for Wi-Fi a game on one
+network has. The router never has to send a datagram back to its own
+public address, which many routers will not do. The rendezvous is still
+needed to swap the addresses, so the Internet is too. With no way to it,
+Select, and meet by address.
+
+**What it costs: nothing.** The rendezvous is a Cloudflare Worker on the
+Workers Free plan, on an account with no payment method. Past the free
+plan's daily limits it stops answering until the next day (`NO
+RENDEZVOUS`), and nothing is billed. A minute of waiting in a room is about
+40 requests. The STUN servers are free. No game's datagrams pass through
+anything of nesp32's.
+
+**What a room cannot get through,** which is `CANNOT REACH IT` after the
+eight seconds:
+
+- both routers giving the socket a new public port for every address it
+  sends to (some routers, some phone hotspots and some carriers): neither
+  one's punch reaches the port the other was told of;
+- a network that lets no datagrams out at all (some workplaces, schools
+  and hotels).
+
+For those, meet by address with a port forwarded at the host. A relay
+that carried the game for them would cost per gigabyte, and is not here.
+
+**On hardware** (Dr. Mario, 2026-10-20), a console on a fiber connection
+and one on a phone's 5G hotspot met by room code and played. The
+hotspot's side is behind its carrier's shared address (STUN saw port 6502
+as 41747), where no port can be forwarded. Both routers kept one public
+port for every address the socket sent to, which is what punching needs.
+The nesp32's log (`firmware/deploy.sh watch`) says the same of any
+network: `stun:` lines with what each server saw, and whether the router
+keeps the port.
+
+**To try it with no Internet**, from a computer: `host/rendezvous.py` is
+a stand-in for the rendezvous, and `host/serial_host.py --game
+--rendezvous URL` points a computer standing in for a nesp32 at it, or at
+`wrangler dev`.
 
 ## The idea
 
@@ -250,12 +373,17 @@ end's silence, the other by the lost connection.
 - In a stall the picture stands still, and a sound the game asks for is
   heard when it asks, which is a tick's time and not a frame's.
 - The netplay ROMs need a flashcart or an emulator.
+- Meeting by room code needs the Internet, even for two consoles on one
+  network, and does not get through every pair of networks ("Meeting
+  across the Internet"). By address is there for both.
 
 ## To do
 
-What is left on the nesp32 itself (meeting across the Internet without a
-port forwarded, a steadier way between two nesp32s) is in
-[`TODO.md`](TODO.md). In all three games:
+What is left on the nesp32 itself is in [`TODO.md`](TODO.md). In all
+three games:
+
+- **Rooms in Contra and Tetris.** Their menus are by address only.
+  Dr. Mario's is the one to follow.
 
 - **Say why on the console** when a session ends (the other console left,
   the nesp32 went quiet, the games differed); it only goes back to the

@@ -7,6 +7,9 @@ standing in for one, can meet with nothing on the Internet.
         server.url                      "http://127.0.0.1:PORT"
         server.now += 31                seconds, for rooms to expire
 
+Rooms is the same with no server: a test that is the network itself asks
+it directly, with answer(path).
+
 The rules are server/rendezvous/src/room.js's, and tests/test_rendezvous.py
 asks the same of both.
 """
@@ -67,39 +70,12 @@ class Room:
         return now - self.host_seen > HOST_QUIET_S or now - self.made_at > LONGEST_S
 
 
-class FakeRendezvous:
+class Rooms:
     def __init__(self):
         self.now = 0.0
         self.rooms = {}
         self.requests = []          # each path asked, for the tests
         self._lock = threading.Lock()
-        fake = self
-
-        class Handler(BaseHTTPRequestHandler):
-            def do_GET(self):
-                status, text = fake.answer(self.path)
-                body = (text + "\n").encode()
-                self.send_response(status)
-                self.send_header("content-type", "text/plain")
-                self.send_header("content-length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-
-            def log_message(self, *args):
-                pass
-
-        self._server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        self.url = f"http://127.0.0.1:{self._server.server_address[1]}"
-        self._thread = threading.Thread(target=self._server.serve_forever,
-                                        kwargs={"poll_interval": 0.02}, daemon=True)
-
-    def __enter__(self):
-        self._thread.start()
-        return self
-
-    def __exit__(self, *exc):
-        self._server.shutdown()
-        self._server.server_close()
 
     def _room(self, code):
         room = self.rooms.get(code)
@@ -160,3 +136,37 @@ class FakeRendezvous:
                     room.met_at = self.now
                 return 200, f"HOST {room.session} {','.join(room.host)}"
             return 404, "BAD"
+
+
+class FakeRendezvous(Rooms):
+    """Rooms, answering over HTTP on this machine."""
+
+    def __init__(self):
+        super().__init__()
+        fake = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                status, text = fake.answer(self.path)
+                body = (text + "\n").encode()
+                self.send_response(status)
+                self.send_header("content-type", "text/plain")
+                self.send_header("content-length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        self._server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self._server.server_address[1]}"
+        self._thread = threading.Thread(target=self._server.serve_forever,
+                                        kwargs={"poll_interval": 0.02}, daemon=True)
+
+    def __enter__(self):
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self._server.shutdown()
+        self._server.server_close()

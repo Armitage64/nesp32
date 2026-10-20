@@ -86,8 +86,9 @@ an emulator.
 
 ## The nesp32
 
-As for the other netplay games: the hat, the firmware, the Wi-Fi network
-and the port to forward across the Internet are in nesp32's
+As for the other netplay games: the hat, the firmware, the Wi-Fi network,
+meeting by a room's code, and the port to forward to meet by address
+instead, are in nesp32's
 [`docs/MULTIPLAYER.md`](../../docs/MULTIPLAYER.md), "The nesp32".
 
 ## A computer in place of a nesp32
@@ -247,8 +248,9 @@ left on the nesp32 itself in its [`docs/TODO.md`](../../docs/TODO.md).
   to the protocol; the second bank has room for its code. Rolling back, as
   newer games do, is not for this one: there is nowhere to keep a copy of
   the game.
-- **The menu**: held buttons do not repeat in the address editor, and its
-  colours and layout have only been looked at once.
+- **The menu**: held buttons do not repeat in the address editor or the
+  code's, and its colours and layout have only been looked at once (the
+  room screens not yet on hardware).
 
 ## Known limits
 

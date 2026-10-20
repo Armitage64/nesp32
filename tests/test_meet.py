@@ -271,3 +271,17 @@ def test_off_the_network_no_room_is_opened(stick):
 def test_status_says_nothing_of_rooms(host):
     room(host, HOST_ROOM)
     assert len(host.ask(PEER, STATUS).payload) == 6
+
+
+def test_by_address_after_a_room_is_a_new_order(host, guest):
+    # The console's Select: from a room to waiting by address, and back.
+    from test_peer import HOST, JOIN
+    opened(host)
+    assert lobby(host, HOST)[0] == HOSTING
+    assert host.listens == 1 and host.punches == 0
+    assert room(host, HOST_ROOM)[0] == MEETING
+    assert host.meets == 2
+    # And joining likewise, from a room to an address.
+    room(guest, JOIN_ROOM, b"K7QF")
+    assert lobby(guest, JOIN, HOME)[0] == CONNECTING
+    assert guest.calls == 1
