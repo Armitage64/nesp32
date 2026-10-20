@@ -13,6 +13,11 @@ otherwise. On hardware sessions have been played between a MiSTer and a
 real NES on one home network, and what was seen is under "On hardware"
 below: it plays well, and slows when many enemies are on the screen.
 
+What the three netplay games share (the menu, the nesp32, what a tick, a
+stall and a lag are, the exchange, the delay, the check and how a session
+ends) is in nesp32's [`docs/MULTIPLAYER.md`](../../../docs/MULTIPLAYER.md).
+This is what is Contra's own, with its figures.
+
 ## Playing
 
 Pick 2 PLAYERS at the title and press Start. A menu comes up:
@@ -83,33 +88,15 @@ three; it now makes it this way too.
 The sound engine is not part of the game for this purpose: it runs once in
 every NMI, tick or not, and its memory differs between the consoles.
 
-### Starting alike
+### Starting alike, the delay and the check
 
-A session starts with both consoles reset, so both begin from the state of
-one switched on for the first time, top score included, and then at a new
-two-player game in place of the title. They need not start at the same
-moment: a tick is counted, not timed.
-
-Ticks are counted from -5 on both consoles, and the first buttons either
-sends are tick 0's.
-
-### The delay
-
-Each console keeps a delay for its own buttons, from 1 tick to 5, and
-changes it as its nesp32 advises: the delay that covers nine in ten of the
-network's times, so that the game stands still a frame or two for a press
-that meets one of the rest. How the delay is changed and how the advice is
-worked out are PEER's, in
-[nesp32's `docs/PROTOCOL.md`](../../../docs/PROTOCOL.md), "The delay".
-
-### Checking that they stay alike
-
-One tick in 256 carries no buttons. In their place each console sends a
-digest of its game: of its zero page and its sprites, taken at the start of
-the same tick on both, eight ticks before, and kept until each comes to
-send it. A console whose digest differs from the other's gives the session
-up and goes back to the title, as does the other. The game runs that tick
-on the buttons of the tick before, for both players.
+As in every netplay game (nesp32's
+[`docs/MULTIPLAYER.md`](../../../docs/MULTIPLAYER.md)): a session starts
+with both consoles reset, top score included, and then at a new two-player
+game in place of the title; ticks are counted from -5; each console keeps
+its own delay, from 1 tick to 5, as its nesp32 advises; and one tick in
+256 carries a digest of the game in place of buttons, here of its zero
+page and its sprites.
 
 ### The link
 
@@ -123,10 +110,8 @@ library's memory is placed a byte at a time (`net/ram.inc`): in seven bytes
 of zero page that the game never touches, and past the end of its buffer of
 writes for the PPU.
 
-The exchange is the PEER service's TICKS as a *short frame*: five bytes out
-and four back (nesp32's `docs/PROTOCOL.md`). Between the nesp32s the
-buttons go as datagrams, each repeating what the other end has not said it
-has, so that a lost packet holds nothing up.
+The exchange is the PEER service's TICKS as a *short frame*, five bytes out
+and four back, as in every netplay game.
 
 ## What the simulation measured
 
@@ -303,27 +288,14 @@ on and its own leavings in memory, which the handler acted on.
   are whenever its delay has a tick to spare; and leaving the reply's CRC
   at one byte. And to see how a local two-player game does in the same
   scenes, which is the least this can come to.
-- **A message** when a session ends. The console goes back to the title
-  and says nothing of why.
-- **Games that differ** (for later): a dump of each console's RAM to its
-  nesp32 when the digests differ, to learn why ([nesp32's
-  `docs/TODO.md`](../../../docs/TODO.md)). Copying the host's game to the
-  other in place of ending the session is harder here than in Tetris or
-  Dr. Mario: the screen's tiles and the 8 KB of CHR RAM would go with the
-  RAM, about 12 KB, and going back to the title may well stay.
-- **Across the Internet.** The host forwards UDP port 6502 to its nesp32,
-  and player 2 enters the host's public address. Nothing has been played
-  that way. The delay will be what the distance makes it: three ticks
-  across a continent, five or more across an ocean.
 - **Player 2 cannot pause.** The game reads only player 1's Start.
-- **A press shorter than a stall is lost**: no controller is read in one.
-- **No zero delay.** It would need the other console's buttons in the frame
-  they were read, which works only while the two consoles' frames happen to
-  line up. And the game cannot be rolled back: there is nowhere to keep a
-  copy of it.
 - **Probotector**, the PAL release.
 
-What is left to do on the nesp32 for netplay (meeting without a port
+What is left in all three netplay games (a message when a session ends,
+games that differ, playing across the Internet, no zero delay, a press
+shorter than a stall) is in nesp32's
+[`docs/MULTIPLAYER.md`](../../../docs/MULTIPLAYER.md), "To do" and "Known
+limits". What is left on the nesp32 for netplay (meeting without a port
 forwarded, the access point's spikes, `conn.c`'s own tests) is in
 [nesp32's `docs/TODO.md`](../../../docs/TODO.md).
 

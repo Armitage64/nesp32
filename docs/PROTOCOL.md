@@ -294,8 +294,9 @@ joined over the network. Both consoles run the whole game, and only buttons
 cross: a byte for each *tick* of the game, each way. A console takes a tick
 only when it holds both players' buttons for it, so the two games see the
 same buttons at the same tick and stay the same game. nes-drmario's,
-nes-contra's and nes-tetris's netplay ROMs are the console's side, and their docs have what
-a tick is in each game and how the games are kept the same. How long a
+nes-contra's and nes-tetris's netplay ROMs are the console's side, and
+[`MULTIPLAYER.md`](MULTIPLAYER.md) has what a tick is and how the games are
+kept the same. How long a
 console's delay should be is this service's to advise ("The delay",
 below), and the games' docs point here for it.
 
@@ -519,11 +520,12 @@ has a line more: this console's buttons at each change since the last one,
 as the tick's low byte and the buttons, after how many changes the session
 has had ("pad").
 
-Both games make their exchange where the game reads its controllers,
+The games make their exchange where the game reads its controllers,
 before the game's work, so that buttons leave as soon as they are read and
 the other console's are asked for at the last moment they can be used;
-with that a delay of 1 tick does on a quick network. What a tick is in
-each game, and the figures from the simulation and from hardware, are in
+with that a delay of 1 tick does on a quick network
+([`MULTIPLAYER.md`](MULTIPLAYER.md)). The figures from the simulation and
+from hardware are in
 [nes-contra's `docs/Netplay.md`](../apps/contra/docs/Netplay.md) and
 [nes-drmario's README](../apps/drmario/README.md).
 

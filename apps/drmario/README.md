@@ -20,14 +20,10 @@ A game has been played with it on hardware too, at a delay of 1: it
 answers to the buttons at once, and does not slow ("What has been
 learned").
 
-On the title, choose **2 PLAYER GAME**. The console then asks how:
-
-- **HOST GAME**: the nesp32 waits for the other one. The console and the
-  nesp32's screen both show the address player 2 has to enter.
-- **JOIN GAME**: edit the address (Left/Right to move, Up/Down to change a
-  digit) and press Start. It starts as the address last joined, or this
-  nesp32's own.
-- **LOCAL GAME**: two controllers on this console, as the original.
+On the title, choose **2 PLAYER GAME**, and then HOST GAME, JOIN GAME or
+LOCAL GAME. How the three netplay games are played, and how they keep the
+two consoles in one game, is nesp32's
+[`docs/MULTIPLAYER.md`](../../docs/MULTIPLAYER.md).
 
 **The game is not in this repository.** What is here is the netplay code,
 its tests, and a few lines to be put into the game's own code. The rest,
@@ -61,10 +57,11 @@ about six minutes.
 | `net/game.cfg`, `net/menu.cfg` | where each bank's code goes, and the link library's memory |
 | `tools/prepare.py` | strips the disassembly's left-hand columns for ca65 (a port of its `preparations.lua`) |
 | `tests/console.py`, `tests/wire.py`, `tests/netplay.py` | a console on py65, the serial line, and two consoles with their nesp32s and a network between |
-| `docs/PROTOCOL.md` | how the two games are kept the same, and what the ROM asks of PEER |
+| `docs/PROTOCOL.md` | what is Dr. Mario's own in keeping the two games the same: its music, its cartridge, its memory and its timing |
 
 The link itself is nesp32's: its `docs/PROTOCOL.md` has the line, the
-frames and the PEER service, `nes/lib/nesp.inc` there is the library the
+frames and the PEER service, its `docs/MULTIPLAYER.md` what the three
+netplay games share, `nes/lib/nesp.inc` there is the library the
 menu's bank includes, and `firmware/` there is what runs on the nesp32.
 
 ## Changing the game's code
@@ -89,16 +86,9 @@ an emulator.
 
 ## The nesp32
 
-The hat is nesp32's ([`docs/WIRING.md`](../../docs/WIRING.md) there), as
-for every ROM that uses a nesp32. Flash nesp32's firmware (`firmware/README.md` there) and join a Wi-Fi
-network from the controller with its setup ROM, once: the nesp32 keeps the
-network and joins it by itself from then on. Nothing is set up from a
-computer, and nothing is chosen on the nesp32: this ROM says what it is
-when its menu opens.
-
-The nesp32s talk over UDP port 6502. On one network that needs nothing
-more. Across the Internet the hosting side has to forward that port to its
-nesp32, and player 2 enters the host's public address.
+As for the other netplay games: the hat, the firmware, the Wi-Fi network
+and the port to forward across the Internet are in nesp32's
+[`docs/MULTIPLAYER.md`](../../docs/MULTIPLAYER.md), "The nesp32".
 
 ## A computer in place of a nesp32
 
@@ -240,19 +230,16 @@ None of it has been measured again since the move to nesp32:
   requests in 4200, most of them frames spent waiting for the other
   console's buttons: about one frame's wait every three seconds.
 - **One end that fails mid-session takes both consoles back to the title**
-  within seconds, as designed: one by its own end's silence, the other by
-  the lost connection.
+  within seconds, as designed ([`docs/MULTIPLAYER.md`](../../docs/MULTIPLAYER.md),
+  "Ending").
 
 ## To do
 
-What is left on the nesp32 itself is in nesp32's
-[`docs/TODO.md`](../../docs/TODO.md): among it, a steadier way between two
-nesp32s, and a way to meet across the Internet without a port forwarded.
+What is left in all three netplay games (saying why a session ended, games
+that differ, a faster exchange) is in nesp32's
+[`docs/MULTIPLAYER.md`](../../docs/MULTIPLAYER.md), "To do", and what is
+left on the nesp32 itself in its [`docs/TODO.md`](../../docs/TODO.md).
 
-- **A faster exchange.** The line runs three times faster than the link's
-  rate (nes-throughput's test), which is about 1.5 ms of every
-  exchange. And no wait for a reply in a frame whose buttons from the
-  other console are already here.
 - **No delay at all on a player's own bottle.** The two bottles only meet
   in the garbage, the win and the pause. Each console could run its own
   player at once and the other's a few frames behind, with the garbage
@@ -260,25 +247,11 @@ nesp32s, and a way to meet across the Internet without a port forwarded.
   to the protocol; the second bank has room for its code. Rolling back, as
   newer games do, is not for this one: there is nowhere to keep a copy of
   the game.
-- **Say why on the console** when a session ends (the other console left,
-  the nesp32 went quiet, the games differed); it only goes back to the
-  title now.
-- **Games that differ** (for later): a dump of each console's RAM to its
-  nesp32 when the digests differ, to learn why; and if it comes back, the
-  host's game copied to the other in place of ending the session
-  (nesp32's [`docs/TODO.md`](../../docs/TODO.md)). The bottles are in
-  RAM; whether the game can draw them again from there, or the screen's
-  tiles have to be sent too, is not known.
 - **The menu**: held buttons do not repeat in the address editor, and its
   colours and layout have only been looked at once.
 
 ## Known limits
 
-- Both consoles must run this build: the nesp32s tell an older one from
-  it, and will not join the two.
-- The input delay is 1 to 5 frames, each console's own, as its nesp32
-  advises. A network slower than 5 frames covers slows the game rather
-  than breaks it.
-- A button press shorter than a stall is not seen.
-- In a stall the picture stands still, and a sound the game asks for is
-  heard when it asks, which is a tick's time and not a frame's.
+Those of every netplay game, in nesp32's
+[`docs/MULTIPLAYER.md`](../../docs/MULTIPLAYER.md), "Known limits", and
+the drums above: the netplay ROM's are not the original's.

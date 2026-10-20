@@ -3,8 +3,10 @@
 A netplay build of Contra (US, NES): a two-player game on two consoles,
 each with a [nesp32](../..) on controller port 2, each player on
 controller 1 of their own console, the nesp32s joined over the network.
-[docs/Netplay.md](docs/Netplay.md) has how it works, what has been played
-on hardware and the figures.
+nesp32's [`docs/MULTIPLAYER.md`](../../docs/MULTIPLAYER.md) has what the
+three netplay games share: the menu, the nesp32, how the two games are
+kept the same, and the limits. [docs/Netplay.md](docs/Netplay.md) has what
+is Contra's own, what has been played on hardware and the figures.
 
 **The game is not in this repository.** What is here is the netplay code,
 its tests, and a few lines to be put into the game's own code. The build

@@ -7,16 +7,20 @@ The link, the firmware and the frames are nesp32's
 ([the top of this repository](../../..)), and its
 [`docs/PROTOCOL.md`](../../../docs/PROTOCOL.md) has them: the line, the
 hello, and the PEER service this ROM asks for, with its lobby, its exchange
-of buttons and what the two nesp32s say to each other. This is the game's
-side: what a tick is, and what the ROM does with what PEER gives it.
+of buttons and what the two nesp32s say to each other.
 
-It is [Dr. Mario's](../../drmario/docs/PROTOCOL.md), nearly line for line:
-the same board, the same kind of NMI, and the same code for a session's
-frame and the menu. What differs is said here; the rest is said there too.
+What the three netplay games share (what a tick, a stall and a lag are,
+the exchange, the delay, the check, the menu and how a session ends) is in
+nesp32's [`docs/MULTIPLAYER.md`](../../../docs/MULTIPLAYER.md), and is not
+said again here. Tetris is closest to
+[Dr. Mario](../../drmario/docs/PROTOCOL.md): the same board, the same kind
+of NMI, and the same code for a session's frame and the menu. This is what
+is Tetris's own.
 
 Status: implemented by `net/*.inc` and `net/menu.s`, and tested on two
 simulated consoles with nesp32's own link and services between them
-(`tests/`). Not yet on hardware.
+(`tests/`). On hardware games have been played with it between a real NES
+and a MiSTer, and across the Internet. The README has what was seen.
 
 ## The game for two
 
@@ -34,36 +38,14 @@ so both players get the same pieces in the same order, however far apart
 they are. The game's own generator goes on stepping once a tick, and the
 garbage's hole comes from it.
 
-## The idea
+## The tick
 
-Both consoles run the whole game. Only buttons cross the link: one byte for
-each *tick*, a tick being one NMI that the game takes. A console takes a
-tick only when it holds both players' buttons for it, so both games see the
-same buttons at the same tick and stay the same game.
-
-A console's own buttons are used some ticks after the frame they were read
-in, its *input delay*. That is the time they have to reach the other
-console. Nobody sets it: each console keeps its own, from 1 tick to 5, and
-changes it as the game goes (Dr. Mario's "The delay").
-
-An NMI in a session is one of three things:
-
-| | When | What runs |
-|---|---|---|
-| a tick | the main loop was waiting, and the buttons are here | the game's whole handler, with the exchange where the game reads its controllers |
-| a stall | the main loop was waiting, but the other console's buttons are not here | the handler as far as the controllers, and the exchange. The NMIs that follow make the exchange again and write nothing to the PPU, whose picture stands; the one that has the buttons goes on from there |
-| a lag | the main loop was still at work | nothing of the game |
-
-So the game's memory depends on how many ticks there have been and on
-nothing else. In Tetris that matters more than in most games. The NMI
-draws each playfield four rows a frame, and the pieces wait for the rows
-to be drawn; it steps the line-clearing animation and the game over's
-curtain, counts the frames, and steps the generator of random numbers.
-
-The game's handler writes to the PPU, does all that, and reads the
-controllers last. The exchange is made at that read, so the buttons leave
-as soon as they are read and the other console's are asked for at the last
-moment they can be used.
+The game's memory depending on the ticks alone matters more in Tetris than
+in most games. The NMI draws each playfield four rows a frame, and the
+pieces wait for the rows to be drawn; it steps the line-clearing animation
+and the game over's curtain, counts the frames, and steps the generator of
+random numbers. It does all that and reads the controllers last, and the
+exchange is made at that read.
 
 The main loop waits for the NMI in two routines, which every wait in the
 game goes through. The netplay ROM puts `net_wait_nmi` in both, which says
@@ -71,26 +53,23 @@ the main loop is waiting.
 
 ## The music
 
-As in Dr. Mario: in a session the sound engine runs once in every frame
-from the NMI, whichever of the three the frame is, and not once a pass of
-the main loop. Its memory is `$00E0` to `$00EF` and `$0680` to `$06FF`, and
-the game only leaves it orders there; nothing of the game reads it back. So
-the two consoles' sound engines are not at the same place at the same tick,
-and nothing of the game can tell. The tests leave the engine's memory out
-of what they compare.
+In a session the sound engine runs from the NMI, once in every frame
+(nesp32's `docs/MULTIPLAYER.md`, "The music"). Its memory is `$00E0` to
+`$00EF` and `$0680` to `$06FF`, and the game only leaves it orders there;
+nothing of the game reads it back. So the two consoles' sound engines are
+not at the same place at the same tick, and nothing of the game can tell.
+The tests leave the engine's memory out of what they compare.
 
 ## The menu
 
-As Dr. Mario's, with 2 PLAYERS on the title in place of 2 PLAYER GAME,
-and the hello as `TTRS`, version 1. LOCAL GAME goes back to the game, to
+2 PLAYERS on the title goes to the menu, and the hello is `TTRS`,
+version 1. LOCAL GAME goes back to the game, to
 its game type menu for two, and B to its title.
 
-When the nesp32 says it is connected, as player 1 or as player 2, the
-console leaves the menu and starts a session: both consoles begin again
-from the state of one just switched on, and go straight to the game type
-menu of a game for two, past the legal screen and the title. They begin
+A session goes straight to the game type menu of a game for two, past
+the legal screen and the title. Both consoles begin
 with the high scores of one never played: the level menu draws the high
-scores, and leaves a digit of one in the zero page, which the check below
+scores, and leaves a digit of one in the zero page, which the check
 would find different.
 
 In a session the game type menu's B, which would go back to the title, does
@@ -98,19 +77,8 @@ nothing, and nor does A+B+Select+Start in a game.
 
 ## A session
 
-Every NMI that is not a lag makes one exchange, PEER's TICKS as a short
-frame, as Dr. Mario's does: five bytes out, or six, and four back. A tick's
-byte is the controller as it was read; the game's own code makes the
-buttons newly pressed and held from it, for both players.
-
-### Checking that they stay alike
-
-One tick in 256 carries no buttons. In their place each console sends a
-digest of its game: of its zero page, less the link's bytes, the sound
-engine's, the flag the main loop waits on and the session's one byte
-there, and of both playfields, taken at the start of the same tick on both,
-eight ticks before. A console whose digest differs from the other's gives
-the session up and goes back to the title, as does the other.
+The digest that checks the two games are alike covers both playfields as
+well as the zero page.
 
 ## The cartridge
 
@@ -148,13 +116,6 @@ The memory:
 All of it is where the game keeps nothing. The game's reset clears
 `$0000` to `$06FF` and keeps the high scores, up to `$0754`; the session's
 own numbers are past them.
-
-## Ending
-
-The console leaves a session, and starts again from its title as if reset,
-when a reply says the other console is gone or the nesp32 knows of no
-session (it was switched off and on), when the two games' digests differ,
-or after 240 NMIs in a row that were not ticks (4 seconds).
 
 ## Timing
 

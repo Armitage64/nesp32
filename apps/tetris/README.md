@@ -6,8 +6,9 @@ joined over Wi-Fi. The nesp32 is an M5Stack Stick with
 [nesp32](../..)'s firmware, the one firmware for every ROM that uses one;
 this ROM asks it for its PEER service, as Dr. Mario's and Contra's do.
 
-**Status: works.** A network game has been played with it on hardware,
-between a real NES and a MiSTer, each with a nesp32. On two simulated
+**Status: works.** Network games have been played with it on hardware:
+between a real NES and a MiSTer, each with a nesp32, and across the
+Internet. On two simulated
 consoles, with nesp32's own link and services between them, the menu hosts
 and joins, and a game plays at full speed, the same on both screens
 throughout (`make test`).
@@ -21,17 +22,11 @@ the buttons cross.
 
 The title has **1 PLAYER** and **2 PLAYERS** where the original says PUSH
 START: Up, Down or Select to choose, and Start. 1 PLAYER is the original's
-game for one, as it always was. For 2 PLAYERS the console asks how:
-
-- **HOST GAME**: the nesp32 waits for the other one. The console and the
-  nesp32's screen both show the address player 2 has to enter.
-- **JOIN GAME**: edit the address (Left/Right to move, Up/Down to change a
-  digit) and press Start. It starts as the address last joined, or this
-  nesp32's own.
-- **LOCAL GAME**: the game for two on this console, with a controller in
-  each port.
-
-B goes back to the title.
+game for one, as it always was. For 2 PLAYERS the console asks how: HOST
+GAME, JOIN GAME, or LOCAL GAME for the game for two on this console, with
+a controller in each port. B goes back to the title. How the three netplay
+games are played, and how they keep the two consoles in one game, is
+nesp32's [`docs/MULTIPLAYER.md`](../../docs/MULTIPLAYER.md).
 
 In a game for two, player 1 chooses the music and then a level, then player
 2 chooses a level. Both playfields are on each screen, player 1's on the
@@ -76,10 +71,11 @@ into CHR with `tools/png2chr.py`, which needs nothing.
 | `tools/png2chr.py` | the disassembly's tilesets as CHR, with no Pillow |
 | `tools/chr_tiles.py` | the game for two's tiles, into the netplay ROM's CHR |
 | `tests/console.py`, `tests/wire.py`, `tests/netplay.py` | a console on py65, the serial line, and two consoles with their nesp32s and a network between |
-| `docs/PROTOCOL.md` | how the two games are kept the same, and what the ROM asks of PEER |
+| `docs/PROTOCOL.md` | what is Tetris's own in keeping the two games the same: the game for two, its menu, its cartridge and its memory |
 
 The link itself is nesp32's: its `docs/PROTOCOL.md` has the line, the
-frames and the PEER service, `nes/lib/nesp.inc` there is the library the
+frames and the PEER service, its `docs/MULTIPLAYER.md` what the three
+netplay games share, `nes/lib/nesp.inc` there is the library the
 menu's bank includes, and `firmware/` there is what runs on the nesp32.
 The firmware needs nothing new for this ROM: PEER pairs two nesp32s whose
 consoles said the same name in their hello, `TTRS` here.
@@ -104,20 +100,16 @@ and 135 in the other. It needs a flashcart or an emulator.
 
 ## The nesp32
 
-The hat is nesp32's ([`docs/WIRING.md`](../../docs/WIRING.md) there), as
-for every ROM that uses a nesp32. Flash nesp32's firmware
-(`firmware/README.md` there) and join a Wi-Fi network from the controller
-with its setup ROM, once. Nothing is set up from a computer, and nothing is
-chosen on the nesp32: this ROM says what it is when its menu opens.
-
-The nesp32s talk over UDP port 6502. On one network that needs nothing
-more. Across the Internet the hosting side has to forward that port to its
-nesp32, and player 2 enters the host's public address.
+As for the other netplay games: the hat, the firmware, the Wi-Fi network
+and the port to forward across the Internet are in nesp32's
+[`docs/MULTIPLAYER.md`](../../docs/MULTIPLAYER.md), "The nesp32".
 
 ## What has been learned
 
 From hardware: a real NES and a MiSTer, each with a nesp32, hosted, joined
-and played a game for two over the network. No figures were taken.
+and played a game for two over the network. Tetris has since been played
+on hardware across the Internet, and works: the first of the netplay games
+to be. No figures were taken of either.
 
 From the simulation:
 
@@ -149,8 +141,10 @@ From the simulation:
 
 ## To do
 
-What is left on the nesp32 itself is in nesp32's
-[`docs/TODO.md`](../../docs/TODO.md).
+What is left in all three netplay games (saying why a session ended, games
+that differ, a faster exchange) is in nesp32's
+[`docs/MULTIPLAYER.md`](../../docs/MULTIPLAYER.md), "To do", and what is
+left on the nesp32 itself in its [`docs/TODO.md`](../../docs/TODO.md).
 
 - **Take the figures Dr. Mario's README has**, from the nesp32s' logs over
   a game on hardware: the delay, the frames that waited, the network's times.
@@ -158,26 +152,12 @@ What is left on the nesp32 itself is in nesp32's
 - **B-type for two.** Its goal, its heights and its endings are left out.
 - **The game's own sound effects for garbage**, and a mark of it coming;
   it arrives when the player's piece is down, with nothing to say so.
-- **Say why on the console** when a session ends (the other console left,
-  the nesp32 went quiet, the games differed); it only goes back to the
-  title now.
-- **Games that differ** (for later): a dump of each console's RAM to its
-  nesp32 when the digests differ, to learn why; and if it comes back, the
-  host's game copied to the other in place of ending the session
-  (nesp32's [`docs/TODO.md`](../../docs/TODO.md)). This game would be the
-  first: its NMI draws the playfields again from RAM, so the RAM is most
-  of what has to be sent.
 
 ## Known limits
 
-- Both consoles must run this build: the nesp32s tell another game, or an
-  older build of this one, from it, and will not join the two.
-- The input delay is 1 to 5 frames, each console's own, as its nesp32
-  advises. A network slower than 5 frames covers slows the game rather
-  than breaks it.
-- A button press shorter than a stall is not seen.
-- In a stall the picture stands still, and a sound the game asks for is
-  heard when it asks, which is a tick's time and not a frame's.
+Those of every netplay game are in nesp32's
+[`docs/MULTIPLAYER.md`](../../docs/MULTIPLAYER.md), "Known limits". And:
+
 - A session clears the console's high scores, for the reason above.
 - No high scores are kept from a game for two.
 

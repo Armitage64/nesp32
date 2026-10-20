@@ -137,7 +137,8 @@ Contra's build needs your own copy of the game (US release) at `apps/contra/base
 | [firmware/README.md](firmware/README.md) | the nesp32's firmware: building and flashing it, how it keeps time, and what was seen on hardware |
 | [hardware/](hardware/) | the hat's board and its parts |
 | [apps/](apps/) | each program's self-contained documentation and to-do list |
-| [apps/contra/docs/Netplay.md](apps/contra/docs/Netplay.md) | how two consoles are kept in the same game, with figures from sessions on hardware |
+| [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md) | the netplay games (Contra, Dr. Mario, Tetris): how they are played, and how two consoles are kept in the same game |
+| [apps/contra/docs/Netplay.md](apps/contra/docs/Netplay.md) | Contra's netplay, with figures from sessions on hardware |
 | [docs/PHANTOM-RIGHT.md](docs/PHANTOM-RIGHT.md) | a netplay bug found on a real NES: a Right that nobody pressed |
 
 ## License
