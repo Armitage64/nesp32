@@ -51,8 +51,8 @@ left.
   Internet, for a nesp32 that has no rooms, and for two networks that
   rooms cannot get through.
 
-So far Dr. Mario's menu has rooms. Contra's and Tetris's are by address
-only.
+All three games' menus have both ways. Contra writes the foot of the
+screen as `SELECT   BY IP`, its font having no dash.
 
 | Game | The title's choice | Its hello |
 |---|---|---|
@@ -382,8 +382,6 @@ end's silence, the other by the lost connection.
 What is left on the nesp32 itself is in [`TODO.md`](TODO.md). In all
 three games:
 
-- **Rooms in Contra and Tetris.** Their menus are by address only.
-  Dr. Mario's is the one to follow.
 
 - **Say why on the console** when a session ends (the other console left,
   the nesp32 went quiet, the games differed); it only goes back to the

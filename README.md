@@ -4,19 +4,16 @@ An inexpensive, DIY wireless network interface for the Nintendo Entertainment Sy
 the ESP32 microcontroller. 
 
 <p float="left">
-  <img src="apps/setup/docs/status.png" width="32%" alt="The status screen" />
-  <img src="apps/wiki/docs/search.png" width="32%" alt="The wikipedia app" />
-  <img src="apps/jukebox/docs/screen.png" width="32%" alt="The jukebox app" />
+  <img src="apps/setup/docs/status.png" width="24%" alt="The status screen" />
+  <img src="apps/wiki/docs/search.png" width="24%" alt="The wikipedia app" />
+  <img src="apps/drmario/docs/network-game.png" width="24%" alt="Dr. Mario's network game menu" />
+  <img src="apps/jukebox/docs/screen.png" width="24%" alt="The jukebox app" />
 </p>
 <p float="left">
-  <img src="apps/weather/docs/screen.png" width="32%" alt="The weather app" />
-  <img src="apps/npr/docs/screen-news.png" width="32%" alt="National Public Radio with a headline" />
-  <img src="apps/nes-radar/docs/scope.png" width="32%" alt="NES Radar's scope" />
-</p>
-<p float="left">
-  <img src="apps/bluesky/docs/screen-splash.png" width="32%" alt="Bluesky's splash, after ConnectedNES" />
-  <img src="apps/bluesky/docs/screen-list.png" width="32%" alt="Bluesky's favorites" />
-  <img src="apps/bluesky/docs/screen.png" width="32%" alt="A Bluesky post on the NES" />
+  <img src="apps/weather/docs/screen.png" width="24%" alt="The weather app" />
+  <img src="apps/npr/docs/screen-news.png" width="24%" alt="National Public Radio with a headline" />
+  <img src="apps/nes-radar/docs/scope.png" width="24%" alt="NES Radar's scope" />
+  <img src="apps/bluesky/docs/screen-splash.png" width="24%" alt="Bluesky's splash, after ConnectedNES" />
 </p>
 
 ## About

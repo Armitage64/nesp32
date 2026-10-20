@@ -1,0 +1,11 @@
+--- a/src/bank6.asm
++++ b/src/bank6.asm
+@@ -1919 +1919,6 @@
+-bank_6_unused_space:
+\ No newline at end of file
++bank_6_unused_space:
++
++.ifdef NETPLAY
++    .export menu_far
++    .include "menu_far.inc"
++.endif

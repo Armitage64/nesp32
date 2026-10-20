@@ -24,9 +24,14 @@ Pick 2 PLAYERS at the title and press Start. A menu comes up:
 
 | | |
 |---|---|
-| HOST GAME | the nesp32 waits for the other to call, and the screen shows the address player 2 has to enter |
-| JOIN GAME | an address to edit, and Start calls it. It starts as the one last joined |
+| HOST GAME | the nesp32 opens a room, and the screen shows its code, which player 2 has to enter |
+| JOIN GAME | a room's code to edit, and Start joins that room |
 | LOCAL GAME | the game as it always was, for a second controller on port 2 |
+
+Select on HOST GAME's screen or JOIN GAME's meets by address instead, as
+before rooms: HOST GAME shows the nesp32's address, and JOIN GAME has one
+to edit, starting as the one last joined. How the two ways work is
+nesp32's [`docs/MULTIPLAYER.md`](../../../docs/MULTIPLAYER.md).
 
 When the two are connected both consoles go straight into a two-player
 game, at the screen that names the first stage, and from there they are
@@ -105,7 +110,12 @@ receiver that gives up by counting, since every exchange is made in an NMI.
 Its serial routines count CPU cycles. They have the page before the samples
 in bank 7, its CRC table is in bank 1 (the sound engine's bank, which is
 the one in place when an exchange is made), and the menu is in bank 5
-(`net/menu.inc`). The game has no run of zero page to spare, so the
+(`net/menu.inc`), but for its screens. Bank 5 has no room for them
+beside the menu's code since it has rooms as well as addresses, so they
+are at the end of bank 6 (`net/menu_far.inc`), and the menu reaches them
+through a call in the fixed bank (`net_far_draw`). That bank had eight
+bytes to spare, and has two now: its calls to bank 1 write the bank
+number themselves rather than call the game's routine for it. The game has no run of zero page to spare, so the
 library's memory is placed a byte at a time (`net/ram.inc`): in seven bytes
 of zero page that the game never touches, and past the end of its buffer of
 writes for the PPU.
@@ -292,11 +302,9 @@ on and its own leavings in memory, which the handler acted on.
 - **Probotector**, the PAL release.
 
 What is left in all three netplay games (a message when a session ends,
-games that differ, playing across the Internet, no zero delay, a press
-shorter than a stall) is in nesp32's
-[`docs/MULTIPLAYER.md`](../../../docs/MULTIPLAYER.md), "To do" and "Known
-limits". What is left on the nesp32 for netplay (meeting without a port
-forwarded, the access point's spikes, `conn.c`'s own tests) is in
+games that differ, no zero delay, a press shorter than a stall) is in
+nesp32's [`docs/MULTIPLAYER.md`](../../../docs/MULTIPLAYER.md), "To do"
+and "Known limits". What is left on the nesp32 itself is in
 [nesp32's `docs/TODO.md`](../../../docs/TODO.md).
 
 ## Building and testing
@@ -318,11 +326,12 @@ about a quarter of an hour.
 |---|---|
 | `net/net.inc` | the session: bank 7 |
 | `net/menu.inc` | the menu: bank 5 |
+| `net/menu_far.inc` | the menu's screens: bank 6 |
 | `net/ram.inc` | the memory both use |
 | `net/contra_net.cfg` | the disassembly's `contra.cfg`, with room for the link's library |
-| `patches/` | the lines that call these, for the disassembly's `bank5.asm`, `bank7.asm` and `ines_header.asm` |
+| `patches/` | the lines that call these, for the disassembly's `bank5.asm`, `bank6.asm`, `bank7.asm` and `ines_header.asm` |
 | `tests/console.py` | the simulated console |
 | `tests/netplay.py`, `tests/wire.py` | two of them, their nesp32s and the network |
 | `tests/test_console.py` | the original is not the same game on two consoles, and the netplay ROM is |
 | `tests/test_lockstep.py` | sessions |
-| `tests/test_menu.py` | the menu, and HOST GAME and JOIN GAME ending in one game |
+| `tests/test_menu.py` | the menu, and HOST GAME and JOIN GAME ending in one game, by room code and by address |

@@ -7,10 +7,18 @@
 ; bank in and calls menu_frame), and the game's own handler does not run.
 ; The screens:
 ;
-;   HOST GAME     the nesp32 waits for the other to call. The screen shows
-;                 the address player 2 has to enter.
-;   JOIN GAME     an address to edit, and the nesp32 calls it
+;   HOST GAME     the nesp32 opens a room at the rendezvous, and waits in it
+;                 for the other. The screen shows the room's code, which
+;                 player 2 has to enter.
+;   JOIN GAME     a room's code to edit, and the nesp32 joins that room
 ;   LOCAL GAME    back to the game, for two controllers on this console
+;
+; Select on either of those screens changes how the two meet: by a room's
+; code, across the Internet with no port forwarded, or by an address, as
+; before rooms. By address, HOST GAME shows this nesp32's address and JOIN
+; GAME has one to edit, which the nesp32 calls; that is for a network with
+; no way to the Internet, and for a nesp32 whose firmware has no rooms.
+; The way chosen holds until the menu is left.
 ;
 ; When the nesp32s are connected it starts a session (net_start_session),
 ; and does not come back. The delay it begins with is the nesp32's advice,
@@ -26,6 +34,9 @@
 ; menu comes up and are ASCII by number. The two marks it has none for are
 ; put in two tiles the title leaves blank, and taken out again.
 ;
+; The screens the menu draws are in bank 6 (menu_far.inc), which has room
+; for them where this bank has not, and are drawn through net_far_draw.
+;
 ; Nothing here may change the game's memory: LOCAL GAME goes on with it.
 ; The menu keeps its own in the game's buffer of writes for the PPU, which
 ; lies idle while the game's handler does not run.
@@ -33,7 +44,8 @@
 .include "ram.inc"
 .include "nesp_proto.inc"
 
-.import net_far_call, net_far_hello, net_start_session, net_menu_local
+.import net_far_call, net_far_hello, net_far_draw, net_start_session, net_menu_local
+.importzp SCREEN_MAIN, SCREEN_HOSTING, SCREEN_JOIN, SCREEN_ROOM, SCREEN_JOIN_ROOM
 
 nesp_request    = nesp_tx + NESP_HEADER
 nesp_reply      = nesp_rx + NESP_HEADER
@@ -52,10 +64,13 @@ BTN_LEFT        = $02
 BTN_DOWN        = $04
 BTN_UP          = $08
 BTN_START       = $10
+BTN_SELECT      = $20
 BTN_B           = $40
 BTN_A           = $80
 
 IP_TILES        = 15            ; 192.168.001.023
+CODE_TILES      = NESP_PEER_CODE    ; K7QF
+LETTERS         = 32            ; that a code is made of
 ; What the nesp32 says of itself is one of NESP_LOBBY_*. The menu's own:
 STATE_NONE      = $FF           ; no nesp32 answers
 STATE_OLD       = $FE           ; one answers, and its firmware has no PEER
@@ -96,7 +111,11 @@ menu_pending    = menu_vars + 50    ; 01: a request is to go out
 menu_result     = menu_vars + 51    ; 01 its reply has come, FF none did
 menu_delay      = menu_vars + 52    ; the delay the session is to begin with
 menu_role       = menu_vars + 53    ; 00 player 1, 01 player 2: once connected
-MENU_VARS       = 54
+menu_way        = menu_vars + 54    ; 00 by a room's code, 01 by an address
+menu_code       = menu_vars + 55    ; 4: the code to join, each a letter's number
+menu_room       = menu_vars + 59    ; 4: the room's code, as the nesp32 gave it
+menu_why        = menu_vars + 63    ; why a meeting failed: NESP_MEET_*
+MENU_VARS       = 64
 
 .assert menu_vars + MENU_VARS <= CPU_GRAPHICS_BUFFER + $50, error, "the menu's memory runs out of the buffer"
 
@@ -110,11 +129,8 @@ DIRTY_DIGITS    = $02
 DIRTY_MARK      = $04
 DIRTY_STATUS    = $08
 DIRTY_CURSOR    = $10
+DIRTY_CODE      = $20           ; the room's code, on the host's screen
 
-.macro menu_text row, column, string
-    .byte >($2000 + row * 32 + column), <($2000 + row * 32 + column)
-    .byte .strlen(string), string
-.endmacro
 
 ; One NMI of the menu. net_menu is 01 for the first, which sets it up.
 menu_frame:
@@ -292,12 +308,28 @@ menu_mode_main:
     cpx #STATE_OLD
     bcs @exit                   ; or STATE_NONE
     cmp #$00
-    bne @join
+    bne menu_join
+    jmp menu_host
+
+@exit:
+    rts
+
+; Wait for player 2, the way chosen.
+menu_host:
     lda #NESP_PEER_HOST
+    ldx menu_way
+    bne @host
+    lda #NESP_PEER_HOST_ROOM
+
+@host:
     jsr menu_command
     jmp menu_show_hosting
 
-@join:
+; The join screen, the way chosen. A code starts as the last one entered;
+; an address as the last joined, from the nesp32.
+menu_join:
+    lda menu_way
+    beq @edit
     lda menu_filled
     bne @edit
     lda #NESP_PEER_LAST
@@ -306,7 +338,13 @@ menu_mode_main:
 @edit:
     jmp menu_show_join
 
-@exit:
+; Select: the other way, on the screen it was pressed on.
+menu_other_way:
+    lda menu_way
+    eor #$01
+    sta menu_way
+    lda #$00                    ; a code has fewer places than an address
+    sta menu_pos
     rts
 
 .assert NESP_LOBBY_NO_WIFI = 0, error
@@ -338,6 +376,13 @@ menu_leave:
 
 menu_mode_hosting:
     lda menu_press
+    and #BTN_SELECT
+    beq @back
+    jsr menu_other_way
+    jmp menu_host               ; which hangs up whatever there was
+
+@back:
+    lda menu_press
     and #BTN_B
     beq @state
     lda #NESP_PEER_LEAVE
@@ -349,7 +394,12 @@ menu_mode_hosting:
     beq menu_exit
     lda menu_state
     cmp #NESP_LOBBY_HOST
+    beq @session
+    ldx menu_way
     bne menu_exit
+    jmp menu_room_status
+
+@session:
     lda #$00
 
 ; Into a session, as player A + 1.
@@ -363,9 +413,130 @@ menu_leave_session:
 menu_exit:
     rts
 
+; In a room, what the screen says of it (state in A): opening it, nothing
+; while it waits (its code says enough), or why it could not be met in.
+menu_room_status:
+    ldx #STATUS_OPENING
+    cmp #NESP_LOBBY_MEETING
+    beq @show
+    ldx #STATUS_NONE
+    cmp #NESP_LOBBY_HOSTING
+    beq @show
+    ldx #STATUS_CONNECTING
+    cmp #NESP_LOBBY_CONNECTING
+    beq @show
+    cmp #NESP_LOBBY_FAILED
+    bne @exit
+    ldx menu_why
+    cpx #WHY_TEXTS
+    bcc @why
+    ldx #$00
+
+@why:
+    lda menu_why_status,x
+    tax
+
+@show:
+    txa
+    cmp menu_status
+    beq @exit
+    jmp menu_set_status
+
+@exit:
+    rts
+
+menu_why_status:
+    .byte STATUS_FAILED, STATUS_NO_SERVER, STATUS_NO_ROOM, STATUS_MISMATCH
+    .byte STATUS_FULL, STATUS_UNREACHABLE, STATUS_GONE
+WHY_TEXTS = * - menu_why_status
+.assert WHY_TEXTS = NESP_MEET_GONE + 1, error, "a status for each NESP_MEET_*"
+
+; --- the code to join ------------------------------------------------------------------
+
+menu_mode_code:
+    lda menu_press
+    and #BTN_LEFT
+    beq @right
+    lda menu_pos
+    beq @right
+    dec menu_pos
+    jsr menu_mark_moved
+
+@right:
+    lda menu_press
+    and #BTN_RIGHT
+    beq @up
+    lda menu_pos
+    cmp #CODE_TILES-1
+    beq @up
+    inc menu_pos
+    jsr menu_mark_moved
+
+@up:
+    ldx menu_pos
+    lda menu_press
+    and #BTN_UP
+    beq @down
+    inc menu_code,x
+    bne @changed
+
+@down:
+    lda menu_press
+    and #BTN_DOWN
+    beq @back
+    dec menu_code,x
+
+@changed:
+    lda menu_code,x
+    and #LETTERS-1
+    sta menu_code,x
+    lda menu_dirty
+    ora #DIRTY_DIGITS
+    sta menu_dirty
+
+@back:
+    lda menu_press
+    and #BTN_B
+    beq @go
+    jmp menu_show_main
+
+@go:
+    lda menu_press
+    and #BTN_A | BTN_START
+    beq @exit
+    lda #NESP_PEER_JOIN_ROOM
+    jsr menu_command
+    lda #MODE_JOINING
+    sta menu_mode
+    lda #STATUS_CONNECTING
+    jmp menu_set_status
+
+@exit:
+    rts
+
+.assert LETTERS = 32, error, "a letter's number is kept to its five bits"
+
+; A code's letters, by number: the title's tiles for them are ASCII, as
+; the code is when it crosses the link.
+menu_letters:
+    .byte "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+.assert * - menu_letters = LETTERS, error
+
 ; --- the address to join -------------------------------------------------------------
 
 menu_mode_edit:
+    lda menu_press
+    and #BTN_SELECT
+    beq @way
+    jsr menu_other_way
+    jmp menu_join
+
+@way:
+    lda menu_way
+    bne @address
+    jmp menu_mode_code
+
+@address:
     lda menu_press
     and #BTN_LEFT
     beq @right
@@ -454,16 +625,26 @@ menu_mode_joining:
     lda menu_state
     cmp #NESP_LOBBY_CONNECTING
     beq @exit
+    cmp #NESP_LOBBY_MEETING
+    beq @exit
     cmp #NESP_LOBBY_GUEST
     bne @failed
     lda #$01
     jmp menu_leave_session
 
 @failed:
+    ldx menu_way
+    bne @address
+    jsr menu_room_status        ; why the room could not be met in
+    jmp @back
+
+@address:
     lda #STATUS_FAILED
 
 @edit:
     jsr menu_set_status
+
+@back:
     lda #MODE_EDIT
     sta menu_mode
 
@@ -508,10 +689,30 @@ menu_link:
 @reply:
     lda nesp_status
     beq @good
+    cmp #NESP_ST_NO_OP
+    bne @unlinked
+    ; A firmware from before rooms: by address only, which the screen says,
+    ; and Select is the way to.
+    lda #$00
+    sta menu_want
+    lda #$01
+    sta menu_done
+    lda menu_mode
+    cmp #MODE_JOINING
+    bne @old
+    lda #MODE_EDIT
+    sta menu_mode
+
+@old:
+    lda #STATUS_OLD
+    jsr menu_set_status
+    jmp @clear
+
+@unlinked:
     ; Not in use: the nesp32 was switched off and on, and knows of no hello.
     lda #$00
     sta menu_linked
-    beq @missed
+    jmp @missed
 
 @good:
     lda #$00
@@ -569,6 +770,22 @@ menu_link:
     lda menu_dirty
     ora #DIRTY_OWN
     sta menu_dirty
+    ; A room's op: its code, and why a meeting failed.
+    lda menu_sent
+    cmp #NESP_PEER_HOST_ROOM
+    bcc @answered
+    ldx #CODE_TILES
+
+@code:
+    lda nesp_reply+5,x
+    sta menu_room-1,x
+    dex
+    bne @code
+    lda nesp_reply+6+CODE_TILES
+    sta menu_why
+    lda menu_dirty
+    ora #DIRTY_CODE
+    sta menu_dirty
 
 @answered:
     ; Is that the answer to the op the screen is waiting on?
@@ -581,7 +798,9 @@ menu_link:
     bne @clear
 
 @missed:
-    lda menu_sent               ; an op is sent again; a hello is anyway
+    lda menu_sent               ; an op is sent again; a hello is anyway,
+    beq @count                  ; and a question is asked again in its time
+    cmp #NESP_PEER_ROOM
     beq @count
     cmp #HELLO
     beq @count
@@ -625,11 +844,19 @@ menu_link:
     lda menu_count
     and #$0f
     bne @exit
-    ; A = 00, NESP_PEER_STATUS
+    ; How the nesp32 stands: in a room, with the room's code.
+    lda #NESP_PEER_STATUS
+    ldx menu_way
+    bne @request
+    ldx menu_mode
+    beq @request                ; MODE_MAIN
+    lda #NESP_PEER_ROOM
 
 @request:
     sta menu_sent
     ldy #$00
+    cmp #NESP_PEER_JOIN_ROOM
+    beq @to_join
     cmp #NESP_PEER_JOIN
     bne @length
     jsr menu_digits_to_octets
@@ -641,6 +868,18 @@ menu_link:
     dex
     bpl @payload
     ldy #$04
+    bne @length
+
+@to_join:
+    ldx #CODE_TILES-1
+
+@letter:
+    ldy menu_code,x
+    lda menu_letters,y
+    sta nesp_request,x
+    dex
+    bpl @letter
+    ldy #CODE_TILES
 
 @length:
     sty menu_len
@@ -655,6 +894,9 @@ menu_link:
     rts
 
 .assert NESP_PEER_STATUS = 0, error, "menu_link takes NESP_PEER_STATUS for no op"
+.assert NESP_PEER_JOIN_ROOM > NESP_PEER_HOST_ROOM && NESP_PEER_ROOM > NESP_PEER_HOST_ROOM, error
+.assert NESP_PEER_LAST < NESP_PEER_HOST_ROOM && NESP_PEER_JOIN < NESP_PEER_HOST_ROOM, error
+.assert NESP_PEER_JOIN_ROOM - NESP_PEER_JOIN = NESP_PEER_HOST_ROOM - NESP_PEER_HOST, error
 
 ; The hello has been answered. With any status but OK the firmware has no
 ; PEER, or speaks another protocol.
@@ -686,6 +928,13 @@ menu_hello_answered:
     lda #NESP_PEER_JOIN
 
 @again:
+    ; In a room, the room's op: the same but for its number.
+    ldx menu_way
+    bne @command
+    clc
+    adc #NESP_PEER_HOST_ROOM - NESP_PEER_HOST
+
+@command:
     jmp menu_command
 
 @exit:
@@ -818,20 +1067,32 @@ menu_draw:
     lda menu_draw_len
     bne menu_draw_exit
     lda menu_dirty
-    lsr
-    bcs menu_draw_own
-    lsr
-    bcs menu_draw_digits
-    lsr
-    bcs menu_draw_mark
-    lsr
-    bcs @status
-    lsr
-    bcc menu_draw_exit
-    jmp menu_draw_cursor
+    ldx #$00
 
-@status:
-    jmp menu_draw_status
+@find:
+    lsr
+    bcs @draw
+    inx
+    cpx #DRAWERS
+    bne @find
+    rts
+
+@draw:
+    txa
+    asl
+    tax
+    lda menu_drawers+1,x
+    pha
+    lda menu_drawers,x
+    pha
+    rts
+
+; By the bits of menu_dirty, from the lowest.
+menu_drawers:
+    .word menu_draw_own-1, menu_draw_digits-1, menu_draw_mark-1, menu_draw_status-1
+    .word menu_draw_cursor-1, menu_draw_code-1
+DRAWERS = (* - menu_drawers) / 2
+.assert DIRTY_CODE = 1 << (DRAWERS - 1), error, "a drawer for each of menu_dirty's bits"
 
 menu_draw_exit:
     rts
@@ -841,7 +1102,12 @@ menu_draw_own:
     jsr menu_drawn
     lda menu_mode
     cmp #MODE_HOSTING
-    beq @row
+    bne @main
+    lda menu_way                ; a room's host has its code to show instead
+    bne @row
+    rts
+
+@main:
     cmp #MODE_MAIN
     bne menu_draw_exit
 
@@ -889,6 +1155,23 @@ menu_draw_digits:
     jsr menu_drawn
     jsr menu_joining
     bcc menu_draw_exit
+    lda menu_way
+    bne @address
+    ; The code's letters.
+    ldx #CODE_TILES-1
+
+@letter:
+    ldy menu_code,x
+    lda menu_letters,y
+    sta menu_line,x
+    dex
+    bpl @letter
+    ldx #<($2000 + 12 * 32 + 14)
+    ldy #>($2000 + 12 * 32 + 14)
+    lda #CODE_TILES
+    jmp menu_stage
+
+@address:
     ldx #$00
     jsr menu_digits_to_line
     ldx #<($2000 + 12 * 32 + 8)
@@ -899,7 +1182,10 @@ menu_draw_mark:
     lda #DIRTY_MARK
     jsr menu_drawn
     jsr menu_joining
-    bcc menu_draw_exit
+    bcs @here
+    rts
+
+@here:
     ; A dash under the digit: its place in the line is its number and one
     ; more for each dot before it.
     ldx #IP_TILES-1
@@ -909,6 +1195,18 @@ menu_draw_mark:
     sta menu_line,x
     dex
     bpl @blank
+    lda menu_way
+    bne @address
+    ; Under a code's letter, which has no dots before it.
+    ldx menu_pos
+    lda #TILE_DASH
+    sta menu_line,x
+    ldx #<($2000 + 13 * 32 + 14)
+    ldy #>($2000 + 13 * 32 + 14)
+    lda #CODE_TILES
+    jmp menu_stage
+
+@address:
     lda menu_pos
     ldx #$00
     cmp #$03
@@ -936,7 +1234,14 @@ menu_draw_status:
     lda #DIRTY_STATUS
     jsr menu_drawn
     jsr menu_joining
-    bcc menu_draw_done
+    bcs @at
+    lda menu_mode               ; and a room's host says how its room stands
+    cmp #MODE_HOSTING
+    bne menu_draw_done
+    lda menu_way
+    bne menu_draw_done
+
+@at:
     ldx menu_status
     jsr menu_text_to_line
     ldx #<($2000 + 16 * 32 + 8)
@@ -978,6 +1283,36 @@ menu_draw_cursor:
     jsr menu_drawn
 
 menu_draw_done:
+    rts
+
+; The room's code, on its host's screen: ASCII, as the nesp32 gave it,
+; and as the title's tiles are, but for the space.
+menu_draw_code:
+    lda #DIRTY_CODE
+    jsr menu_drawn
+    lda menu_mode
+    cmp #MODE_HOSTING
+    bne @exit
+    lda menu_way
+    bne @exit
+    ldx #CODE_TILES-1
+
+@letter:
+    lda menu_room,x
+    cmp #$20                    ; ASCII's space
+    bne @tile
+    lda #TILE_BLANK
+
+@tile:
+    sta menu_line,x
+    dex
+    bpl @letter
+    ldx #<($2000 + 14 * 32 + 14)
+    ldy #>($2000 + 14 * 32 + 14)
+    lda #CODE_TILES
+    jmp menu_stage
+
+@exit:
     rts
 
 menu_cursor_lo:
@@ -1037,25 +1372,54 @@ menu_text_to_line:
     bne @tile
     rts
 
-menu_status_texts:
-STATUS_NONE = * - menu_status_texts
-    .byte "               "
-STATUS_CONNECTING = * - menu_status_texts
-    .byte "CONNECTING     "
-STATUS_FAILED = * - menu_status_texts
-    .byte "COULD NOT JOIN "
-STATUS_NO_NESP32 = * - menu_status_texts
-    .byte "NO NESP32      "
-STATUS_OLD = * - menu_status_texts
-    .byte "UPDATE NESP32  "
-STATUS_NO_WIFI = * - menu_status_texts
-    .byte "NO WIFI        "
+; Each is a line, and named by where it begins.
+STATUS_NONE        = 0 * IP_TILES
+STATUS_CONNECTING  = 1 * IP_TILES
+STATUS_FAILED      = 2 * IP_TILES
+STATUS_NO_NESP32   = 3 * IP_TILES
+STATUS_OLD         = 4 * IP_TILES
+STATUS_NO_WIFI     = 5 * IP_TILES
+STATUS_OPENING     = 6 * IP_TILES
+STATUS_NO_SERVER   = 7 * IP_TILES
+STATUS_NO_ROOM     = 8 * IP_TILES
+STATUS_MISMATCH    = 9 * IP_TILES
+STATUS_FULL        = 10 * IP_TILES
+STATUS_UNREACHABLE = 11 * IP_TILES
+STATUS_GONE        = 12 * IP_TILES
 
-; The three screens. Each is drawn whole, with the picture off.
+menu_status_texts:
+.assert * - menu_status_texts = STATUS_NONE, error
+    .byte "               "
+.assert * - menu_status_texts = STATUS_CONNECTING, error
+    .byte "CONNECTING     "
+.assert * - menu_status_texts = STATUS_FAILED, error
+    .byte "COULD NOT JOIN "
+.assert * - menu_status_texts = STATUS_NO_NESP32, error
+    .byte "NO NESP32      "
+.assert * - menu_status_texts = STATUS_OLD, error
+    .byte "UPDATE NESP32  "
+.assert * - menu_status_texts = STATUS_NO_WIFI, error
+    .byte "NO WIFI        "
+.assert * - menu_status_texts = STATUS_OPENING, error
+    .byte "OPENING A ROOM "
+.assert * - menu_status_texts = STATUS_NO_SERVER, error
+    .byte "NO RENDEZVOUS  "
+.assert * - menu_status_texts = STATUS_NO_ROOM, error
+    .byte "NO SUCH ROOM   "
+.assert * - menu_status_texts = STATUS_MISMATCH, error
+    .byte "NOT THIS GAME  "
+.assert * - menu_status_texts = STATUS_FULL, error
+    .byte "ROOM IS FULL   "
+.assert * - menu_status_texts = STATUS_UNREACHABLE, error
+    .byte "CANNOT REACH IT"
+.assert * - menu_status_texts = STATUS_GONE, error
+    .byte "ROOM CLOSED    "
+.assert * - menu_status_texts <= 256, error, "a line is named by X"
+
+; The screens. Each is drawn whole, with the picture off.
 menu_show_main:
     lda #MODE_MAIN
-    ldx #<menu_screen_main
-    ldy #>menu_screen_main
+    ldx #SCREEN_MAIN
     jsr menu_show
     lda #$ff
     sta menu_shown
@@ -1064,80 +1428,52 @@ menu_show_main:
     rts
 
 menu_show_hosting:
+    lda menu_way
+    beq @room
     lda #MODE_HOSTING
-    ldx #<menu_screen_hosting
-    ldy #>menu_screen_hosting
+    ldx #SCREEN_HOSTING
     jsr menu_show
     lda #DIRTY_OWN
+    sta menu_dirty
+    rts
+
+@room:
+    lda #$20                    ; no code until the room is open: ASCII's spaces
+    ldx #CODE_TILES-1
+
+@blank:
+    sta menu_room,x
+    dex
+    bpl @blank
+    lda #STATUS_OPENING
+    sta menu_status
+    lda #MODE_HOSTING
+    ldx #SCREEN_ROOM
+    jsr menu_show
+    lda #DIRTY_CODE | DIRTY_STATUS
     sta menu_dirty
     rts
 
 menu_show_join:
     lda #STATUS_NONE
     sta menu_status
+    ldx #SCREEN_JOIN
+    lda menu_way
+    bne @show
+    ldx #SCREEN_JOIN_ROOM
+
+@show:
     lda #MODE_EDIT
-    ldx #<menu_screen_join
-    ldy #>menu_screen_join
     jsr menu_show
-    lda #DIRTY_DIGITS | DIRTY_MARK
+    lda #DIRTY_DIGITS | DIRTY_MARK | DIRTY_STATUS
     sta menu_dirty
     rts
 
-; Mode A, and its screen at Y:X.
+; Mode A, and screen X (menu_far.inc).
 menu_show:
     sta menu_mode
     jsr menu_screen_off
-    stx menu_ptr
-    sty menu_ptr+1
-    lda #$20
-    sta PPUADDR
-    lda #$00
-    sta PPUADDR
-    ; 960 blank tiles, and 64 attributes: the one palette.
-    ldy #$04
-    ldx #$00
-
-@tiles:
-    sta PPUDATA
-    dex
-    bne @tiles
-    dey
-    bne @tiles
-    ldy #$00
-
-@string:
-    lda (menu_ptr),y
-    beq @shown
-    sta PPUADDR
-    iny
-    lda (menu_ptr),y
-    sta PPUADDR
-    iny
-    lda (menu_ptr),y
-    tax
-    iny
-
-@tile:
-    lda (menu_ptr),y
-    sta PPUDATA
-    iny
-    dex
-    bne @tile
-    beq @string
-
-@shown:
-    ; The NMI on again, and not for a vblank that has already begun: the
-    ; next one turns the picture on.
-    lda PPUSTATUS
-    lda #$00
-    sta PPUSCROLL
-    sta PPUSCROLL
-    lda PPUCTRL_SETTINGS
-    and #$fc
-    sta PPUCTRL
-    rts
-
-.assert TILE_BLANK = 0, error, "menu_show clears the screen and its attributes with one value"
+    jmp net_far_draw
 
 ; The picture and the NMI off, and nothing left for the NMI to draw.
 menu_screen_off:
@@ -1147,26 +1483,3 @@ menu_screen_off:
     sta menu_draw_len
     lda PPUSTATUS
     rts
-
-menu_screen_main:
-    menu_text 4, 10, "NETWORK GAME"
-    menu_text 9, 11, "HOST GAME"
-    menu_text 11, 11, "JOIN GAME"
-    menu_text 13, 11, "LOCAL GAME"
-    menu_text 18, 7, "THIS NESP32 IS AT"
-    .byte 0
-
-menu_screen_hosting:
-    menu_text 4, 10, "NETWORK GAME"
-    menu_text 9, 6, "WAITING FOR PLAYER 2"
-    menu_text 12, 7, "PLAYER 2 JOINS AT"
-    menu_text 24, 12, "B   BACK"
-    .byte 0
-
-menu_screen_join:
-    menu_text 4, 10, "NETWORK GAME"
-    menu_text 9, 8, "JOIN THE GAME AT"
-    menu_text 22, 8, "START   CONNECT"
-    menu_text 24, 12, "B   BACK"
-    .byte 0
-

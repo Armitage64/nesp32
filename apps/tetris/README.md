@@ -100,8 +100,9 @@ and 135 in the other. It needs a flashcart or an emulator.
 
 ## The nesp32
 
-As for the other netplay games: the hat, the firmware, the Wi-Fi network
-and the port to forward across the Internet are in nesp32's
+As for the other netplay games: the hat, the firmware, the Wi-Fi network,
+meeting by a room's code, and the port to forward to meet by address
+instead, are in nesp32's
 [`docs/MULTIPLAYER.md`](../../docs/MULTIPLAYER.md), "The nesp32".
 
 ## What has been learned

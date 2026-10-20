@@ -53,8 +53,8 @@
 .include "ram.inc"
 
 ; The menu is in bank 5 (net/menu.inc).
-.import menu_frame
-.export net_far_call, net_far_hello, net_start_session, net_menu_local
+.import menu_frame, menu_far           ; and its screens are in bank 6 (net/menu_far.inc)
+.export net_far_call, net_far_hello, net_far_draw, net_start_session, net_menu_local
 
 .define NESP_APP "CNTR"
 NESP_APP_VERSION = 1
@@ -168,18 +168,14 @@ net_menu_local:
 ; bank 1. net_far_hello is nesp_hello; net_far_call is nesp_call for op X
 ; of PEER's, with Y bytes of payload. Carry set if no reply came.
 net_far_hello:
-    sty net_temp
-    ldy #$01
-    jsr set_rom_bank_to_y
-    ldy net_temp
+    lda prg_rom_banks+1         ; set_rom_bank_to_y's, for bank 1, keeping Y
+    sta prg_rom_banks+1
     jsr nesp_hello
     jmp net_far_back
 
 net_far_call:
-    sty net_temp
-    ldy #$01
-    jsr set_rom_bank_to_y
-    ldy net_temp
+    lda prg_rom_banks+1
+    sta prg_rom_banks+1
     lda #NESP_SVC_PEER
     jsr nesp_call
 
@@ -189,6 +185,14 @@ net_far_back:
     jsr set_rom_bank_to_y
     plp
     rts
+
+; From the menu: screen X, of those in bank 6 (menu_far.inc). Switching
+; the bank keeps X.
+net_far_draw:
+    lda prg_rom_banks+6
+    sta prg_rom_banks+6
+    jsr menu_far
+    jmp net_far_back
 
 ; An NMI after one that stalled. The PPU has had the last tick's writes
 ; and the picture stands, so only the sound engine runs before the buttons
