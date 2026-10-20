@@ -20,6 +20,13 @@
  * on takes only that connection's packets. Each end gives the other up
  * when it has heard nothing of it for a few seconds, or is told goodbye.
  *
+ * Whichever end it is, the socket also asks two STUN servers on the
+ * Internet what address and port its datagrams come from, as the world
+ * outside the router sees them, and the one that waits asks again every
+ * little while, which also keeps the router's way in open. For now that is
+ * only written to the log: it is what a meeting across the Internet, with
+ * no port forwarded, will be made from (issue #12).
+ *
  * An order is numbered. The task does nothing for an order that has been
  * replaced, and says nothing of it either: the state is then whatever the
  * newer order made it.
@@ -37,7 +44,9 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "lwip/dns.h"
 #include "lwip/sockets.h"
+#include "lwip/tcpip.h"
 #include "nvs.h"
 
 #define CONN_STACK 6144
@@ -48,6 +57,10 @@
 #define CALL_MS 3000                /* how long a call is given to be answered */
 #define CALL_EVERY_MS 100           /* between two sendings of it */
 #define GONE_US 3000000             /* nothing heard for this long: the other end is gone */
+#define STUN_AGAIN_US 500000        /* a STUN request unanswered for this long goes again */
+#define STUN_TRIES 3
+#define STUN_KEEP_US 20000000       /* the one that waits asks again this often */
+#define DATAGRAM 160                /* room for what comes: a STUN answer is longer than ours */
 /* What a game's packets say of themselves to the network when the other
  * nesp32 is on this one: class selector 6, which Wi-Fi sends as voice. That
  * class waits least for the air, on this radio and on an access point that
@@ -86,6 +99,28 @@ static uint8_t note_in[NESP_ARQ_NOTE];
 static uint32_t spread[NESP_ARQ_NEEDS];
 static conn_ping_t pings;           /* the network's times, for whoever watches the log */
 static TaskHandle_t task;
+
+/* The STUN servers. Each one's address is looked up for every order, from
+ * lwIP's own task, so that the conn task never waits on the DNS: on a
+ * network with no way to the Internet it would wait seconds for nothing,
+ * with a caller unanswered. */
+typedef struct {
+    const char *name;
+    uint16_t port;
+    uint32_t address;               /* under lock: as on the network; 0 until found */
+    uint8_t id[NESP_STUN_ID];       /* the request out now */
+    uint8_t tries;
+    int64_t sent_at;
+    bool answered;
+    uint8_t mapped[4];
+    uint16_t mapped_port;
+} stun_server_t;
+
+static stun_server_t stun_servers[] = {
+    {.name = "stun.cloudflare.com", .port = 3478},
+    {.name = "stun.l.google.com", .port = 19302},
+};
+#define STUN_SERVERS (sizeof(stun_servers) / sizeof(stun_servers[0]))
 /* --- what the services call: no waiting ---------------------------------------- */
 
 static bool order(want_t what, uint8_t now, const uint8_t *address, uint16_t port)
@@ -308,6 +343,17 @@ static int open_socket(uint16_t port)
     return sock;
 }
 
+/* The port a socket has, as this nesp32 sees it. */
+static uint16_t socket_port(int sock)
+{
+    struct sockaddr_in here;
+    socklen_t size = sizeof(here);
+    if (getsockname(sock, (struct sockaddr *)&here, &size) != 0) {
+        return 0;
+    }
+    return ntohs(here.sin_port);
+}
+
 /* Mark the socket's packets urgent if the other end is on this nesp32's
  * own network, and not at all if it is not, or if that cannot be told. */
 static void mark(int sock, const struct sockaddr_in *other)
@@ -323,6 +369,132 @@ static void mark(int sock, const struct sockaddr_in *other)
              near ? "on" : "not on");
 }
 
+/* --- what the Internet sees of this socket ---------------------------------- */
+
+static void stun_found(const char *name, const ip_addr_t *address, void *arg)
+{
+    (void)name;
+    stun_server_t *server = arg;
+    if (address != NULL) {
+        portENTER_CRITICAL(&lock);
+        server->address = ip4_addr_get_u32(ip_2_ip4(address));
+        portEXIT_CRITICAL(&lock);
+    }
+}
+
+/* In lwIP's task: look a server up, or take what lwIP already knows. */
+static void stun_look_up(void *arg)
+{
+    stun_server_t *server = arg;
+    ip_addr_t address;
+    if (dns_gethostbyname(server->name, &address, stun_found, server) == ERR_OK) {
+        stun_found(server->name, &address, server);
+    }
+}
+
+/* Ask afresh, from a socket just opened or as the one that waits keeps its
+ * way in open. */
+static void stun_begin(void)
+{
+    for (size_t index = 0; index < STUN_SERVERS; index++) {
+        stun_server_t *server = &stun_servers[index];
+        esp_fill_random(server->id, sizeof(server->id));
+        server->tries = 0;
+        server->answered = false;
+        portENTER_CRITICAL(&lock);
+        server->address = 0;
+        portEXIT_CRITICAL(&lock);
+        tcpip_callback(stun_look_up, server);
+    }
+}
+
+/* Send what is due: to each server as soon as its address is known, and
+ * again while it does not answer. */
+static void stun_send(int sock)
+{
+    int64_t now = esp_timer_get_time();
+    for (size_t index = 0; index < STUN_SERVERS; index++) {
+        stun_server_t *server = &stun_servers[index];
+        portENTER_CRITICAL(&lock);
+        uint32_t address = server->address;
+        portEXIT_CRITICAL(&lock);
+        if (address == 0 || server->answered || server->tries >= STUN_TRIES
+            || (server->tries != 0 && now - server->sent_at < STUN_AGAIN_US)) {
+            continue;
+        }
+        struct sockaddr_in to;
+        memset(&to, 0, sizeof(to));
+        to.sin_family = AF_INET;
+        to.sin_port = htons(server->port);
+        to.sin_addr.s_addr = address;
+        uint8_t request[NESP_STUN_REQUEST];
+        size_t length = nesp_stun_request(server->id, request);
+        sendto(sock, request, length, 0, (const struct sockaddr *)&to, sizeof(to));
+        server->tries++;
+        server->sent_at = now;
+    }
+}
+
+/* What the servers' answers say, when both have answered: whether this
+ * socket keeps one port outside whoever it sends to, which is what lets
+ * the other end's datagrams in once this end has sent to it. */
+static void stun_judge(uint16_t port)
+{
+    const stun_server_t *one = &stun_servers[0];
+    const stun_server_t *other = &stun_servers[1];
+    esp_netif_ip_info_t here;
+    esp_netif_t *wifi = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    bool own = wifi != NULL && esp_netif_get_ip_info(wifi, &here) == ESP_OK
+               && memcmp(&here.ip.addr, one->mapped, 4) == 0;
+    if (own) {
+        ESP_LOGI(TAG, "stun: no router between this nesp32 and the Internet");
+    } else if (memcmp(one->mapped, other->mapped, 4) != 0 || one->mapped_port != other->mapped_port) {
+        ESP_LOGI(TAG, "stun: the router gives this socket a port for each destination "
+                      "(%u and %u): the other end's datagrams cannot be let in by sending to it",
+                 (unsigned)one->mapped_port, (unsigned)other->mapped_port);
+    } else {
+        ESP_LOGI(TAG, "stun: the router keeps port %u for every destination%s",
+                 (unsigned)one->mapped_port, one->mapped_port == port ? ", the socket's own" : "");
+    }
+}
+
+/* A datagram that came: is it a server's answer? Logged if so, and only
+ * if it says something new. */
+static bool stun_took(const uint8_t *packet, int came, uint16_t port)
+{
+    if (came <= 0) {
+        return false;
+    }
+    for (size_t index = 0; index < STUN_SERVERS; index++) {
+        stun_server_t *server = &stun_servers[index];
+        uint8_t mapped[4];
+        uint16_t mapped_port;
+        if (server->answered
+            || !nesp_stun_mapped(packet, (size_t)came, server->id, mapped, &mapped_port)) {
+            continue;
+        }
+        server->answered = true;
+        bool news = memcmp(server->mapped, mapped, 4) != 0 || server->mapped_port != mapped_port;
+        memcpy(server->mapped, mapped, 4);
+        server->mapped_port = mapped_port;
+        if (news) {
+            ESP_LOGI(TAG, "stun: %s sees this socket as %u.%u.%u.%u, port %u", server->name,
+                     mapped[0], mapped[1], mapped[2], mapped[3], (unsigned)mapped_port);
+        }
+        bool all = true;
+        for (size_t each = 0; each < STUN_SERVERS; each++) {
+            all = all && stun_servers[each].answered;
+        }
+        if (all && news) {
+            stun_judge(port);
+        }
+        return true;
+    }
+    return false;
+}
+
+/* --- waiting and calling ------------------------------------------------------- */
+
 /* Wait until something has come, for LOOK_MS at the most. */
 static bool readable(int sock)
 {
@@ -335,15 +507,25 @@ static bool readable(int sock)
 
 /* Wait for a caller: the first datagram that is a call names the
  * connection, and where it came from is the other end. */
-static bool listen_for(uint32_t began, int sock, nesp_arq_t *arq, struct sockaddr_in *other)
+static bool listen_for(uint32_t began, int sock, uint16_t port, nesp_arq_t *arq,
+                       struct sockaddr_in *other)
 {
-    uint8_t packet[NESP_ARQ_PACKET];
+    uint8_t packet[DATAGRAM];
+    int64_t asked_at = esp_timer_get_time();
     while (wanted(began)) {
+        if (esp_timer_get_time() - asked_at >= STUN_KEEP_US) {
+            asked_at = esp_timer_get_time();
+            stun_begin();
+        }
+        stun_send(sock);
         if (!readable(sock)) {
             continue;
         }
         socklen_t size = sizeof(*other);
         int came = recvfrom(sock, packet, sizeof(packet), 0, (struct sockaddr *)other, &size);
+        if (stun_took(packet, came, port)) {
+            continue;
+        }
         if (came < NESP_ARQ_HEADER || packet[0] != 'N' || packet[1] != 'E'
             || (packet[2] & 0x7F) != NESP_ARQ_CALL) {
             continue;
@@ -359,13 +541,15 @@ static bool listen_for(uint32_t began, int sock, nesp_arq_t *arq, struct sockadd
 }
 
 /* Call an address until it answers, or for CALL_MS. */
-static bool call(uint32_t began, int sock, nesp_arq_t *arq, const struct sockaddr_in *other)
+static bool call(uint32_t began, int sock, uint16_t port, nesp_arq_t *arq,
+                 const struct sockaddr_in *other)
 {
-    uint8_t packet[NESP_ARQ_PACKET];
+    uint8_t packet[DATAGRAM];
     nesp_arq_open(arq, esp_random() | 1);
     ESP_LOGI(TAG, "calling %s, port %u", inet_ntoa(other->sin_addr),
              (unsigned)ntohs(other->sin_port));
     for (int waited = 0; waited < CALL_MS && wanted(began); waited += CALL_EVERY_MS) {
+        stun_send(sock);
         size_t length = nesp_arq_packet(arq, NESP_ARQ_CALL, clock_us(), packet);
         if (sendto(sock, packet, length, 0, (const struct sockaddr *)other, sizeof(*other)) < 0
             && waited == 0) {
@@ -376,6 +560,9 @@ static bool call(uint32_t began, int sock, nesp_arq_t *arq, const struct sockadd
             int came = recv(sock, packet, sizeof(packet), 0);
             if (came <= 0) {
                 vTaskDelay(1);
+                continue;
+            }
+            if (stun_took(packet, came, port)) {
                 continue;
             }
             if (nesp_arq_take(arq, clock_us(), packet, (size_t)came) == NESP_ARQ_ANSWER) {
@@ -533,16 +720,20 @@ static void conn_task(void *arg)
             }
             /* The one that waits has the port; the one that calls, any. */
             int sock = open_socket(what == WANT_LISTEN ? port : 0);
+            uint16_t own = sock >= 0 ? socket_port(sock) : 0;
             bool up = false;
+            if (sock >= 0) {
+                stun_begin();
+            }
             if (sock >= 0 && what == WANT_LISTEN) {
-                up = listen_for(began, sock, &arq, &other);
+                up = listen_for(began, sock, own, &arq, &other);
             } else if (sock >= 0) {
                 memset(&other, 0, sizeof(other));
                 other.sin_family = AF_INET;
                 other.sin_port = htons(port);
                 memcpy(&other.sin_addr.s_addr, address, 4);
                 mark(sock, &other);
-                up = call(began, sock, &arq, &other);
+                up = call(began, sock, own, &arq, &other);
             }
             if (up && what == WANT_LISTEN) {
                 mark(sock, &other);         /* known only now that it has called */

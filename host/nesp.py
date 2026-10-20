@@ -192,6 +192,11 @@ def library():
         lib.host_arq_unsaid.argtypes = [ctypes.c_void_p]
         lib.host_arq_note.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
         lib.host_arq_noted.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        lib.nesp_stun_request.restype = ctypes.c_size_t
+        lib.nesp_stun_request.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
+        lib.nesp_stun_mapped.restype = ctypes.c_bool
+        lib.nesp_stun_mapped.argtypes = [ctypes.c_char_p, ctypes.c_size_t, ctypes.c_char_p,
+                                         ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint16)]
         lib.host_set_airport.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int32,
                                          ctypes.c_int32]
         lib.host_airport.restype = ctypes.c_bool
@@ -903,6 +908,29 @@ class Arq:
         buffer = ctypes.create_string_buffer(ARQ_NOTE)
         self._lib.host_arq_noted(self._arq, buffer)
         return buffer.raw
+
+
+STUN_ID = 12
+STUN_REQUEST = 20
+
+
+def stun_request(ident):
+    """A STUN Binding Request with this 12-byte id (the firmware's stun.c)."""
+    buffer = ctypes.create_string_buffer(STUN_REQUEST)
+    count = library().nesp_stun_request(bytes(ident), buffer)
+    return buffer.raw[:count]
+
+
+def stun_mapped(data, ident):
+    """The (address, port) a STUN answer to the request with this id gives,
+    the address as 4 bytes, or None if it is not one."""
+    data = bytes(data)
+    address = ctypes.create_string_buffer(4)
+    port = ctypes.c_uint16()
+    if not library().nesp_stun_mapped(data, len(data), bytes(ident), address,
+                                      ctypes.byref(port)):
+        return None
+    return address.raw, port.value
 
 
 def c_checks(data):

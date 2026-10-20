@@ -233,6 +233,17 @@ size_t nesp_arq_packet(nesp_arq_t *arq, uint8_t kind, uint32_t now_us, uint8_t *
 /* One that came. Its kind, or -1 if it is not this connection's. */
 int nesp_arq_take(nesp_arq_t *arq, uint32_t now_us, const uint8_t *data, size_t len);
 
+/* STUN (stun.c): what address and port a socket's datagrams come from, as
+ * a server on the Internet sees them. */
+#define NESP_STUN_ID 12             /* a request's id, of the asker's choosing */
+#define NESP_STUN_REQUEST 20        /* a Binding Request's length, and a header's */
+/* A Binding Request, into out (NESP_STUN_REQUEST bytes). Returns its length. */
+size_t nesp_stun_request(const uint8_t *id, uint8_t *out);
+/* A datagram that came: if it is the answer to the request with this id,
+ * the IPv4 address and port it gives, and true. */
+bool nesp_stun_mapped(const uint8_t *data, size_t len, const uint8_t *id, uint8_t *address,
+                      uint16_t *port);
+
 /* A connection to another nesp32, as the hardware has it. */
 enum {
     NESP_CONN_NONE,                 /* none asked for, or closed */
