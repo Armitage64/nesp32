@@ -16,13 +16,18 @@ RAW = p.NESP_SVC_RAW
 ROWS = [name for name, _ in gen_screen.ROWS]
 RX, TX = 0, 1                   # the halves of the screen
 WAITING, PRESS, TESTING, AGAIN = (gen_screen.WAITING, "PRESS START", "TESTING",
-                                  "DONE. PRESS START")
+                                  "DONE. START : RE-TEST")   # built by itself: no B
 BLANK = dict.fromkeys(ROWS, "")
 FAILED_AT_5 = "357955 BPS, "    # the rate the console's CPU cannot do
 
 
 def state(bench):
-    return bench.machine.text(gen_screen.STATE_ROW, gen_screen.LEFT, gen_screen.WIDTH).rstrip()
+    """The foot's text, which is centered on it."""
+    line = bench.machine.text(gen_screen.STATE_ROW, gen_screen.STATE_COLUMN,
+                              gen_screen.STATE_WIDTH)
+    text = line.strip()
+    assert not text or line.index(text) == (gen_screen.STATE_WIDTH - len(text)) // 2
+    return text
 
 
 def half(bench, which):

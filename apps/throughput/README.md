@@ -105,12 +105,14 @@ make                      # build/linktest.nes
 ```
 
 1. Start `build/linktest.nes` on the console, with the nesp32 in
-   controller port 2. The screen says `WAITING FOR THE NESP32` until the
-   nesp32 answers, and then `PRESS START`. `UPDATE THE NESP32` means its
-   firmware has no RAW service.
+   controller port 2. The line at the foot of the screen says `WAITING FOR
+   THE NESP32` until the nesp32 answers, and then `PRESS START`. `UPDATE
+   THE NESP32` means its firmware has no RAW service.
 2. Press Start on controller 1, or button A on the nesp32. Nothing is
    tested until then.
-3. When it says `DONE. PRESS START`, either button runs it again.
+3. When it says `DONE. START : RE-TEST`, either button runs it again.
+   On nesp32's cartridge it says `DONE. START : RE-TEST B : QUIT`, and B,
+   there or while it waits to be started, is the cartridge's menu again.
 
 **A sweep**, for finding out what a line does past the first rate it
 fails: press **Select** on controller 1 in place of Start. The console

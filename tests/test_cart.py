@@ -451,3 +451,20 @@ def test_b_in_the_jukeboxs_menu_is_the_menu_again(cart, images):
     c.run(6)
     assert at_menu(c)
     assert c.byte("choice") == 0
+
+
+def test_b_in_the_throughput_test_is_the_menu_again(cart, images):
+    index = next(index for index, image in enumerate(images)
+                 if image.program.key == "throughput")
+    c = cart()
+    stick, _ = link(c, Stick)
+    c.run(4)
+    start(c, index)
+    c.run_until(lambda: stick.hellos, 300)
+    c.run_until(lambda: "PRESS START" in c.line(26), 120)   # at the foot
+    assert not c.home
+    c.press(PAD_B)
+    c.strict = True
+    c.run(6)
+    assert at_menu(c)
+    assert c.byte("choice") == 0

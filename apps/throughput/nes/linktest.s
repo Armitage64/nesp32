@@ -35,6 +35,9 @@
 ; power in the middle of a run to the console leaves this ROM waiting, and
 ; Reset is the way out.
 ;
+; On nesp32's cartridge, B while the ROM waits to be started is the
+; cartridge's menu again.
+;
 ; The controller is read only while the ROM waits to be started. A read is
 ; a low on the line to the nesp32, which a UART listening for a run would
 ; take for a byte of it.
@@ -63,6 +66,13 @@ PALETTE   = $3F00
 OUT0_MARK = $01
 PAD_START = $10
 PAD_SELECT = $20
+PAD_B     = $40
+; The cartridge's reset stub (nesp32's nes/cart/gen_cart.py) is at the same
+; place in every program's bank: an `inc` of itself, which resets the
+; mapper and puts the menu's bank at $C000, and a jump to the menu. Built by
+; itself, this ROM has padding there. As Weather's B does.
+CART_STUB = $FFDA
+CART_STUB_FIRST = $EE           ; inc absolute
 
 TRIAL_BLOCKS = 4                ; a trial: 1024 bytes
 ; For finding out what a line cannot do: `make TX_FIRST=8` builds a ROM that
@@ -112,7 +122,7 @@ digits:       .res 1
 tries:        .res 1
 count:        .res 1
 ran:          .res 1            ; a test has run, and its results are up
-start_up:     .res 1            ; Start and Select have been seen up since the ROM last waited
+start_up:     .res 1            ; Start, Select and B have been seen up since the ROM last waited
 swept:        .res 1            ; the halves of the screen have a sweep's table over them
 port:         .res 1            ; what JOY2 read with the line at rest
 base:         .res 1            ; the direction under test: its first row in the tables
@@ -128,6 +138,7 @@ seed:         .res 2            ; the next block's
 skip:         .res 1            ; bytes at the start of a block that are not the pattern's
 vector:       .res 2            ; the block routine to call
 rx_ptr:       .res 2            ; where the tracking receiver stores
+on_cart:      .res 1            ; this is on nesp32's cartridge, which has a menu
 
 .segment "BSS"
 draw_buf:     .res DRAW_MAX     ; fields: address (high, low), width, tiles
@@ -146,11 +157,11 @@ SWEEP_FIRST = RX_COUNT - SWEEP_RATES
 ; halves have, from HALF_RX to the last of HALF_TX's.
 SWEEP_LAST_ROW = HALF_TX + ROW_FAILED
 SWEEP_TOP = HALF_RX + 2
-SWEEP_CYCLES = STATE_COLUMN + 1     ; its columns, and their widths
-SWEEP_SPEED = STATE_COLUMN + 5
-SWEEP_BAD = STATE_COLUMN + 16
+SWEEP_CYCLES = TEXT_COLUMN + 1     ; its columns, and their widths
+SWEEP_SPEED = TEXT_COLUMN + 5
+SWEEP_BAD = TEXT_COLUMN + 16
 .assert SWEEP_TOP + SWEEP_RATES - 1 <= SWEEP_LAST_ROW, error, "the sweep's table fits"
-.assert SWEEP_BAD + 12 = STATE_COLUMN + STATE_WIDTH, error, "the sweep's rows are the state's width"
+.assert SWEEP_BAD + 12 = TEXT_COLUMN + TEXT_WIDTH, error, "the sweep's rows are the halves' width"
 
 .segment "RODATA"
 
@@ -171,11 +182,23 @@ ROWS = * - row_width
 tens_lo: .lobytes 10000, 1000, 100, 10, 1
 tens_hi: .hibytes 10000, 1000, 100, 10, 1
 
-waiting_text:  .byte "WAITING FOR THE NESP32", 0
-update_text:   .byte "UPDATE THE NESP32", 0
-press_text:    .byte "PRESS START", 0
-again_text:    .byte "DONE. PRESS START", 0
-testing_text:  .byte "TESTING", 0
+; A text for the line that says what the test is doing: centered on it.
+.macro state_text label, text
+label:
+.if (STATE_WIDTH - .strlen(text)) / 2
+    .res (STATE_WIDTH - .strlen(text)) / 2, ' '
+.endif
+    .byte text, 0
+.assert .strlen(text) <= STATE_WIDTH, error, "a state's text fits its line"
+.endmacro
+
+state_text waiting_text, "WAITING FOR THE NESP32"
+state_text update_text, "UPDATE THE NESP32"
+state_text press_text, "PRESS START"
+state_text again_text, "DONE. START : RE-TEST"
+state_text again_cart_text, "DONE. START : RE-TEST B : QUIT"   ; on the cartridge, B is its menu
+state_text testing_text, "TESTING"
+state_text sweep_state, "SWEEPING"
 idle_text:     .byte "WAITING", 0
 climbing_text: .byte "CLIMBING", 0
 done_text:     .byte "DONE", 0
@@ -254,6 +277,11 @@ of_text:       .byte " OF ", 0
     bit PPUSTATUS
     bpl @vblank2
 
+    lda CART_STUB
+    cmp #CART_STUB_FIRST
+    bne @alone
+    inc on_cart
+@alone:
     jsr screen_init
     lda #$E1                    ; any seed but 0
     sta seed
@@ -301,13 +329,19 @@ of_text:       .byte " OF ", 0
     say press_text
     jmp @idle
 @again:
+    lda on_cart
+    bne @again_cart
     say again_text
+    jmp @idle
+@again_cart:
+    say again_cart_text
 
     ; Wait to be started: Start on controller 1, or button A on the nesp32.
-    ; A request a frame keeps watch on the nesp32 meanwhile.
+    ; On the cartridge, B is its menu. A request a frame keeps watch on the
+    ; nesp32 meanwhile.
 @idle:
     lda pad
-    and #PAD_START | PAD_SELECT
+    and #PAD_START | PAD_SELECT | PAD_B
     bne @down
     lda #1
     sta start_up
@@ -315,6 +349,13 @@ of_text:       .byte " OF ", 0
 @down:
     lda start_up
     beq @watch
+    lda pad
+    and #PAD_B
+    beq @start
+    lda on_cart
+    beq @watch
+    jmp quit
+@start:
     lda pad
     and #PAD_SELECT
     beq @go
@@ -342,6 +383,17 @@ of_text:       .byte " OF ", 0
     lda #1
     sta ran
     jmp @greeted
+.endproc
+
+; Back to the cartridge's menu, as reset would go: through its stub, with
+; the NMI off first, since the stub's `inc` puts the menu's bank, and its
+; NMI, under this. The menu says nothing to the nesp32; the next program's
+; hello is what tells it this one has gone.
+.proc quit
+    lda #0
+    sta PPUCTRL
+    sta PPUMASK
+    jmp CART_STUB
 .endproc
 
 ; Wait for an NMI that has not had its turn. The comparison is with the
@@ -517,7 +569,7 @@ main_wait:
 ; trial that came wrong of those it checked.
 .proc sweep
     jsr begin
-    say sweeping_text
+    say sweep_state
     lda #1
     sta swept
     jsr sweep_table
@@ -526,8 +578,8 @@ main_wait:
     cmp #PORT_IDLE
     beq @port
     lda #SWEEP_TOP
-    ldx #STATE_COLUMN
-    ldy #STATE_WIDTH
+    ldx #TEXT_COLUMN
+    ldy #TEXT_WIDTH
     jsr field
     put port_text
     lda port
@@ -597,7 +649,7 @@ main_wait:
 .proc sweep_row
     lda rate
     clc
-    adc #SWEEP_TOP - SWEEP_FIRST
+    adc #<(SWEEP_TOP - SWEEP_FIRST)  ; mod 256: the row is rate + SWEEP_TOP - SWEEP_FIRST
     pha
     ldx #SWEEP_CYCLES
     ldy #SWEEP_SPEED - SWEEP_CYCLES
@@ -620,7 +672,7 @@ main_wait:
     jsr field_end
     pla
     ldx #SWEEP_BAD
-    ldy #STATE_COLUMN + STATE_WIDTH - SWEEP_BAD
+    ldy #TEXT_COLUMN + TEXT_WIDTH - SWEEP_BAD
     jmp field
 .endproc
 
@@ -630,8 +682,8 @@ main_wait:
     sta row
 @row:
     lda row
-    ldx #STATE_COLUMN
-    ldy #STATE_WIDTH
+    ldx #TEXT_COLUMN
+    ldy #TEXT_WIDTH
     jsr field
     lda row
     cmp #HALF_RX
@@ -659,10 +711,10 @@ main_wait:
     sta row
 @row:
     lda row
-    ldx #STATE_COLUMN
-    ldy #STATE_WIDTH
+    ldx #TEXT_COLUMN
+    ldy #TEXT_WIDTH
     jsr field
-    ; ptr = screen_data + 32 * row + STATE_COLUMN
+    ; ptr = screen_data + 32 * row + TEXT_COLUMN
     lda row
     sta ptr
     lda #0
@@ -675,10 +727,10 @@ main_wait:
     bne @times32
     clc
     lda ptr
-    adc #<(screen_data + STATE_COLUMN)
+    adc #<(screen_data + TEXT_COLUMN)
     sta ptr
     lda ptr + 1
-    adc #>(screen_data + STATE_COLUMN)
+    adc #>(screen_data + TEXT_COLUMN)
     sta ptr + 1
     ldx draw_at
     ldy #0
@@ -687,7 +739,7 @@ main_wait:
     sta draw_buf,x
     inx
     iny
-    cpy #STATE_WIDTH
+    cpy #TEXT_WIDTH
     bne @tile
     stx draw_at
     jsr field_end
