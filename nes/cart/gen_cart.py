@@ -121,10 +121,9 @@ def mapper_page(program):
 # --- the menu's screen, in tiles ------------------------------------------------
 
 TITLE_TEXT = "MAIN MENU"
-LIST_ROW = layout.BODY_ROW
+LIST_ROW = layout.HEADING_ROW + 1    # right under the title
 LIST_STEP = 2                       # rows from a name to the next
 LIST_COLUMN = layout.LEFT + 2       # after the arrow
-HELP_TEXT = "A:RUN"
 
 
 class Image:
@@ -179,8 +178,6 @@ def build_screen():
             raise ValueError("%r is too long for the menu" % program.name)
         for offset, char in enumerate(program.name):
             screen.put(LIST_COLUMN + offset, LIST_ROW + LIST_STEP * index, ord(char))
-    for offset, char in enumerate(HELP_TEXT):
-        screen.put(layout.LEFT + offset, layout.HELP_ROW, ord(char))
     return screen
 
 

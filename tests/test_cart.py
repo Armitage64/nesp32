@@ -140,7 +140,7 @@ def test_power_on_is_the_menu(cart):
                                   "National Public Radio", "Weather", "Bluesky",
                                   "Throughput Test", "Setup")):
         assert c.line(cart_layout.LIST_ROW + cart_layout.LIST_STEP * index) == name
-    assert c.line(layout.HELP_ROW) == "A:RUN"
+    assert c.line(layout.HELP_ROW) == ""         # A is the button: no help says so
     assert c.sprite() == cart_layout.arrow(0) + (c.chr.index(
         layout.tile_bytes(layout.picture_tile(layout.PICTURES["ARROW"]))) // 16,)
 
