@@ -67,20 +67,25 @@ make test
 With the nesp32 on a Wi-Fi network (the [setup ROM](../setup) joins one)
 and on controller port 2, start `build/npr.nes`. The screen's header is
 nesp32's, with `NATIONAL PUBLIC RADIO` under the name; the nesp32's own
-screen calls the program `NPR`.
+screen calls the program `NPR`. The foot of the screen says what A and B
+do: on the menu `A : SELECT`, and with a station a picture each for play
+and pause.
 
 | | |
 |---|---|
 | **Up**, **Down** or **Select**, before a station is tuned in | the menu's other line: `HIGH QUALITY, NO HEADLINES` or `MED QUALITY, HEADLINE NEWS` |
 | **Start** or **A** on the controller | tune in, as the menu says: `TUNING`, and a second or two later `ON THE AIR`. Pressed again while it is tuning, give it up |
 | **A** on the controller, while the station plays | pause: `PAUSED`. Start or A plays it again, at once |
+| **B** on the controller, while it is tuning or paused | turn it off, and back to the menu (`B : BACK`) |
+| **B** on the controller, on the menu | on nesp32's cartridge, back to its menu (`B : QUIT`); built by itself, nothing |
 | **A** (front) on the nesp32 | tune in; and while the station plays or is paused, turn it off |
 
 **While the station plays, A on the controller pauses it and the nesp32's
 button stops it.** A console playing sampled sound does nothing else: its
 screen stands still, and of its controller it looks at button A alone,
 once a sample (the jukebox's `docs/PROTOCOL.md`, part 4, has how). Start
-is not seen until the station is paused. Reset works too: the nesp32
+and B are not seen until the station is paused, so its foot says nothing
+of B while it plays: A, then B, is back to the menu. Reset works too: the nesp32
 hears the console say hello and ends the sound.
 
 A paused station is fetched still, so that it plays again without tuning:

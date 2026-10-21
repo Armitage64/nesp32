@@ -32,6 +32,9 @@ NAMETABLES = (0x2000, 0x2800)       # horizontal mirroring: PPUCTRL's bit 1 choo
 
 STATUS_ROW, STATUS_COLUMN = gen_screen.STATUS_ROW, gen_screen.STATUS_COLUMN
 STATUS_WIDTH = gen_screen.STATUS_WIDTH
+FOOT_ROW = gen_screen.gen_ui.HELP_ROW
+# The foot's pictures' tiles, as gen_screen.FOOT_TEXT has them.
+ICONS = {chr(tile): char for char, tile in gen_screen.build_screen().icons.items()}
 
 
 class Radio(LinkConsole):
@@ -150,6 +153,19 @@ class Radio(LinkConsole):
     def status(self):
         """What the status line says."""
         return self.screen_text(STATUS_COLUMN, STATUS_ROW, STATUS_WIDTH).strip()
+
+    @property
+    def off(self):
+        """No station is tuned in, and the status line says nothing: the
+        menu waits for A or Start."""
+        return self.status == "" and self.byte("tuner") == p.NESP_TUNER_OFF
+
+    def foot(self, nametable=None):
+        """What the foot says, with its pictures as gen_screen.FOOT_TEXT
+        has them."""
+        text = self.screen_text(gen_screen.FOOT_COLUMN, FOOT_ROW, gen_screen.FOOT_WIDTH,
+                                nametable)
+        return "".join(ICONS.get(char, char) for char in text).strip()
 
     def air(self, data, piece=1024):
         """More of the station's stream, in the pieces a fetch brings."""

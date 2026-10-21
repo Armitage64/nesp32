@@ -392,6 +392,12 @@ def test_the_jukebox_waits_for_a_start_of_its_own(cart, images):
     c.run_until(lambda: c.line(13).startswith("0:01"), 300)
 
 
+# How each looks while it waits for a Start: NPR's status line has nothing
+# on it, under its menu.
+WAITING = {"npr": lambda c: c.line(8) == "" and "A : SELECT" in c.screen(),
+           "throughput": lambda c: "PRESS START" in c.screen()}
+
+
 @pytest.mark.parametrize("button", (PAD_A, PAD_START), ids=("a", "start"))
 @pytest.mark.parametrize("key", ("npr", "throughput"))
 def test_the_press_that_chose_a_program_does_not_start_it(cart, images, key, button):
@@ -404,8 +410,26 @@ def test_the_press_that_chose_a_program_does_not_start_it(cart, images, key, but
     c.strict = False
     c.run_until(lambda: stick.hellos, 300)
     c.run(60, pad=button)
-    assert "PRESS START" in c.screen()
+    waiting = WAITING[key]
+    assert waiting(c)
     c.run(30, pad=0)                    # nor once it is let go
-    assert "PRESS START" in c.screen()
+    assert waiting(c)
     c.press(PAD_START)                  # and a Start of its own starts it
-    c.run_until(lambda: "PRESS START" not in c.screen(), 120)
+    c.run_until(lambda: not waiting(c), 120)
+
+
+def test_b_in_nprs_menu_is_the_menu_again(cart, images):
+    index = next(index for index, image in enumerate(images) if image.program.key == "npr")
+    c = cart()
+    stick, _ = link(c, Stick)
+    c.run(4)
+    start(c, index)
+    c.run_until(lambda: stick.hellos, 300)
+    c.run(30)
+    assert not c.home
+    assert c.text(26).strip().endswith("B : QUIT")     # on the cartridge, there is a menu
+    c.press(PAD_B)
+    c.strict = True
+    c.run(6)
+    assert at_menu(c)
+    assert c.byte("choice") == 0

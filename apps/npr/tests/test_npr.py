@@ -15,9 +15,12 @@ import pytest
 
 import pcm
 import wav2pcm
-from nes_harness import (PAD_A, PAD_DOWN, PAD_SELECT, PAD_START, PAD_UP, PPUADDR, PPUCTRL, PPUDATA,
-                         VBLANK_CYCLES)
+from nes_harness import (PAD_A, PAD_B, PAD_DOWN, PAD_SELECT, PAD_START, PAD_UP, PPUADDR, PPUCTRL,
+                         PPUDATA, VBLANK_CYCLES)
 from radio import PPUSCROLL, Radio, ms
+
+import gen_news
+import gen_screen
 
 TUNER = p.NESP_SVC_TUNER
 PERIOD = p.NESP_TUNER_PERIOD
@@ -28,6 +31,7 @@ STATION_URL = "https://npr-ice.streamguys1.com/live.mp3"
 RATE = pcm.sample_rate(PERIOD)
 SAMPLE_CYCLES = PERIOD * pcm.FRAME_BITS         # a byte on the line
 TONE_HZ, TONE_LEVEL = 1000, 0.475               # nesp32's tests/fixtures/README.md
+FOOT = dict(gen_screen.FOOT_TEXT)
 
 
 @pytest.fixture
@@ -40,7 +44,7 @@ def radio(rom):
 def on_air(machine, tone):
     """Press Start, give the nesp32 the stream, and run until the console
     is in the sound."""
-    machine.until(lambda: machine.status == "PRESS START", limit=60)
+    machine.until(lambda: machine.off, limit=60)
     machine.press(PAD_START)
     machine.until(lambda: machine.stick.fetches == 1, limit=30)
     machine.air(tone)
@@ -67,20 +71,20 @@ def tone_amplitude(levels):
 
 def test_the_rom_says_who_it_is_and_what_it_needs(radio):
     machine = radio()
-    machine.until(lambda: machine.status == "PRESS START", limit=60)
+    machine.until(lambda: machine.off, limit=60)
     service, op, payload = machine.requests()[0]
     assert (service, op) == (p.NESP_SVC_SYS, p.NESP_SYS_HELLO)
     assert payload == bytes((p.NESP_PROTOCOL,)) + b"NPR " + bytes((1, 31, TUNER, p.NESP_SVC_RAW))
     assert machine.stick.app == (b"NPR ", 1)
     assert machine.stick.active(TUNER) and machine.stick.active(p.NESP_SVC_RAW)
     assert machine.stick.hellos == 1
-    assert machine.screen_text(10, 26, 12) == "A=PLAY/PAUSE"         # the foot of the screen
+    assert machine.foot() == FOOT["SELECT"]    # built by itself: B has no menu to go back to
 
 
 def test_nothing_is_fetched_until_start_is_pressed(radio):
     machine = radio()
     machine.wait(120)
-    assert machine.status == "PRESS START"
+    assert machine.off
     assert machine.stick.fetches == 0 and not machine.level_log
     assert machine.asked(p.NESP_TUNER_STATE) > 100      # it asks every frame
     assert machine.word("link_failed") == 0
@@ -89,7 +93,7 @@ def test_nothing_is_fetched_until_start_is_pressed(radio):
 @pytest.mark.parametrize("button", [PAD_START, PAD_A])
 def test_start_tunes_and_a_second_press_gives_it_up(radio, tone, button):
     machine = radio()
-    machine.until(lambda: machine.status == "PRESS START", limit=60)
+    machine.until(lambda: machine.off, limit=60)
     machine.press(button)
     machine.until(lambda: machine.status == "TUNING", limit=30)
     assert machine.stick.fetches == 1 and machine.asked(p.NESP_TUNER_PLAY) == 1
@@ -97,13 +101,13 @@ def test_start_tunes_and_a_second_press_gives_it_up(radio, tone, button):
     machine.wait(30)
     assert machine.status == "TUNING" and not machine.deaf
     machine.press(button)
-    machine.until(lambda: machine.status == "PRESS START", limit=30)
+    machine.until(lambda: machine.off, limit=30)
     assert machine.asked(p.NESP_TUNER_STOP) == 1 and not machine.stick.fetching
 
 
 def test_without_wifi_the_screen_says_so(radio):
     machine = radio(wifi=p.NESP_WIFI_IDLE)
-    machine.until(lambda: machine.status == "PRESS START", limit=60)
+    machine.until(lambda: machine.off, limit=60)
     machine.press(PAD_START)
     machine.until(lambda: machine.status == "NO WI-FI", limit=30)
     assert machine.stick.fetches == 0
@@ -111,7 +115,7 @@ def test_without_wifi_the_screen_says_so(radio):
 
 def test_a_station_that_cannot_be_had_says_why_and_can_be_tried_again(radio, tone):
     machine = radio()
-    machine.until(lambda: machine.status == "PRESS START", limit=60)
+    machine.until(lambda: machine.off, limit=60)
     machine.press(PAD_START)
     machine.until(lambda: machine.stick.fetches == 1, limit=30)
     machine.stick.fetch_done(False, b"THE SITE SAID 404")
@@ -236,7 +240,7 @@ def test_the_press_that_pauses_is_not_taken_for_one_that_plays(radio, tone):
 
 def test_a_held_down_does_not_end_the_sound_as_it_begins(radio, tone):
     machine = radio()
-    machine.until(lambda: machine.status == "PRESS START", limit=60)
+    machine.until(lambda: machine.off, limit=60)
     machine.pad = PAD_A                         # tuned in with A, which stays down
     machine.until(lambda: machine.stick.fetches == 1, limit=30)
     machine.air(tone)
@@ -255,7 +259,7 @@ def test_the_nesp32s_button_turns_a_paused_station_off(radio, tone):
     pause(machine)
     machine.until(lambda: machine.status == "PAUSED", limit=30)
     machine.press_button(p.NESP_EVENT_BUTTON_A)
-    machine.until(lambda: machine.status == "PRESS START", limit=30)
+    machine.until(lambda: machine.off, limit=30)
     assert not machine.stick.fetching
 
 
@@ -278,7 +282,7 @@ def test_the_nesp32s_button_ends_the_sound_and_the_link_goes_on(radio, tone):
     assert levels[-1] == 0                      # the DAC is left at its rest
     fall = levels[-200:]
     assert fall == sorted(fall, reverse=True)   # and came to it by a ramp
-    machine.until(lambda: machine.status == "PRESS START", limit=30)
+    machine.until(lambda: machine.off, limit=30)
     assert machine.byte("sounds") == 1 and not machine.stick.fetching
     failed = machine.word("link_failed")
     machine.wait(60)
@@ -290,7 +294,7 @@ def test_it_can_be_played_again(radio, tone):
     machine.advance(ms(200))
     machine.press_button(p.NESP_EVENT_BUTTON_A)
     machine.advance(ms(250))
-    machine.until(lambda: machine.status == "PRESS START", limit=30)
+    machine.until(lambda: machine.off, limit=30)
     count = len(machine.level_log)
     machine.press(PAD_START)
     machine.until(lambda: machine.stick.fetches == 2, limit=30)
@@ -316,7 +320,7 @@ def test_a_console_that_is_reset_in_a_sound_is_heard_and_greeted_again(radio, to
     machine.reset()
     machine.advance(ms(100))                    # its hello, into a line that is the run's
     machine.until(lambda: machine.stick.hellos == 2, limit=60)
-    machine.until(lambda: machine.status == "PRESS START", limit=30)
+    machine.until(lambda: machine.off, limit=30)
     assert not machine.stick.fetching and machine.port.period == p.NESP_PERIOD
 
 
@@ -339,7 +343,7 @@ def plays(machine):
 
 def test_it_starts_with_a_menu_of_two_and_the_first_chosen(radio):
     machine = radio()
-    machine.until(lambda: machine.status == "PRESS START", limit=60)
+    machine.until(lambda: machine.off, limit=60)
     machine.wait(12)
     assert middle(machine) == MENU and machine.shown == 0x2000
 
@@ -347,7 +351,7 @@ def test_it_starts_with_a_menu_of_two_and_the_first_chosen(radio):
 @pytest.mark.parametrize("button", [PAD_DOWN, PAD_UP, PAD_SELECT])
 def test_up_down_and_select_move_between_the_two(radio, button):
     machine = radio()
-    machine.until(lambda: machine.status == "PRESS START", limit=60)
+    machine.until(lambda: machine.off, limit=60)
     machine.press(button)
     machine.wait(12)
     assert middle(machine) == MENU_NEWS
@@ -359,7 +363,7 @@ def test_up_down_and_select_move_between_the_two(radio, button):
 
 def test_start_plays_what_the_menu_has_and_the_menu_goes(radio, tone, feed):
     machine = radio()
-    machine.until(lambda: machine.status == "PRESS START", limit=60)
+    machine.until(lambda: machine.off, limit=60)
     machine.press(PAD_START)
     machine.until(lambda: machine.stick.fetches == 1, limit=30)
     assert plays(machine) == [bytes((p.NESP_TUNER_MODE_HIGH,))]
@@ -370,7 +374,7 @@ def test_start_plays_what_the_menu_has_and_the_menu_goes(radio, tone, feed):
     machine.wait(15)
     assert middle(machine) == BLANK
     machine.press(PAD_START)                    # given up: the menu again, as it was
-    machine.until(lambda: machine.status == "PRESS START", limit=30)
+    machine.until(lambda: machine.off, limit=30)
     machine.wait(15)
     assert middle(machine) == MENU
     machine.press(PAD_DOWN)
@@ -382,7 +386,7 @@ def test_start_plays_what_the_menu_has_and_the_menu_goes(radio, tone, feed):
 
 def test_a_station_that_fails_brings_the_menu_back(radio):
     machine = radio()
-    machine.until(lambda: machine.status == "PRESS START", limit=60)
+    machine.until(lambda: machine.off, limit=60)
     machine.press(PAD_DOWN)
     machine.press(PAD_START)
     machine.until(lambda: machine.stick.fetches == 1, limit=30)
@@ -409,7 +413,7 @@ PAGE_MS = 550       # a page sent, 0.18 seconds, and drawn, four frames and the 
 def news_on_air(machine, tone, feed=None):
     """Choose the station with the headlines, give the nesp32 their feed,
     or none, and the stream, and run until the console is in the sound."""
-    machine.until(lambda: machine.status == "PRESS START", limit=60)
+    machine.until(lambda: machine.off, limit=60)
     count = machine.stick.fetches
     machine.press(PAD_DOWN)
     machine.press(PAD_START)
@@ -594,7 +598,7 @@ def test_the_nesp32s_button_ends_the_sound_with_the_headlines_too(radio, tone, f
     assert levels[-1] == 0                      # the DAC is left at its rest
     fall = levels[-100:]
     assert fall == sorted(fall, reverse=True)   # and came to it by a ramp
-    machine.until(lambda: machine.status == "PRESS START", limit=30)
+    machine.until(lambda: machine.off, limit=30)
     machine.wait(15)
     assert middle(machine) == MENU_NEWS and machine.shown == 0x2000
     assert not machine.stick.fetching
@@ -617,7 +621,7 @@ def test_tuned_in_again_the_headlines_are_fetched_again(radio, tone, feed):
     turned(machine)
     machine.press_button(p.NESP_EVENT_BUTTON_A)
     machine.advance(ms(300))
-    machine.until(lambda: machine.status == "PRESS START", limit=30)
+    machine.until(lambda: machine.off, limit=30)
     machine.wait(15)
     machine.press(PAD_START)                    # the menu is where it was left
     machine.until(lambda: machine.stick.fetches == 3, limit=30)
@@ -636,7 +640,7 @@ def test_a_console_reset_in_the_sound_with_the_headlines_is_greeted_again(radio,
     machine.reset()
     machine.advance(ms(100))
     machine.until(lambda: machine.stick.hellos == 2, limit=60)
-    machine.until(lambda: machine.status == "PRESS START", limit=30)
+    machine.until(lambda: machine.off, limit=30)
     machine.wait(15)
     assert middle(machine) == MENU and machine.shown == 0x2000
     assert not machine.stick.fetching and machine.port.period == p.NESP_PERIOD
@@ -656,4 +660,66 @@ def test_a_console_left_in_the_sound_is_freed_by_a_nesp32_starting_up(radio, ton
     machine.power_cycle()
     machine.until(lambda: machine.stick.hellos == 1, limit=60)
     assert not machine.deaf
-    machine.until(lambda: machine.status == "PRESS START", limit=30)
+    machine.until(lambda: machine.off, limit=30)
+
+
+# --- the foot, and B -----------------------------------------------------------------
+
+
+def test_the_foot_has_pictures_for_play_and_pause(radio, tone):
+    screen = gen_screen.build_screen()
+    tiles = screen.chr()
+    play, pause = (screen.icons[char] for char in (gen_screen.PLAY, gen_screen.PAUSE))
+    assert play != pause and min(play, pause) >= 0x80        # none of the font's
+    for tile, char in ((play, gen_screen.PLAY), (pause, gen_screen.PAUSE)):
+        assert tiles[16 * tile:16 * tile + 16] == gen_screen.gen_ui.tile_bytes(
+            gen_screen.icon_pixels(gen_screen.ICONS[char]))
+    machine = radio()
+    machine.until(lambda: machine.off, limit=60)
+    assert machine.foot() == "A : SELECT"       # the menu's says what A does there
+    on_air(machine, tone)
+    raw = machine.screen_text(gen_screen.FOOT_COLUMN, gen_screen.gen_ui.HELP_ROW,
+                              gen_screen.FOOT_WIDTH)
+    assert raw.strip() == "A : %c/%c" % (play, pause)
+    assert machine.screen_text(gen_screen.FOOT_COLUMN, gen_screen.gen_ui.HELP_ROW,
+                               gen_screen.FOOT_WIDTH, 0x2800) == raw    # and on the other nametable
+
+
+def test_b_does_nothing_on_the_menu_of_a_rom_on_no_cartridge(radio):
+    machine = radio()
+    machine.until(lambda: machine.off, limit=60)
+    machine.press(PAD_B)
+    machine.wait(30)
+    assert machine.off and machine.foot() == FOOT["SELECT"]
+    assert machine.byte("area") == 0 and machine.asked(p.NESP_TUNER_PLAY) == 0
+
+
+def test_b_while_tuning_is_the_menu_again(radio, tone):
+    machine = radio()
+    machine.until(lambda: machine.off, limit=60)
+    machine.press(PAD_DOWN)                     # the second line
+    machine.press(PAD_START)
+    machine.until(lambda: machine.status == "TUNING", limit=30)
+    machine.until(lambda: machine.foot() == FOOT["BACK"], limit=30)
+    machine.press(PAD_B)
+    machine.until(lambda: machine.off, limit=30)
+    assert machine.asked(p.NESP_TUNER_STOP) == 1 and not machine.stick.fetching
+    machine.wait(gen_news.ROWS + 5)
+    assert machine.page()[gen_screen.MENU_ROWS[1]] == "> " + gen_screen.MENU[1]
+    assert machine.foot() == FOOT["SELECT"]
+
+
+def test_on_the_air_the_foot_says_nothing_of_b_and_paused_b_is_the_menu_again(radio, tone):
+    machine = on_air(radio(), tone)
+    assert machine.foot() == FOOT["PLAIN"]      # B is not read in the sound
+    machine.advance(ms(200))
+    pause(machine)
+    machine.until(lambda: machine.status == "PAUSED", limit=30)
+    machine.until(lambda: machine.foot() == FOOT["BACK"], limit=30)
+    machine.press(PAD_B)
+    machine.until(lambda: machine.off, limit=30)
+    assert machine.asked(p.NESP_TUNER_STOP) == 1 and not machine.stick.fetching
+    assert machine.asked(p.NESP_TUNER_PLAY) == 1        # and nothing played it again
+    machine.wait(gen_news.ROWS + 5)
+    assert machine.page()[gen_screen.MENU_ROWS[0]] == "> " + gen_screen.MENU[0]
+    assert machine.foot() == FOOT["SELECT"]

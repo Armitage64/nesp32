@@ -16,14 +16,20 @@
 ;                   says the service is not in use
 ;   TUNER PLAY      Start or A was pressed, and nothing is being fetched,
 ;                   or the station is paused: with the mode the menu has
-;   TUNER STOP      or something is. Sent again until it is answered
+;   TUNER STOP      or something is, or B was, with a station tuning or
+;                   paused. Sent again until it is answered
 ;   TUNER SOUND     the station is ready, the screen says so, and A is up
 ;   TUNER STATE     otherwise: how it stands, for the status line
 ;
 ; There are two modes, and a menu in the middle of the screen to choose
 ; between them for as long as no station is tuned in: the station at 23244
 ; samples a second and nothing else, or at 11622 with the news headlines.
-; Up, Down and Select move between them.
+; Up, Down and Select move between them. B there is the cartridge's menu
+; again, on nesp32's cartridge; built by itself, this ROM has none.
+;
+; The foot of the screen says what A and B do, and changes with them: B is
+; read only with the NMI on, so a station's foot says nothing of it while
+; it plays (FOOT_* in screen.inc).
 ;
 ; When SOUND is answered with GO the console does nothing but receive: the
 ; NMI is off, the screen stands still, and of the controller only button A
@@ -41,8 +47,9 @@
 ; which is shown. The menu, and the blank that takes its place when a
 ; station is tuned in, are drawn on the first, by the NMI, a line a frame.
 ;
-; The NMI reads the controller, draws the status line when it has changed
-; or a line of the middle of the screen when one is due, and nothing else: the
+; The NMI reads the controller, draws the status line or the foot when it
+; has changed, or a line of the middle of the screen when one is due, and
+; nothing else: the
 ; exchange's request goes out at a fixed point after it.
 
 PPUCTRL   = $2000
@@ -66,10 +73,18 @@ NAMETABLE_2 = $2800             ; the other one: the mirroring is horizontal
 PALETTE   = $3F00
 
 PAD_START = $10
+PAD_B     = $40
 PAD_A     = $80
 PAD_MOVE  = $2C                 ; Select, Up and Down: the menu's other choice
 
 OUT0_MARK = $01
+
+; The cartridge's reset stub (nesp32's nes/cart/gen_cart.py) is at the same
+; place in every program's bank: an `inc` of itself, which resets the
+; mapper and puts the menu's bank at $C000, and a jump to the menu. Built by
+; itself, this ROM has padding there. As Bluesky's Select does.
+CART_STUB = $FFDA
+CART_STUB_FIRST = $EE           ; inc absolute
 
 NESP_RX_MASK = $1F              ; replies of up to 31 bytes: a state, and why
 NESP_TX_MAX  = 9                ; the hello, with its two services
@@ -118,6 +133,11 @@ mode:         .res 1            ; NESP_TUNER_MODE_*: the menu's choice
 moved:        .res 1            ; Select, Up or Down went down: the main loop's to act on
 area:         .res 1            ; what the middle of the screen is to show: AREA_*
 area_row:     .res 1            ; lines of it that are on the screen: NEWS_ROWS is all
+backed:       .res 1            ; B went down: the main loop's to act on
+foot:         .res 1            ; FOOT_*: what the foot says,
+foot_at:      .res 1            ; where its text is in foot_text,
+foot_dirty:   .res 1            ; and that it is not on the screen yet
+on_cart:      .res 1            ; this is on nesp32's cartridge, which has a menu
 
 .include "screen.inc"
 .include "nesp.inc"
@@ -166,6 +186,13 @@ state_status:
 .assert NESP_TUNER_OFF = 0 && NESP_TUNER_NO_WIFI = 1 && NESP_TUNER_TUNING = 2, error, "state_status"
 .assert NESP_TUNER_READY = 3 && NESP_TUNER_FAILED = 4, error, "state_status"
 
+; Where each foot's text is in foot_text, by FOOT_*.
+foot_place:
+.repeat 4, index
+    .byte index * FOOT_WIDTH
+.endrepeat
+.assert FOOT_SELECT = 0 && FOOT_QUIT = 1 && FOOT_PLAIN = 2 && FOOT_BACK = 3, error, "foot_place"
+
 .segment "CODE"
 
 .proc reset
@@ -202,13 +229,21 @@ state_status:
     bit PPUSTATUS
     bpl @vblank2
 
+    lda CART_STUB
+    cmp #CART_STUB_FIRST
+    bne @alone
+    inc on_cart
+@alone:
     jsr screen_init             ; rendering is off; the first NMI turns it on
     lda #NESP_TUNER_MODE_HIGH   ; the menu, with its first line chosen
     sta mode
     jsr show_area
     lda #TUNER_UNKNOWN
     sta tuner
-    sta status                  ; nothing is on the status line yet
+    sta foot                    ; nothing is on the foot yet,
+    jsr pick_foot
+    lda #TUNER_UNKNOWN
+    sta status                  ; nor on the status line
     sta pad_prev                ; and every button is down, so one held from
                                 ; before, as the cartridge's menu's A or Start
                                 ; is, counts only once it has been let go
@@ -303,6 +338,57 @@ main_wait:
     rts
 .endproc
 
+; The foot is to say A (FOOT_*). The NMI draws it.
+.proc set_foot
+    cmp foot
+    beq @done
+    sta foot
+    tax
+    lda #0
+    sta foot_dirty
+    lda foot_place,x
+    sta foot_at
+    lda #1
+    sta foot_dirty
+@done:
+    rts
+.endproc
+
+; What the foot says follows the middle of the screen and the station: A
+; chooses the menu's line, and plays and pauses a station; B is the
+; cartridge's menu from the menu, and the menu from a station that is
+; tuning or paused, which are when B can be read.
+.proc pick_foot
+    lda area
+    cmp #AREA_BLANK
+    beq @station
+    lda #FOOT_QUIT
+    ldx on_cart
+    bne @set
+    lda #FOOT_SELECT
+    beq @set
+@station:
+    lda #FOOT_PLAIN
+    ldx tuner
+    cpx #NESP_TUNER_READY
+    beq @set
+    lda #FOOT_BACK
+@set:
+    jmp set_foot
+.endproc
+
+; Back to the cartridge's menu, as reset would go: through its stub, with
+; the NMI off first, since the stub's `inc` puts the menu's bank, and its
+; NMI, under this. The menu says nothing to the nesp32; the next program's
+; hello is what tells it this one has gone, and no station is tuned in
+; while the menu is on the screen.
+.proc quit
+    lda #0
+    sta PPUCTRL
+    sta PPUMASK
+    jmp CART_STUB
+.endproc
+
 ; --- the link ----------------------------------------------------------------------
 
 ; The frame's exchange. An exchange that the next NMI cut off comes back
@@ -325,6 +411,28 @@ main_wait:
     sta mode
     jsr show_area
 @no_move:
+    lda backed
+    beq @no_back
+    lda #0
+    sta backed
+    lda area
+    cmp #AREA_BLANK
+    beq @station
+    lda on_cart                 ; the menu: back to the cartridge's
+    beq @no_back
+    jmp quit
+@station:
+    lda tuner                   ; a station: off, if it is tuning or paused
+    cmp #NESP_TUNER_TUNING
+    beq @stop
+    cmp #NESP_TUNER_PAUSED
+    bne @no_back
+@stop:
+    ldx #NESP_TUNER_STOP
+    lda #0
+    sta pressed                 ; a press with it is not to play it again
+    beq @op
+@no_back:
     lda pressed
     beq @no_press
     lda #0
@@ -350,7 +458,8 @@ main_wait:
     cmp #NESP_TUNER_READY
     bne @state
     lda status_dirty            ; the screen will not be drawn again until the
-    bne @idle                   ; sound is over: it says so first,
+    ora foot_dirty              ; sound is over: it says so first,
+    bne @idle
     lda area_row                ; and the menu is off it
     cmp #NEWS_ROWS
     bne @state
@@ -537,8 +646,8 @@ main_wait:
 .endproc
 
 ; The middle of the screen follows the station: the menu while none is
-; tuned in, and nothing while one is, where the headlines then go. A =
-; NESP_TUNER_*, as the nesp32 has just said.
+; tuned in, and nothing while one is, where the headlines then go; and the
+; foot follows both. A = NESP_TUNER_*, as the nesp32 has just said.
 .proc tuned_or_not
     ldx #AREA_BLANK
     cmp #NESP_TUNER_TUNING
@@ -554,9 +663,9 @@ main_wait:
     cmp #AREA_BLANK             ; the menu for the blank, or the blank for the menu?
     bcc @done                   ; neither: a paused station's page stays, and the menu
     txa
-    jmp show_area
+    jsr show_area
 @done:
-    rts
+    jmp pick_foot
 .endproc
 .assert AREA_BLANK = 2, error, "tuned_or_not tells the menu's two from the blank by bit 1"
 
@@ -718,8 +827,14 @@ main_wait:
     lda #1
     sta moved
 @no_move:
+    txa
+    and #PAD_B
+    beq @no_back
+    lda #1
+    sta backed
+@no_back:
     lda status_dirty
-    beq @drawn
+    beq @foot
     lda #>STATUS_ADDR           ; on both nametables: either may be the one shown
     jsr @status
     lda #>(STATUS_ADDR - NAMETABLE + NAMETABLE_2)
@@ -727,6 +842,16 @@ main_wait:
     lda #0
     sta status_dirty
     beq @done                   ; a line of the headlines waits for the next frame
+@foot:
+    lda foot_dirty              ; the foot likewise
+    beq @drawn
+    lda #>FOOT_ADDR
+    jsr @foot_line
+    lda #>(FOOT_ADDR - NAMETABLE + NAMETABLE_2)
+    jsr @foot_line
+    lda #0
+    sta foot_dirty
+    beq @done
 @drawn:
     ; The middle of the screen, a line a frame, when it is to change.
     ldx area_row
@@ -783,6 +908,19 @@ main_wait:
     iny
     cpy #STATUS_WIDTH
     bne @char
+    rts
+@foot_line:
+    sta PPUADDR
+    lda #<FOOT_ADDR
+    sta PPUADDR
+    ldx foot_at
+    ldy #FOOT_WIDTH
+@tile:
+    lda foot_text,x
+    sta PPUDATA
+    inx
+    dey
+    bne @tile
     rts
 .endproc
 
