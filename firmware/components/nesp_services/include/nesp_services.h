@@ -572,6 +572,7 @@ typedef struct {
 #define NESP_JUKE_PENDING 128
 #define NESP_JUKE_INTRO (2 * (3 + NESP_JUKE_TITLE_MAX) + 2 + 5)
 #define NESP_JUKE_NAME 64
+#define NESP_JUKE_LIST_NONE 0xFFFF
 
 typedef struct {
     nesp_link_t *link;
@@ -617,6 +618,15 @@ typedef struct {
     uint32_t sound_rise;            /* and how many of them have gone */
     uint32_t now;                   /* tick's last */
     nesp_run_t run;
+    /* A track's names for the console's menu (NAME): the one it asked for,
+     * and the one these are of, which tick reads. NESP_JUKE_LIST_NONE if
+     * none. */
+    uint16_t list_want;
+    uint16_t list_index;
+    uint8_t list_game_len;
+    uint8_t list_track_len;
+    uint8_t list_game[NESP_JUKE_TITLE_MAX];
+    uint8_t list_track[NESP_JUKE_TITLE_MAX];
     /* For the nesp32's screen. */
     uint16_t named;                 /* the track `name` is of, or count if none */
     char name[NESP_JUKE_NAME];

@@ -41,7 +41,10 @@ PALETTE = $3F00
 
 PAD_RIGHT = $01
 PAD_LEFT  = $02
+PAD_DOWN  = $04
+PAD_UP    = $08
 PAD_START = $10
+PAD_B     = $40
 PAD_A     = $80
 
 ; ui_status, an index into status_text.
@@ -108,6 +111,16 @@ ch_length:   .res NOISE + 1     ; length counters, by first register
 ch_env:      .res NOISE + 1     ; envelope levels, in sixteenths
 tri_linear:  .res 1
 tri_reload:  .res 1
+.ifdef LINK
+; The link ROM's menu and foot (serial_link.inc), which the NMI draws.
+pad_new:     .res 1             ; buttons that went down: the main loop's
+row_buf:     .res LIST_WIDTH    ; a row of the menu, or a blank one,
+row_addr:    .res 2             ; where, high byte first,
+row_dirty:   .res 1             ; and that it has not been drawn yet
+bars_off:    .res 1             ; the menu, or its rows, are where the bars go
+foot:        .res 1             ; FOOT_*: what the foot is to say
+foot_drawn:  .res 1             ; and what it says
+.endif
 
 .segment "RODATA"
 screen_data:
@@ -136,6 +149,15 @@ line_start:   .byte LINE_GAME, LINE_TITLE, LINE_TIME, LINE_BLANK
 line_count:   .byte TITLE_MAX, TITLE_MAX, TIME_WIDTH, TIME_WIDTH
 line_bit:     .byte PENDING_GAME, PENDING_TITLE, PENDING_TIME, PENDING_BLANK
 LINE_COUNT = * - line_bit
+
+.ifdef LINK
+; Where each foot's text is in foot_text, by FOOT_*.
+foot_place:
+.repeat 4, index
+    .byte index * FOOT_WIDTH
+.endrepeat
+.assert FOOT_SELECT = 0 && FOOT_QUIT = 1 && FOOT_PLAIN = 2 && FOOT_BACK = 3, error, "foot_place"
+.endif
 
 .segment "CODE"
 
@@ -181,6 +203,9 @@ LINE_COUNT = * - line_bit
 
     lda #$FF                    ; no status line is on the screen yet
     sta status_drawn
+.ifdef LINK
+    sta foot_drawn              ; nor a foot
+.endif
     sta pad_prev                ; and every button is down, so one held from
     rts                         ; before, as the cartridge's menu's A or Start
                                 ; is, counts only once it has been let go
@@ -188,7 +213,9 @@ LINE_COUNT = * - line_bit
 
 ; First thing in the NMI: read the controller, then write to the PPU. A
 ; frame draws one line of text, or the status line, or half of the bars, so
-; the writes always end well inside vblank.
+; the writes always end well inside vblank. The link ROM's draws a row of
+; its menu before any of them, and its foot after the status line; its
+; main loop has what the buttons asked for.
 .proc ui_vblank
     bit PPUSTATUS               ; reset the PPU's address latch
 
@@ -209,6 +236,26 @@ LINE_COUNT = * - line_bit
     and pad                     ; buttons that went down this frame
     ldx pad
     stx pad_prev
+.ifdef LINK
+    ora pad_new
+    sta pad_new
+    lda row_dirty
+    beq @draw
+    lda row_addr
+    sta PPUADDR
+    lda row_addr + 1
+    sta PPUADDR
+    ldx #0
+@row:
+    lda row_buf,x
+    sta PPUDATA
+    inx
+    cpx #LIST_WIDTH
+    bne @row
+    lda #0
+    sta row_dirty
+    jmp @done
+.else
     tax
     and #PAD_RIGHT | PAD_LEFT   ; these are EVENT_NEXT and EVENT_PREV
     tay
@@ -222,6 +269,7 @@ LINE_COUNT = * - line_bit
     tya
     beq @draw
     jsr link_button
+.endif
 
 @draw:
     lda text_pending
@@ -262,12 +310,12 @@ LINE_COUNT = * - line_bit
     inx
     dey
     bne @char
-    beq @done
+    jmp @done
 
 @status:
     lda ui_status
     cmp status_drawn
-    beq @bars
+    beq @foot
     sta status_drawn
     asl a                       ; STATUS_WIDTH is 16
     asl a
@@ -285,11 +333,38 @@ LINE_COUNT = * - line_bit
     inx
     dey
     bne @status_char
+    jmp @done
+
+@foot:
+.ifdef LINK
+    lda foot
+    cmp foot_drawn
+    beq @bars
+    sta foot_drawn
+    tax
+    lda foot_place,x
+    tax
+    lda #>FOOT_ADDR
+    sta PPUADDR
+    lda #<FOOT_ADDR
+    sta PPUADDR
+    ldy #FOOT_WIDTH
+@foot_tile:
+    lda foot_text,x
+    sta PPUDATA
+    inx
+    dey
+    bne @foot_tile
     beq @done
+.endif
 
     ; The bars of this frame's half that changed, each one a column of
     ; BAR_ROWS tiles written top to bottom.
 @bars:
+.ifdef LINK
+    lda bars_off
+    bne @done
+.endif
     lda #PPUCTRL_NMI | PPUCTRL_DOWN
     sta PPUCTRL
     lda bar_phase
@@ -364,9 +439,12 @@ LINE_COUNT = * - line_bit
     beq @no_sound               ; so this is drawn before it starts
     ldx #STATUS_SOUND
 @no_sound:
-    lda paused                  ; paused shows as stopped does, a sound too
-    beq @not_paused
+    lda paused                  ; paused shows as stopped does, by its clock;
+    beq @not_paused             ; a sound, which has none, says so
     ldx #STATUS_STOPPED
+    lda time_buf + TIME_COLON
+    bne @not_paused
+    ldx #STATUS_PAUSED
 @not_paused:
 .endif
     ; Stopped with a track on the screen: no "press Start", which the foot
@@ -745,6 +823,39 @@ LINE_COUNT = * - line_bit
 .endproc
 
 .assert LINE_GAME = 0, error, "read_title tells the lines apart by zero"
+
+.ifdef LINK
+; The track is sampled sound, whose place on the screen is not counted
+; while it plays: its length alone, in the middle of the clock's line, with
+; blanks where the position and the colon were, which stop the clock.
+.proc time_alone
+    ldx #0                      ; upwards: it moves to the left
+@total:
+    lda time_buf + TIME_TOTAL,x
+    sta time_buf + (TIME_WIDTH - TIME_TOTAL_WIDTH) / 2,x
+    inx
+    cpx #TIME_TOTAL_WIDTH
+    bne @total
+    lda #0
+    ldx #(TIME_WIDTH - TIME_TOTAL_WIDTH) / 2 - 1
+@before:
+    sta time_buf,x
+    dex
+    bpl @before
+    ldx #TIME_WIDTH - 1
+@after:
+    sta time_buf,x
+    dex
+    cpx #(TIME_WIDTH - TIME_TOTAL_WIDTH) / 2 + TIME_TOTAL_WIDTH - 1
+    bne @after
+    lda #PENDING_TIME
+    ora text_pending
+    sta text_pending
+    rts
+.endproc
+.assert (TIME_WIDTH - TIME_TOTAL_WIDTH) / 2 > TIME_COLON, error, "time_alone blanks the colon"
+.assert (TIME_WIDTH - TIME_TOTAL_WIDTH) / 2 < TIME_TOTAL, error, "time_alone moves the length to the left"
+.endif
 
 ; A length control record: TIME_TOTAL_WIDTH characters follow, the track's
 ; length as text. Put them on the clock's line and start its position from

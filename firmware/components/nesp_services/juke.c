@@ -37,6 +37,11 @@
  * due again, from as near as can be told to where the console stopped
  * listening; it asks for it when the music is played again.
  *
+ * The console has a menu of the tracks, and asks for their names one at a
+ * time (LIST): the game's, and the track's. The first asking of a track is
+ * answered without them, and tick reads them for the next. CHOOSE plays a
+ * track of the menu's from its beginning, and BUTTON's STOP is back to it.
+ *
  * handle answers from `pending` and never reads a file. tick, which runs
  * after the reply has gone, reads ahead.
  */
@@ -158,9 +163,9 @@ static bool look(nesp_juke_t *juke, uint16_t index, track_t *track)
     return false;
 }
 
-/* A control record with a name in it: what is left of the text when it has
- * been cut to a line of the console's screen and trimmed. */
-static uint8_t put_name(uint8_t *out, uint8_t code, const uint8_t *text, size_t len)
+/* A name as the console's screen has it: cut to a line of it, trimmed,
+ * and in printable ASCII, which its font is. Returns its length. */
+static uint8_t screen_name(uint8_t *out, const uint8_t *text, size_t len)
 {
     if (len > NESP_JUKE_TITLE_MAX) {
         len = NESP_JUKE_TITLE_MAX;
@@ -172,30 +177,40 @@ static uint8_t put_name(uint8_t *out, uint8_t code, const uint8_t *text, size_t 
     while (len != 0 && text[len - 1] == ' ') {
         len--;
     }
+    for (size_t index = 0; index < len; index++) {
+        out[index] = text[index] >= 0x20 && text[index] < 0x7F ? text[index] : (uint8_t)'?';
+    }
+    return (uint8_t)len;
+}
+
+/* A control record with a name in it. */
+static uint8_t put_name(uint8_t *out, uint8_t code, const uint8_t *text, size_t len)
+{
     out[0] = OP_CONTROL;
     out[1] = code;
-    out[2] = (uint8_t)len;
-    for (size_t index = 0; index < len; index++) {
-        /* The console's font is printable ASCII. */
-        out[3 + index] = text[index] >= 0x20 && text[index] < 0x7F ? text[index] : (uint8_t)'?';
+    out[2] = screen_name(out + 3, text, len);
+    return (uint8_t)(3 + out[2]);
+}
+
+/* A title is "game - track"; one with no " - " is a track's name with no
+ * game. Where the game's name ends, or len if there is none. */
+static size_t game_ends(const uint8_t *title, size_t len)
+{
+    for (size_t index = 0; index + 3 <= len; index++) {
+        if (memcmp(title + index, " - ", 3) == 0) {
+            return index;
+        }
     }
-    return (uint8_t)(3 + len);
+    return len;
 }
 
 /* What goes ahead of a track: the game's name, the track's, and how long
- * it will play, as nes-jukebox's tools/jbs.py builds them. A title is
- * "game - track"; one with no " - " is a track's name with no game. */
+ * it will play, as nes-jukebox's tools/jbs.py builds them. */
 static void make_intro(nesp_juke_t *juke, const track_t *track)
 {
     const uint8_t *title = track->title;
     size_t len = track->title_len;
-    size_t cut = len;
-    for (size_t index = 0; index + 3 <= len; index++) {
-        if (memcmp(title + index, " - ", 3) == 0) {
-            cut = index;
-            break;
-        }
-    }
+    size_t cut = game_ends(title, len);
     uint8_t *out = juke->intro;
     if (cut == len) {
         out += put_name(out, CTRL_GAME, title, 0);
@@ -286,21 +301,35 @@ static void advance(nesp_juke_t *juke)
     }
 }
 
-/* Do what a button asks (NESP_PRESS_*), the console's or the nesp32's own.
- * Next and previous change the track and play it, also from stopped or
- * paused. Play pauses and resumes; from stopped, or after the playlist's
- * end, it plays the current track from its beginning. */
-static void press(nesp_juke_t *juke, uint8_t buttons)
+/* A press or a choice is to be done. False if there is nothing to do it
+ * to. A sound the console was told to expect is due again: it asks when
+ * the music it is in plays. */
+static bool pressing(nesp_juke_t *juke)
 {
     if (juke->count == 0 || juke->state == NESP_PLAYER_NO_TRACKS) {
-        return;
+        return false;
     }
     juke->sound_press = 0;
     if (juke->sound == S_ARMED) {
         nesp_raw_drop(juke->raw);
         juke->sound = S_DUE;
     }
-    if (buttons & (NESP_PRESS_NEXT | NESP_PRESS_PREVIOUS)) {
+    return true;
+}
+
+/* Do what a button asks (NESP_PRESS_*), the console's or the nesp32's own.
+ * Stop is the console's menu, with the track it was at. Next and previous
+ * change the track and play it, also from stopped or paused. Play pauses
+ * and resumes; from stopped, or after the playlist's end, it plays the
+ * current track from its beginning. */
+static void press(nesp_juke_t *juke, uint8_t buttons)
+{
+    if (!pressing(juke)) {
+        return;
+    }
+    if (buttons & NESP_PRESS_STOP) {
+        stop(juke);
+    } else if (buttons & (NESP_PRESS_NEXT | NESP_PRESS_PREVIOUS)) {
         uint16_t step = buttons & NESP_PRESS_NEXT ? 1 : (uint16_t)(juke->count - 1);
         juke->index = (uint16_t)((juke->index + step) % juke->count);
         start(juke);
@@ -573,6 +602,26 @@ static void show(nesp_juke_t *juke, uint32_t now)
     juke->hal->show(juke->hal->ctx, 1, "");
 }
 
+/* The names of the track the console asked for, from its file. */
+static void read_names(nesp_juke_t *juke)
+{
+    track_t track;
+    uint16_t index = juke->list_want;
+    juke->list_want = NESP_JUKE_LIST_NONE;
+    juke->list_game_len = juke->list_track_len = 0;
+    if (look(juke, index, &track)) {
+        size_t cut = game_ends(track.title, track.title_len);
+        if (cut == track.title_len) {
+            juke->list_track_len = screen_name(juke->list_track, track.title, track.title_len);
+        } else {
+            juke->list_game_len = screen_name(juke->list_game, track.title, cut);
+            juke->list_track_len = screen_name(juke->list_track, track.title + cut + 3,
+                                               track.title_len - cut - 3);
+        }
+    }
+    juke->list_index = index;       /* a file that is not a track has no names */
+}
+
 static bool tick(void *ctx, uint32_t now)
 {
     nesp_juke_t *juke = ctx;
@@ -582,8 +631,12 @@ static bool tick(void *ctx, uint32_t now)
         juke->sound_fresh = false;
         juke->sound_began = now;    /* RAW's tick, which sent them, was this one */
     }
+    if (juke->list_want != NESP_JUKE_LIST_NONE) {
+        read_names(juke);
+        soon = true;
+    }
     if (juke->state == NESP_PLAYER_PLAYING) {
-        soon = fill(juke);
+        soon = fill(juke) || soon;
     } else if (juke->state != NESP_PLAYER_NO_TRACKS && juke->named != juke->index) {
         /* Stopped: the name of the track that Play will start. */
         track_t track;
@@ -712,6 +765,70 @@ static void sound(nesp_juke_t *juke, const nesp_request_t *request, nesp_reply_t
     reply->once = true;             /* asked again, the wait for the run starts again */
 }
 
+/* How many tracks the console's menu has. */
+static uint8_t listed(const nesp_juke_t *juke)
+{
+    if (juke->state == NESP_PLAYER_NO_TRACKS) {
+        return 0;
+    }
+    return juke->count > NESP_JUKE_LIST_MAX ? NESP_JUKE_LIST_MAX : (uint8_t)juke->count;
+}
+
+/* LIST: how many tracks there are and the one play would start, and the
+ * names of the one asked for if tick has read them. */
+static void name(nesp_juke_t *juke, const nesp_request_t *request, nesp_reply_t *reply)
+{
+    if (request->len != 1) {
+        reply->status = NESP_ST_BAD_ARG;
+        return;
+    }
+    uint8_t index = request->data[0];
+    uint8_t count = listed(juke);
+    reply->data[0] = juke->state;
+    reply->data[1] = count;
+    reply->data[2] = juke->index < count ? (uint8_t)juke->index : 0;
+    reply->len = 3;
+    reply->once = true;             /* asked again, the names may be there */
+    if (index >= count) {
+        return;
+    }
+    if (juke->list_index != index) {
+        juke->list_want = index;    /* for tick to read */
+        return;
+    }
+    /* A console with little room for a reply has the names cut to it. */
+    size_t room = reply->max > 5 ? reply->max - 5 : 0;
+    uint8_t game = juke->list_game_len < room ? juke->list_game_len : (uint8_t)room;
+    uint8_t track = juke->list_track_len < room - game ? juke->list_track_len
+                                                       : (uint8_t)(room - game);
+    uint8_t *out = reply->data + 3;
+    if (reply->max < 5) {
+        return;
+    }
+    *out++ = index;
+    *out++ = game;
+    memcpy(out, juke->list_game, game);
+    out += game;
+    memcpy(out, juke->list_track, track);
+    out += track;
+    reply->len = (uint8_t)(out - reply->data);
+}
+
+/* CHOOSE: play a track of the menu's, from its beginning. */
+static void choose(nesp_juke_t *juke, const nesp_request_t *request, nesp_reply_t *reply)
+{
+    if (request->len != 1) {
+        reply->status = NESP_ST_BAD_ARG;
+        return;
+    }
+    if (request->data[0] < listed(juke) && pressing(juke)) {
+        juke->index = request->data[0];
+        start(juke);
+    }
+    reply->data[0] = juke->state;
+    reply->len = 1;
+}
+
 static void handle(void *ctx, const nesp_request_t *request, nesp_reply_t *reply)
 {
     nesp_juke_t *juke = ctx;
@@ -730,6 +847,12 @@ static void handle(void *ctx, const nesp_request_t *request, nesp_reply_t *reply
         break;
     case NESP_JUKE_SOUND:
         sound(juke, request, reply);
+        break;
+    case NESP_JUKE_LIST:
+        name(juke, request, reply);
+        break;
+    case NESP_JUKE_CHOOSE:
+        choose(juke, request, reply);
         break;
     default:
         reply->status = NESP_ST_NO_OP;
@@ -775,6 +898,7 @@ static void activate(void *ctx)
     juke->name[0] = 0;
     juke->resent = juke->underruns = 0;
     juke->underruns_known = false;
+    juke->list_want = juke->list_index = NESP_JUKE_LIST_NONE;    /* the files may be others */
     juke->show = true;
 }
 
@@ -798,6 +922,7 @@ void nesp_juke_service(nesp_service_t *service, nesp_juke_t *juke, nesp_link_t *
     juke->raw = raw;
     juke->loops = 2;
     juke->repeat = true;
+    juke->list_want = juke->list_index = NESP_JUKE_LIST_NONE;
     memset(service, 0, sizeof(*service));
     service->id = NESP_SVC_JUKE;
     service->name = "JUKE";

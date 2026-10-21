@@ -118,6 +118,8 @@ id = 0x10
 STREAM = 0x00           # more of the music, from where the console has got to
 BUTTON = 0x01           # what the console's controller asked for (enum PRESS)
 SOUND = 0x02            # a sound record has played: send its samples (enum SOUND)
+LIST = 0x03             # a track's game and name, for the console's menu
+CHOOSE = 0x04           # play this track, from its beginning
 
 [services.WIKI]
 id = 0x11
@@ -227,6 +229,7 @@ DRAIN = 0x40            # no more is coming for now: play what you have
 NEXT = 0x01
 PREVIOUS = 0x02
 PLAY = 0x04             # play, or pause
+STOP = 0x08             # stop: back to the console's menu
 
 [enums.SOUND]           # JUKE SOUND's answer
 WAIT = 0                # not now (paused): ask again
@@ -345,6 +348,7 @@ RAW_QUIET_MS = 20       # a run from the console is over when this long passes w
 RAW_GIVE_UP_MS = 1000   # or this long with none at all
 RAW_PERIOD_MIN = 5      # the fastest rate a run may ask for, in CPU cycles a bit
 JUKE_TITLE_MAX = 28     # characters in a name on the console's screen
+JUKE_LIST_MAX = 255     # tracks a console's menu can count; any more are not in it
 JUKE_SOUND_RATES = 7    # the rates a sound may have: 21, 16, 14, 12, 10, 8 and 7 cycles a bit
 JUKE_SOUND_REFUSED = 0xFF   # JUKE SOUND's rate from a console that cannot play it
 JUKE_SOUND_LAST = 0xFC  # the byte that ends a sound and leaves the console's DAC at 0

@@ -18,6 +18,7 @@ STOPPED, PLAYING, PAUSED, NO_TRACKS = (p.NESP_PLAYER_STOPPED, p.NESP_PLAYER_PLAY
                                        p.NESP_PLAYER_PAUSED, p.NESP_PLAYER_NO_TRACKS)
 DRAIN = p.NESP_PLAYER_DRAIN
 NEXT, PREVIOUS, PLAY = p.NESP_PRESS_NEXT, p.NESP_PRESS_PREVIOUS, p.NESP_PRESS_PLAY
+STOP = p.NESP_PRESS_STOP
 WAIT, GO, GONE = p.NESP_SOUND_WAIT, p.NESP_SOUND_GO, p.NESP_SOUND_GONE
 LAST = bytes((p.NESP_JUKE_SOUND_LAST,))
 END = b"\x80\x00"
@@ -133,6 +134,35 @@ class Deck:
 
     def press(self, buttons):
         reply = self.stick.ask(JUKE, p.NESP_JUKE_BUTTON, bytes((buttons,)))
+        self.wait()
+        assert reply.ok and len(reply.payload) == 1
+        return reply.payload[0]
+
+    def listing(self, index):
+        """One LIST exchange: (state, count, current, names), names being
+        (game, track) or None if they did not come."""
+        reply = self.stick.ask(JUKE, p.NESP_JUKE_LIST, bytes((index,)))
+        self.wait()
+        assert reply.ok and len(reply.payload) >= 3
+        state, count, current = reply.payload[:3]
+        names = None
+        if len(reply.payload) > 3:
+            assert reply.payload[3] == index
+            game_len = reply.payload[4]
+            game = reply.payload[5:5 + game_len]
+            names = (game.decode(), reply.payload[5 + game_len:].decode())
+        return state, count, current, names
+
+    def names(self, index):
+        """A track's names, as a console asks for them: until they come."""
+        for _ in range(3):
+            names = self.listing(index)[3]
+            if names is not None:
+                return names
+        raise AssertionError("no names for track %d" % index)
+
+    def choose(self, index):
+        reply = self.stick.ask(JUKE, p.NESP_JUKE_CHOOSE, bytes((index,)))
         self.wait()
         assert reply.ok and len(reply.payload) == 1
         return reply.payload[0]
@@ -700,3 +730,58 @@ def test_the_screen_keeps_the_track_while_the_line_is_the_sounds(tape):
     assert tape.sound(1) == GO
     tape.wait(p.NESP_RAW_START_MS + 600)
     assert (tape.stick.shown(0), tape.stick.shown(1)) == ("2/3 Tape - Speech", "")
+
+
+# --- the console's menu -------------------------------------------------------------
+
+
+def test_the_menu_has_every_tracks_names_one_asking_after_another(deck):
+    state, count, current, names = deck.listing(1)
+    assert (state, count, current, names) == (STOPPED, 3, 0, None)     # not read yet
+    assert deck.listing(1)[3] == ("Game", "Second")
+    assert deck.names(0) == ("Game", "First")
+    assert deck.names(2) == ("", "Lonely")      # a title with no game
+    assert deck.listing(3)[3] is None           # there is no fourth
+    assert deck.ask() == b"" and deck.state == STOPPED     # and nothing plays
+
+
+def test_a_track_chosen_plays_from_its_beginning(deck):
+    assert deck.choose(1) == PLAYING and deck.stick.juke_index == 1
+    assert deck.pull(len(TWO_STREAM))[:len(TWO_STREAM)] == TWO_STREAM
+    assert deck.choose(1) == PLAYING            # again: from its beginning again
+    deck.pull(1)
+    assert deck.pull(len(TWO_STREAM))[:len(TWO_STREAM)] == TWO_STREAM and deck.flushes == 2
+    index = deck.stick.juke_index
+    assert deck.choose(7) == PLAYING and deck.stick.juke_index == index     # one there is not
+
+
+def test_stop_is_the_menu_again_at_the_track_it_was_at(deck):
+    deck.choose(2)
+    deck.pull(40)
+    assert deck.press(STOP) == STOPPED
+    assert deck.ask() == b"" and deck.state == STOPPED
+    assert deck.listing(0)[:3] == (STOPPED, 3, 2)
+    deck.press(PLAY)                            # and play is that track again
+    assert deck.pull(len(THREE_STREAM))[:len(THREE_STREAM)] == THREE_STREAM
+
+
+def test_a_paused_track_can_be_stopped(deck):
+    deck.press(PLAY)
+    deck.pull(40)
+    assert deck.press(PLAY) == PAUSED
+    assert deck.press(STOP) == STOPPED
+
+
+def test_with_no_music_the_menu_is_empty_and_nothing_can_be_chosen(stick):
+    deck = Deck(stick)
+    assert deck.listing(0) == (NO_TRACKS, 0, 0, None)
+    assert deck.choose(0) == NO_TRACKS
+
+
+def test_names_are_cut_to_the_screen(stick):
+    deck = Deck(stick, (jbs(b"A Game Whose Name Goes On And On - And So Does This Track's",
+                            body(1, 50)),))
+    game, track = deck.names(0)
+    assert game == "A Game Whose Name Goes On And"[:p.NESP_JUKE_TITLE_MAX]
+    assert len(game) <= p.NESP_JUKE_TITLE_MAX and len(track) <= p.NESP_JUKE_TITLE_MAX
+    assert track == "And So Does This Track's"

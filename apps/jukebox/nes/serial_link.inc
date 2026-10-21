@@ -27,6 +27,17 @@
 ; nesp32 does it once however often it hears it, and what comes of it is
 ; the stream it then sends, usually in a new epoch.
 ;
+; While the music is stopped the screen is a menu of the tracks, a row
+; each where the bars go, with the cursor's game and name over it where a
+; track's are. Up and Down move the cursor, Left and Right a page; A or
+; Start plays its track (JUKE CHOOSE), and B is the cartridge's menu again.
+; The nesp32 says how many tracks there are and their names, a track at a
+; time (JUKE LIST), in place of a frame's stream request: a row is drawn
+; when its names come. With the music playing, A or Start plays and
+; pauses, Left and Right are the track before and after, and B stops it,
+; which is the menu again. The foot says what A and B do: B is read only
+; with the NMI on, so not while sampled sound plays.
+;
 ; Sampled sound (docs/PROTOCOL.md, part 4) takes the line over. When the
 ; NMI plays a sound record, link_service asks for the sound (JUKE SOUND) in
 ; place of the stream. If the answer is GO, the console does nothing but
@@ -97,9 +108,45 @@ link_epoch:  .res 1             ; the epoch of what the ring holds
 link_pos:    .res 1             ; how many of its bytes have been taken, less a multiple of 256
 link_fresh:  .res 1             ; a hello has been said since the last reply's bytes
 button_pending: .res 1          ; EVENT_* bits not yet sent
+choose_pending: .res 1          ; a track of the menu's to play, plus one; 0 for none
 button_sending: .res 1          ; a press is out and unanswered: the frames it has left
 link_missed: .res 1             ; exchanges in a row with no reply, up to MISSED_MAX
 link_failed: .res 2             ; every exchange with none, for a debugger's watch list
+view:        .res 1             ; VIEW_*, or $FF before the first
+menu_new:    .res 1             ; the menu has come: how many tracks, and which, to ask
+menu_count:  .res 1             ; tracks in it
+menu_cursor: .res 1             ; the one A plays
+menu_top:    .res 1             ; the one on its first row
+paint_rows:  .res 1             ; a bit for each of its rows still to draw, first row lowest
+list_asked:  .res 1             ; the track a LIST asked about
+presses:     .res 1             ; the main loop's copy of pad_new
+list_left:   .res 1             ; ask_list's and show_name's: characters still to copy,
+list_line:   .res 1             ; the line they go on,
+list_from:   .res 1             ; and where they come from in the reply
+on_cart:     .res 1             ; this is on nesp32's cartridge, which has a menu
+
+VIEW_MENU   = 0
+VIEW_PLAYER = 1
+
+; The cartridge's reset stub (nesp32's nes/cart/gen_cart.py) is at the same
+; place in every program's bank: an `inc` of itself, which resets the
+; mapper and puts the menu's bank at $C000, and a jump to the menu. Built by
+; itself, this ROM has padding there. As Bluesky's Select does.
+CART_STUB = $FFDA
+CART_STUB_FIRST = $EE           ; inc absolute
+
+; JUKE LIST's reply: the state, how many tracks, the one play would start,
+; and with names, the track's number, its game's name's length, the game's
+; name and the track's.
+LIST_COUNT   = nesp_reply + 1
+LIST_CURRENT = nesp_reply + 2
+LIST_INDEX   = nesp_reply + 3
+LIST_GAME    = nesp_reply + 4
+LIST_HEAD    = 5
+
+.segment "RODATA"
+row_bit: .byte $01, $02, $04, $08, $10, $20, $40, $80
+.assert LIST_ROWS = 8, error, "paint_rows has a bit for each row"
 
 .segment "CODE"
 
@@ -112,6 +159,13 @@ link_failed: .res 2             ; every exchange with none, for a debugger's wat
 .proc link_init
     lda #OUT0_MARK
     sta JOY1
+    lda #$FF                    ; no view yet: the first is the menu
+    sta view
+    lda CART_STUB
+    cmp #CART_STUB_FIRST
+    bne @alone
+    inc on_cart
+@alone:
     rts
 .endproc
 
@@ -125,12 +179,14 @@ link_failed: .res 2             ; every exchange with none, for a debugger's wat
 .assert EVENT_NEXT = NESP_PRESS_NEXT, error, "the controller's bits are JUKE's"
 .assert EVENT_PREV = NESP_PRESS_PREVIOUS, error, "the controller's bits are JUKE's"
 .assert EVENT_PLAY = NESP_PRESS_PLAY, error, "the controller's bits are JUKE's"
+.assert EVENT_STOP = NESP_PRESS_STOP, error, "the controller's bits are JUKE's"
 
 ; The frame's exchange. An exchange that the next NMI cut off comes back
 ; here with carry set and frame_count moved on, so the main loop serves the
 ; new frame at once; one that ended inside its frame, good or not, leaves
 ; the next for the next NMI.
 .proc link_service
+    jsr menu_frame
     lda greeted
     bne @greeted
     jmp say_hello
@@ -140,6 +196,21 @@ link_failed: .res 2             ; every exchange with none, for a debugger's wat
     jsr nesp_again              ; the same request, byte for byte: done once
     jmp button_answer           ; however often it is heard
 @no_resend:
+    lda choose_pending
+    beq @no_choice
+    sec
+    sbc #1
+    sta nesp_request
+    lda #0
+    sta choose_pending
+    lda #BUTTON_TRIES
+    sta button_sending
+    lda #NESP_SVC_JUKE
+    ldx #NESP_JUKE_CHOOSE
+    ldy #1
+    jsr nesp_call
+    jmp button_answer
+@no_choice:
     lda button_pending
     beq @no_button
     sta nesp_request
@@ -162,6 +233,17 @@ link_failed: .res 2             ; every exchange with none, for a debugger's wat
     bne @music
     jmp ask_sound
 @music:
+    lda view
+    bne @stream
+    lda menu_new                ; the menu: how many tracks, and which
+    beq @rows
+    lda #0
+    jmp ask_list
+@rows:
+    jsr row_track               ; or the names of a row's track
+    bcs @stream
+    jmp ask_list
+@stream:
     jmp ask_stream
 .endproc
 
@@ -183,6 +265,10 @@ link_failed: .res 2             ; every exchange with none, for a debugger's wat
     lda #1
     sta greeted
     sta link_fresh              ; whatever the ring holds, the nesp32 knows nothing of it
+    lda view
+    bne @playing
+    jsr menu_again              ; and its tracks may be others
+@playing:
     lda #0
     sta link_pos
     sta button_sending
@@ -191,6 +277,512 @@ link_failed: .res 2             ; every exchange with none, for a debugger's wat
     lda #LINK_OLD
     sta link_state
     jmp link_heard
+.endproc
+
+; --- the menu ------------------------------------------------------------------
+
+; Every frame, before its exchange: the view follows the music, the buttons
+; are taken, the foot says what they do, and a row that needs no names is
+; drawn.
+.proc menu_frame
+    jsr follow_view
+    jsr take_buttons
+    jsr pick_foot
+    jmp paint_step
+.endproc
+
+; The menu while the music is stopped, or there is none, or no nesp32; the
+; player while it plays or is paused. Either way every row of the menu is
+; drawn again, as the menu or as blanks over it, and the bars wait for
+; that.
+.proc follow_view
+    ldx #VIEW_MENU
+    lda link_state
+    cmp #LINK_STREAMING
+    bne @want
+    ldx #VIEW_PLAYER
+@want:
+    cpx view
+    beq @done
+    stx view
+    lda #1
+    sta bars_off
+    lda #$FF
+    sta paint_rows
+    ldx #BAR_COUNT - 1          ; the rows go over the bars, which are down after
+    lda #0
+@bar:
+    sta ui_level,x
+    sta ui_drawn,x
+    dex
+    bpl @bar
+    lda view
+    bne @done
+    jsr menu_again
+    ldx #TITLE_MAX - 1          ; the cursor's game and name go where a track's do;
+    lda #' '                    ; the clock's line is blank, and does not flash
+@line:
+    sta game_buf,x
+    sta title_buf,x
+    dex
+    bpl @line
+    ldx #TIME_WIDTH - 1
+    lda #0
+@time:
+    sta time_buf,x
+    dex
+    bpl @time
+    lda #PENDING_GAME | PENDING_TITLE | PENDING_TIME
+    ora text_pending
+    sta text_pending
+@done:
+    rts
+.endproc
+
+; The menu is to be had from the nesp32 again: how many tracks, and which
+; play would start, and then every row.
+.proc menu_again
+    lda #1
+    sta menu_new
+    lda #$FF
+    sta paint_rows
+    rts
+.endproc
+
+; What the buttons that went down since the last frame ask for.
+.proc take_buttons
+    lda pad_new
+    bne @some
+@done:
+    rts
+@some:
+    ldx #0
+    stx pad_new
+    sta presses
+    lda view
+    beq @menu
+    bmi @done                   ; no view yet
+    lda presses                 ; the player: JUKE BUTTON's bits
+    and #PAD_RIGHT | PAD_LEFT   ; these are EVENT_NEXT and EVENT_PREV
+    tay
+    lda presses
+    and #PAD_A | PAD_START
+    beq @no_play
+    tya
+    ora #EVENT_PLAY
+    tay
+@no_play:
+    lda presses
+    and #PAD_B
+    beq @send
+    ldy #EVENT_STOP             ; B: back to the menu, and nothing else
+@send:
+    tya
+    beq @done
+    jmp link_button
+@menu:
+    lda presses
+    and #PAD_B
+    beq @no_quit
+    lda on_cart
+    beq @no_quit
+    jmp quit
+@no_quit:
+    lda menu_new
+    bne @done
+    lda menu_count
+    beq @done                   ; nothing to choose
+    lda presses
+    and #PAD_A | PAD_START
+    beq @move
+    ldx menu_cursor
+    inx
+    stx choose_pending
+    rts
+@move:
+    ldy menu_cursor             ; Y: where it was
+    ldx menu_cursor
+    lda presses
+    and #PAD_UP
+    beq @down
+    dex
+    cpx #$FF
+    bne @moved
+    ldx menu_count              ; from the first round to the last
+    dex
+    jmp @moved
+@down:
+    lda presses
+    and #PAD_DOWN
+    beq @page_up
+    inx
+    cpx menu_count
+    bcc @moved
+    ldx #0                      ; and from the last to the first
+    beq @moved
+@page_up:
+    lda presses
+    and #PAD_LEFT
+    beq @page_down
+    txa
+    sec
+    sbc #LIST_ROWS
+    bcs @to
+    lda #0
+    beq @to
+@page_down:
+    lda presses
+    and #PAD_RIGHT
+    beq @still
+    txa
+    clc
+    adc #LIST_ROWS
+    bcs @last
+    cmp menu_count
+    bcc @to
+@last:
+    lda menu_count
+    sec
+    sbc #1
+@to:
+    tax
+@moved:
+    stx menu_cursor
+    cpy menu_cursor
+    bne @changed
+@still:
+    rts
+@changed:
+    tya                         ; the row it left is drawn again,
+    sec
+    sbc menu_top
+    tax
+    lda row_bit,x
+    ora paint_rows
+    sta paint_rows
+    lda menu_cursor             ; and the one it came to, if it is on the page
+    sec
+    sbc menu_top
+    cmp #LIST_ROWS
+    bcs @place
+    tax
+    lda row_bit,x
+    ora paint_rows
+    sta paint_rows
+@place:
+    jmp place_top
+.endproc
+
+; The page has the cursor on it: if it is above the first row, it is the
+; first row; if it is below the last, the last. A page that moves is all
+; drawn again.
+.proc place_top
+    lda menu_cursor
+    cmp menu_top
+    bcc @set
+    sec
+    sbc menu_top
+    cmp #LIST_ROWS
+    bcc @done
+    lda menu_cursor
+    sbc #LIST_ROWS - 1          ; carry is set
+@set:
+    sta menu_top
+    lda #$FF
+    sta paint_rows
+@done:
+    rts
+.endproc
+
+; The foot: on the menu, A chooses, and on the cartridge B is its menu; in
+; the player, A plays and pauses, and B is the menu again but while
+; sampled sound plays, when it cannot be read.
+.proc pick_foot
+    lda view
+    bne @player
+    lda #FOOT_QUIT
+    ldx on_cart
+    bne @set
+    lda #FOOT_SELECT
+    jmp @set
+@player:
+    lda #FOOT_BACK
+    ldx sound_wanted
+    beq @set
+    ldx paused
+    bne @set
+    lda #FOOT_PLAIN
+@set:
+    sta foot
+    rts
+.endproc
+
+; A row of the menu to draw, if the last one has been drawn: blank in the
+; player, and on the menu past its last track. The bars come back once the
+; player's rows are all blank. A row with a track on it waits for its names
+; (row_track, and ask_list).
+.proc paint_step
+    lda row_dirty
+    bne @done
+    lda paint_rows
+    bne @some
+    lda view
+    beq @done
+    lda #0                      ; the player's rows are blank: the bars
+    sta bars_off
+@done:
+    rts
+@some:
+    jsr lowest_row
+    lda view
+    beq @menu
+@blank:
+    jsr row_place
+    lda #0
+    ldy #LIST_WIDTH - 1
+@clear:
+    sta row_buf,y
+    dey
+    bpl @clear
+    inc row_dirty
+    rts
+@menu:
+    lda menu_new
+    bne @done
+    txa
+    clc
+    adc menu_top
+    cmp menu_count
+    bcs @blank
+    rts
+.endproc
+
+; X = the first row still to draw.
+.proc lowest_row
+    ldx #0
+    lda paint_rows
+@bit:
+    lsr a
+    bcs @found
+    inx
+    bne @bit
+@found:
+    rts
+.endproc
+
+; Row X is the one being drawn: where it goes, and that it is not to be
+; drawn again. Preserves X.
+.proc row_place
+    lda list_addr_hi,x
+    sta row_addr
+    lda list_addr_lo,x
+    sta row_addr + 1
+    lda row_bit,x
+    eor #$FF
+    and paint_rows
+    sta paint_rows
+    rts
+.endproc
+
+; The track whose names the menu wants next, in A, with carry clear; carry
+; set if it wants none.
+.proc row_track
+    lda row_dirty
+    bne @none
+    lda paint_rows
+    beq @none
+    jsr lowest_row
+    txa
+    clc
+    adc menu_top
+    cmp menu_count
+    bcs @none
+    clc
+    rts
+@none:
+    sec
+    rts
+.endproc
+
+; JUKE LIST: how many tracks there are, and the names of track A. The
+; first after the menu has come puts the cursor on the track play would
+; start; after that, a row is drawn when its track's names come, and the
+; cursor's are where a track's game and name go.
+.proc ask_list
+    sta list_asked
+    sta nesp_request
+    lda #NESP_SVC_JUKE
+    ldx #NESP_JUKE_LIST
+    ldy #1
+    jsr nesp_call
+    bcc @came
+    jmp link_silent
+@came:
+    cmp #NESP_ST_OK
+    beq @ok
+    jmp link_refused
+@ok:
+    lda nesp_reply_len
+    cmp #3
+    bcc @heard                  ; not a reply to this at all
+    jsr take_state
+    lda menu_new
+    beq @known
+    lda LIST_COUNT              ; the menu has come
+    sta menu_count
+    lda LIST_CURRENT
+    cmp menu_count
+    bcc @current
+    lda #0
+@current:
+    sta menu_cursor
+    lda #0
+    sta menu_new
+    sta menu_top
+    jsr place_top
+    lda #$FF
+    sta paint_rows
+@heard:
+    jmp link_heard
+@known:
+    lda LIST_COUNT
+    cmp menu_count
+    beq @same
+    jsr menu_again              ; the nesp32 has other tracks now
+    jmp link_heard
+@same:
+    lda nesp_reply_len
+    cmp #LIST_HEAD
+    bcc @heard                  ; no names yet: asked again next frame
+    lda LIST_INDEX
+    cmp list_asked
+    bne @heard
+    jsr row_track               ; and the row still wants them
+    bcs @heard
+    cmp list_asked
+    bne @heard
+    jsr row_place
+    ldy #LIST_WIDTH - 1         ; the track's name after the cursor, or a blank
+    lda #' '
+@clear:
+    sta row_buf,y
+    dey
+    bpl @clear
+    lda list_asked
+    cmp menu_cursor
+    bne @name
+    ldy #LIST_NAME - 1
+@cursor:
+    lda list_cursor,y
+    sta row_buf,y
+    dey
+    bpl @cursor
+@name:
+    lda LIST_GAME               ; where the track's name is, and how long
+    clc
+    adc #LIST_HEAD
+    tax
+    lda nesp_reply_len
+    sec
+    sbc LIST_GAME
+    sbc #LIST_HEAD              ; carry is set
+    bcc @drawn
+    beq @drawn
+    tay
+    cpy #LIST_WIDTH - LIST_NAME
+    bcc @fits
+    ldy #LIST_WIDTH - LIST_NAME
+@fits:
+    sty list_left
+    ldy #LIST_NAME
+@char:
+    lda nesp_reply,x
+    sta row_buf,y
+    inx
+    iny
+    dec list_left
+    bne @char
+@drawn:
+    inc row_dirty
+    lda list_asked
+    cmp menu_cursor
+    beq @cursor_names
+    jmp link_heard
+@cursor_names:
+    ; The cursor's: its game and name where a track's go.
+    ldx #LINE_GAME
+    ldy #LIST_HEAD
+    lda LIST_GAME
+    jsr show_name
+    ldx #LINE_TITLE
+    lda LIST_GAME
+    clc
+    adc #LIST_HEAD
+    tay
+    lda nesp_reply_len
+    sec
+    sbc LIST_GAME
+    sbc #LIST_HEAD              ; carry is set
+    jsr show_name
+    jmp link_heard
+.endproc
+
+; A name from the reply, from nesp_reply + Y and A long, centered on the
+; line at X (LINE_GAME or LINE_TITLE), which a coming vblank draws.
+.proc show_name
+    cmp #TITLE_MAX + 1
+    bcc @fits
+    lda #TITLE_MAX
+@fits:
+    sta list_left
+    stx list_line
+    sty list_from
+    ldy #TITLE_MAX
+    lda #' '
+@clear:
+    sta text_lines,x
+    inx
+    dey
+    bne @clear
+    lda #TITLE_MAX
+    sec
+    sbc list_left
+    lsr a
+    clc
+    adc list_line
+    tax                         ; where it begins
+    ldy list_from
+    lda list_left
+    beq @drawn
+@char:
+    lda nesp_reply,y
+    sta text_lines,x
+    inx
+    iny
+    dec list_left
+    bne @char
+@drawn:
+    lda #PENDING_GAME
+    ldx list_line
+    beq @pending
+    lda #PENDING_TITLE
+@pending:
+    ora text_pending
+    sta text_pending
+    rts
+.endproc
+.assert LINE_GAME = 0, error, "show_name tells the lines apart by zero"
+
+; Back to the cartridge's menu, as reset would go: through its stub, with
+; the NMI off first, since the stub's `inc` puts the menu's bank, and its
+; NMI, under this. The menu says nothing to the nesp32; the next program's
+; hello is what tells it this one has gone.
+.proc quit
+    lda #0
+    sta PPUCTRL
+    sta PPUMASK
+    sta APU_STATUS
+    jmp CART_STUB
 .endproc
 
 ; A reply came. The next exchange waits for the next NMI: sent from here,
@@ -373,13 +965,18 @@ link_failed: .res 2             ; every exchange with none, for a debugger's wat
 .endproc
 
 ; A sound record has played. Ask for the sound, once every line the
-; record's frame changed is on the screen and the bars are off it: it will
-; not be drawn again until the sound is over.
+; record's frame changed is on the screen, with the foot, and the bars are
+; off it: it will not be drawn again until the sound is over.
 .proc ask_sound
     lda text_pending
+    ora row_dirty
+    ora paint_rows
     bne @idle
     lda ui_status
     cmp status_drawn
+    bne @idle
+    lda foot
+    cmp foot_drawn
     bne @idle
     ldx #BAR_COUNT - 1          ; and every bar is down, on the screen too
 @bar:

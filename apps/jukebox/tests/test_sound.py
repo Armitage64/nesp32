@@ -19,7 +19,8 @@ import pcm
 from link_harness import LinkConsole, ms
 from linked import (LINK_STOPPED, files, frames_of, greet, playlist_stream, press, start,
                     track_stream, wait_for)
-from nes_harness import PAD_A, PAD_LEFT, PAD_RIGHT, PAD_START, PPUCTRL, PPUCTRL_NMI, expected_frames
+from nes_harness import (PAD_A, PAD_B, PAD_LEFT, PAD_RIGHT, PAD_START, PPUCTRL, PPUCTRL_NMI,
+                         expected_frames)
 from wire import SPACE
 
 RATES = range(len(pcm.PERIODS))
@@ -29,6 +30,8 @@ PHASES = (0, 2.5, 4.5, 7, 8.5)
 START = 500
 SOUND = (p.NESP_SVC_JUKE, p.NESP_JUKE_SOUND)
 STREAM = (p.NESP_SVC_JUKE, p.NESP_JUKE_STREAM)
+ICONS = {chr(tile): char for char, tile in gen_ui.build_screens()[0].icons.items()}
+FOOT = dict(gen_ui.FOOT_TEXT)
 
 
 @pytest.fixture(scope="session")
@@ -271,6 +274,12 @@ def screen(nametable, column, row, width):
     return nametable[start:start + width].decode("latin-1").strip("\x00 ")
 
 
+def foot(nametable):
+    """The foot, with its pictures as gen_ui.FOOT_TEXT has them."""
+    text = screen(nametable, gen_ui.FOOT_COLUMN, gen_ui.HELP_ROW, gen_ui.FOOT_WIDTH)
+    return "".join(ICONS.get(char, char) for char in text)
+
+
 @pytest.mark.parametrize("period", pcm.PERIODS)
 def test_a_sound_track_plays_between_two_tracks_of_music(link_rom, demo, period):
     voice = sound(3, 2500, period)
@@ -319,8 +328,10 @@ def test_the_screen_names_the_sound_before_it_stands_still(link_rom, demo):
     assert screen(shown, gen_ui.TITLE_COLUMN, gen_ui.TITLE_ROW, gen_ui.TITLE_MAX) == "Hello"
     assert screen(shown, gen_ui.STATUS_COLUMN, gen_ui.STATUS_ROW,
                   gen_ui.STATUS_WIDTH) == "SAMPLED SOUND"
+    # Its length alone: no clock counts while it plays.
     assert screen(shown, gen_ui.TIME_COLUMN, gen_ui.TIME_ROW,
-                  len(gen_ui.TIME_TEMPLATE)) == "0:00 / 0:00"
+                  len(gen_ui.TIME_TEMPLATE)) == "0:00"
+    assert foot(shown) == FOOT["PLAIN"]             # and B, which is not read, is not on it
     assert machine.memory[PPUCTRL] & PPUCTRL_NMI    # and it is moving again
 
 
@@ -594,17 +605,22 @@ def test_a_pauses_a_sound_and_a_again_plays_the_rest_of_it(link_rom, demo, perio
     assert machine.stick.juke_index == 2 and machine.byte("stream_error") == 0
 
 
-def test_a_paused_sound_shows_as_paused_music_does_and_then_as_it_did(link_rom):
+def test_a_paused_sound_says_so_and_b_is_on_its_foot_and_then_it_is_as_it_was(link_rom):
     machine = console(link_rom, [("Voices - Hello", sound(27, 9000))])
     pause_under_way(machine)
     wait_for(machine, lambda: machine.byte("paused"), limit=30)
     machine.run(10)
     shown = set()
-    for _ in range(64):                         # a flash and more
+    for _ in range(64):                         # as long as a clock's flash
         machine.run(1)
         shown.add(machine.nametable())
-    assert len(shown) == 2                      # the clock flashes, and nothing else moves
-    assert all(b"SAMPLED SOUND" not in picture for picture in shown)
+    assert len(shown) == 1                      # a sound has no clock to flash: words
+    picture, = shown
+    assert screen(picture, gen_ui.STATUS_COLUMN, gen_ui.STATUS_ROW,
+                  gen_ui.STATUS_WIDTH) == "PAUSED"
+    assert screen(picture, gen_ui.TIME_COLUMN, gen_ui.TIME_ROW,
+                  len(gen_ui.TIME_TEMPLATE)) == "0:00"
+    assert foot(picture) == FOOT["BACK"]
     press(machine, PAD_A)
     wait_for(machine, lambda: sounds(machine) == 2)
     # The screen that stood still through the rest of it is the one that
@@ -711,3 +727,20 @@ def test_filler_frees_a_console_left_in_the_middle_of_a_sound(link_rom, demo):
     machine.press_button(p.NESP_EVENT_BUTTON_POWER)  # on to the music
     machine.run_until_played(100)
     assert machine.byte("stream_error") == 0
+
+
+def test_b_on_a_paused_sound_is_the_menu_again(link_rom, demo):
+    tracks = [("Demo - One", demo), ("Voices - Hello", sound(28, 9000)), ("Demo - Two", demo)]
+    machine = console(link_rom, tracks)
+    pause_under_way(machine)
+    wait_for(machine, lambda: machine.byte("paused"), limit=30)
+    machine.run(5)
+    press(machine, PAD_B)
+    wait_for(machine, lambda: machine.byte("view") == 0 and not machine.byte("paint_rows")
+             and not machine.byte("menu_new"), limit=60)
+    machine.run(10)
+    assert machine.byte("link_state") == LINK_STOPPED and machine.stick.juke_index == 1
+    assert machine.byte("menu_cursor") == 1 and sounds(machine) == 1
+    assert not machine.byte("sound_wanted") and not machine.byte("paused")
+    row = screen(machine.nametable(), gen_ui.LIST_COLUMN, gen_ui.LIST_ROW + 1, gen_ui.LIST_WIDTH)
+    assert row == "> Hello"

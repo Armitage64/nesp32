@@ -711,6 +711,8 @@ ring and plays a frame of it at every vblank.
 | `$00` | STREAM | `EPOCH`, `POS`, `ROOM`, `UNDERRUNS` | `STATE`, `EPOCH`, then up to `ROOM` bytes of the stream from `POS` |
 | `$01` | BUTTON | `BUTTONS` | `STATE` |
 | `$02` | SOUND | `EPOCH`, `RATE` | `STATE`, `ANSWER` |
+| `$03` | LIST | `INDEX` | `STATE`, `COUNT`, `CURRENT`, and with the names `INDEX`, `GAME_LEN`, `GAME[GAME_LEN]`, `TRACK` |
+| `$04` | CHOOSE | `INDEX` | `STATE` |
 
 | `STATE` | Name | Meaning |
 |---|---|---|
@@ -750,13 +752,26 @@ was switched off and on. The nesp32 begins the track again in a new
 epoch.
 
 **BUTTON is what the console's controller asked for**: bit 0 the next
-track, bit 1 the previous, bit 2 play or pause. Next and previous change
-the track and play it, also from stopped or paused. Play pauses and
+track, bit 1 the previous, bit 2 play or pause, bit 3 stop. Stop is
+STOPPED, at the track it was at, with nothing more sent: the console's
+menu. Next and previous change the track and play it, also from stopped
+or paused. Play pauses and
 resumes; from stopped, or once the playlist has ended, it plays the
 current track from its beginning. The reply is held for a repeat, as any
 is, so a console that hears no reply sends the request again unchanged
 until it does, and the press is done once. The nesp32's own buttons do the
 same: A is play or pause, B the previous track, the power button the next.
+
+**LIST and CHOOSE are the console's menu of the tracks.** LIST says how
+many there are, as many as 255 (`COUNT`; any after those are not in the
+menu), and the one play would start (`CURRENT`), and with them the names
+of track `INDEX`: its game's and its own, as the stream's control records
+have them, cut to a line of the screen. The names come from the track's
+file, which a reply never reads: the first LIST of a track is answered
+without them, and the nesp32 reads them for the next. One past the last
+has none. CHOOSE plays track `INDEX` from its beginning, in a new epoch,
+from stopped, paused or playing; one past the last does nothing. Its
+reply is held for a repeat, as BUTTON's is.
 
 The track the buttons count from is the one being sent, which in the last
 seconds of a track is already the next: the console plays a few seconds

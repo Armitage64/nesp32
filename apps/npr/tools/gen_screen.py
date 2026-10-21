@@ -44,21 +44,11 @@ STATUS_TEXT = (("WAITING", "WAITING FOR LINK"), ("OFF", ""),
                ("NO_WIFI", "NO WI-FI"), ("TUNING", "TUNING"), ("ON_AIR", "ON THE AIR"),
                ("PAUSED", "PAUSED"),
                ("OLD", "UPDATE NESP32"))
-# The foot, by the ROM's FOOT_* numbers. PLAY and PAUSE are pictures, in
-# tiles of their own, and stand for them here.
-PLAY, PAUSE = "\x01", "\x02"
-A_HELP = "A : " + PLAY + "/" + PAUSE
-# B is read only with the NMI on, so not while the station plays: then the
-# foot says nothing of it.
-FOOT_TEXT = (("SELECT", "A : SELECT"),              # the menu of a ROM built by itself
-             ("QUIT", "A : SELECT   B : QUIT"),     # the menu, on the cartridge
-             ("PLAIN", A_HELP),                     # a station playing
-             ("BACK", A_HELP + "   B : BACK"))      # a station tuning, or paused
-FOOT_WIDTH = max(len(text) for _, text in FOOT_TEXT)
-FOOT_COLUMN = (gen_ui.SCREEN_COLUMNS - FOOT_WIDTH) // 2
-# The pictures, in the font's cell: 5 x 7 from the second column.
-ICONS = {PLAY: ("10000", "11000", "11100", "11110", "11100", "11000", "10000"),
-         PAUSE: ("11011",) * 7}
+# The foot, by the ROM's FOOT_* numbers: the jukebox's, with its pictures
+# of play and pause.
+PLAY, PAUSE, A_HELP = gen_ui.PLAY, gen_ui.PAUSE, gen_ui.A_HELP
+FOOT_TEXT, FOOT_WIDTH, FOOT_COLUMN = gen_ui.FOOT_TEXT, gen_ui.FOOT_WIDTH, gen_ui.FOOT_COLUMN
+ICONS, icon_pixels = gen_ui.ICONS, gen_ui.icon_pixels
 
 
 # The menu, in the order of the nesp32's modes, and the rows of the middle
@@ -90,33 +80,16 @@ SAMPLE = ("A CONSOLE FROM 1985 LEARNS", "TO READ THE NEWS", "",
 assert STATUS_ROW < gen_news.NEWS_ROW and gen_news.NEWS_ROW + gen_news.ROWS <= gen_ui.HELP_ROW
 
 
-def icon_pixels(rows):
-    picture = [[0] * 8 for _ in range(8)]
-    for y, row in enumerate(rows):
-        for x, on in enumerate(row):
-            if on == "1":
-                picture[y][1 + x] = 3
-    return picture
-
-
 def build_screen():
     screen = gen_ui.Screen()
     screen.names[:] = b" " * len(screen.names)  # the ROM writes text over text
     gen_ui.header(screen, SUBTITLE)
-    # The pictures' tiles: drawn on the foot, to be given numbers, and
-    # taken off again.
-    screen.icons = {}
-    for char, rows in ICONS.items():
-        screen.picture(FOOT_COLUMN, gen_ui.HELP_ROW, icon_pixels(rows))
-        place = gen_ui.HELP_ROW * gen_ui.SCREEN_COLUMNS + FOOT_COLUMN
-        screen.icons[char] = screen.names[place]
-        screen.names[place] = ord(" ")
+    screen.icons = gen_ui.icon_tiles(screen, FOOT_COLUMN, gen_ui.HELP_ROW)
     return screen
 
 
 def foot_tiles(text, screen):
-    """A foot as its tiles, centered in FOOT_WIDTH."""
-    return bytes(screen.icons.get(char, ord(char)) for char in text.center(FOOT_WIDTH))
+    return gen_ui.foot_tiles(text, screen.icons)
 
 
 def palette_data():

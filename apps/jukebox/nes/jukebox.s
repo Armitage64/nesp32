@@ -74,6 +74,7 @@ LINK_EMPTY     = 8              ; the host has no music
 EVENT_NEXT = $01
 EVENT_PREV = $02
 EVENT_PLAY = $04                ; play or pause
+EVENT_STOP = $08                ; the link ROM's: back to its menu
 
 ; Indices into group_regs for the registers the control records write.
 REG_INDEX_STATUS = 0
@@ -527,6 +528,7 @@ retry:
     tax
     inx
     stx sound_wanted            ; a rate of 255 is refused later
+    jsr time_alone              ; its length, and no clock
     ; The screen stands still while a sound plays, so the bars of the
     ; notes before it come down now and not at their own pace. The next
     ; two vblanks draw them; the link waits for that.

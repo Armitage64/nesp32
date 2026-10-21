@@ -385,9 +385,9 @@ def test_the_jukebox_waits_for_a_start_of_its_own(cart, images):
     c.strict = False
     c.run_until(lambda: stick.hellos, 300)
     c.run(60, pad=PAD_A)
-    assert c.line(14) == "PRESS START"   # nothing plays: that A was the menu's
+    assert c.line(16) == "> First"      # nothing plays: that A was the menu's
     c.run(10, pad=0)                    # nor once it is let go
-    assert c.line(14) == "PRESS START"
+    assert c.line(16) == "> First" and c.line(13) == ""
     c.press(PAD_START)                  # and a Start of its own plays
     c.run_until(lambda: c.line(13).startswith("0:01"), 300)
 
@@ -428,6 +428,24 @@ def test_b_in_nprs_menu_is_the_menu_again(cart, images):
     c.run(30)
     assert not c.home
     assert c.text(26).strip().endswith("B : QUIT")     # on the cartridge, there is a menu
+    c.press(PAD_B)
+    c.strict = True
+    c.run(6)
+    assert at_menu(c)
+    assert c.byte("choice") == 0
+
+
+def test_b_in_the_jukeboxs_menu_is_the_menu_again(cart, images):
+    index = next(index for index, image in enumerate(images) if image.program.key == "jukebox")
+    c = cart()
+    stick, _ = link(c, Stick)
+    stick.add_track(ONE)
+    c.run(4)
+    start(c, index)
+    c.run_until(lambda: stick.hellos, 300)
+    c.run(40)
+    assert not c.home
+    assert c.line(16) == "> First" and c.line(26) == "A : SELECT   B : QUIT"
     c.press(PAD_B)
     c.strict = True
     c.run(6)

@@ -21,8 +21,8 @@ import vgm2jbs
 from link_harness import LinkConsole, ms
 from linked import (LINK_STOPPED, files, flip_random_bit, frames_of, greet, press, short_track,
                     start, track_stream, wait_for)
-from nes_harness import (PAD_A, PAD_B, PAD_LEFT, PAD_RIGHT, PAD_START, VBLANK_CYCLES,
-                         Console, expected_frames)
+from nes_harness import (PAD_A, PAD_B, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_START, PAD_UP,
+                         VBLANK_CYCLES, Console, expected_frames)
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 RIPS = sorted(glob.glob(os.path.join(ROOT, "music", "*.vg[mz]")))
@@ -48,6 +48,36 @@ def game_line(machine):
 def time_line(machine):
     return machine.screen_text(gen_ui.TIME_COLUMN, gen_ui.TIME_ROW,
                                len(gen_ui.TIME_TEMPLATE)).strip()
+
+
+LINK_EMPTY = 8                      # link_state: the nesp32 has no music
+FOOT = dict(gen_ui.FOOT_TEXT)
+ICONS = {chr(tile): char for char, tile in gen_ui.build_screens()[0].icons.items()}
+
+
+def foot_line(machine):
+    """What the link ROM's foot says, with its pictures as gen_ui.FOOT_TEXT
+    has them."""
+    text = machine.screen_text(gen_ui.FOOT_COLUMN, gen_ui.HELP_ROW, gen_ui.FOOT_WIDTH)
+    return "".join(ICONS.get(char, char) for char in text).strip()
+
+
+def list_rows(machine):
+    """The link ROM's menu, a row each: the cursor and the track's name, or
+    nothing."""
+    return [machine.screen_text(gen_ui.LIST_COLUMN, gen_ui.LIST_ROW + row,
+                                gen_ui.LIST_WIDTH).rstrip("\x00 ")
+            for row in range(gen_ui.LIST_ROWS)]
+
+
+def menu_is_up(machine, limit=120):
+    """Run until the link ROM's menu is on the screen, all of it."""
+    wait_for(machine, lambda: machine.byte("greeted") and machine.byte("view") == 0
+             and machine.byte("link_state") in (LINK_STOPPED, LINK_EMPTY)
+             and not machine.byte("menu_new")
+             and not machine.byte("paint_rows") and not machine.byte("row_dirty")
+             and not machine.byte("text_pending")
+             and machine.byte("foot") == machine.byte("foot_drawn"), limit=limit)
 
 
 def status_line(machine):
@@ -92,7 +122,7 @@ def play(rom, frames, nmis, **kwargs):
 def test_the_screen_is_the_one_the_generator_laid_out(rom, link_rom):
     link, standalone = gen_ui.build_screens()
     for paths, screen, help_text in ((rom, standalone, gen_ui.HELP_STANDALONE),
-                                     (link_rom, link, gen_ui.HELP_LINK)):
+                                     (link_rom, link, "A : SELECT")):
         machine = Console(*paths) if paths is rom else LinkConsole(*paths)
         machine.run(1)
         # Nothing has been drawn over it yet but the status line.
@@ -101,6 +131,7 @@ def test_the_screen_is_the_one_the_generator_laid_out(rom, link_rom):
         got = bytearray(machine.nametable())
         got[start:start + gen_ui.STATUS_WIDTH] = expected[start:start + gen_ui.STATUS_WIDTH]
         assert got == expected
+        machine.run(30)                             # the link ROM's foot is its own to write
         assert help_text in machine.screen_text(0, gen_ui.HELP_ROW, 32)
         credit = machine.nametable()[32 * gen_ui.CREDIT_ROW:32 * gen_ui.CREDIT_ROW + 32]
         assert sum(tile >= gen_ui.TILE_LOGO for tile in credit) >= 8   # the small print
@@ -370,6 +401,12 @@ def link_machine(link_rom, demo, begin=True, **options):
     return machine
 
 
+def choose_requests(machine):
+    """The tracks the menu asked for."""
+    return [payload[0] for service, op, payload in machine.requests()
+            if (service, op) == (p.NESP_SVC_JUKE, p.NESP_JUKE_CHOOSE)]
+
+
 def button_requests(machine):
     """What the controller asked for, as the nesp32 heard it: a press that
     had to be sent again is there again."""
@@ -383,11 +420,10 @@ def test_the_status_line_follows_the_link(link_rom, demo):
     assert status_line(machine) == "WAITING FOR LINK"
 
     machine = link_machine(link_rom, demo, begin=False)
-    machine.run(12)
-    assert status_line(machine) == "PRESS START"
+    menu_is_up(machine)
+    assert status_line(machine) == ""               # the menu: its foot says what to press
     press(machine, PAD_START)
-    machine.run(8)
-    assert status_line(machine) == "LOADING"
+    wait_for(machine, lambda: status_line(machine) == "LOADING", limit=20)
     machine.run_until_played(10)
     machine.run(2)
     assert status_line(machine) == ""
@@ -398,7 +434,7 @@ def test_the_status_line_says_what_is_wrong_with_the_nesp32(link_rom):
     import nesp
 
     machine = LinkConsole(*link_rom)                # a nesp32 with no files
-    machine.run(12)
+    machine.run(30)                                 # after the menu's empty rows
     assert status_line(machine) == "NO MUSIC FOUND"
 
     def old(reply):                                 # one with no JUKE service
@@ -408,7 +444,7 @@ def test_the_status_line_says_what_is_wrong_with_the_nesp32(link_rom):
                                     answer.payload[:6] + bytes((1, p.NESP_SVC_JUKE)))
         return reply
     machine = LinkConsole(*link_rom, to_console=old)
-    machine.run(12)
+    machine.run(30)
     assert status_line(machine) == "UPDATE NESP32"
 
 
@@ -513,22 +549,18 @@ def test_start_pauses_and_goes_on_from_where_it_was(link_rom, demo):
     assert time_line(machine) > "0:07"              # the clock went on as well
 
 
-def test_a_nesp32_that_stops_shows_the_clock_flashing_and_start_plays_again(link_rom, demo):
-    """Stopped with a track on the screen: no words, since the foot of the
-    screen says what Start does. A console that is reset is one way for
-    the music to stop; here the nesp32 was switched off and on."""
+def test_a_nesp32_that_stops_brings_the_menu_back_and_start_plays_again(link_rom, demo):
+    """A console that is reset is one way for the music to stop; here the
+    nesp32 was switched off and on, and has forgotten where it was."""
     machine = link_machine(link_rom, demo)
     wait_for(machine, lambda: len(machine.played_frames()) >= 150)
     machine.power_cycle()
     machine.stick.set_juke(loops=LOOPS)
     wait_for(machine, lambda: machine.byte("playing") == 0, limit=20)
-    machine.run(40)
+    menu_is_up(machine)
+    assert list_rows(machine)[:3] == ["> First track", "  Second track", ""]
+    assert time_line(machine).strip("\x00") == "" and status_line(machine) == ""
     played = len(machine.played_frames())
-    shown = set()
-    for _ in range(80):
-        machine.run(1)
-        shown.add(time_line(machine).strip("\x00"))
-    assert shown == {"", "0:02 / 3:33"} and status_line(machine) == ""
     press(machine, PAD_START)
     machine.run_until_played(played + 100)
     assert machine.played_frames()[played:played + 100] == frames_of(machine.streams[0], 100)
@@ -553,20 +585,25 @@ def test_pauses_survive_a_slow_noisy_link(link_rom, demo, seed):
     assert machine.byte("stream_error") == 0
 
 
-def test_start_plays_from_stopped_and_right_plays_the_next_track(link_rom, demo):
+def test_down_and_a_on_the_menu_play_the_second_track(link_rom, demo):
     machine = link_machine(link_rom, demo, begin=False)
-    greet(machine)
-    machine.run(20)
-    press(machine, PAD_RIGHT)
+    menu_is_up(machine)
+    press(machine, PAD_DOWN)
+    menu_is_up(machine)
+    assert list_rows(machine)[:2] == ["  First track", "> Second track"]
+    assert title_line(machine).strip() == "Second track"     # the cursor's, over the menu
+    press(machine, PAD_A)
     machine.run_until_played(40)
     assert machine.byte("link_state") != LINK_STOPPED and machine.stick.juke_index == 1
+    assert choose_requests(machine) == [1] and button_requests(machine) == []
     assert title_line(machine).strip() == "Second track"
+    assert foot_line(machine) == FOOT["BACK"] and list_rows(machine) == [""] * gen_ui.LIST_ROWS
 
 
 def test_other_buttons_do_nothing(link_rom, demo):
     machine = link_machine(link_rom, demo)
     machine.run_until_played(50)
-    press(machine, PAD_B | 0x20 | 0x08 | 0x04)      # B, Select, Up, Down
+    press(machine, 0x20 | PAD_UP | PAD_DOWN)        # Select, Up, Down
     machine.run(20)
     assert button_requests(machine) == []
 
@@ -608,3 +645,109 @@ def test_every_press_is_done_once_on_a_slow_noisy_link(link_rom, demo):
     machine.run_until_played(len(machine.played_frames()) + 60)
     assert machine.byte("stream_error") == 0
     assert title_line(machine).strip() == "First track"
+
+
+# -- the link ROM's menu -----------------------------------------------------------
+
+@pytest.fixture
+def menu(link_rom):
+    """A console on the link ROM with its menu up, and a nesp32 with this
+    many short tracks, from two games."""
+    def make(count):
+        tracks = [("Game %s - Track %02d" % ("AB"[n % 2], n), short_track())
+                  for n in range(count)]
+        machine = LinkConsole(*link_rom, tracks=files(tracks))
+        menu_is_up(machine)
+        return machine
+    return make
+
+
+def tap(machine, buttons):
+    """A press, and let go long enough to be seen to: one after another."""
+    press(machine, buttons)
+    machine.run(2)
+
+
+def names(first, last, cursor):
+    return [("> " if n == cursor else "  ") + "Track %02d" % n for n in range(first, last)]
+
+
+def test_the_menu_lists_the_tracks_with_the_cursors_game_and_name_over_it(menu):
+    machine = menu(11)
+    assert list_rows(machine) == names(0, 8, 0)
+    assert (game_line(machine).strip(), title_line(machine).strip()) == ("Game A", "Track 00")
+    assert status_line(machine) == "" and time_line(machine).strip("\x00") == ""
+    assert foot_line(machine) == FOOT["SELECT"]    # built by itself: B has no menu to go back to
+    tap(machine, PAD_DOWN)
+    menu_is_up(machine)
+    assert list_rows(machine) == names(0, 8, 1)
+    assert (game_line(machine).strip(), title_line(machine).strip()) == ("Game B", "Track 01")
+    assert machine.byte("link_state") == LINK_STOPPED and choose_requests(machine) == []
+
+
+def test_the_menu_scrolls_with_the_cursor_and_goes_round(menu):
+    machine = menu(11)
+    for _ in range(8):
+        tap(machine, PAD_DOWN)
+    menu_is_up(machine)
+    assert list_rows(machine) == names(1, 9, 8)
+    tap(machine, PAD_UP)                          # up within the page: it stays
+    menu_is_up(machine)
+    assert list_rows(machine) == names(1, 9, 7)
+    for _ in range(8):
+        tap(machine, PAD_UP)
+    menu_is_up(machine)
+    assert list_rows(machine) == names(3, 11, 10)   # from the first round to the last
+    tap(machine, PAD_DOWN)                        # and from the last to the first
+    menu_is_up(machine)
+    assert list_rows(machine) == names(0, 8, 0)
+
+
+def test_left_and_right_on_the_menu_are_a_page(menu):
+    machine = menu(11)
+    tap(machine, PAD_RIGHT)
+    menu_is_up(machine)
+    assert machine.byte("menu_cursor") == 8 and list_rows(machine) == names(1, 9, 8)
+    tap(machine, PAD_RIGHT)                       # no further than the last
+    menu_is_up(machine)
+    assert machine.byte("menu_cursor") == 10 and list_rows(machine) == names(3, 11, 10)
+    tap(machine, PAD_LEFT)
+    tap(machine, PAD_LEFT)                        # nor than the first
+    menu_is_up(machine)
+    assert machine.byte("menu_cursor") == 0 and list_rows(machine) == names(0, 8, 0)
+
+
+def test_b_while_music_plays_is_the_menu_at_its_track(link_rom, demo):
+    machine = link_machine(link_rom, demo)
+    machine.run_until_played(100)
+    assert foot_line(machine) == FOOT["BACK"] and lit_bars(machine)
+    tap(machine, PAD_B)
+    assert button_requests(machine) == [p.NESP_PRESS_STOP]
+    menu_is_up(machine)
+    assert list_rows(machine)[:3] == ["> First track", "  Second track", ""]
+    assert foot_line(machine) == FOOT["SELECT"] and machine.memory[0x4015] == 0
+    assert not machine.byte("playing")
+    tap(machine, PAD_DOWN)
+    tap(machine, PAD_START)                       # and another from there
+    machine.run_until_played(len(machine.played_frames()) + 20)
+    assert machine.stick.juke_index == 1 and choose_requests(machine) == [1]
+    assert list_rows(machine) == [""] * gen_ui.LIST_ROWS     # the bars' place again
+
+
+def test_with_no_music_the_menu_is_empty_and_a_chooses_nothing(link_rom):
+    machine = LinkConsole(*link_rom)
+    machine.run(30)
+    assert status_line(machine) == "NO MUSIC FOUND" and list_rows(machine) == [""] * 8
+    assert foot_line(machine) == FOOT["SELECT"]
+    tap(machine, PAD_A)
+    tap(machine, PAD_DOWN)
+    machine.run(10)
+    assert choose_requests(machine) == [] and button_requests(machine) == []
+
+
+def test_b_on_the_menu_does_nothing_on_no_cartridge(menu):
+    machine = menu(3)
+    tap(machine, PAD_B)
+    machine.run(20)
+    assert machine.byte("view") == 0 and button_requests(machine) == []
+    assert list_rows(machine) == names(0, 3, 0) + [""] * 5

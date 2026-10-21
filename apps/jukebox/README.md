@@ -75,6 +75,7 @@ stream, which covers every rip tried so far (6-14 KB).
 
 ## The screen
 
+![The menu of the tracks](docs/screen-menu.png)
 ![The screen while a track plays](docs/screen.png)
 
 Both ROMs show the same screen: the title, the game a track came from and
@@ -88,15 +89,25 @@ the bar for its pitch (four bars to the octave, C1 at the left) to the
 height of its volume, and the bars then fall by themselves. The noise
 channel sits on the right by its period.
 
+The link ROM begins with a menu of the nesp32's tracks, a row each where
+the bars go, and the game and name of the one the cursor is on above it.
+It is the menu whenever the music is stopped, with the cursor on the
+track it was at. The foot of the screen says what A and B do: on the
+menu `A : SELECT`, and on the cartridge `B : QUIT`; with the music
+playing, a picture each for play and pause, and `B : BACK`.
+
 Controller 1:
 
-| Button | Link ROM | Standalone ROM |
-|---|---|---|
-| **Start** or **A** | pause, resume; from stopped, play the current track from its start. During sampled sound only **A** is looked at, and pauses | pause, resume |
-| **Right** | next track, and play it | |
-| **Left** | previous track, and play it | |
+| Button | Link ROM, menu | Link ROM, playing | Standalone ROM |
+|---|---|---|---|
+| **Up**, **Down** | the track before or after; from the first round to the last | | |
+| **Left**, **Right** | a page of eight up or down | previous or next track, and play it | |
+| **Start** or **A** | play the track the cursor is on, from its start | pause, resume. During sampled sound only **A** is looked at, and pauses | pause, resume |
+| **B** | on nesp32's cartridge, back to its menu; built by itself, nothing | stop, and back to the menu. Not during sampled sound, until **A** has paused it | |
 
-While the music is paused or stopped the clock flashes.
+While the music is paused the clock flashes. Sampled sound has no clock:
+its line shows its length alone, and paused, the status line says
+`PAUSED`.
 
 On the link ROM the controller only asks: the press goes to the nesp32 as
 a button request, and the nesp32 changes the track as it does for its own
@@ -164,11 +175,11 @@ minute of it is 465 to 1220 KB.
 
 Plug the hat into controller port 2 and start `build/jukebox_link.nes` on
 the console. The order of powering up does not matter. Nothing plays until
-a button says so:
+a button says so: the menu's, or the nesp32's own:
 
 | The nesp32's button | The controller | What it does |
 |---|---|---|
-| **A** (front) | **Start** or **A** | pause, resume. From stopped, play the track shown from its start |
+| **A** (front) | **Start** or **A** | pause, resume. From stopped, play the track the nesp32 is at from its start |
 | **B** (side) | **Left** | previous track, and play it |
 | **Power**, tapped | **Right** | next track, and play it |
 | **B**, held 2 s | | power off |
@@ -235,10 +246,10 @@ rate is 610 KB of the nesp32's 3968: `--seconds` on the converters keeps a
 clip short.
 
 While a sound plays the console does nothing else: its screen stands still,
-with the bars down and the clock at 0:00, and of its controller only
+with the bars down and the sound's length, and of its controller only
 button A is looked at. **A pauses the sound**: the console leaves it, the
-clock flashes as it does when music is paused, and the whole controller
-works again, so Left and Right change the track from there. Start or A
+status line says `PAUSED`, and the whole controller works again, so Left
+and Right change the track from there, and B stops it. Start or A
 plays the sound on from where it was left, to within a few hundredths of
 a second. This is tested on the simulated console at all seven rates, and
 works on hardware.
@@ -254,7 +265,7 @@ the rest. Starting the nesp32 again frees it; so does Reset.
 ## Not done
 
 - **The rest of the controller during a sound.** Only A is looked at,
-  which pauses; Start, Left and Right work once it has. They are behind
+  which pauses; Start, Left, Right and B work once it has. They are behind
   the controller's shift register, which is clocked only with the line to
   the nesp32 held low. A console could hold it low across eight samples
   and read a button in the stop bits of each, over and over, at the same 3
