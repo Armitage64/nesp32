@@ -195,8 +195,8 @@ label:
 state_text waiting_text, "WAITING FOR THE NESP32"
 state_text update_text, "UPDATE THE NESP32"
 state_text press_text, "PRESS START"
-state_text again_text, "DONE. START : RE-TEST"
-state_text again_cart_text, "DONE. START : RE-TEST B : QUIT"   ; on the cartridge, B is its menu
+state_text again_text, "START : RE-TEST"
+state_text again_cart_text, "START : RE-TEST   B : QUIT"   ; on the cartridge, B is its menu
 state_text testing_text, "TESTING"
 state_text sweep_state, "SWEEPING"
 idle_text:     .byte "WAITING", 0
