@@ -16,6 +16,7 @@ import pytest
 from console import (BANK_SIZE, CHR_SIZE, INES_HEADER, PAD_A, PAD_B, PAD_DOWN, PAD_SELECT,
                      PAD_START, PAD_UP, PPUCTRL_NMI)
 from nesp import Stick
+from test_juke import ONE
 from wire import link
 
 PROGRAMS = cart_layout.PROGRAMS
@@ -371,3 +372,40 @@ def test_b_in_weathers_form_is_the_menu_again(cart, images):
     c.run(6)
     assert at_menu(c)
     assert c.byte("choice") == 0
+
+
+def test_the_jukebox_waits_for_a_start_of_its_own(cart, images):
+    index = next(index for index, image in enumerate(images) if image.program.key == "jukebox")
+    c = cart()
+    stick, _ = link(c, Stick)
+    stick.add_track(ONE)
+    c.run(4)
+    choose(c, index)
+    c.run(2, pad=PAD_A)                 # A chooses it, and is held
+    c.strict = False
+    c.run_until(lambda: stick.hellos, 300)
+    c.run(60, pad=PAD_A)
+    assert c.line(14) == "PRESS START"   # nothing plays: that A was the menu's
+    c.run(10, pad=0)                    # nor once it is let go
+    assert c.line(14) == "PRESS START"
+    c.press(PAD_START)                  # and a Start of its own plays
+    c.run_until(lambda: c.line(13).startswith("0:01"), 300)
+
+
+@pytest.mark.parametrize("button", (PAD_A, PAD_START), ids=("a", "start"))
+@pytest.mark.parametrize("key", ("npr", "throughput"))
+def test_the_press_that_chose_a_program_does_not_start_it(cart, images, key, button):
+    index = next(index for index, image in enumerate(images) if image.program.key == key)
+    c = cart()
+    stick, _ = link(c, Stick)
+    c.run(4)
+    choose(c, index)
+    c.run(2, pad=button)                # it chooses the program, and is held
+    c.strict = False
+    c.run_until(lambda: stick.hellos, 300)
+    c.run(60, pad=button)
+    assert "PRESS START" in c.screen()
+    c.run(30, pad=0)                    # nor once it is let go
+    assert "PRESS START" in c.screen()
+    c.press(PAD_START)                  # and a Start of its own starts it
+    c.run_until(lambda: "PRESS START" not in c.screen(), 120)

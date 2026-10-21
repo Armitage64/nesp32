@@ -209,6 +209,9 @@ state_status:
     lda #TUNER_UNKNOWN
     sta tuner
     sta status                  ; nothing is on the status line yet
+    sta pad_prev                ; and every button is down, so one held from
+                                ; before, as the cartridge's menu's A or Start
+                                ; is, counts only once it has been let go
     lda #STATUS_WAITING
     jsr set_status
     lda #OUT0_MARK              ; the line rests at mark, which is also what keeps

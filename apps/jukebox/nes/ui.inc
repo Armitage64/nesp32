@@ -181,7 +181,9 @@ LINE_COUNT = * - line_bit
 
     lda #$FF                    ; no status line is on the screen yet
     sta status_drawn
-    rts
+    sta pad_prev                ; and every button is down, so one held from
+    rts                         ; before, as the cartridge's menu's A or Start
+                                ; is, counts only once it has been let go
 .endproc
 
 ; First thing in the NMI: read the controller, then write to the PPU. A
