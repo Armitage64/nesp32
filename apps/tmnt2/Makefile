@@ -2,6 +2,7 @@
 #
 #   make            build/tmnt2.nes, the original
 #   make verify     check it against the ROM's SHA-512
+#   make test       the simulation's tests (needs requirements-dev.txt)
 #   make clean
 #
 # The game is not here. Its disassembly is Aaron Bottegal's
@@ -28,7 +29,7 @@ CONVERTED := $(BUILD)/converted.stamp
 NAMES := header tmnt2 chr
 OBJECTS := $(NAMES:%=$(BUILD)/orig/%.o)
 
-.PHONY: all verify clean
+.PHONY: all verify test clean
 
 all: $(ROM)
 
@@ -60,6 +61,9 @@ verify: $(ROM)
 	@test "$$(shasum -a 512 $(ROM) | cut -d' ' -f1)" = "$(SHA512_ORIGINAL)" \
 		&& echo "$(ROM) matches the original" \
 		|| { echo "$(ROM) differs from the original"; exit 1; }
+
+test:
+	$(PYTHON) -m pytest -q tests
 
 clean:
 	rm -rf $(BUILD)
