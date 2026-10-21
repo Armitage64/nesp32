@@ -66,10 +66,13 @@ Controller 1:
 |---|---|---|
 | Up, Down | move over the keys | scroll by the pixel, while held |
 | Left, Right | move over the keys | a page up, a page down |
-| A | type the key | a page down |
+| A | type the key; on ⇧, small letters / capitals | a page down |
 | B | delete; while searching, give up | a page up |
-| Select | small letters / capitals | back to the search screen |
+| Select | on nesp32's cartridge, back to its menu (`SELECT : QUIT`) | back to the search screen |
 | Start | search | top of the article |
+
+The shift key, ⇧, is on the space bar's row, under Z. On that row, Left
+and Right go from the one to the other.
 
 The field holds 30 characters and starts as `Nintendo Entertainment System`.
 The key under the cursor pulses from white through the logo's blues. A page

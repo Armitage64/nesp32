@@ -2,13 +2,15 @@
 ; to fill it from, in nametable 1 under the header.
 ;
 ;   D-pad    move over the keys; held, it repeats
-;   A        type the key
+;   A        type the key; on the shift key, small letters / capitals
 ;   B        delete the last character
-;   Select   small letters / capitals
 ;   Start    search
+;   Select   on nesp32's cartridge, back to its menu
 ;
-; The keys are KEY_ROWS rows of KEY_COLUMNS, and a space bar under them
-; that takes the whole of the last row. They are drawn in the font's second
+; The keys are KEY_ROWS rows of KEY_COLUMNS, and under them a last row of
+; two: the shift key, under the first column, and the space bar. On that
+; row the cursor keeps its column, and the first is the shift key; Left
+; and Right go from the one to the other. They are drawn in the font's second
 ; colour, and the one the cursor is on pulses from white through the
 ; logo's blues: its square of the screen has a palette of its own, and one
 ; colour of that palette is changed every few frames.
@@ -23,11 +25,12 @@ DIRTY_ROW    = $04              ; << row, for the rows of letters: 1 to 3
 DIRTY_LETTERS = DIRTY_ROW << 1 | DIRTY_ROW << 2 | DIRTY_ROW << 3
 ROW_TILES = KEY_STEP * (KEY_COLUMNS - 1) + 1
 NO_KEY = $FF
+SHIFT_COL = 0
 PULSE_MASK = $07                ; frames between the pulse's colours, less one
 
 .segment "ZEROPAGE"
-cur_row:    .res 1              ; KEY_ROWS is the space bar
-cur_col:    .res 1
+cur_row:    .res 1              ; KEY_ROWS is the shift key and the space bar
+cur_col:    .res 1              ; on that row, SHIFT_COL is the shift key
 shown_row:  .res 1              ; the key drawn in white; NO_KEY for none
 shown_col:  .res 1
 lower:      .res 1              ; $20 while the letters are small
@@ -114,6 +117,20 @@ row_first: .byte 0, KEY_COLUMNS, 2 * KEY_COLUMNS, 3 * KEY_COLUMNS
     bcs @left
     inc cur_row
 @left:
+    lda cur_row
+    cmp #KEY_ROWS
+    bcc @key_left
+    lda pad_new                 ; the last row: Left or Right is the other key
+    and #PAD_LEFT | PAD_RIGHT
+    beq @type
+    ldx #SHIFT_COL
+    cpx cur_col
+    bne @other
+    inx
+@other:
+    stx cur_col
+    jmp @type
+@key_left:
     lda pad_new
     and #PAD_LEFT
     beq @right
@@ -150,12 +167,9 @@ row_first: .byte 0, KEY_COLUMNS, 2 * KEY_COLUMNS, 3 * KEY_COLUMNS
     lda pad_new
     and #PAD_SELECT
     beq @search
-    lda lower
-    eor #$20
-    sta lower
-    lda kb_dirty
-    ora #DIRTY_LETTERS
-    sta kb_dirty
+    lda on_cart                 ; Select: back to the cartridge's menu
+    beq @search
+    jmp quit
 @search:
     lda pad_new
     and #PAD_START
@@ -174,8 +188,22 @@ row_first: .byte 0, KEY_COLUMNS, 2 * KEY_COLUMNS, 3 * KEY_COLUMNS
 .endproc
 
 ; Add the cursor's key to the search, if there is room. A search does not
-; begin with a space.
+; begin with a space. The shift key changes the letters' case.
 .proc type_key
+    lda cur_row
+    cmp #KEY_ROWS
+    bcc @key
+    lda cur_col
+    cmp #SHIFT_COL
+    bne @key
+    lda lower
+    eor #$20
+    sta lower
+    lda kb_dirty
+    ora #DIRTY_LETTERS
+    sta kb_dirty
+    rts
+@key:
     ldx query_len
     cpx #QUERY_MAX
     bcs @done
@@ -387,7 +415,8 @@ row_first: .byte 0, KEY_COLUMNS, 2 * KEY_COLUMNS, 3 * KEY_COLUMNS
     rts
 .endproc
 
-; Stage key (key_row, key_col) lit (A = 0) or unlit (A = ALT). A key is
+; Stage key (key_row, key_col) lit (A = 0) or unlit (A = ALT); on the last
+; row, key_col SHIFT_COL is the shift key and any other the space bar. A key is
 ; lit by its palette: the square of 2 x 2 tiles it sits in takes the
 ; cursor's palette, in which the keys' colour pulses. One attribute byte
 ; covers four squares, but only one key is ever lit, so the byte is that
@@ -415,6 +444,17 @@ row_first: .byte 0, KEY_COLUMNS, 2 * KEY_COLUMNS, 3 * KEY_COLUMNS
     sta draw_len
     rts
 @space:
+    lda key_col
+    cmp #SHIFT_COL
+    bne @bar
+    lda #<SHIFT_ATTR
+    sta draw_addr
+    lda #0
+    ldx key_alt
+    bne @one
+    lda #SHIFT_ATTR_ON
+    bne @one
+@bar:
     lda #<SPACE_ATTR
     sta draw_addr
     ldx #SPACE_ATTRS - 1
@@ -432,3 +472,4 @@ row_first: .byte 0, KEY_COLUMNS, 2 * KEY_COLUMNS, 3 * KEY_COLUMNS
     rts
 .endproc
 .assert >SPACE_ATTR = KEY_ATTR_HI, error, "the space bar's attributes"
+.assert >SHIFT_ATTR = KEY_ATTR_HI, error, "the shift key's attribute"

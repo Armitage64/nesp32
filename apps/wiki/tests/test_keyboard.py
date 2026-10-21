@@ -7,7 +7,9 @@ from drive import STATE_LOADING, STATE_SEARCH, run_until, tap
 ALT = gen_screen.ALT
 DEFAULT = gen_screen.DEFAULT_QUERY
 KEYS = gen_screen.KEYS
-SPACE = len(KEYS)               # the space bar's row
+SPACE = len(KEYS)               # the last row's: the shift key and the space bar
+SHIFT = (SPACE, 0)              # how lit_keys and go_to name them
+BAR = (SPACE, 1)
 
 
 def field(console):
@@ -31,9 +33,9 @@ def palette_at(console, column, row):
 
 
 def lit_keys(console):
-    """The keys shown in the cursor's palette, as (row, column); the space
-    bar is (SPACE, 0). Every key's tile is in the keys' colour, and no
-    other square of the keyboard has that palette."""
+    """The keys shown in the cursor's palette, as (row, column); the shift
+    key is SHIFT and the space bar BAR. Every key's tile is in the keys'
+    colour, and no other square of the keyboard has that palette."""
     lit = []
     for row in range(len(KEYS)):
         for column in range(len(KEYS[0])):
@@ -42,16 +44,20 @@ def lit_keys(console):
             assert chr(tile & 0x7F).upper() == KEYS[row][column] and tile & ALT
             if palette_at(console, *at) == gen_screen.PALETTE_CURSOR:
                 lit.append((row, column))
+    at = gen_screen.key_column(0), gen_screen.SPACE_ROW
+    assert console.tiles(1, at[1], at[0], 1)[0] == ord(gen_screen.SHIFT_CHAR) | ALT
+    if palette_at(console, *at) == gen_screen.PALETTE_CURSOR:
+        lit.append(SHIFT)
     bar = console.tiles(1, gen_screen.SPACE_ROW, gen_screen.SPACE_COLUMN, 5)
     assert bytes(tile & 0x7F for tile in bar) == b"SPACE" and all(tile & ALT for tile in bar)
     palettes = {palette_at(console, gen_screen.SPACE_COLUMN + offset, gen_screen.SPACE_ROW)
                 for offset in range(5)}
     assert len(palettes) == 1
     if palettes == {gen_screen.PALETTE_CURSOR}:
-        lit.append((SPACE, 0))
+        lit.append(BAR)
     squares = sum(1 for row in range(8, 30, 2) for column in range(0, 32, 2)
                   if palette_at(console, column, row) == gen_screen.PALETTE_CURSOR)
-    assert squares == sum(3 if row == SPACE else 1 for row, _ in lit)
+    assert squares == sum(3 if key == BAR else 1 for key in lit)
     return lit
 
 
@@ -59,18 +65,27 @@ def go_to(console, row, column):
     """Walk the cursor to a key."""
     while console.byte("cur_row") != row:
         tap(console, PAD_DOWN if console.byte("cur_row") < row else PAD_UP)
-    while row != SPACE and console.byte("cur_col") != column:
+    if row == SPACE:
+        if (console.byte("cur_col") == 0) != (column == 0):
+            tap(console, PAD_RIGHT)
+        return
+    while console.byte("cur_col") != column:
         tap(console, PAD_RIGHT if console.byte("cur_col") < column else PAD_LEFT)
+
+
+def shift(console):
+    go_to(console, *SHIFT)
+    tap(console, PAD_A)
 
 
 def type_text(console, text):
     for char in text:
         if char == " ":
-            go_to(console, SPACE, 0)
+            go_to(console, *BAR)
         else:
             row = next(index for index, keys in enumerate(KEYS) if char.upper() in keys)
             if char.isalpha() and (char.islower() != bool(console.byte("lower"))):
-                tap(console, PAD_SELECT)
+                shift(console)
             go_to(console, row, KEYS[row].index(char.upper()))
         tap(console, PAD_A)
 
@@ -170,34 +185,66 @@ def test_small_letters(console):
     assert len(lit_keys(c)) == 1
 
 
-def test_select_redraws_the_letters_and_keeps_the_cursor_lit(console):
+def test_shift_redraws_the_letters_and_keeps_the_cursor_lit(console):
     c = console()
     c.run(3)
-    go_to(c, 2, 3)
-    tap(c, PAD_SELECT)
+    shift(c)
     settle(c)
     for row in (1, 2, 3):
         shown = c.tiles(1, gen_screen.KEY_ROW + 2 * row, gen_screen.KEY_COLUMN, 19)
         letters = bytes(tile & 0x7F for tile in shown[::2]).decode()
         assert letters == KEYS[row].lower()
     assert c.text(1, gen_screen.KEY_ROW, gen_screen.KEY_COLUMN, 19)[::2] == KEYS[0]
-    assert lit_keys(c) == [(2, 3)]
+    assert lit_keys(c) == [SHIFT] and query(c) == DEFAULT     # it types nothing
+    tap(c, PAD_A)
+    settle(c)
+    assert c.text(1, gen_screen.KEY_ROW + 2, gen_screen.KEY_COLUMN, 19)[::2] == KEYS[1]
+    assert lit_keys(c) == [SHIFT]
+
+
+def test_select_does_nothing_off_the_cartridge(console):
+    c = console()
+    c.run(3)
+    assert not c.byte("on_cart")
     tap(c, PAD_SELECT)
     settle(c)
-    assert lit_keys(c) == [(2, 3)]
+    assert c.byte("state") == STATE_SEARCH and query(c) == DEFAULT
+    assert c.byte("lower") == 0 and lit_keys(c) == [(1, 0)]
+    help_row, help_text = gen_screen.HELP[-1]
+    assert c.text(1, help_row, 0, 32).strip("\x00 ") == help_text
+
+
+def test_the_last_rows_left_and_right_go_between_shift_and_space(console):
+    c = console()
+    c.run(3)
+    go_to(c, 3, 4)
+    tap(c, PAD_DOWN)
+    settle(c)
+    assert lit_keys(c) == [BAR] and c.byte("cur_col") == 4
+    tap(c, PAD_LEFT)
+    settle(c)
+    assert lit_keys(c) == [SHIFT]
+    tap(c, PAD_LEFT)
+    settle(c)
+    assert lit_keys(c) == [BAR]
+    tap(c, PAD_RIGHT)
+    settle(c)
+    assert lit_keys(c) == [SHIFT]
+    tap(c, PAD_UP)                          # the shift key is under Z
+    assert (c.byte("cur_row"), c.byte("cur_col")) == (3, 0)
 
 
 def test_one_key_is_lit_wherever_the_cursor_goes(console):
     c = console()
     c.run(3)
-    for row, column in ((0, 0), (0, 9), (3, 9), (SPACE, 0), (3, 4), (1, 0)):
+    for row, column in ((0, 0), (0, 9), (3, 9), BAR, SHIFT, (3, 4), (1, 0)):
         go_to(c, row, column)
         settle(c)
-        assert lit_keys(c) == [(row, 0 if row == SPACE else column)]
+        assert lit_keys(c) == [(row, column)]
     # Moving while the letters are being drawn again loses no key.
-    tap(c, PAD_SELECT)
+    shift(c)
     go_to(c, 3, 2)
-    tap(c, PAD_SELECT)
+    shift(c)
     go_to(c, 0, 5)
     settle(c)
     assert lit_keys(c) == [(0, 5)]

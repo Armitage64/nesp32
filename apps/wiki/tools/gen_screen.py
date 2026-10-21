@@ -18,7 +18,8 @@ Tiles:
     $01          one pixel: sprite 0, which marks where the header ends
     $02          the scroll thumb
     $03-$1F, $80-$9F   the header's letters and credit line
-    $20-$7F      the font at its ASCII codes, in colour 3 (white)
+    $20-$7F      the font at its ASCII codes, in colour 3 (white), and at
+                 $7F the shift key's arrow
     $A0-$FF      the font again in colour 1 (blue): a character with bit 7
                  set. Headings in an article, and the keys of the keyboard.
 
@@ -71,8 +72,12 @@ KEYS = ("1234567890", "QWERTYUIOP", "ASDFGHJKL-", "ZXCVBNM,.'")
 SPACE_ROW = KEY_ROW + KEY_STEP * len(KEYS)
 SPACE_TEXT = "SPACE"
 SPACE_COLUMN = (SCREEN_COLUMNS - len(SPACE_TEXT)) // 2
+# The shift key is on the space bar's row, under the first column of keys:
+# an arrow, at a code of the font's own that no text uses.
+SHIFT_CHAR = "\x7f"
 STATUS_COLUMN, STATUS_ROW = 2, 24   # COLUMNS wide
-HELP = ((26, "A:TYPE B:DELETE START:SEARCH"), (28, "SELECT:ABC/abc"))
+HELP = ((26, "A : TYPE   B : DELETE"), (28, "START : SEARCH"))
+HELP_CART = "START : SEARCH   SELECT : QUIT"   # on the cartridge, Select is its menu
 DEFAULT_QUERY = "Nintendo Entertainment System"
 
 THUMB_X = 244                       # the scroll thumb, right of the text
@@ -152,7 +157,7 @@ FONT = {
     "x": "00 00 11 0A 04 0A 11", "y": "00 00 11 11 0F 01 0E",
     "z": "00 00 1F 02 04 08 1F", "{": "02 04 04 08 04 04 02",
     "|": "04 04 04 04 04 04 04", "}": "08 04 04 02 04 04 08",
-    "~": "00 00 08 15 02 00 00",
+    "~": "00 00 08 15 02 00 00", SHIFT_CHAR: "04 0A 11 1B 0A 0A 0E",
 }
 
 
@@ -252,7 +257,7 @@ class Screen:
         self.tiles = {TILE_BLANK: tile_bytes(empty_tile()),
                       TILE_SPRITE0: tile_bytes(sprite0_tile()),
                       TILE_THUMB: tile_bytes(thumb_tile())}
-        for code in range(0x20, 0x7F):
+        for code in range(0x20, 0x80):
             self.tiles[code] = tile_bytes(font_tile(chr(code)))
             self.tiles[code | ALT] = tile_bytes(font_tile(chr(code), 1))
         self.shared = {}                # tile bytes -> index, for the pictures
@@ -345,6 +350,7 @@ def build_screen():
     for row, keys in enumerate(KEYS):
         for index, char in enumerate(keys):
             screen.put(key_column(index), KEY_ROW + KEY_STEP * row, ord(char) | ALT)
+    screen.put(key_column(0), SPACE_ROW, ord(SHIFT_CHAR) | ALT)
     screen.text(SPACE_COLUMN, SPACE_ROW, SPACE_TEXT, alt=True)
     for row, text in HELP:
         screen.centered(row, text)
@@ -396,6 +402,12 @@ def key_attribute(row, index):
     return byte, PALETTE_CURSOR << shift
 
 
+def shift_attribute():
+    """(attribute byte's index, its value with the shift key lit)."""
+    byte, shift = attribute_cell(key_column(0), SPACE_ROW)
+    return byte, PALETTE_CURSOR << shift
+
+
 def space_attributes():
     """(first attribute byte's index, the values with the space bar lit)."""
     values = {}
@@ -412,6 +424,7 @@ def check_keys_have_squares():
     """No two keys share a square, and nothing else is in one."""
     squares = [attribute_cell(key_column(index), KEY_ROW + KEY_STEP * row)
                for row in range(len(KEYS)) for index in range(len(KEYS[0]))]
+    squares.append(attribute_cell(key_column(0), SPACE_ROW))
     squares += [attribute_cell(column, SPACE_ROW)
                 for column in range(SPACE_COLUMN, SPACE_COLUMN + len(SPACE_TEXT), 2)]
     if len(set(squares)) != len(squares):
@@ -448,6 +461,12 @@ def include():
     constant("KEY_STEP", KEY_STEP)
     constant("SPACE_LENGTH", len(SPACE_TEXT))
     constant("CURSOR_CHAR", "'%s'" % CURSOR_CHAR)
+    help_row, help_text = HELP[-1]
+    if not len(help_text) <= len(HELP_CART) <= SCREEN_COLUMNS:
+        raise ValueError("the cartridge's help must cover the last line of HELP")
+    constant("HELP_CART_ADDR", "$%04X" % (0x2400 + 32 * help_row
+                                          + (SCREEN_COLUMNS - len(HELP_CART)) // 2))
+    constant("HELP_CART_LENGTH", len(HELP_CART))
     lines += ["", "; The first tile of each row of keys, and of the space bar.",
               "key_row_lo: .lobytes " + ", ".join(
                   "$%04X" % (0x2400 + 32 * (KEY_ROW + KEY_STEP * row) + KEY_COLUMN)
@@ -457,6 +476,7 @@ def include():
                   for row in range(len(KEYS))) + ", $%04X" % (0x2400 + 32 * SPACE_ROW + SPACE_COLUMN),
               "key_chars:  .byte " + ", ".join('"%s"' % keys for keys in KEYS),
               'space_text: .byte "%s"' % SPACE_TEXT,
+              'help_cart:  .byte "%s"' % HELP_CART,
               "", "; Lighting a key: the attribute byte its square is in, and what to",
               "; write there. All other squares of the keyboard are palette 0.",
               "KEY_ATTR_HI = $%02X" % (ATTRIBUTES >> 8),
@@ -466,6 +486,8 @@ def include():
               "key_attr_on: .byte " + ", ".join(
                   "$%02X" % key_attribute(row, index)[1]
                   for row in range(len(KEYS)) for index in range(len(KEYS[0]))),
+              "SHIFT_ATTR = $%04X" % (ATTRIBUTES + shift_attribute()[0]),
+              "SHIFT_ATTR_ON = $%02X" % shift_attribute()[1],
               "SPACE_ATTR = $%04X" % (ATTRIBUTES + space_attributes()[0]),
               "SPACE_ATTRS = %d" % len(space_attributes()[1]),
               "space_attr_on: .byte " + ", ".join("$%02X" % v for v in space_attributes()[1]),

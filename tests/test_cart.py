@@ -468,3 +468,20 @@ def test_b_in_the_throughput_test_is_the_menu_again(cart, images):
     c.run(6)
     assert at_menu(c)
     assert c.byte("choice") == 0
+
+
+def test_select_in_nespedias_search_is_the_menu_again(cart, images):
+    index = next(index for index, image in enumerate(images) if image.program.key == "wiki")
+    c = cart()
+    link(c, Stick)
+    c.run(4)
+    start(c, index)
+    c.run(60)                           # it says hello only with its first search
+    assert not c.home
+    help_row = bytes(c.vram[0x2400 + 32 * 28:0x2400 + 32 * 29])     # its search is in nametable 1
+    assert help_row.strip(b"\0 ") == b"START : SEARCH   SELECT : QUIT"   # on the cartridge, a menu
+    c.press(PAD_SELECT)
+    c.strict = True
+    c.run(6)
+    assert at_menu(c)
+    assert c.byte("choice") == 0

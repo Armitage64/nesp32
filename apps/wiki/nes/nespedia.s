@@ -43,6 +43,12 @@ PPUCTRL_HEADER = $81            ; NMI on, nametable 1 at the top of the frame
 PPUMASK_ON = $1E                ; background and sprites, left column included
 PALETTE   = $3F00
 OUT0_MARK = $01
+; The cartridge's reset stub (nesp32's nes/cart/gen_cart.py) is at the same
+; place in every program's bank: an `inc` of itself, which resets the
+; mapper and puts the menu's bank at $C000, and a jump to the menu. Built by
+; itself, this ROM has padding there. As Weather's B does.
+CART_STUB = $FFDA
+CART_STUB_FIRST = $EE           ; inc absolute
 
 PAD_A      = $80
 PAD_B      = $40
@@ -108,6 +114,7 @@ silent:       .res 1
 stall:        .res 2
 tmp:          .res 2
 ptr:          .res 2
+on_cart:      .res 1            ; this is on nesp32's cartridge, which has a menu
 
 .segment "BSS"
 draw_buf:     .res 32
@@ -189,6 +196,11 @@ status_buf:   .res COLUMNS      ; a message from the host
     bit PPUSTATUS
     bpl @vblank2
 
+    lda CART_STUB
+    cmp #CART_STUB_FIRST
+    bne @alone
+    inc on_cart
+@alone:
     jsr ppu_init                ; rendering is off; the first NMI turns it on
     jsr oam_init
     jsr kb_init
@@ -423,7 +435,32 @@ main_wait:
     inc ptr + 1
     dex
     bne @page
+
+    lda on_cart                 ; on the cartridge, the help says Select is its menu
+    beq @done
+    lda #>HELP_CART_ADDR
+    sta PPUADDR
+    lda #<HELP_CART_ADDR
+    sta PPUADDR
+@help:
+    lda help_cart,y
+    sta PPUDATA
+    iny
+    cpy #HELP_CART_LENGTH
+    bne @help
+@done:
     rts
+.endproc
+
+; Back to the cartridge's menu, as reset would go: through its stub, with
+; the NMI off first, since the stub's `inc` puts the menu's bank, and its
+; NMI, under this. The menu says nothing to the nesp32; the next program's
+; hello is what tells it this one has gone.
+.proc quit
+    lda #0
+    sta PPUCTRL
+    sta PPUMASK
+    jmp CART_STUB
 .endproc
 
 ; Sprite 0 on its pixel of the credit line, and every other sprite below
