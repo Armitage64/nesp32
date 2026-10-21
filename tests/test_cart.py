@@ -13,8 +13,8 @@ import os
 import gen_cart as cart_layout
 import gen_screen as layout
 import pytest
-from console import (BANK_SIZE, CHR_SIZE, INES_HEADER, PAD_A, PAD_DOWN, PAD_SELECT, PAD_START,
-                     PAD_UP, PPUCTRL_NMI)
+from console import (BANK_SIZE, CHR_SIZE, INES_HEADER, PAD_A, PAD_B, PAD_DOWN, PAD_SELECT,
+                     PAD_START, PAD_UP, PPUCTRL_NMI)
 from nesp import Stick
 from wire import link
 
@@ -350,6 +350,23 @@ def test_select_in_bluesky_s_favorites_is_the_menu_again(cart, images):
     c.run(30)
     assert not c.home
     c.press(PAD_SELECT)
+    c.strict = True
+    c.run(6)
+    assert at_menu(c)
+    assert c.byte("choice") == 0
+
+
+def test_b_in_weathers_form_is_the_menu_again(cart, images):
+    index = next(index for index, image in enumerate(images) if image.program.key == "weather")
+    c = cart()
+    stick, _ = link(c, Stick)
+    c.run(4)
+    start(c, index)
+    c.run_until(lambda: stick.hellos, 300)
+    c.run(60)                           # the form, all of it
+    assert not c.home
+    assert c.line(26) == "A : SUBMIT   B : QUIT"   # on the cartridge, there is a menu
+    c.press(PAD_B)
     c.strict = True
     c.run(6)
     assert at_menu(c)

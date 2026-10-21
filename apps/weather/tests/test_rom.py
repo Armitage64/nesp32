@@ -29,6 +29,8 @@ REPORT = [line.ljust(COLUMNS) for line in (
     " 74    81    86    91    90",
     " 55    61    66    74    76",
 )]
+# And as the ROM draws them: the days' names in its own tiles.
+SHOWN = layout.on_screen(REPORT)
 
 
 def test_the_layout_is_the_nesp32s():
@@ -95,7 +97,7 @@ def test_with_nothing_kept_the_form_comes_up_and_a_zip_code_is_entered(sky):
     assert s.asked(p.NESP_WEATHER_ZIP) == []        # the form asks nothing
     s.enter("90210")
     s.press(PAD_A)
-    assert s.report_is_up() == REPORT
+    assert s.report_is_up() == SHOWN
     assert s.stick.zip == KEPT and s.stick.zip_keeps == 1
     assert s.asked(p.NESP_WEATHER_ZIP)[0] == b"\x0190210"
     assert [url.split("?")[0] for url in s.served] == [
@@ -120,7 +122,7 @@ def test_the_status_line_says_how_it_stands_on_the_way(sky):
     s.c.press(PAD_UP)               # the form is on the screen still, and cannot be changed
     assert s.digits == "90210"
     s.serve()
-    assert s.report_is_up() == REPORT
+    assert s.report_is_up() == SHOWN
 
 
 def test_a_zip_code_the_nesp32_keeps_is_in_the_form_and_a_is_all_it_takes(sky):
@@ -131,18 +133,52 @@ def test_a_zip_code_the_nesp32_keeps_is_in_the_form_and_a_is_all_it_takes(sky):
     assert s.asked(p.NESP_WEATHER_ZIP) == [] and s.served == []
     assert s.view != VIEW_REPORT
     s.press(PAD_A)
-    assert s.report_is_up() == REPORT
+    assert s.report_is_up() == SHOWN
     assert all("zippopotam" not in url for url in s.served) and len(s.served) == 1
     assert s.stick.zip_keeps == 0
     s.writes_were_in_time()
 
 
-def test_b_does_nothing_in_a_form_that_has_asked_for_nothing_yet(sky):
+def test_b_in_the_form_does_nothing_on_no_cartridge(sky):
     s = sky(kept=KEPT)
-    s.form_is_up()
+    assert s.form_is_up() == "90210" and s.c.byte("on_cart") == 0
+    assert s.foot == layout.FOOT_FORM   # and says nothing of it
     s.press(PAD_B)
     s.run(30)
     assert s.form_is_up() == "90210" and s.asked(p.NESP_WEATHER_ZIP) == []
+    s.go()
+    s.report_is_up()
+    s.press(PAD_B)
+    s.form_is_up()
+    s.press(PAD_B)                  # nor once a report has been asked for
+    s.run(30)
+    assert s.form_is_up() == "90210" and s.view != VIEW_REPORT
+
+
+def test_the_days_names_are_centered_over_their_pictures(sky):
+    screen = layout.build_screen()
+    data = screen.chr()
+    days = REPORT[layout.DAY_ROW]
+    assert SHOWN[:layout.DAY_ROW] + SHOWN[layout.DAY_ROW + 1:] == \
+        REPORT[:layout.DAY_ROW] + REPORT[layout.DAY_ROW + 1:]
+    for column in layout.DAY_COLUMNS:
+        name = days[column:column + 3]
+        assert days[column - 1] == " " and SHOWN[layout.DAY_ROW][column + 3:column + 4] in " "
+        tiles = SHOWN[layout.DAY_ROW][column - 1:column - 1 + layout.DAY_TILES]
+        # The font's tiles of the name, put side by side and moved half a
+        # tile to the left: the same pixels.
+        shown = [[0] * 32 for _ in range(8)]
+        for index, char in enumerate(name):
+            for y, row in enumerate(layout.gen_ui.font_tile(char)):
+                for x, color in enumerate(row):
+                    shown[y][8 + 8 * index + x - 4] = color
+        assert b"".join(data[16 * ord(tile):][:16] for tile in tiles) == b"".join(
+            layout.gen_ui.tile_bytes(tile) for tile in layout.gen_ui.cut_tiles(shown)[0])
+        assert all(ord(tile) > 0x7F for tile in tiles)  # none of the font's or the pictures'
+    assert len(screen.days) == 7 and screen.next_tile <= 0x100
+    s = sky(kept=KEPT)
+    s.go()
+    assert s.report_is_up()[layout.DAY_ROW] == SHOWN[layout.DAY_ROW]
 
 
 def test_the_lit_digit_pulses_and_nothing_does_on_the_report(sky):
@@ -177,13 +213,13 @@ def test_a_zip_code_entered_is_there_the_next_time_the_program_is_started(sky):
     assert s.c.byte("serial_have") == 0
     assert s.form_is_up() == "90210"    # the form, with the digits in it
     s.press(PAD_A)
-    assert s.report_is_up() == REPORT
+    assert s.report_is_up() == SHOWN
     assert len(s.served) == 3 and "open-meteo" in s.served[2]
     kept = s.stick.zip
     again = sky(kept=kept)          # and its power, and the nesp32's
     assert again.form_is_up() == "90210"
     again.press(PAD_START)
-    assert again.report_is_up() == REPORT
+    assert again.report_is_up() == SHOWN
 
 
 def test_the_digits_go_round_and_so_does_the_mark(sky):
@@ -244,7 +280,7 @@ def test_a_zip_code_put_right_after_one_there_is_none_of(sky, where):
     s.where = where
     s.enter("90210")
     s.press(PAD_A)
-    assert s.report_is_up() == REPORT
+    assert s.report_is_up() == SHOWN
     ids = [payload[0] for payload in s.asked(p.NESP_WEATHER_ZIP)]
     assert sorted(set(ids)) == [1, 2]                   # each asking has an id of its own
 
@@ -259,7 +295,7 @@ def test_a_site_that_fails_says_why_and_goes_back_to_the_form(sky, which, where,
     assert s.form_is_up() == "90210"
     s.where, s.weather = where, weather
     s.press(PAD_A)                  # the same again, once the site is back
-    assert s.report_is_up() == REPORT
+    assert s.report_is_up() == SHOWN
     s.writes_were_in_time()
 
 
@@ -285,33 +321,26 @@ def test_with_no_network_it_says_so_and_goes_on_when_there_is_one(sky):
     s.run(60)
     assert s.served == [] and s.view == VIEW_REPORT
     s.stick.set_wifi(p.NESP_WIFI_JOINED, address=(10, 0, 0, 2))
-    assert s.report_is_up() == REPORT
+    assert s.report_is_up() == SHOWN
 
 
-def test_start_on_the_report_is_the_form_and_b_is_the_report_again(sky):
+def test_b_on_the_report_is_the_form(sky):
     s = sky(kept=KEPT)
     s.go()
     s.report_is_up()
-    s.press(PAD_A)                  # which is no button of the report's
-    s.press(PAD_B)
+    s.press(PAD_A)                  # which are no buttons of the report's
+    s.press(PAD_START)
     s.run(20)
-    assert s.view == VIEW_REPORT and s.rows() == REPORT
-    s.press(PAD_START)
-    assert s.form_is_up() == "90210" and s.lit == 0
-    s.enter("10001")
-    fetches = len(s.served)
+    assert s.view == VIEW_REPORT and s.rows() == SHOWN
     s.press(PAD_B)
-    assert s.report_is_up() == REPORT
-    assert len(s.served) == fetches     # the nesp32 had it still
-    s.press(PAD_START)
-    assert s.form_is_up() == "90210"    # and the digits are that report's again
+    assert s.form_is_up() == "90210" and s.lit == 0
 
 
 def test_another_zip_code_takes_the_place_of_the_report(sky, where, weather):
     s = sky(kept=KEPT)
     s.go()
     s.report_is_up()
-    s.press(PAD_START)
+    s.press(PAD_B)
     s.form_is_up()
     s.where = where.replace(b"Beverly Hills", b"New York").replace(b'"CA"', b'"NY"')
     s.weather = weather.replace(b'"temperature_2m":72.0', b'"temperature_2m":-3.6')
@@ -321,7 +350,7 @@ def test_another_zip_code_takes_the_place_of_the_report(sky, where, weather):
     rows = s.report_is_up()
     assert rows[0] == "NEW YORK, NY           10001"
     assert rows[2] == (SUN[0] + "  -4" + DEGREE + "F  CLEAR").ljust(COLUMNS)
-    assert rows[3:] == REPORT[3:]
+    assert rows[3:] == SHOWN[3:]
     assert s.stick.zip[0] == b"10001"
 
 
@@ -336,7 +365,7 @@ def test_a_newer_report_is_drawn_when_the_nesp32_has_one(sky, weather):
     s.run_until(lambda: s.c.byte("serial_have") != first, 300)
     rows = s.report_is_up()
     assert rows[2] == (SUN[0] + "  64" + DEGREE + "F  CLEAR").ljust(COLUMNS)
-    assert rows[:2] + rows[3:] == REPORT[:2] + REPORT[3:]
+    assert rows[:2] + rows[3:] == SHOWN[:2] + SHOWN[3:]
     s.writes_were_in_time()
 
 
@@ -347,7 +376,7 @@ def test_a_report_on_the_screen_is_asked_after_about_once_a_second(sky):
     before = len(s.requests())
     s.run(640)
     assert 8 <= len(s.requests()) - before <= 11
-    assert s.rows() == REPORT
+    assert s.rows() == SHOWN
 
 
 def test_a_nesp32_switched_off_and_on_is_greeted_and_asked_again(sky):
@@ -356,10 +385,10 @@ def test_a_nesp32_switched_off_and_on_is_greeted_and_asked_again(sky):
     s.report_is_up()
     s.port.deaf = True              # off
     s.run_until(lambda: s.status == "WAITING FOR LINK", 1200)
-    assert s.rows() == REPORT       # what was on the screen stays
+    assert s.rows() == SHOWN       # what was on the screen stays
     s.plug_in(kept=KEPT)            # and on: a new one
     s.run_until(lambda: s.stick.hellos == 1, 1200)
-    assert s.report_is_up(1200) == REPORT
+    assert s.report_is_up(1200) == SHOWN
     assert s.stick.hellos == 1 and len(s.served) == 2
 
 
@@ -392,6 +421,6 @@ def test_it_gets_through_a_line_that_loses_and_damages_replies(sky):
     s.form_is_up()
     s.enter("90210")
     s.press(PAD_A)
-    assert s.report_is_up(2000) == REPORT
+    assert s.report_is_up(2000) == SHOWN
     assert s.c.word("link_failed") > 10
     s.writes_were_in_time()

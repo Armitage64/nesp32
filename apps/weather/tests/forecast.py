@@ -174,7 +174,8 @@ class Forecast:
         box = layout.build_screen().box[1]
         digits = rows[layout.FORM_DIGITS_ROW]
         assert digits[layout.BOX_FIRST] == chr(box[0]) and digits[layout.BOX_LAST] == chr(box[-1])
-        assert self.foot == layout.FOOT_FORM
+        assert self.foot == (layout.FOOT_FORM_CART if self.c.byte("on_cart")
+                             else layout.FOOT_FORM)
         assert self.lit == self.c.byte("cursor")
         return self.digits
 

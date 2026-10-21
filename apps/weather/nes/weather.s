@@ -8,8 +8,10 @@
 ;
 ; There are two views. The form takes a zip code from the controller: Left
 ; and Right choose a digit, Up and Down change it, A or Start asks for its
-; weather, and B goes back to the report there was. The report is the
-; nesp32's rows; Start there is the form again. The nesp32 keeps the last
+; weather, and B, on nesp32's cartridge, is its menu again. The report is
+; the nesp32's rows, but for the days' names, which the ROM moves half a
+; tile to the left to center them over their pictures; B there is the form
+; again. The nesp32 keeps the last
 ; zip code it found, over power-off too, so a console switched on asks it
 ; for that first (LAST), and the form comes up with those digits in it: A
 ; is all it takes.
@@ -82,6 +84,13 @@ VIEW_REPORT = 1
 
 SKY_UNKNOWN = $FF               ; sky: the nesp32 has not said how it stands
 PULSE_MASK = $07                ; frames between the pulse's colours, less one
+; The cartridge's reset stub (nesp32's nes/cart/gen_cart.py) is at the same
+; place in every program's bank: an `inc` of itself, which resets the
+; mapper and puts the menu's bank at $C000, and a jump to the menu. Built by
+; itself, this ROM has padding there. As Bluesky's Select does.
+CART_STUB = $FFDA
+CART_STUB_FIRST = $EE           ; inc absolute
+
 POLL_MASK = $3F                 ; a report on the screen is asked after every 64 frames
 MISSED_MAX = 8                  ; exchanges in a row with no reply: the nesp32 is not there
 
@@ -116,7 +125,6 @@ why_len:      .res 1
 view:         .res 1            ; VIEW_*
 zip:          .res 5            ; the form's digits, as characters
 zip_sent:     .res 5            ; the zip code last asked for,
-have_sent:    .res 1            ; if one has been,
 zip_id:       .res 1            ; and its id: one more with every asking
 cursor:       .res 1            ; the form's digit that Up and Down change
 sky:          .res 1            ; NESP_SKY_*, as the nesp32 last said, or SKY_UNKNOWN
@@ -133,6 +141,8 @@ attr_dirty:   .res 1
 pulse:        .res 1            ; where the lit digit's colour is in its round,
 pulse_color:  .res 1            ; the colour, for the NMI,
 pulse_dirty:  .res 1            ; and that it is not on the screen yet
+on_cart:      .res 1            ; this is on nesp32's cartridge, which has a menu
+day_at:       .res 1            ; center_days's: the day it is on
 
 .include "screen.inc"
 .include "nesp.inc"
@@ -219,6 +229,11 @@ digit_column:
     bit PPUSTATUS
     bpl @vblank2
 
+    lda CART_STUB
+    cmp #CART_STUB_FIRST
+    bne @alone
+    inc on_cart
+@alone:
     jsr screen_init             ; rendering is off; the first NMI turns it on
     ldx #NESP_WEATHER_ZIP_LEN - 1
 @zip:
@@ -352,8 +367,8 @@ main_wait:
     sta presses
     lda view
     beq @form
-    lda presses                 ; the report: Start is the form
-    and #PAD_START
+    lda presses                 ; the report: B is the form
+    and #PAD_B
     beq @done
     lda #STATUS_NONE
     jsr set_status
@@ -367,9 +382,9 @@ main_wait:
     lda presses
     and #PAD_B
     beq @move
-    lda have_sent
+    lda on_cart                 ; B: back to the cartridge's menu
     beq @move
-    jmp go_back
+    jmp quit
 @move:
     lda presses
     and #PAD_DIRECTIONS
@@ -502,24 +517,20 @@ main_wait:
     sta zip_sent,x
     dex
     bpl @copy
-    lda #1
-    sta have_sent
     inc zip_id
     jsr await
     jmp form_touch              ; no digit is lit: nothing can be changed now
 .endproc
 
-; B: the form is left as it was found, for the zip code last asked for,
-; whose report the nesp32 still has if it had one.
-.proc go_back
-    ldx #NESP_WEATHER_ZIP_LEN - 1
-@copy:
-    lda zip_sent,x
-    sta zip,x
-    dex
-    bpl @copy
-    jsr await
-    jmp form_touch
+; Back to the cartridge's menu, as reset would go: through its stub, with
+; the NMI off first, since the stub's `inc` puts the menu's bank, and its
+; NMI, under this. The menu says nothing to the nesp32; the next program's
+; hello is what tells it this one has gone.
+.proc quit
+    lda #0
+    sta PPUCTRL
+    sta PPUMASK
+    jmp CART_STUB
 .endproc
 
 ; The report is the view, and none is on the screen: whatever the nesp32
@@ -537,7 +548,8 @@ main_wait:
 .endproc
 
 ; A row of the form for the NMI, if there is one to draw and the last has
-; been drawn: its tiles from the ROM, with the digits on their row.
+; been drawn: its tiles from the ROM, with the digits on their row, and on
+; the cartridge the foot that says B is its menu.
 .proc paint_form
     lda row_dirty
     bne @done
@@ -554,6 +566,18 @@ main_wait:
     sta row_buf,y
     dey
     bpl @copy
+    cpx #ROWS
+    bne @digits
+    lda on_cart
+    beq @stage
+    ldy #COLUMNS - 1
+@cart:
+    lda form_foot_cart,y
+    sta row_buf,y
+    dey
+    bpl @cart
+    bmi @stage
+@digits:
     cpx #FORM_DIGITS_ROW
     bne @stage
     ldy #NESP_WEATHER_ZIP_LEN - 1
@@ -604,7 +628,7 @@ main_wait:
     beq @foot
     jmp ask_row
 @foot:
-    ldx #COLUMNS - 1            ; the last of it is the ROM's own: what Start does
+    ldx #COLUMNS - 1            ; the last of it is the ROM's own: what B does
 @copy:
     lda report_foot,x
     sta row_buf,x
@@ -797,12 +821,57 @@ main_wait:
     sta row_buf,x
     dex
     bpl @copy
+    lda row_next
+    cmp #DAY_ROW
+    bne @stage
+    jsr center_days
+@stage:
     ldx row_next
     jsr stage_row
     inc row_next
 @heard:
     jmp link_heard
 .endproc
+
+; row_buf is the days' row: each name the ROM has tiles for is put in
+; them, from the column before its own. A name it has none for is left.
+.proc center_days
+    lda #DAYS - 1
+    sta day_at
+@day:
+    ldx day_at
+    ldy day_column,x            ; Y: the name's column
+    ldx #0                      ; X: a name's place in day_names, and its tiles' in day_tiles
+@name:
+    lda row_buf,y
+    cmp day_names,x
+    bne @next
+    lda row_buf + 1,y
+    cmp day_names + 1,x
+    bne @next
+    lda row_buf + 2,y
+    cmp day_names + 2,x
+    beq @found
+@next:
+    inx
+    inx
+    inx
+    inx
+    cpx #DAY_NAMES * DAY_TILES
+    bne @name
+    beq @done
+@found:
+    dey
+.repeat ::DAY_TILES, index
+    lda day_tiles + index,x
+    sta row_buf + index,y
+.endrepeat
+@done:
+    dec day_at
+    bpl @day
+    rts
+.endproc
+.assert DAY_TILES = 4, error, "center_days steps through day_names four at a time"
 
 ; The nesp32's words for what went wrong, in the middle of the status line.
 .proc take_why

@@ -59,19 +59,21 @@ pulses, white through the header's blues and back, as the key under
 |---|---|
 | **Left**, **Right** | the next digit, either way; from the last round to the first |
 | **Up**, **Down** | change it, `9` round to `0`. Held down, it goes on changing |
-| **A** or **Start** | ask for that zip code's weather |
-| **B** | back to the report there was, if there was one |
+| **A** or **Start** | ask for that zip code's weather (`A : SUBMIT`) |
+| **B** | on nesp32's cartridge, back to its menu (`B : QUIT`); built by itself, nothing |
 
 and with the report on the screen:
 
 | | |
 |---|---|
-| **Start** | the form again (`START=MENU`), to enter another zip code |
+| **B** | the form again (`B : BACK`), to enter another zip code |
 
 A report is the place's name and state, the temperature now with a word
 or two for the sky, today's high and low, the humidity and the wind; and
 under those five days, today the first, each with its picture, its high
-and its low. Degrees are Fahrenheit and the wind is in miles an hour. The
+and its low. A day's name is three letters over a picture two tiles wide,
+so the ROM draws it in tiles of its own with the letters half a tile to
+the left, centered over the picture; the nesp32 sends the plain letters. Degrees are Fahrenheit and the wind is in miles an hour. The
 nesp32 fetches the weather again every 15 minutes, and the screen follows
 within a second or so.
 

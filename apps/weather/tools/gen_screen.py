@@ -24,6 +24,10 @@ The form's digits are in a box, and the one that Up and Down change
 pulses, as the key under NESpedia's cursor does (../wiki): its square of
 the screen has a palette of its own, and the font's colour in that palette
 is changed every few frames.
+
+A day's name is three letters over its picture, which is two tiles wide,
+so the ROM puts it in tiles of its own: the same letters, half a tile to
+the left (DAY_SHIFT), centered over the picture.
 """
 
 import argparse
@@ -58,10 +62,21 @@ CREDIT = "WEATHER DATA: OPEN-METEO.COM"     # in the small font
 CREDIT_TILES = 14                   # the tiles it is drawn across
 CREDIT_COLUMN = (gen_ui.SCREEN_COLUMNS - CREDIT_TILES) // 2
 FOOT_ROW = gen_ui.HELP_ROW
-FOOT_FORM = "A=OK"
-FOOT_REPORT = "START=MENU"
+FOOT_FORM = "A : SUBMIT"
+FOOT_FORM_CART = "A : SUBMIT   B : QUIT"   # on the cartridge, B is its menu again
+FOOT_REPORT = "B : BACK"
 # What the ROM paints, a row at a time: the middle's rows, then the foot.
 PAINT_ROWS = ROWS + 1
+
+# The days, as the nesp32 lays them out: each one's name over its picture,
+# from the same column. Three letters are a tile wider than the picture,
+# so the ROM puts each name's tiles here in their place, which have its
+# letters half a tile to the left: centered over the picture.
+DAY_ROW = 8
+DAY_COLUMNS = (1, 7, 13, 19, 25)
+DAY_NAMES = ("SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT")
+DAY_SHIFT = 4                       # pixels to the left
+DAY_TILES = 4                       # from the column before the name's
 
 # The form, by the middle's rows.
 FORM_TITLE_ROW, FORM_TITLE = 2, "ENTER YOUR ZIP CODE"
@@ -276,6 +291,19 @@ def small_text(text, width, color):
     return pixels_
 
 
+def day_pixels(name):
+    """A day's name as a picture of the DAY_TILES tiles that take its
+    place: the font's letters, DAY_SHIFT pixels to the left of where the
+    tiles from its column would have them."""
+    picture = [[0] * (8 * DAY_TILES) for _ in range(8)]
+    for index, char in enumerate(name):
+        for y, row in enumerate(gen_ui.font_tile(char)):
+            for x, color in enumerate(row):
+                if color:
+                    picture[y][8 * (1 + index) + x - DAY_SHIFT] = color
+    return picture
+
+
 def box_pixels():
     """The box as a picture of the three rows of tiles it crosses."""
     picture = [[0] * (8 * (BOX_LAST - BOX_FIRST + 1)) for _ in range(8 * 3)]
@@ -331,7 +359,27 @@ def build_screen():
         start = (row + line) * gen_ui.SCREEN_COLUMNS + column
         screen.box.append(bytes(screen.names[start:start + width]))
         screen.names[start:start + width] = b" " * width
+    # The days' names likewise.
+    column, row = BODY_COLUMN + DAY_COLUMNS[0] - 1, BODY_ROW + DAY_ROW
+    start = row * gen_ui.SCREEN_COLUMNS + column
+    screen.days = {}
+    for name in DAY_NAMES:
+        screen.picture(column, row, day_pixels(name))
+        screen.days[name] = bytes(screen.names[start:start + DAY_TILES])
+        screen.names[start:start + DAY_TILES] = b" " * DAY_TILES
     return screen
+
+
+def on_screen(rows, screen=None):
+    """A report's rows as the ROM draws them: with the days' names in
+    their own tiles."""
+    screen = screen or build_screen()
+    rows = [bytearray(row.encode("latin-1")) for row in rows]
+    for column in DAY_COLUMNS:
+        name = bytes(rows[DAY_ROW][column:column + 3]).decode("latin-1")
+        if name in screen.days:
+            rows[DAY_ROW][column - 1:column - 1 + DAY_TILES] = screen.days[name]
+    return [row.decode("latin-1") for row in rows]
 
 
 def palette_data():
@@ -378,6 +426,10 @@ def screen_include(screen):
               "PICTURE_TILE = $%02X" % PICTURE,
               "DEGREE_TILE = $%02X" % DEGREE,
               "FORM_DIGITS_ROW = %d" % FORM_DIGITS_ROW,
+              "DAY_ROW = %d" % DAY_ROW,
+              "DAYS = %d" % len(DAY_COLUMNS),
+              "DAY_NAMES = %d" % len(DAY_NAMES),
+              "DAY_TILES = %d" % DAY_TILES,
               "FORM_DIGIT_COLUMN = %d" % FORM_DIGIT_COLUMN,
               "FORM_DIGIT_STEP = %d" % FORM_DIGIT_STEP,
               "DIGIT_ATTR_ADDR = $%04X ; the attribute bytes the digits' squares are in"
@@ -399,6 +451,16 @@ def screen_include(screen):
     lines += gen_ui.byte_lines("form_text", form, per_line=COLUMNS)
     lines += gen_ui.byte_lines("report_foot", list(FOOT_REPORT.center(COLUMNS).encode("ascii")),
                                per_line=COLUMNS)
+    lines += gen_ui.byte_lines("form_foot_cart",
+                               list(FOOT_FORM_CART.center(COLUMNS).encode("ascii")),
+                               per_line=COLUMNS)
+    lines.append("day_column: .byte " + ", ".join("%d" % column for column in DAY_COLUMNS))
+    names, tiles = [], []
+    for name in DAY_NAMES:
+        names += list(name.encode("ascii")) + [0]   # four to a name, as its tiles are
+        tiles += list(screen.days[name])
+    lines += gen_ui.byte_lines("day_names", names, per_line=DAY_TILES)
+    lines += gen_ui.byte_lines("day_tiles", tiles, per_line=DAY_TILES)
     lines += gen_ui.byte_lines("form_zip", list(FORM_ZIP.encode("ascii")))
     return "\n".join(lines) + "\n"
 
@@ -447,7 +509,7 @@ def with_form(screen, digits=FORM_ZIP, cursor=0):
 
 def with_report(screen, rows):
     out = screen.copy()
-    for row, line in enumerate(rows):
+    for row, line in enumerate(on_screen(rows, screen)):
         out.text(BODY_COLUMN, BODY_ROW + row, line)
     out.text(BODY_COLUMN, FOOT_ROW, FOOT_REPORT.center(COLUMNS))
     return out
