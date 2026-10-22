@@ -253,7 +253,7 @@ net_frame:
     lda net_tick
     cmp #CHECK_AT
     bne :+
-    jsr net_digest              ; for both consoles to send when they come to CHECK_TICK
+    jsr net_digest_irqs         ; for both consoles to send when they come to CHECK_TICK
     sta net_check
 :
     lda net_tick
@@ -345,6 +345,21 @@ net_store:
     bne :+
     sta net_tune
 :
+    rts
+
+; The digest, with the IRQs let in as net_cli would let them. With the
+; exchange it takes longer than the first split waits, which would come
+; some 28 lines late and put the rest of the screen's splits out with it,
+; for the one frame. The IRQs change none of what it reads, and need none
+; of bank 29: they are in the fixed bank and switch only the CHR, as they
+; must in the game's own NMI. They are held off again for the way back.
+net_digest_irqs:
+    lda FLAG_IRQ_ENABLE
+    beq :+
+    cli
+:
+    jsr net_digest
+    sei
     rts
 
 ; A digest of the game into A: of the zero page the game keeps, and of the

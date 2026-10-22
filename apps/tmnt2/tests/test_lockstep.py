@@ -15,6 +15,7 @@ from wire import ms
 PLAY_FRAMES = 400
 SOUND_ENGINE = "SOUND_FORWARD"
 LEVEL_FRAMES = 300              # from the turtles chosen to the level under way
+CHECK_AT = 0xF7                 # the tick whose NMI takes the digest (net/net_ram.inc)
 
 
 def to_game(table):
@@ -296,12 +297,24 @@ def test_a_reply_misheard_is_asked_for_again_in_the_same_frame(net_console):
 def test_the_splits_stay_on_their_lines_in_a_session(net_console):
     """The exchange is made with the IRQs held off, after the counter's
     setup and before the first split: every IRQ is taken on the line it
-    was raised on, on both consoles, ticks and stalls alike."""
+    was raised on, on both consoles, ticks and stalls alike, and the tick
+    that takes the digest (CHECK_AT, once in 256) in a frame that splits
+    among them."""
     table = Table(net_console, delay=ms(20), input_delay=1)
     table.start()
     to_game(table)
     marks = [len(console.frames) for console in table.consoles]
-    table.play(300, moves(seed=3))
+    buttons = moves(seed=3)
+    split = set()                               # the ticks taken in frames that split
+    for _ in range(1000):
+        if len(split) >= 300 and CHECK_AT in split:
+            break
+        ticks = [console.byte("net_tick") for console in table.consoles]
+        frames = [len(console.frames) for console in table.consoles]
+        table.play(1, buttons)
+        split.update(tick for tick, console, frame in zip(ticks, table.consoles, frames)
+                     if all(f.irqs for f in console.frames[frame:]))
+    assert CHECK_AT in split
     assert table.stalls() > 0                   # stalls among them
     for console, mark in zip(table.consoles, marks):
         frames = console.frames[mark:]
