@@ -203,7 +203,9 @@ class Console:
         self.frame = Frame(0.0)     # the time before the first vblank
         self.frame_cycles = frame_cycles
         self.next_vblank = frame_cycles
-        self.nmi_depth = 0          # NMI handlers not yet returned from
+        # The interrupts not yet returned from, the latest last: "nmi" or
+        # "irq". An IRQ handler ends in RTI as an NMI handler does.
+        self.interrupts = []
         # Port 2 as a serial line (wire.py): the level of D0 at a cycle,
         # when it next leaves mark, and where OUT0's writes go. None leaves
         # controller 2 on the port.
@@ -233,6 +235,11 @@ class Console:
         self.mpu = MPU(memory=self.bus)
         self.mpu.pc = self.bus[0xFFFC] | self.bus[0xFFFD] << 8
         self.idle = self.labels.get(IDLE)
+
+    @property
+    def nmi_depth(self):
+        """NMI handlers not yet returned from."""
+        return self.interrupts.count("nmi")
 
     @property
     def in_nmi(self):
@@ -413,11 +420,16 @@ class Console:
         return self.marks[self.labels.get(name, name)]
 
     def state(self):
-        """A digest of the RAM, less the stack, whose dead bytes depend on
-        where an NMI landed. (What the sound engine keeps is not yet known,
-        and is in it.)"""
+        """A digest of everything the game's logic keeps. Left out are what
+        the sound engine keeps ($E0-$F0, the bank configuration it saves at
+        $F6, page 1 below the stack, $03C0-$03CF and $03E3-$03E5), since it
+        runs to the picture's clock and not the game's, and the stack
+        ($01E0 and up, the deepest it goes being $01E2), whose dead bytes
+        depend on where an NMI landed."""
         ram = self.ram
-        return hashlib.sha1(bytes(ram[:0x100]) + bytes(ram[0x200:])).hexdigest()
+        return hashlib.sha1(bytes(ram[:0xE0]) + bytes(ram[0xF1:0xF6]) + bytes(ram[0xF7:0x100])
+                            + bytes(ram[0x200:0x3C0]) + bytes(ram[0x3D0:0x3E3])
+                            + bytes(ram[0x3E6:])).hexdigest()
 
     # --- running -----------------------------------------------------------------
 
@@ -451,6 +463,7 @@ class Console:
                     self.frame.irqs.append((self._irq_raised - self.frame.start,
                                             mpu.processorCycles - self.frame.start))
                     self._irq_raised = None
+                self.interrupts.append("irq")
                 mpu.irq()
                 continue
             if self.host is not None and mpu.processorCycles >= self._host_at:
@@ -472,10 +485,8 @@ class Console:
                     continue
                 opcode = bus[pc]
                 if opcode == RTI:
-                    if self.nmi_depth:
-                        self.nmi_depth -= 1
-                        if not self.nmi_depth:
-                            self.frame.nmi_cycles = mpu.processorCycles + 6 - self._nmi_at
+                    if self.interrupts and self.interrupts.pop() == "nmi" and not self.nmi_depth:
+                        self.frame.nmi_cycles = mpu.processorCycles + 6 - self._nmi_at
                 elif opcode == WAIT_VBLANK[0]:
                     if bus.code(pc, 5) == WAIT_VBLANK and not self.vblank_unread:
                         self._wait(limit)
@@ -504,11 +515,12 @@ class Console:
         if self.dmc_left:
             until = min(until, self.dmc_at)
         until = int(until) if until != float("inf") else until
+        # Already there (a sample's fetch may have taken the clock past it):
+        # the caller's loop sees to what is due, and the idle loop is not
+        # stepped.
         if until > mpu.processorCycles:
             self.frame.busy -= until - mpu.processorCycles
             mpu.processorCycles = until
-        else:
-            mpu.step()
 
     def _skip_hunt(self, pc, limit):
         """Pass over whole looks of the receiver's hunt while the line rests
@@ -557,5 +569,5 @@ class Console:
                 self.frame.lag = True
             else:
                 self._nmi_at = mpu.processorCycles
-            self.nmi_depth += 1
+            self.interrupts.append("nmi")
             mpu.nmi()

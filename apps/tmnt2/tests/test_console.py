@@ -4,7 +4,7 @@ two, what its IRQs do, and that it is not the same game on two consoles."""
 from itertools import islice
 
 from console import FRAME_CYCLES
-from drive import STATE_LEVELS, moves, play, title_script
+from drive import STATE_LEVELS, moves, play, play_ticks, title_script
 
 PLAY_TICKS = 600
 # Level 1's splits: the status bar's foot, and three below the playfield.
@@ -49,3 +49,16 @@ def test_original_is_not_the_same_on_two_consoles(console):
     one = play(console(stir_idle=True), game(1))
     other = play(console(stir_idle=True, frame_cycles=FRAME_CYCLES - 2), game(1))
     assert first_difference(one, other) is not None
+
+
+def test_without_the_idle_loop_the_game_is_the_buttons_alone(console):
+    """With the idle loop skipped, as the netplay ROM's will do nothing,
+    two consoles given the same buttons a tick at a time play the same
+    game: whatever the samples take, and whenever frames overrun (here the
+    console whose frames are short has lag frames, the other none). The sound engine's
+    memory is left out of the digest; the rest is the game's."""
+    ticks = game(3, 600)
+    one = play_ticks(console(), ticks)
+    assert first_difference(one, play_ticks(console(dmc_steal=0), ticks)) is None
+    assert first_difference(
+        one, play_ticks(console(frame_cycles=FRAME_CYCLES * 0.97), ticks)) is None

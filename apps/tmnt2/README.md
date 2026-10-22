@@ -100,23 +100,51 @@ writers keep it under $50 bytes and a packet), and in zero page $1A, $26,
 $2C, $35-$37, $EB, $F1-$F4. Not written is not the same as not used: the
 endings, the game over and the continues were not played.
 
-**The sound engine** keeps $E0-$EF and parts of $0100-$01B3, by the
-listing's names; what exactly is still to be found, for the digest.
+**The sound engine** (`SOUND_FORWARD`, once in every NMI, a lag frame's
+too) keeps $E0-$F0, the bank configuration it saves at $F6, page 1 below
+the stack ($0104-$01B3), $03C0-$03CF and $03E3-$03E5. The stack goes down
+to $01E2 at the deepest seen. The game reads back two of the engine's
+bytes: $28, which the engine sets only while it runs and always clears,
+and $10E, which decides whether the game asks for sound $1B; asking only
+changes the engine's memory and the banks, which are put back. So the
+engine keeps to itself, as Contra's does, and the music can keep the
+frames' time in a session.
+
+**What makes two games differ.** With the idle loop skipped, two
+consoles given the same buttons a tick at a time play the same game,
+whatever the samples take and whenever frames overrun
+(`test_without_the_idle_loop_the_game_is_the_buttons_alone`): every byte
+of RAM but the sound engine's and the stack's is alike at every tick. The
+idle loop's `INF_LOOP_COUNTER` is the only thing in the game that keeps
+time. The digest can therefore cover any of that RAM; which of it is
+worth the cycles is for the netplay.
+
+**The banks where the exchange goes.** After the counter's setup the
+banks at $8000 and $A000 are always a pair, an even bank and the one
+after it, and the byte at $8000 is $20 plus the even bank's number (every
+even bank begins with it, and the game's `BANK_PAIRED` reads it there).
+So the netplay can switch its own bank in at $A000 for the exchange and
+put the pair back from that byte. The game does map the pair 28 and 29,
+and nothing in bank 28 refers to $A000-$BFFF; bank 29 is all $FF but for
+its last byte ($3D).
+
+**The font**, in the title's CHR bank: 0 to 9 at $01-$0A, A to Z at
+$0B-$24, A to Z again shaded at $25-$3E, a full stop at $3F, and no dash or
+colon. The title's choice is 1 TURTLE and 2 TURTLES.
 
 ## To do
 
-1. **The rest of what the netplay needs to know of the game**: the sound
-   engine's RAM; where the game's state is, for the digest; which banks
-   are in place in the NMI after the counter's setup; the font, for the
-   menu.
-2. **The netplay**, from Contra's: the idle loop's random number
+1. **The netplay**, from Contra's: the idle loop's random number
    (`INF_LOOP_COUNTER`, $22) stirred once a tick instead; the controller
    read and the exchange after the counter's setup, with the `CLI` after
-   them; the NMI's stall; the reset and the session. Its code in bank 29.
-3. **The menu**, by room code and by address, from Contra's, at the
-   title's Start with 2 PLAYERS chosen (`_18_1_SUBSTATE_TITLE_SELECT`).
-4. **Tests**, then hardware.
-5. **A faster sprite pass**, once the netplay plays. Level 7's frames
+   them; the NMI's stall; the reset and the session. Its code in bank 29,
+   switched in at $A000 for the exchange; its RAM at $0385-$03BF. A test
+   that the game never reads bank 29.
+2. **The menu**, by room code and by address, from Contra's, at the
+   title's Start with 2 TURTLES chosen (`_18_1_SUBSTATE_TITLE_SELECT`), in
+   the title's font.
+3. **Tests**, then hardware.
+4. **A faster sprite pass**, once the netplay plays. Level 7's frames
    spend half their cycles building the sprites (12269 as a median, for
    49 tiles), and the loop works out again for each tile what is the same
    for the whole object: the tile's $40 for player 2, the palette, the
