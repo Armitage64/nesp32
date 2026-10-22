@@ -116,6 +116,18 @@ listing's names; what exactly is still to be found, for the digest.
 3. **The menu**, by room code and by address, from Contra's, at the
    title's Start with 2 PLAYERS chosen (`_18_1_SUBSTATE_TITLE_SELECT`).
 4. **Tests**, then hardware.
+5. **A faster sprite pass**, once the netplay plays. Level 7's frames
+   spend half their cycles building the sprites (12269 as a median, for
+   49 tiles), and the loop works out again for each tile what is the same
+   for the whole object: the tile's $40 for player 2, the palette, the
+   side of the screen. It flips by branches, and switches in the sprites'
+   banks for each object even when they are in place already. Worked out
+   once an object and with a loop for each flip, it should save more than
+   the exchange costs. It has to stay in the fixed banks, as the sprites'
+   data is read through the switched ones, and the simulation is to show
+   it the same as the original's, RAM and sprites, frame for frame.
+   Whether the original game gets it too, losing some of its slowdown, is
+   to be decided.
 
 Code is to be added in free space, and the game's own changed in place by
 lines of the same length: inserting into a bank moves what follows, and
