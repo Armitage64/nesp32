@@ -62,3 +62,45 @@ def test_without_the_idle_loop_the_game_is_the_buttons_alone(console):
     assert first_difference(one, play_ticks(console(dmc_steal=0), ticks)) is None
     assert first_difference(
         one, play_ticks(console(frame_cycles=FRAME_CYCLES * 0.97), ticks)) is None
+
+
+def test_netplay_rom_is_the_same_on_two_consoles(net_console):
+    """The netplay ROM's idle loop does nothing, and the random number is
+    stirred once a tick instead: stepped, not skipped, the loop changes
+    nothing, and two consoles given the same buttons a tick at a time play
+    the same game whatever their clocks and the samples do. In a game on
+    one console, with no session."""
+    ticks = game(3, 600)
+    one = play_ticks(net_console(stir_idle=True), ticks)
+    assert first_difference(one, play_ticks(net_console(), ticks)) is None
+    assert first_difference(
+        one, play_ticks(net_console(stir_idle=True, dmc_steal=0,
+                                    frame_cycles=FRAME_CYCLES * 0.97), ticks)) is None
+
+
+def test_the_game_never_reads_bank_29(console):
+    """Bank 29 is all $FF, and the netplay's code is there in its ROM. The
+    game does put it in, as the pair of bank 28, but reads nothing of it
+    but its last byte: every odd bank ends with $20 and its number, as
+    every even one begins with it, and the game reads them to note which
+    banks are in. The netplay ROM keeps that byte."""
+    nes = console()
+    reads = []
+    mapped = []
+    bus_class = type(nes.bus)
+
+    class Watched(bus_class):
+        def __getitem__(self, address):
+            if 0xA000 <= address < 0xC000 and self.windows[1] == 29 * 0x2000:
+                reads.append((address, nes.mpu.pc))
+            return bus_class.__getitem__(self, address)
+
+        def map(self, r6, r7, swapped):
+            bus_class.map(self, r6, r7, swapped)
+            if self.windows[1] == 29 * 0x2000:
+                mapped.append(len(nes.frames))
+    nes.bus.__class__ = Watched
+    play(nes, game(1, 600))
+    assert mapped                       # the game had it in
+    assert reads
+    assert {address for address, _ in reads} == {0xBFFF}

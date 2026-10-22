@@ -21,6 +21,8 @@ STATE_LEVELS = 5
 # and the turtle select comes some 130 frames later. A on each controller
 # picks a turtle, and the level starts when the select's timer runs out.
 TITLE_FRAMES = 280
+BOOT_TICKS = TITLE_FRAMES       # to the title, for a session to start from
+LIVES = 9                       # what the tests keep both players' lives at
 CHOSEN_FRAMES = 300
 SELECTED_FRAMES = 200
 

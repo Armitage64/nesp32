@@ -7,8 +7,9 @@ To be a netplay build of Teenage Mutant Ninja Turtles II: The Arcade Game
 nesp32's [`docs/MULTIPLAYER.md`](../../docs/MULTIPLAYER.md) has what the
 netplay games share.
 
-So far this builds the original, byte for byte. The netplay is still to
-come (the To do below).
+The session itself is done and tested in the simulation: two consoles,
+a tick at a time, kept the same by their buttons. The menu that starts
+one is still to come, and so is the hardware (the To do below).
 
 **The game is not in this repository.** The build takes it from two places:
 
@@ -22,7 +23,7 @@ come (the To do below).
   directory (or says where it is with `BASEROM=`). It is the US release:
   `make verify` checks what is built against its SHA-512.
 
-`tools/convert.py` makes ca65 source of the two in `build/src`. Every byte
+`tools/convert.py` makes ca65 source of the two in `build/gen`. Every byte
 is the ROM's: the listing says which bytes are instructions and which are
 data, and gives the names and the comments. An operand is written as the
 listing's name where its address has one that the assembler can be
@@ -30,14 +31,28 @@ trusted with, and as a number otherwise (75 of some 35,000 instructions,
 mostly calls into a bank other than the caller's pair). The CHR ROM is cut
 out of `baserom.nes`.
 
+Some of the game's pointers are still numbers, so its code must not move.
+Two things in the converted source see to that. Every label asserts its
+address, which ld65 checks: a change that moves any of the game does not
+link. And each run of 32 bytes of $FF or more that nothing is listed in is
+a label of its own, `FREE_bb_oooo`, which a netplay build can fill with a
+macro (`net/fill.inc`); a macro that does not fit does not assemble.
+
+The source is copied to `build/src`, and `patches/` puts the netplay's few
+lines into the copy, all under `.ifdef NETPLAY` and each the same length
+as the line it replaces, or a label alone. The original is built from the
+patched source too, and `make verify` says it is still the ROM.
+
 ```sh
 git submodule update --init third_party/TMNT2-NES-Reverse-Engineered
-make            # build/tmnt2.nes, the original
-make verify     # it matches its SHA-512
+make            # build/tmnt2.nes, the original, and build/tmnt2_net.nes
+make verify     # the original matches its SHA-512
 make test       # the simulation's tests (needs requirements-dev.txt)
+make patches    # patches/ again, from what has been changed in build/src
 ```
 
-Needs cc65 (`ca65`, `ld65`) and Python 3.
+Needs cc65 (`ca65`, `ld65`), Python 3, `patch`, and a C compiler: the
+tests run the ROM against nesp32's firmware built for this computer.
 
 ## The cartridge
 
@@ -46,6 +61,54 @@ The game always switches its PRG banks in pairs, an even bank at $8000 and
 the odd one after it at $A000; banks 30 and 31 are fixed at $C000 and
 $E000. `tmnt2.cfg` links each bank at its address. Bank 29 is unused
 (all $FF), and banks 05, 17 and 21 have 5 to 6 KB free each.
+
+## How the netplay works
+
+As in every netplay game (nesp32's
+[`docs/MULTIPLAYER.md`](../../docs/MULTIPLAYER.md)): both consoles run the
+whole game, only the buttons cross, a byte a tick, and a console takes a
+tick only when it has both players' buttons for it. All of TMNT II's game
+runs in its NMI, as Contra's does, so the netplay is Contra's (its
+`net/net.inc`), in bank 29 (`net/net.asm`), with what has to be in the
+fixed bank in the 187 bytes the game leaves at its end (`net/fill.inc`).
+
+**What had to change in the game**, by `patches/`:
+
+- **The random number.** The idle loop added to `INF_LOOP_COUNTER` for as
+  long as the CPU had nothing to do, so two consoles given the same
+  buttons did not play the same game. The netplay ROM's idle loop does
+  nothing, and the number is stirred once a tick (`net_stir`), in a game
+  on one console too.
+- **The exchange, and the controller read with it**, where the NMI has set
+  up the scanline counter (`net_nmi_irq`), before the IRQs are let in: the
+  setup's `CLI` comes after them. The first split is never sooner than
+  5794 cycles after, and the exchange takes some 3100, so no IRQ breaks
+  into the serial routines and no split comes late.
+- **The NMI's read of the controllers** (`net_ctrl`): in a session, both
+  players' buttons for the tick, as the game's read leaves them; with
+  none, the game's read, and OUT0 back to mark after it.
+- **The NMI itself** (`net_nmi`). An NMI after one that stalled is the
+  game's own for a frame that overran, with the exchange, and goes on into
+  the game if the buttons came.
+- **The reset**, which turns the PRG RAM on, sets OUT0 to mark, and starts
+  a session if one was asked for, at the turtle select.
+
+**The netplay's memory** is the 8 KB of PRG RAM at $6000 that an MMC3
+cartridge can have, which the netplay ROM's NES 2.0 header asks for: the
+game uses all of its own 2 KB and clears it at the reset. The link's
+serial routines need six bytes of zero page, which no level writes.
+
+**A stall** ends the NMI with the PPU's buffer of writes sent and left
+empty, so the next tick's writes are the only ones in it. The countdown
+the NMI keeps before it lets the picture on (`DISABLE_RENDERING_X_FRAMES`)
+goes by ticks, not frames: the game reads it, to let Start skip a cutscene.
+
+**What keeps the frames' time**, and is left out of the digest and of
+what the tests compare: the sound engine's memory, as in every netplay
+game, and what the IRQs keep. Their handlers run in every frame, a
+stall's too, and step the background's animation in some levels (level
+0's flames, `_612_STEP_UNK` and the CHR bank it picks); the game reads
+nothing of it.
 
 ## The simulation
 
@@ -134,17 +197,15 @@ colon. The title's choice is 1 TURTLE and 2 TURTLES.
 
 ## To do
 
-1. **The netplay**, from Contra's: the idle loop's random number
-   (`INF_LOOP_COUNTER`, $22) stirred once a tick instead; the controller
-   read and the exchange after the counter's setup, with the `CLI` after
-   them; the NMI's stall; the reset and the session. Its code in bank 29,
-   switched in at $A000 for the exchange; its RAM at $0385-$03BF. A test
-   that the game never reads bank 29.
-2. **The menu**, by room code and by address, from Contra's, at the
+1. **The menu**, by room code and by address, from Contra's, at the
    title's Start with 2 TURTLES chosen (`_18_1_SUBSTATE_TITLE_SELECT`), in
-   the title's font.
-3. **Tests**, then hardware.
-4. **A faster sprite pass**, once the netplay plays. Level 7's frames
+   the title's font, which has no dash. Its code in bank 29, its memory in
+   the PRG RAM, and the NMI's hook for it in what is left of the fixed
+   bank's end.
+2. **Hardware**: a flashcart that gives the MMC3 its PRG RAM, by address
+   on one network first and then by a room's code; the splits on every
+   level.
+3. **A faster sprite pass**, once the netplay plays. Level 7's frames
    spend half their cycles building the sprites (12269 as a median, for
    49 tiles), and the loop works out again for each tile what is the same
    for the whole object: the tile's $40 for player 2, the palette, the
@@ -156,7 +217,3 @@ colon. The title's choice is 1 TURTLE and 2 TURTLES.
    it the same as the original's, RAM and sprites, frame for frame.
    Whether the original game gets it too, losing some of its slowdown, is
    to be decided.
-
-Code is to be added in free space, and the game's own changed in place by
-lines of the same length: inserting into a bank moves what follows, and
-some of its pointers are still numbers.

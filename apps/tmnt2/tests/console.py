@@ -27,8 +27,10 @@ py65 is a plain 6502. This adds:
   game's own IRQ setup does. The IRQ is taken when the line is up and the
   CPU's I flag is clear, as on a console, so a handler that runs with
   interrupts off holds it back; each frame's record says when it was
-  raised and when it was taken. There is no PRG RAM, and the CHR banks
-  are not kept: nothing reads the pattern tables back.
+  raised and when it was taken. The 8 KB of PRG RAM at $6000 that the
+  netplay ROM's header asks for is there for either ROM (the original
+  never touches it), and the CHR banks are not kept: nothing reads the
+  pattern tables back.
 - The sample channel as far as the CPU can tell: while a sample plays,
   each byte it fetches stops the CPU for a few cycles (`dmc_steal`). That
   is what a routine that counts cycles has to live with. Nothing is heard.
@@ -47,6 +49,7 @@ two side by side, a slice at a time, with one a little fast.
 """
 
 import hashlib
+import math
 
 from py65.devices.mpu6502 import MPU
 
@@ -55,6 +58,8 @@ VBLANK_CYCLES = 20 * 341 / 3    # 2273: the vblank flag stands this long
 PRG_START = 0x8000
 BANK_SIZE = 0x2000
 INES_HEADER = 16
+PRG_RAM_START = 0x6000
+PRG_RAM_SIZE = 0x2000
 # Where the counter is clocked, in CPU cycles from the start of the vblank
 # (scanline 241, dot 1): dot 260 of the pre-render line (261), and of each
 # visible line after it.
@@ -130,6 +135,7 @@ class Bus:
     def __init__(self, console, prg):
         self.console = console
         self.ram = bytearray(RAM_SIZE)
+        self.prg_ram = bytearray(PRG_RAM_SIZE)
         self.prg = prg
         self.windows = [0, 0, 0, 0]  # where each 8 KB from $8000 is in the PRG
         self.written = None         # a bytearray: the RAM written since (watch_writes)
@@ -139,6 +145,8 @@ class Bus:
             return self.prg[self.windows[(address - PRG_START) >> 13] + (address & 0x1FFF)]
         if address < 0x2000:
             return self.ram[address & 0x7FF]
+        if address >= PRG_RAM_START:
+            return self.prg_ram[address - PRG_RAM_START]
         return self.console.read_io(address)
 
     def __setitem__(self, address, value):
@@ -148,6 +156,8 @@ class Bus:
                 self.written[address & 0x7FF] = 1
         elif address >= PRG_START:
             self.console.write_mapper(address, value)
+        elif address >= PRG_RAM_START:
+            self.prg_ram[address - PRG_RAM_START] = value
         else:
             self.console.write_io(address, value)
 
@@ -514,7 +524,9 @@ class Console:
             until = min(until, self._host_at)
         if self.dmc_left:
             until = min(until, self.dmc_at)
-        until = int(until) if until != float("inf") else until
+        # Up to a whole cycle: a limit between two (run_until's, on a clock
+        # that runs fast or slow) is passed, not fallen short of.
+        until = math.ceil(until) if until != float("inf") else until
         # Already there (a sample's fetch may have taken the clock past it):
         # the caller's loop sees to what is due, and the idle loop is not
         # stepped.

@@ -21,6 +21,16 @@ The game's MMC3 holds two switchable 8 KB banks at $8000 and $A000, which
 it always switches together, an even bank and the odd one after it, and
 the last two banks fixed at $C000 and $E000.
 
+Two things are there for code to be added to the game without moving
+any of it. Each run of $FF that nothing is listed in, FREE bytes or more,
+is a label of its own, FREE_bb_oooo (its bank and its offset), and an
+assembly that defines HAVE_FREE_bb_oooo and a macro FILL_FREE_bb_oooo has
+the macro there, with the rest of the run still $FF: a macro that does not
+fit is an error. (To ca65 a macro's name begins a call to it wherever it
+starts a line, a label's place included, so the three names differ.) And each label
+asserts its address, which ld65 checks, so a change to the game that moves
+any of it does not link.
+
 Made under the directory: src/tmnt2.asm (the 32 banks, each in its own
 segment), src/ram.inc (the listing's variables and the registers),
 src/header.asm (the ROM's iNES header), and chr.bin (its CHR ROM).
@@ -33,6 +43,7 @@ import sys
 BANKS = 32
 BANK_SIZE = 0x2000
 HEADER = 16
+FREE = 32               # the shortest run of $FF that is room for code
 
 # The official opcodes: mnemonic and addressing mode.
 MODES = {
@@ -380,6 +391,28 @@ class Converter:
                 return "%s%s" % (kind, target)
         return None
 
+    def free_runs(self, bank):
+        """{offset: length} of the runs of $FF that nothing is listed in:
+        no instruction, no pointer, no label or comment after the first
+        byte."""
+        runs = {}
+        start = None
+        for offset in range(BANK_SIZE + 1):
+            empty = (offset < BANK_SIZE and bank.rom[offset] == 0xFF
+                     and offset not in bank.code and offset not in bank.pointers
+                     and offset not in bank.remarks
+                     and not any(at < offset < at + bank.code[at][2]
+                                 for at in range(max(0, offset - 2), offset) if at in bank.code))
+            inside = start is not None and (
+                (bank.number, offset) in self.names or offset in bank.comments)
+            if start is not None and (not empty or inside):
+                if offset - start >= FREE:
+                    runs[start] = offset - start
+                start = None
+            if empty and start is None:
+                start = offset
+        return runs
+
     def bank_lines(self, bank, texts, pointers):
         lines = ['.segment "BANK%02d"' % bank.number, ""]
         offset = 0
@@ -390,6 +423,7 @@ class Converter:
                 lines.append("    .byte " + ",".join("$%02X" % b for b in data[start:start + 16]))
             data.clear()
 
+        free = self.free_runs(bank)
         while offset < BANK_SIZE:
             name = self.names.get((bank.number, offset))
             notes = bank.comments.get(offset, [])
@@ -397,8 +431,21 @@ class Converter:
                 flush()
             if name:
                 lines.append("%s: ; %02X:%04X" % (name, bank.number, offset))
+                lines.append("    .assert * = $%04X, error" % (bank.base + offset))
             for note in notes:
                 lines.append("    ; " + note)
+            if offset in free:
+                flush()
+                length = free[offset]
+                label = "FREE_%02X_%04X" % (bank.number, offset)
+                lines += ["%s: ; %d bytes the game does not use" % (label, length),
+                          "    .assert * = $%04X, error" % (bank.base + offset),
+                          ".ifdef HAVE_%s" % label,
+                          "    FILL_%s" % label,
+                          ".endif",
+                          "    .res %d - (* - %s), $FF" % (length, label)]
+                offset += length
+                continue
             if offset in bank.code:
                 flush()
                 mnemonic, mode, size = bank.code[offset]
