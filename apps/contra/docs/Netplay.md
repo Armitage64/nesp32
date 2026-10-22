@@ -310,6 +310,9 @@ loop, so the same buttons make another game.
 
 ## On hardware
 
+On the MMC3, with the sprite pass and the bullets' test from the PRG RAM
+(October 2026): the game runs as it did. Not every stage was played.
+
 Across the Internet by a room's code, between a console on a fiber
 connection and one on a phone's 5G hotspot, with nothing forwarded at
 either, and by address with Select on one home network: both met and
