@@ -1,0 +1,65 @@
+--- a/src/bank1.asm
++++ b/src/bank1.asm
+@@ -4014,0 +4015,21 @@
++
++.ifdef NETPLAY
++; The same, with less done for a slot with no sprite, which is most of
++; them: a frame has fewer cycles to spare in a session (net/net.inc).
++; $05 and Y are left as the game's loop leaves them. The OAM's room ($07)
++; is looked at only after a sprite, where it can have run out: the HUD
++; before the loop takes 8 of its 64 at the most.
++@load_sprite_loop:
++    lda CPU_SPRITE_BUFFER,x    ; load sprite offset into sprite_ptr_tbl
++    beq @next_sprite           ; none in this slot
++    stx $05
++    ldy SPRITE_ATTR,x
++    sty $00
++    ldy SPRITE_Y_POS,x
++    sty $01
++    ldy SPRITE_X_POS,x
++    sty $02
++    jsr load_sprite_to_cpu_mem
++    ldy $07
++    bmi draw_sprites_exit      ; the OAMDMA is full
++    ldx $05
+@@ -4015,0 +4037,8 @@
++@next_sprite:
++    dex
++    bpl @load_sprite_loop
++    inx
++    stx $05                    ; the last slot, 0
++    ldy $07
++    ldx $04
++.else
+@@ -4035,0 +4065 @@
++.endif
+@@ -4040,0 +4071,6 @@
++.ifdef NETPLAY
++    txa                     ; adv_OAMDMA_addr, in line
++    clc
++    adc #$c4
++    tax
++.else
+@@ -4041,0 +4078 @@
++.endif
+@@ -4110,0 +4148,3 @@
++.ifdef NETPLAY
++    bne @have_y   ; not shared: A is the Y offset already
++.else
+@@ -4111,0 +4152 @@
++.endif
+@@ -4127,0 +4169,3 @@
++.ifdef NETPLAY
++@have_y:
++.endif
+@@ -4172,0 +4217,8 @@
++.ifdef NETPLAY
++    sta OAMDMA_CPU_BUFFER+3,x ; set_x_adv_OAMDMA_addr, in line
++    dec $07
++    txa
++    clc
++    adc #$c4
++    tax
++.else
+@@ -4173,0 +4226 @@
++.endif

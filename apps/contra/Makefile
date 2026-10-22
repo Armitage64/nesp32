@@ -39,7 +39,7 @@ CONTRA_COMMIT ?= 687d651c021fd7020f10d05b970ccb62663c94bd
 BASEROM ?= baserom.nes
 SRC := $(BUILD)/src
 UPSTREAM := $(BUILD)/upstream.stamp
-PATCHED := bank5 bank6 bank7 ines_header
+PATCHED := bank1 bank5 bank6 bank7 ines_header
 NAMES := ram constants ines_header bank0 bank1 bank2 bank3 bank4 bank5 bank6 bank7
 SOURCES := $(NAMES:%=$(SRC)/%.asm)
 OBJECTS := $(NAMES:%=$(BUILD)/orig/%.o)

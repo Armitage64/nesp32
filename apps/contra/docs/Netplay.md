@@ -89,6 +89,9 @@ three; it now makes it this way too.
   picked.
 - **The reset**, which sets the line to the nesp32 and starts a session if
   the menu asked for one.
+- **The sprite pass** (bank 1), which does less for the same sprites, to
+  give back some of the frame the exchange takes ("The sprite pass",
+  below). This is so in a local game too.
 
 The sound engine is not part of the game for this purpose: it runs once in
 every NMI, tick or not, and its memory differs between the consoles.
@@ -199,6 +202,41 @@ and damaged on the line, with a nesp32 whose clock is 1.5% out, with one
 console's clock fast, and with the music's samples taking their cycles
 throughout.
 
+**The sprite pass.** Building the sprites (`draw_sprites`, in bank 1) is
+the largest single part of a crowded frame: some 6000 to 7300 cycles in
+levels 1, 4, 6 and 8 as a median, and a quarter of the frames that come
+near the end of their time. The netplay ROM does three things in it with
+less work, and leaves the same sprites and the same memory:
+
+- the step to the next sprite in the buffer (`set_x_adv_OAMDMA_addr` and
+  `adv_OAMDMA_addr`, $C4 on) is made in line, where the game calls a
+  routine for it, for every tile and for every unused place it hides;
+- a tile's first byte is read once, where the game reads it twice;
+- a slot of `CPU_SPRITE_BUFFER` with no sprite, most of its 26, is passed
+  over with a load and a branch.
+
+That is some 900 cycles a frame, whatever the level: a third of what the
+exchange costs. The frames that would overrun with an exchange of 3112
+cycles, in two players' play from the start of each level (1500 frames
+each; the original's play, its frames replayed through both passes):
+
+| Level | The original | With the exchange | With it and the faster pass |
+|---|---|---|---|
+| 1 | 2.3% | 7.4% | 5.9% |
+| 3 | 0.0% | 0.0% | 0.0% |
+| 4 | 0.7% | 3.9% | 2.7% |
+| 6 | 10.7% | 28.0% | 24.3% |
+| 8 | 0.0% | 0.1% | 0.0% |
+
+Level 6 is crowded even in the original. In its heaviest frames the next
+largest parts are the tests of the players' bullets against each enemy
+and of everything against the background, a third of the frame between
+them; those are in the fixed bank, which has no room for code that is
+larger, and the game no RAM to run it from. `tests/test_sprites.py`
+holds the netplay ROM's pass to the original's on random memory: the
+same OAM buffer and the same RAM, with the sprites' data 14 bytes on in
+bank 1.
+
 ## On hardware
 
 Across the Internet by a room's code, between a console on a fiber
@@ -299,11 +337,14 @@ on and its own leavings in memory, which the handler acted on.
 - **The slowdown when the screen is crowded.** Less than it was, and
   still there: those are the frames with least to spare, where the
   original overruns too, and the exchange takes a tenth of every frame.
-  What is left to try, if it is wanted: making no wait for a reply in a
-  frame whose buttons from the other console are already here, which they
-  are whenever its delay has a tick to spare; and leaving the reply's CRC
-  at one byte. And to see how a local two-player game does in the same
-  scenes, which is the least this can come to.
+  The faster sprite pass gives back about a third of that ("The sprite
+  pass"); level 6 still overruns a quarter of its frames in the
+  simulation's play. What is left to try, if it is wanted: making no
+  wait for a reply in a frame whose buttons from the other console are
+  already here, which they are whenever its delay has a tick to spare;
+  leaving the reply's CRC at one byte; and the collision tests, if room
+  can be found in the fixed bank. And to see how a local two-player game
+  does in the same scenes, which is the least this can come to.
 - **Player 2 cannot pause.** The game reads only player 1's Start.
 - **Probotector**, the PAL release.
 

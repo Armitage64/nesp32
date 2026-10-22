@@ -314,10 +314,11 @@ frame, in every NMI that is not a lag. A game with that much to spare
 loses nothing. A game whose frames are nearly full already overruns more
 of them, and stands still for a frame each time: the same game, slower,
 and on both consoles, as the other waits for its buttons. Contra's
-busiest scenes slow a little for it (its levels 1 and 3: some 7 or 8
-frames in 100 with the exchange, against 1 to 3 in the original; its
-`docs/Netplay.md`). TMNT II's level 7 for two would slow a lot: 26
-frames in 100, against 2.
+busiest scenes slow for it: its level 6, crowded in the original too,
+would overrun 28 frames in 100 with the exchange, against 11 alone. Its
+netplay ROM builds the sprites with less work, some 900 cycles a frame,
+which brings that to 24 (its `docs/Netplay.md`, "The sprite pass").
+TMNT II's level 7 for two would slow a lot: 26 frames in 100, against 2.
 Its netplay ROM builds the sprites faster, from the cartridge's PRG RAM,
 which brings that to 3 in 100 (its README, "The frame rate"). A game's
 own work is the place to find the cycles; a faster exchange (To do)
