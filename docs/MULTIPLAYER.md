@@ -1,12 +1,12 @@
 # Multiplayer: two consoles, one game
 
-Three of the apps are netplay builds of a two-player game:
-[Contra](../apps/contra), [Dr. Mario](../apps/drmario) and
-[Tetris](../apps/tetris). Each is played on two consoles, each console
+Four of the apps are netplay builds of a two-player game:
+[Contra](../apps/contra), [Dr. Mario](../apps/drmario),
+[Tetris](../apps/tetris) and [TMNT II](../apps/tmnt2). Each is played on two consoles, each console
 with a nesp32 on controller port 2, the nesp32s joined over the network.
-The three work the same way, and this is that way: what the player sees,
+The four work the same way, and this is that way: what the player sees,
 what a tick is, how the two games are kept the same, and what is still
-left to do in all three.
+left to do in all four.
 
 What the nesp32s do between them is the PEER service's, in
 [`PROTOCOL.md`](PROTOCOL.md): its lobby, its exchange of buttons, the
@@ -20,6 +20,7 @@ and from hardware) is in its own docs:
 | Contra | [apps/contra/README.md](../apps/contra/README.md) | [apps/contra/docs/Netplay.md](../apps/contra/docs/Netplay.md) |
 | Dr. Mario | [apps/drmario/README.md](../apps/drmario/README.md) | [apps/drmario/docs/PROTOCOL.md](../apps/drmario/docs/PROTOCOL.md) |
 | Tetris | [apps/tetris/README.md](../apps/tetris/README.md) | [apps/tetris/docs/PROTOCOL.md](../apps/tetris/docs/PROTOCOL.md) |
+| TMNT II | [apps/tmnt2/README.md](../apps/tmnt2/README.md) | its README, "How the netplay works" |
 
 ## Playing
 
@@ -51,14 +52,15 @@ left.
   Internet, for a nesp32 that has no rooms, and for two networks that
   rooms cannot get through.
 
-All three games' menus have both ways. Contra writes the foot of the
-screen as `SELECT   BY IP`, its font having no dash.
+All four games' menus have both ways. Contra and TMNT II write the foot
+of the screen as `SELECT   BY IP`, their fonts having no dash.
 
 | Game | The title's choice | Its hello |
 |---|---|---|
 | Contra | 2 PLAYERS | `CNTR` |
 | Dr. Mario | 2 PLAYER GAME | `DRMA` |
 | Tetris | 2 PLAYERS, where the original says PUSH START | `TTRS` |
+| TMNT II | 2 TURTLES | `TMN2` |
 
 The console that hosted is player 1. When the two nesp32s are connected
 both consoles leave the menu and go straight into a game for two. Each
@@ -185,7 +187,7 @@ eight seconds:
 For those, meet by address with a port forwarded at the host. A relay
 that carried the game for them would cost per gigabyte, and is not here.
 
-**On hardware** (October 2026), all three games have been played both
+**On hardware** (October 2026), the first three games have been played both
 ways:
 
 - **By room code**, between a console on a fiber connection and one on a
@@ -195,6 +197,9 @@ ways:
   public port for every address the socket sent to, which is what
   punching needs.
 - **By address**, with Select, between two consoles on one home network.
+
+TMNT II has been played on hardware since (October 2026, its README):
+a session, the menu, and level 7 for two at the game's own speed.
 
 The nesp32's log (`firmware/deploy.sh watch`) says the same of any
 network: `stun:` lines with what each server saw, and whether the router
@@ -230,13 +235,16 @@ nothing else: not on when the frames fell, how long the nesp32 took to
 answer, or which exchanges failed. Dr. Mario's and Tetris's NMIs change
 the game's state (they draw the playfields, count the frames, step the
 random numbers), so an NMI that finds the main loop still at work does
-nothing at all. All of Contra's game runs inside its NMI, so there a tick
-is the NMI that runs the game, and a lag is the game's own lag frame, left
-as it was.
+nothing at all. All of Contra's game runs inside its NMI, and all of
+TMNT II's, so there a tick is the NMI that runs the game, and a lag is
+the game's own lag frame, left as it was.
 
 **The exchange is made where the game reads its controllers**, before the
 game's work: after the NMI's writes to the PPU, and before the main loop
-(or, in Contra, the rest of the NMI) does the frame's work. So the buttons
+(or, in Contra and TMNT II, the rest of the NMI) does the frame's work.
+TMNT II's is made a little before its read, where the NMI has set up the
+counter for its splits of the screen and before it lets the IRQs in, so
+that no IRQ breaks into the serial routines. So the buttons
 leave as soon as they are read, and the other console's are asked for at
 the last moment they can be used. That is what lets a delay of one tick
 do. Dr. Mario made its exchange at the end of the handler at first, a
@@ -249,7 +257,7 @@ In a session the sound engine runs once in every NMI, whichever of the
 three the frame is. Dr. Mario and Tetris run it from their main loop, once
 a pass, which in a session is once a tick: every stall and every lag then
 held the music back by a frame, and on real consoles it was heard to speed
-up and slow down. Contra runs it from its NMI anyway.
+up and slow down. Contra and TMNT II run it from their NMIs anyway.
 
 That is safe because the engine keeps to itself: the game only leaves it
 orders, a sound to make, the music to play, and reads nothing back that
@@ -299,6 +307,22 @@ The console keeps a ring of buttons each way, and stalls rather than read
 its controller for a tick whose place is still held by one the nesp32 has
 not taken.
 
+### What it costs a frame
+
+The exchange is made in the NMI and takes some 3100 cycles, a tenth of a
+frame, in every NMI that is not a lag. A game with that much to spare
+loses nothing. A game whose frames are nearly full already overruns more
+of them, and stands still for a frame each time: the same game, slower,
+and on both consoles, as the other waits for its buttons. Contra's
+busiest scenes slow a little for it (its levels 1 and 3: some 7 or 8
+frames in 100 with the exchange, against 1 to 3 in the original; its
+`docs/Netplay.md`). TMNT II's level 7 for two would slow a lot: 26
+frames in 100, against 2.
+Its netplay ROM builds the sprites faster, from the cartridge's PRG RAM,
+which brings that to 3 in 100 (its README, "The frame rate"). A game's
+own work is the place to find the cycles; a faster exchange (To do)
+would give some back to every game.
+
 ### The delay
 
 Each console keeps a delay for its own buttons, from 1 tick to 5, and
@@ -325,6 +349,7 @@ What the digest covers is each game's own:
 | Contra | its zero page and its sprites |
 | Dr. Mario | its zero page, less the link's bytes, the sound engine's and the flag the main loop waits on |
 | Tetris | the same as Dr. Mario's, less the session's one byte there too, and both playfields |
+| TMNT II | its zero page, less the link's bytes, the sound engine's, what its IRQs keep and the flag of a frame under way, and its sprites |
 
 The two nesp32s also tell one build from another, by the name and version
 in its hello, and do not join the two: one might send buttons where the
@@ -338,7 +363,7 @@ cycle-timed serial routines, so the library is built with the receiver
 that gives up by counting: the console waits about 4.1 ms for a reply to
 begin. A reply that is late, cut short or fails its CRC is dropped whole,
 and what it carried is asked for again. Contra asks again in the same NMI
-(`net_ask`); Dr. Mario and Tetris in the next frame.
+(`net_ask`), and so does TMNT II; Dr. Mario and Tetris in the next frame.
 
 The strobe line to the controllers (OUT0) is also the line to the nesp32,
 and rests high. The console reads its controller with it low for the 8 reads,
@@ -386,7 +411,7 @@ end's silence, the other by the lost connection.
 ## To do
 
 What is left on the nesp32 itself is in [`TODO.md`](TODO.md). In all
-three games:
+four games:
 
 
 - **Say why on the console** when a session ends (the other console left,

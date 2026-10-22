@@ -1,0 +1,16 @@
+--- a/src/header.asm
++++ b/src/header.asm
+@@ -1,0 +2,11 @@
++.ifdef NETPLAY
++; The netplay ROM has an NES 2.0 header: the same cartridge, with 8 KB of
++; PRG RAM at $6000 for the netplay's memory (net/net_ram.inc).
++    .byte $4E,$45,$53,$1A,$10,$20,$40
++    .byte $08                   ; NES 2.0
++    .byte $00,$00               ; no submapper; the ROMs' sizes as above
++    .byte $07                   ; PRG RAM: 64 << 7 bytes, not kept
++    .byte $00                   ; no CHR RAM
++    .byte $00                   ; NTSC
++    .byte $00,$00,$00
++.else
+@@ -2,0 +14 @@
++.endif

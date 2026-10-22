@@ -14,3 +14,7 @@
 	path = third_party/TetrisNESDisasm
 	url = https://github.com/CelestialAmber/TetrisNESDisasm.git
 	shallow = true
+[submodule "third_party/TMNT2-NES-Reverse-Engineered"]
+	path = third_party/TMNT2-NES-Reverse-Engineered
+	url = https://github.com/AaronBottegal/TMNT2-NES-Reverse-Engineered.git
+	shallow = true

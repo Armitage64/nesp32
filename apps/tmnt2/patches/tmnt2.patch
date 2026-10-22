@@ -1,0 +1,78 @@
+--- a/src/tmnt2.asm
++++ b/src/tmnt2.asm
+@@ -4,0 +5,3 @@
++.ifdef NETPLAY
++.include "fill.inc"             ; the netplay's code in the game's empty space
++.endif
+@@ -53636,0 +53640,3 @@
++.ifdef NETPLAY
++    jsr net_title_start         ; 2 TURTLES goes to the netplay's menu first
++.else
+@@ -53637,0 +53644 @@
++.endif
+@@ -54223,0 +54231,4 @@
++.ifdef NET_FAST_SPRITES
++    jmp net_sprites             ; the netplay's loop, in the PRG RAM (net/sprites.inc)
++    nop
++.else
+@@ -54225,0 +54237 @@
++.endif
+@@ -54415,0 +54428,4 @@
++.ifdef NET_FAST_SPRITES
++    jmp net_sort                ; the same order, sooner (net/sprites.inc)
++    nop
++.else
+@@ -54417,0 +54434 @@
++.endif
+@@ -60689,0 +60707,3 @@
++.ifdef NETPLAY
++    nop                         ; the netplay lets the IRQs in, after its exchange (net_cli)
++.else
+@@ -60690,0 +60711 @@
++.endif
+@@ -61279,0 +61301,3 @@
++.ifdef NETPLAY
++    jsr net_reset_hook          ; the netplay's reset, then the sound's
++.else
+@@ -61280,0 +61305 @@
++.endif
+@@ -61285,0 +61311,3 @@
++.ifdef NETPLAY
++    jmp INFINITE_LOOP           ; the number is stirred once a tick instead (net_stir)
++.else
+@@ -61287,0 +61316 @@
++.endif
+@@ -61294,0 +61324,3 @@
++.ifdef NETPLAY
++    jsr net_lag_irq             ; the counter's setup, and the CLI it did
++.else
+@@ -61295,0 +61328 @@
++.endif
+@@ -61298,0 +61332,3 @@
++.ifdef NETPLAY
++NET_OVERRUN_END:                ; the end of an NMI that stalled (net_nmi_stalled)
++.endif
+@@ -61330,0 +61367,3 @@
++.ifdef NETPLAY
++    jsr net_nmi_irq             ; the counter's setup, the controller and the exchange, the CLI
++.else
+@@ -61331,0 +61371 @@
++.endif
+@@ -61349,0 +61390,4 @@
++.ifdef NETPLAY
++NET_NMI_GAME:                   ; where an NMI that had stalled goes on (net_nmi_stalled)
++    jsr net_ctrl                ; the game's read, or both players' buttons in a session
++.else
+@@ -61350,0 +61395 @@
++.endif
+@@ -61481,0 +61527,4 @@
++.ifdef NETPLAY
++    .byte <net_nmi              ; the netplay's NMI, which goes on to the game's
++    .byte >net_nmi
++.else
+@@ -61483,0 +61533 @@
++.endif
+@@ -61492,0 +61543,3 @@
++.ifdef NETPLAY
++.include "net.asm"              ; bank 29
++.endif
