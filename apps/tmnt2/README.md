@@ -1,11 +1,11 @@
 # TMNT II, two consoles
 
-To be a netplay build of Teenage Mutant Ninja Turtles II: The Arcade Game
+A netplay build of Teenage Mutant Ninja Turtles II: The Arcade Game
 (US, NES): a two-player game on two consoles, each with a
 [nesp32](../..) on controller port 2, meeting by a room's code as
 [Contra](../contra), [Dr. Mario](../drmario) and [Tetris](../tetris) do.
 nesp32's [`docs/MULTIPLAYER.md`](../../docs/MULTIPLAYER.md) has what the
-netplay games share.
+netplay games share, TMNT II among them.
 
 The session and its menu are done and tested in the simulation: 2
 TURTLES at the title is the menu, HOST GAME and JOIN GAME meet by a room's
@@ -297,10 +297,9 @@ the one picked.
 
 ## To do
 
-1. **TMNT II in nesp32's `docs/MULTIPLAYER.md`**, with the other three,
-   now that a session plays on hardware. Tested there: the session, the
-   frame at the digest (no longer wrong), the menu's marker. Still to see
-   on hardware: the splits on every level, through a whole game.
+1. **The splits on every level on hardware**, through a whole game: the
+   simulation has them on their lines in every level, and hardware has
+   shown levels 1 and 7 so far.
 2. **The original game's slowdown**, if it is wanted: the faster sprite
    pass needs somewhere to run, and the original has no PRG RAM. A build
    of the original with PRG RAM asked for in its header would do.
