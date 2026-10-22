@@ -431,10 +431,36 @@ four games:
   screen's tiles have to be sent too, is not known.
   Contra's would take its screen's tiles and its 8 KB of CHR RAM as well,
   about 12 KB, and going back to the title may well stay.
-- **A faster exchange.** The line runs three times faster than the link's
-  rate (nes-throughput's test), which is about 1.5 ms of every exchange.
-  And no wait for a reply in a frame whose buttons from the other console
-  are already here, which they are whenever the delay has a tick to spare.
+- **A faster exchange: the line at 14 cycles a bit, then perhaps 10, in
+  a session.** The exchange is 3112 cycles: its 5 bytes out at 210 cycles
+  each and 4 back at 231 are 1974 of them, and the rest is the nesp32's
+  turnaround, the CRCs and the session's own work, which the rate does
+  not change. At 14 cycles a bit the exchange would be some 2450 cycles,
+  and at 10 some 2080. In Contra's simulated play of stages 1, 4 and 6
+  (its `docs/Netplay.md`), the frames of play that stand still would go
+  from 0.74% to 0.41% at 14 and 0.26% at 10, and the worst second from
+  44 frames to 47 and 52. Every netplay game would gain the same cycles.
+  - *What it takes.* PEER's session changes rate: once a session begins
+    the nesp32's UART goes to the faster rate both ways, and back to the
+    link's at its end, as RAW already changes rate for a run. Each game's
+    netplay ROM has a second set of serial routines for it, which
+    `nes/lib/gen_link.py` writes for any rate; the menu and the hello stay
+    at 21 cycles a bit. The simulated line takes any rate already.
+  - *What could stop it.* The drum samples. Each byte a sample fetches
+    stops the CPU for up to 4 cycles, which the serial routines cannot
+    see, and a real NES has misheard replies for it at 21 cycles a bit
+    (Contra's `docs/Netplay.md`, "On hardware"). At 14 a fetch is under a
+    third of a bit, at 10 two fifths. A misheard reply costs a whole
+    second exchange, so a rate that is misheard often is slower than 21.
+    nes-throughput's rates were found with no samples playing (nesp32's
+    [`TODO.md`](TODO.md)); a trial of each rate with them playing, on a
+    real NES with each board, comes first. Both 14 and 10 are inside what
+    a real NES has passed both ways without samples; 8 is not.
+  - *Not worth it:* making no wait for a reply in a frame whose buttons
+    from the other console are already here. A reply carries one tick of
+    them and a tick uses one, so a console has to hear one nearly every
+    frame. Only a delay longer than the network needs would leave frames
+    to skip, and on one network the delay keeps to 1.
 - **No zero delay, and no rolling back.** A delay of 0 would need the
   other console's buttons in the frame they were read, which works only
   while the two consoles' frames happen to line up. Rolling back, as newer

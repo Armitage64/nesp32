@@ -52,6 +52,14 @@ its own list in its README.
   Rolling back, as newer games do, is not for any of the three: a
   cartridge with no RAM has nowhere to keep a copy of the game, and no
   frame has the time to run the game again.
+- **PEER's session at a faster rate**: the line at 14 cycles a bit, then
+  perhaps 10, from a session's start to its end, for a faster exchange in
+  every netplay game ([MULTIPLAYER.md](MULTIPLAYER.md), "To do", has what
+  it gains and what it takes). The nesp32's part is to change its UART's
+  rate both ways when the session begins and ends, as RAW does for a run.
+  First, nes-throughput's trial of each rate with the music's samples
+  playing, on a real NES with each board: the rates above were found with
+  none.
 - An idle opponent on the nesp32, as `host/serial_host.py --idle` has, to
   test one console with a nesp32 alone.
 - A fetch that drops partway made again; today what came is read, if it
