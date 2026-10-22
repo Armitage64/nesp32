@@ -136,6 +136,7 @@ What is still to do on the hardware and the firmware is in
 | `host/nesp_host.c`, `host/nesp.py` | the firmware's code as a library for this computer, with a stand-in for the hardware |
 | `host/serial_host.py` | that, on a USB serial cable in place of a nesp32 |
 | `host/peer_net.py` | for it, PEER's connection to another nesp32 on this computer's sockets, and an opponent who never presses a button |
+| `host/peer_player.py` | a second player with no second console: the other nesp32 and its console, for trying a netplay ROM on one NES, in a room at the real rendezvous or by address |
 | `tests/console.py`, `tests/wire.py`, `tests/drive.py` | a console on py65, the serial line, and a hand on the controller |
 
 ## Tests
@@ -162,6 +163,8 @@ make test
   run against this code, on two consoles, in nes-drmario's tests.
 - `test_peer_net.py`: a computer's stand-in for that network, on real
   sockets on this machine.
+- `test_peer_player.py`: `host/peer_player.py` against a console of the
+  test's: the digest sent back, and what player 2 does.
 - `test_radar.py`: where an airport is from Wikidata's answer, a reply
   from adsb.fi to a scene and its names, held to the bytes nes-radar's own
   server makes of it and of 40 made up, and the fetches by the clock, with
