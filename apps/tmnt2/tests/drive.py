@@ -81,13 +81,16 @@ def play_ticks(nes, game):
     return states
 
 
-# The title's letters: 0 to 9, A to Z, A to Z again shaded (here in lower
-# case), its full stop and a blank; and the line under a tile that the
-# menu marks the letter being edited with.
+# The title's letters: 0 to 9, A to Z, its full stop and a blank; and the
+# line under a tile that the menu marks the letter being edited with.
 TILES = {0x00: " ", 0x3F: ".", 0xF0: "-"}
 TILES.update((0x01 + digit, str(digit)) for digit in range(10))
 TILES.update((0x0B + letter, chr(ord("A") + letter)) for letter in range(26))
-TILES.update((0x25 + letter, chr(ord("a") + letter)) for letter in range(26))
+
+# The title's marker for the line picked: two 8x16 sprites, the second the
+# first turned round, 8 pixels before the line and 4 above it.
+MARK_TILE = 0x11
+PPUMASK_SPRITES = 0x10
 
 
 def screen_row(console, row):
@@ -97,3 +100,21 @@ def screen_row(console, row):
 
 def screen_text(console):
     return "\n".join(screen_row(console, row) for row in range(30))
+
+
+def marker_row(console, column):
+    """The row of the screen that the title's marker is beside, its line
+    beginning at `column`; None with no marker shown."""
+    if not console.mask & PPUMASK_SPRITES:
+        return None
+    rows = set()
+    for sprite in range(64):
+        y, tile, attributes, x = console.oam[4 * sprite:4 * sprite + 4]
+        if y < 0xEF:
+            assert tile == MARK_TILE
+            assert (x, attributes & 0x40) in ((column * 8 - 24, 0), (column * 8 - 16, 0x40))
+            rows.add((y + 4) // 8)
+    if not rows:
+        return None
+    assert len(rows) == 1
+    return rows.pop()

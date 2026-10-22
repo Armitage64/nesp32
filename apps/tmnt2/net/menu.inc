@@ -31,8 +31,9 @@
 ; Everything the menu keeps of text is ASCII, as the codes and addresses
 ; are when they cross the link, and is made the title's tiles only as it
 ; goes to the PPU (menu_tile). The title's letters have no cursor and no
-; dash: the line the cursor is on is drawn in their shaded letters, and the
-; mark under the letter being edited is a line from the logo's tiles.
+; dash: the cursor is the title's own marker for the line picked, a pair
+; of sprites, and the mark under the letter being edited is a line from
+; the logo's tiles.
 ;
 ; Nothing here may change the game's memory: LOCAL GAME goes on with it.
 ; The menu keeps its own in the PRG RAM (net/net_ram.inc).
@@ -48,13 +49,18 @@ BTN_A           = $80
 
 ; What menu_line holds besides ASCII.
 MARK_DASH       = $7E           ; the line under the letter being edited
-SHADED          = $80           ; with a letter: in the title's shaded letters
 TILE_BLANK      = $00           ; the title's tiles
 TILE_DOT        = $3F
 TILE_DIGITS     = $01           ; 0 to 9
 TILE_LETTERS    = $0B           ; A to Z
-TILE_SHADED     = $25           ; A to Z again, shaded
 TILE_DASH       = $F0           ; a line along the bottom of the tile
+; The cursor: the marker the title puts beside 1 TURTLE or 2 TURTLES (its
+; object $74), two 8x16 sprites, the second the first turned round. Their
+; tiles are in the 1 KB of CHR the title keeps in R2, for the sprites.
+MARK_TILE       = $11
+MARK_BANK       = $C4
+MARK_X          = 11 * 8 - 24   ; 8 pixels before the line, as at the title
+MARK_HIDDEN     = $F8           ; below the picture
 
 IP_TILES        = 15            ; 192.168.001.023
 CODE_TILES      = NESP_PEER_CODE    ; K7QF
@@ -81,7 +87,6 @@ menu_pad_old    = menu_vars + 6
 menu_press      = menu_vars + 7 ; buttons that went down this frame
 menu_mode       = menu_vars + 8
 menu_cursor     = menu_vars + 9 ; 0-2 on the first screen
-menu_shown      = menu_vars + 10    ; which line is shaded, FF none
 menu_pos        = menu_vars + 11    ; 0-11: the digit being edited
 menu_want       = menu_vars + 12    ; an op of PEER's to send, 00 none
 menu_sent       = menu_vars + 13    ; the op of the last request, or HELLO
@@ -106,7 +111,10 @@ menu_room       = menu_vars + 59    ; 4: the room's code, as the nesp32 gave it
 menu_why        = menu_vars + 63    ; why a meeting failed: NESP_MEET_*
 MENU_VARS       = 64
 
-.assert menu_vars + MENU_VARS <= net_boot, error, "the menu's memory runs into net_boot"
+menu_oam        = MENU_RAM + $100   ; 256: the sprites, a page for the OAM's DMA
+
+.assert menu_vars + MENU_VARS <= menu_oam, error, "the menu's memory runs into menu_oam"
+.assert <menu_oam = 0 && menu_oam + $100 <= net_boot, error, "menu_oam"
 
 MODE_MAIN       = 0
 MODE_HOSTING    = 1
@@ -117,8 +125,7 @@ DIRTY_OWN       = $01           ; this nesp32's address, or why there is none
 DIRTY_DIGITS    = $02
 DIRTY_MARK      = $04
 DIRTY_STATUS    = $08
-DIRTY_CURSOR    = $10
-DIRTY_CODE      = $20           ; the room's code, on the host's screen
+DIRTY_CODE      = $10           ; the room's code, on the host's screen
 
 
 ; One NMI of the menu. net_menu is 01 for the first, which sets it up.
@@ -134,6 +141,7 @@ menu_frame:
     rts
 :
     inc menu_busy
+    jsr menu_sprites
     ; What the last frame left to draw.
     lda menu_draw_len
     beq @picture
@@ -202,7 +210,37 @@ menu_handle:
 menu_handlers:
     .word menu_mode_main-1, menu_mode_hosting-1, menu_mode_edit-1, menu_mode_joining-1
 
-; The picture on, at the top left of the first nametable, with no sprites.
+; The marker beside the line the cursor is on, on the first screen, and
+; hidden on the others; and the sprites to the OAM, first in the NMI as the
+; game sends them.
+menu_sprites:
+    ldy #MARK_HIDDEN
+    lda menu_mode
+    bne :+
+    ldx menu_cursor
+    ldy menu_mark_y,x
+:
+    sty menu_oam
+    sty menu_oam+4
+    lda #$00
+    sta PPU_OAM_ADDR
+    lda #>menu_oam
+    sta OAM_DMA
+    rts
+
+.assert MODE_MAIN = 0, error
+
+; The marker's sprites, but for where they are down the screen.
+menu_mark:
+    .byte MARK_HIDDEN, MARK_TILE, $00, MARK_X
+    .byte MARK_HIDDEN, MARK_TILE, $40, MARK_X + 8
+
+; By menu_cursor: beside the first screen's lines, 9, 11 and 13, as the
+; title has it beside its own.
+menu_mark_y:
+    .byte 9 * 8 - 4, 11 * 8 - 4, 13 * 8 - 4
+
+; The picture on, at the top left of the first nametable, with the sprites.
 menu_picture:
     lda PPU_STATUS
     lda #$00
@@ -211,7 +249,7 @@ menu_picture:
     lda PPU_CTRL_RAM_COPY
     and #$fc
     sta PPU_CTRL
-    lda #$0a
+    lda #$1e
     sta PPU_MASK
     rts
 
@@ -230,6 +268,26 @@ menu_enter:
     sta menu_state              ; was doing ends with that
     lda #NET_DELAY
     sta menu_delay
+    ; No sprites but the marker, and its tiles in. The NMI puts the
+    ; title's back as the game goes on.
+    lda #MARK_HIDDEN
+    ldx #$00
+
+@hide:
+    sta menu_oam,x
+    inx
+    bne @hide
+    ldx #8 - 1
+
+@mark:
+    lda menu_mark,x
+    sta menu_oam,x
+    dex
+    bpl @mark
+    lda #$02
+    sta MMC3_BANK_CFG
+    lda #MARK_BANK
+    sta MMC3_BANK_DATA
     lda #$02
     sta net_menu
     inc menu_busy
@@ -248,7 +306,6 @@ menu_mode_main:
     lda menu_cursor
     beq @down
     dec menu_cursor
-    jsr menu_cursor_moved
 
 @down:
     lda menu_press
@@ -258,7 +315,6 @@ menu_mode_main:
     cmp #$02
     beq @pick
     inc menu_cursor
-    jsr menu_cursor_moved
 
 @pick:
     lda menu_press
@@ -313,12 +369,6 @@ menu_other_way:
     rts
 
 .assert NESP_LOBBY_NO_WIFI = 0, error
-
-menu_cursor_moved:
-    lda menu_dirty
-    ora #DIRTY_CURSOR
-    sta menu_dirty
-    rts
 
 ; Back to the game, with no session: a game for two on this console, as
 ; the title's Start would have begun it.
@@ -1055,7 +1105,7 @@ menu_draw:
 ; By the bits of menu_dirty, from the lowest.
 menu_drawers:
     .word menu_draw_own-1, menu_draw_digits-1, menu_draw_mark-1, menu_draw_status-1
-    .word menu_draw_cursor-1, menu_draw_code-1
+    .word menu_draw_code-1
 DRAWERS = (* - menu_drawers) / 2
 .assert DIRTY_CODE = 1 << (DRAWERS - 1), error, "a drawer for each of menu_dirty's bits"
 
@@ -1213,58 +1263,6 @@ menu_draw_status:
     ldy #>($2000 + 16 * 32 + 8)
     jmp menu_stage_line
 
-menu_draw_cursor:
-    ; The line the cursor leaves goes back to plain letters, then the one
-    ; it comes to is shaded.
-    lda menu_mode
-    bne @done
-    lda #$00
-    ldx menu_shown
-    bpl @one
-    lda #SHADED
-    ldx menu_cursor
-
-@one:
-    sta menu_tmp
-    txa
-    pha
-    ldy menu_items_at,x
-    ldx #$00
-@letter:
-    lda menu_items,y
-    cmp #' '
-    beq :+
-    ora menu_tmp
-:
-    sta menu_line,x
-    iny
-    inx
-    cpx #ITEM_TILES
-    bne @letter
-    pla
-    tax
-    cpx menu_shown
-    bne @came
-    lda #$ff
-    sta menu_shown
-    bne @where
-
-@came:
-    stx menu_shown
-    lda #DIRTY_CURSOR
-    jsr menu_drawn
-
-@where:
-    ldy menu_cursor_hi,x
-    lda menu_cursor_lo,x
-    tax
-    lda #ITEM_TILES
-    jmp menu_stage
-
-@done:
-    lda #DIRTY_CURSOR
-    jsr menu_drawn
-
 menu_draw_done:
     rts
 
@@ -1291,19 +1289,6 @@ menu_draw_code:
 
 @exit:
     rts
-
-; The first screen's three lines, as menu_draw_cursor draws them.
-menu_cursor_lo:
-    .byte <($2000 + 9 * 32 + 11), <($2000 + 11 * 32 + 11), <($2000 + 13 * 32 + 11)
-
-menu_cursor_hi:
-    .byte >($2000 + 9 * 32 + 11), >($2000 + 11 * 32 + 11), >($2000 + 13 * 32 + 11)
-
-menu_items:
-    .byte "HOST GAME JOIN GAME LOCAL GAME"
-.assert * - menu_items = 3 * ITEM_TILES, error
-menu_items_at:
-    .byte 0, ITEM_TILES, 2 * ITEM_TILES
 
 ; Take A out of what is to be drawn.
 menu_drawn:
@@ -1405,9 +1390,7 @@ menu_show_main:
     lda #MODE_MAIN
     ldx #SCREEN_MAIN
     jsr menu_show
-    lda #$ff
-    sta menu_shown
-    lda #DIRTY_OWN | DIRTY_CURSOR
+    lda #DIRTY_OWN
     sta menu_dirty
     rts
 
@@ -1522,13 +1505,11 @@ menu_screen_off:
     rts
 
 ; A, of what the menu keeps, into the title's tile for it: a digit, a
-; letter (with SHADED, its shaded one), the full stop, the dash, or blank.
+; letter, the full stop, the dash, or blank.
 ; Keeps X and Y.
 menu_tile:
     cmp #MARK_DASH
     beq @dash
-    cmp #SHADED | 'A'
-    bcs @shaded
     cmp #'A'
     bcs @letter
     cmp #'0'
@@ -1540,10 +1521,6 @@ menu_tile:
 
 @letter:
     sbc #'A' - TILE_LETTERS     ; carry set
-    rts
-
-@shaded:
-    sbc #(SHADED | 'A') - TILE_SHADED
     rts
 
 @dash:
@@ -1577,8 +1554,6 @@ SCREEN_JOIN      = 2
 SCREEN_ROOM      = 3            ; by room code
 SCREEN_JOIN_ROOM = 4
 
-; The first screen's three lines are menu_items, which menu_draw_cursor
-; draws again as the cursor comes and goes.
 menu_screen_main:
     screen_text 4, 10, "NETWORK GAME"
     screen_text 9, 11, "HOST GAME"

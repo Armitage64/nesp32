@@ -2,20 +2,23 @@
 HOST GAME on one console and JOIN GAME on the other end in one game on
 both, whether they meet by a room's code or, with Select on either screen,
 by an address. Contra's tests (apps/contra/tests/test_menu.py), on TMNT
-II: the line the cursor is on is drawn in the title's shaded letters,
-which screen_row gives in lower case."""
+II: the cursor is the title's own marker for the line picked, in
+sprites."""
 
 import nesp
 import nesp_proto as p
 
 from drive import PAD_A, PAD_B, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_SELECT, PAD_START, PAD_UP
-from drive import STATE_TITLE, STATE_TURTLE_SELECT, moves, screen_row, screen_text
+from drive import STATE_TITLE, STATE_TURTLE_SELECT, marker_row, moves, screen_row, screen_text
 from netplay import APP, Table
 from test_lockstep import to_game
 from wire import ms
 
 OWN_ROW, HOST_ROW, DIGITS_ROW, MARK_ROW, STATUS_ROW = 20, 14, 12, 13, 16
 TIP_ROW = 26                    # what Select does
+HOST_GAME_ROW, LOCAL_GAME_ROW = 9, 13
+ITEMS_COLUMN = 11               # where the first screen's lines begin
+TITLE_ROW, TITLE_COLUMN = 24, 12    # the title's 2 TURTLES
 LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 STATUS_POLL = 16                # frames between the menu's questions
 # What the menu may change of the game's memory: the link's zero page,
@@ -42,6 +45,7 @@ def open_menu(table, side):
     tap(table, side, PAD_SELECT)
     console = table.consoles[side]
     assert console.byte("TITLE_PLAYERS_COUNT_CURSOR_0_1") == 1
+    assert marker_row(console, TITLE_COLUMN) == TITLE_ROW
     tap(table, side, PAD_START, rest=3 * STATUS_POLL)
     assert console.byte("net_menu") == 2
     assert "NETWORK GAME" in screen_text(console)
@@ -75,15 +79,16 @@ def test_local_game_with_no_nesp32(net_console):
     open_menu(table, 0)
     console = table.consoles[0]
     table.run(10 * STATUS_POLL)
-    assert screen_row(console, 9).strip() == "host game"
+    assert screen_row(console, HOST_GAME_ROW).strip() == "HOST GAME"
+    assert marker_row(console, ITEMS_COLUMN) == HOST_GAME_ROW
     assert screen_row(console, OWN_ROW).strip() == "NO NESP32"
     # HOST GAME does nothing without a nesp32.
     tap(table, 0, PAD_A, rest=10)
     assert "WAITING" not in screen_text(console)
     for _ in range(2):
         tap(table, 0, PAD_DOWN)
-    assert screen_row(console, 13).strip() == "local game"
-    assert screen_row(console, 9).strip() == "HOST GAME"
+    assert screen_row(console, LOCAL_GAME_ROW).strip() == "LOCAL GAME"
+    assert marker_row(console, ITEMS_COLUMN) == LOCAL_GAME_ROW
     tap(table, 0, PAD_A, rest=2)
     assert console.byte("net_menu") == 0 and console.byte("net_mode") == 0
     table.run(120)
@@ -162,8 +167,10 @@ def test_host_and_back(net_console):
     assert screen_row(console, HOST_ROW).strip() == "192.168.001.023"
     assert table.sticks[0].lobby == p.NESP_LOBBY_HOSTING
     assert table.sticks[0].shown(0) == "192.168.1.23"
+    assert marker_row(console, ITEMS_COLUMN) is None
     tap(table, 0, PAD_B, rest=2 * STATUS_POLL)
-    assert "host game" in screen_text(console)
+    assert screen_row(console, HOST_GAME_ROW).strip() == "HOST GAME"
+    assert marker_row(console, ITEMS_COLUMN) == HOST_GAME_ROW
     assert table.sticks[0].lobby == p.NESP_LOBBY_IDLE
 
 
@@ -348,7 +355,7 @@ def test_a_host_by_room_shows_its_code_and_back(net_console):
     table.run(STATUS_POLL)
     assert stick.shown(0) == "Room " + code
     tap(table, 0, PAD_B, rest=2 * STATUS_POLL)
-    assert "host game" in screen_text(table.consoles[0])
+    assert marker_row(table.consoles[0], ITEMS_COLUMN) == HOST_GAME_ROW
     assert stick.lobby == p.NESP_LOBBY_IDLE
 
 

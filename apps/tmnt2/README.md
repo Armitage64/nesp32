@@ -85,7 +85,12 @@ fixed bank in the 187 bytes the game leaves at the end of bank 31, and the
   up the scanline counter (`net_nmi_irq`), before the IRQs are let in: the
   setup's `CLI` comes after them. The first split is never sooner than
   5794 cycles after, and the exchange takes some 3100, so no IRQ breaks
-  into the serial routines and no split comes late.
+  into the serial routines and no split comes late. The digest, once in
+  256 ticks, takes some 5800 more, and is taken with the IRQs let in
+  (`net_digest_irqs`): held off for it, the first split came 28 lines late
+  and put the rest of the screen out with it, a frame wrong every five
+  seconds or so on hardware. The IRQs change none of what it reads, and
+  their handlers are in the fixed bank and switch only the CHR.
 - **The NMI's read of the controllers** (`net_ctrl`): in a session, both
   players' buttons for the tick, as the game's read leaves them; with
   none, the game's read, and OUT0 back to mark after it.
@@ -101,9 +106,10 @@ fixed bank in the 187 bytes the game leaves at the end of bank 31, and the
 **The menu** is Contra's (`net/menu.inc`), in bank 29, its memory in the
 PRG RAM. What it keeps of text is ASCII, as the codes and addresses cross
 the link, and becomes the title's tiles only as it goes to the PPU. The
-title's letters have no cursor and no dash: the line the cursor is on is
-drawn in their shaded letters, and the letter being edited is underlined
-with a line from the logo's tiles. LOCAL GAME goes on to the turtle
+title's letters have no cursor and no dash: the cursor is the title's own
+marker for the line picked (object $74, two 8x16 sprites of tile $11 in
+CHR bank $C4, sent from a page of the PRG RAM), and the letter being
+edited is underlined with a line from the logo's tiles. LOCAL GAME goes on to the turtle
 select, as the title's Start would have.
 
 **The netplay's memory** is the 8 KB of PRG RAM at $6000 that an MMC3
@@ -206,13 +212,14 @@ its last byte ($3D).
 
 **The font**, in the title's CHR bank: 0 to 9 at $01-$0A, A to Z at
 $0B-$24, A to Z again shaded at $25-$3E, a full stop at $3F, and no dash or
-colon. The title's choice is 1 TURTLE and 2 TURTLES.
+colon. The title's choice is 1 TURTLE and 2 TURTLES, with a sprite beside
+the one picked.
 
 ## To do
 
 1. **Hardware**: a flashcart that gives the MMC3 its PRG RAM, by address
    on one network first and then by a room's code; the splits on every
-   level; how the menu's shaded line looks in the title's colours. Then
+   level; the menu's marker beside its lines. Then
    TMNT II in nesp32's `docs/MULTIPLAYER.md`, with the other three.
 2. **A faster sprite pass**, once the netplay plays. Level 7's frames
    spend half their cycles building the sprites (12269 as a median, for
