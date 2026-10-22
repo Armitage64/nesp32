@@ -34,6 +34,7 @@ two side by side, a slice at a time, with one a little fast.
 """
 
 import hashlib
+import math
 
 from py65.devices.mpu6502 import MPU
 
@@ -381,12 +382,15 @@ class Console:
             until = min(until, self._host_at)
         if self.dmc_left:
             until = min(until, self.dmc_at)
-        until = int(until) if until != float("inf") else until
+        # Up to a whole cycle: a limit between two (run_until's, on a clock
+        # that runs fast or slow) is passed, not fallen short of.
+        until = math.ceil(until) if until != float("inf") else until
+        # Already there (a sample's fetch may have taken the clock past it):
+        # the caller's loop sees to what is due, and the idle loop is not
+        # stepped.
         if until > mpu.processorCycles:
             self.frame.busy -= until - mpu.processorCycles
             mpu.processorCycles = until
-        else:
-            mpu.step()
 
     def _skip_hunt(self, pc, limit):
         """Pass over whole looks of the receiver's hunt while the line rests
