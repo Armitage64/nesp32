@@ -11,8 +11,8 @@ PLAY_TICKS = 600
 LEVEL_1_SPLITS = (47, 188, 199, 202)
 
 
-def game(seed, ticks=PLAY_TICKS):
-    return title_script() + list(islice(moves(seed), ticks))
+def game(seed, ticks=PLAY_TICKS, players=2):
+    return title_script(players) + list(islice(moves(seed), ticks))
 
 
 def first_difference(one, other):
@@ -68,9 +68,9 @@ def test_netplay_rom_is_the_same_on_two_consoles(net_console):
     """The netplay ROM's idle loop does nothing, and the random number is
     stirred once a tick instead: stepped, not skipped, the loop changes
     nothing, and two consoles given the same buttons a tick at a time play
-    the same game whatever their clocks and the samples do. In a game on
-    one console, with no session."""
-    ticks = game(3, 600)
+    the same game whatever their clocks and the samples do. In a game for
+    one on one console, with no session."""
+    ticks = game(3, 600, players=1)
     one = play_ticks(net_console(stir_idle=True), ticks)
     assert first_difference(one, play_ticks(net_console(), ticks)) is None
     assert first_difference(
@@ -78,7 +78,7 @@ def test_netplay_rom_is_the_same_on_two_consoles(net_console):
                                     frame_cycles=FRAME_CYCLES * 0.97), ticks)) is None
 
 
-def test_the_game_never_reads_bank_29(console):
+def test_the_game_never_reads_the_netplays_space(console):
     """Bank 29 is all $FF, and the netplay's code is there in its ROM. The
     game does put it in, as the pair of bank 28, but reads nothing of it
     but its last byte: every odd bank ends with $20 and its number, as
@@ -86,6 +86,7 @@ def test_the_game_never_reads_bank_29(console):
     banks are in. The netplay ROM keeps that byte."""
     nes = console()
     reads = []
+    start_of_30 = []
     mapped = []
     bus_class = type(nes.bus)
 
@@ -93,6 +94,8 @@ def test_the_game_never_reads_bank_29(console):
         def __getitem__(self, address):
             if 0xA000 <= address < 0xC000 and self.windows[1] == 29 * 0x2000:
                 reads.append((address, nes.mpu.pc))
+            elif 0xC000 <= address < 0xC040:
+                start_of_30.append((address, nes.mpu.pc))
             return bus_class.__getitem__(self, address)
 
         def map(self, r6, r7, swapped):
@@ -104,3 +107,6 @@ def test_the_game_never_reads_bank_29(console):
     assert mapped                       # the game had it in
     assert reads
     assert {address for address, _ in reads} == {0xBFFF}
+    # Nor the 64 bytes of $FF that bank 30, fixed at $C000, begins with,
+    # where the netplay ROM has what its menu needs of a fixed bank.
+    assert start_of_30 == []

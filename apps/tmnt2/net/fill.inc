@@ -13,11 +13,15 @@
 HAVE_FREE_1F_1F35 = 1
 .macro FILL_FREE_1F_1F35
 
-; The NMI. After one that stalled, the next is the netplay's own; any other
-; is the game's. Either way the countdown the game keeps before it lets
+; The NMI. While the menu has the console it is the menu's. After one that
+; stalled, the next is the netplay's own; any other is the game's. Either way the countdown the game keeps before it lets
 ; the picture on is noted as the NMI found it (net_frame).
 net_nmi:
     pha
+    lda net_menu
+    beq :+
+    jmp net_nmi_menu
+:
     lda DISABLE_RENDERING_X_FRAMES
     sta net_dis
     lda net_stalled
@@ -130,5 +134,40 @@ net_reset_hook:
     ldx #NET_RESET
     jsr net_call29
     jmp SOUND_RESET_INIT_RTN
+
+.endmacro
+
+; The start of bank 30, 64 bytes, which is fixed too: what the menu needs
+; of the fixed bank.
+HAVE_FREE_1E_0000 = 1
+.macro FILL_FREE_1E_0000
+
+; An NMI while the menu has the console (A is saved): the menu's frame,
+; and nothing of the game's.
+net_nmi_menu:
+    txa
+    pha
+    tya
+    pha
+    ldx #NET_MENU
+    jsr net_call29
+    jmp RTI_RESTORE_AXY
+
+; At the title, in place of the sound its Start makes (A has it). With 2
+; TURTLES chosen and no session, the next NMI is the menu's, and the rest
+; of the title's Start is not done; else the Start goes on as it was.
+net_title_start:
+    ldx TITLE_PLAYERS_COUNT_CURSOR_0_1
+    beq @game
+    ldx net_mode
+    bne @game                   ; a session's game over, and the title again
+    ldx #$01
+    stx net_menu
+    pla
+    pla
+    rts
+
+@game:
+    jmp SND_BANKED_DISPATCH
 
 .endmacro

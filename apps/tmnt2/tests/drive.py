@@ -27,9 +27,11 @@ CHOSEN_FRAMES = 300
 SELECTED_FRAMES = 200
 
 
-def title_script():
+def title_script(players=2):
+    """To a level for two, or for one: on the netplay ROM with no session,
+    2 TURTLES is the netplay's menu."""
     return ([(0, 0)] * TITLE_FRAMES
-            + [(PAD_SELECT, 0)] * 2 + [(0, 0)] * 5
+            + [(PAD_SELECT if players == 2 else 0, 0)] * 2 + [(0, 0)] * 5
             + [(PAD_START, 0)] * 2 + [(0, 0)] * CHOSEN_FRAMES
             + [(PAD_A, PAD_A)] * 2 + [(0, 0)] * SELECTED_FRAMES)
 
@@ -77,3 +79,21 @@ def play_ticks(nes, game):
     finally:
         nes.mpu.step = step
     return states
+
+
+# The title's letters: 0 to 9, A to Z, A to Z again shaded (here in lower
+# case), its full stop and a blank; and the line under a tile that the
+# menu marks the letter being edited with.
+TILES = {0x00: " ", 0x3F: ".", 0xF0: "-"}
+TILES.update((0x01 + digit, str(digit)) for digit in range(10))
+TILES.update((0x0B + letter, chr(ord("A") + letter)) for letter in range(26))
+TILES.update((0x25 + letter, chr(ord("a") + letter)) for letter in range(26))
+
+
+def screen_row(console, row):
+    """A row of the screen as text, with ? for any other tile."""
+    return "".join(TILES.get(tile, "?") for tile in console.tiles(0x2000 + 32 * row, 32))
+
+
+def screen_text(console):
+    return "\n".join(screen_row(console, row) for row in range(30))

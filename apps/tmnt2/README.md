@@ -7,9 +7,10 @@ To be a netplay build of Teenage Mutant Ninja Turtles II: The Arcade Game
 nesp32's [`docs/MULTIPLAYER.md`](../../docs/MULTIPLAYER.md) has what the
 netplay games share.
 
-The session itself is done and tested in the simulation: two consoles,
-a tick at a time, kept the same by their buttons. The menu that starts
-one is still to come, and so is the hardware (the To do below).
+The session and its menu are done and tested in the simulation: 2
+TURTLES at the title is the menu, HOST GAME and JOIN GAME meet by a room's
+code or by an address, and the two consoles play one game, kept the same
+by their buttons. The hardware is still to come (the To do below).
 
 **The game is not in this repository.** The build takes it from two places:
 
@@ -70,7 +71,8 @@ whole game, only the buttons cross, a byte a tick, and a console takes a
 tick only when it has both players' buttons for it. All of TMNT II's game
 runs in its NMI, as Contra's does, so the netplay is Contra's (its
 `net/net.inc`), in bank 29 (`net/net.asm`), with what has to be in the
-fixed bank in the 187 bytes the game leaves at its end (`net/fill.inc`).
+fixed bank in the 187 bytes the game leaves at the end of bank 31, and the
+64 at the start of bank 30 (`net/fill.inc`).
 
 **What had to change in the game**, by `patches/`:
 
@@ -92,6 +94,17 @@ fixed bank in the 187 bytes the game leaves at its end (`net/fill.inc`).
   the game if the buttons came.
 - **The reset**, which turns the PRG RAM on, sets OUT0 to mark, and starts
   a session if one was asked for, at the turtle select.
+- **The title's Start** with 2 TURTLES chosen (`net_title_start`), which
+  is the menu's from then on; and the NMI, which is the menu's while it has
+  the console.
+
+**The menu** is Contra's (`net/menu.inc`), in bank 29, its memory in the
+PRG RAM. What it keeps of text is ASCII, as the codes and addresses cross
+the link, and becomes the title's tiles only as it goes to the PPU. The
+title's letters have no cursor and no dash: the line the cursor is on is
+drawn in their shaded letters, and the letter being edited is underlined
+with a line from the logo's tiles. LOCAL GAME goes on to the turtle
+select, as the title's Start would have.
 
 **The netplay's memory** is the 8 KB of PRG RAM at $6000 that an MMC3
 cartridge can have, which the netplay ROM's NES 2.0 header asks for: the
@@ -197,15 +210,11 @@ colon. The title's choice is 1 TURTLE and 2 TURTLES.
 
 ## To do
 
-1. **The menu**, by room code and by address, from Contra's, at the
-   title's Start with 2 TURTLES chosen (`_18_1_SUBSTATE_TITLE_SELECT`), in
-   the title's font, which has no dash. Its code in bank 29, its memory in
-   the PRG RAM, and the NMI's hook for it in what is left of the fixed
-   bank's end.
-2. **Hardware**: a flashcart that gives the MMC3 its PRG RAM, by address
+1. **Hardware**: a flashcart that gives the MMC3 its PRG RAM, by address
    on one network first and then by a room's code; the splits on every
-   level.
-3. **A faster sprite pass**, once the netplay plays. Level 7's frames
+   level; how the menu's shaded line looks in the title's colours. Then
+   TMNT II in nesp32's `docs/MULTIPLAYER.md`, with the other three.
+2. **A faster sprite pass**, once the netplay plays. Level 7's frames
    spend half their cycles building the sprites (12269 as a median, for
    49 tiles), and the loop works out again for each tile what is the same
    for the whole object: the tile's $40 for player 2, the palette, the

@@ -112,5 +112,6 @@ NET_BOOT_CHECK  = $B1
 ; net/fill.inc; net_entry, net/net.asm).
 NET_FRAME       = 0
 NET_RESET       = 1
+NET_MENU        = 2
 
 .endif

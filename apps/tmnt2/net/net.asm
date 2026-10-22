@@ -75,9 +75,10 @@ net_entry:
 .assert net_entry = $A000, error, "net_call29 calls $A000"
 
 net_entries_lo:
-    .byte <(net_frame - 1), <(net_reset - 1)
+    .byte <(net_frame - 1), <(net_reset - 1), <(menu_frame - 1)
 net_entries_hi:
-    .byte >(net_frame - 1), >(net_reset - 1)
+    .byte >(net_frame - 1), >(net_reset - 1), >(menu_frame - 1)
+.assert NET_FRAME = 0 && NET_RESET = 1 && NET_MENU = 2, error, "net_entries' order"
 
 .define NESP_APP "TMN2"
 NESP_APP_VERSION = 1
@@ -172,6 +173,17 @@ net_drop:
     sta net_mode
     jmp RESET_HANDLER
 
+
+; From the menu: LOCAL GAME. A game for two on this console, as the title's
+; Start would have begun it, past the flashing of 2 TURTLES (the menu has
+; the screen): on to the title's next state, with the picture off for a
+; few frames while it draws its own.
+net_menu_local:
+    lda #$00
+    sta net_menu
+    lda #$03
+    sta DISABLE_RENDERING_X_FRAMES
+    jmp SWITCH_MENU_STATE_TO_A  ; state 3, the game's data for two
 
 ; Each NMI, after the counter's setup and before the IRQs are let in.
 ;
@@ -577,6 +589,8 @@ net_unsent:
     sec
     sbc net_acked
     rts
+
+.include "menu.inc"
 
 ; The last byte of bank 29 is the ROM's.
 .segment "NET29_END"
