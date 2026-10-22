@@ -10,7 +10,9 @@ netplay games share.
 The session and its menu are done and tested in the simulation: 2
 TURTLES at the title is the menu, HOST GAME and JOIN GAME meet by a room's
 code or by an address, and the two consoles play one game, kept the same
-by their buttons. The hardware is still to come (the To do below).
+by their buttons. On hardware too (2026-10-22): a session plays on a real
+NES, with no frame wrong at the digest since that was fixed (README's
+"The exchange"), and the menu's marker shows beside its lines.
 
 **The game is not in this repository.** The build takes it from two places:
 
@@ -217,10 +219,10 @@ the one picked.
 
 ## To do
 
-1. **Hardware**: a flashcart that gives the MMC3 its PRG RAM, by address
-   on one network first and then by a room's code; the splits on every
-   level; the menu's marker beside its lines. Then
-   TMNT II in nesp32's `docs/MULTIPLAYER.md`, with the other three.
+1. **TMNT II in nesp32's `docs/MULTIPLAYER.md`**, with the other three,
+   now that a session plays on hardware. Tested there: the session, the
+   frame at the digest (no longer wrong), the menu's marker. Still to see
+   on hardware: the splits on every level, through a whole game.
 2. **A faster sprite pass**, once the netplay plays. Level 7's frames
    spend half their cycles building the sprites (12269 as a median, for
    49 tiles), and the loop works out again for each tile what is the same
