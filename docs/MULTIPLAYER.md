@@ -317,7 +317,11 @@ and on both consoles, as the other waits for its buttons. Contra's
 busiest scenes slow for it: its level 6, crowded in the original too,
 would overrun 28 frames in 100 with the exchange, against 11 alone. Its
 netplay ROM builds the sprites with less work, some 900 cycles a frame,
-which brings that to 24 (its `docs/Netplay.md`, "The sprite pass").
+which brings that to 24 (its `docs/Netplay.md`, "The sprite pass"). It
+is now on an MMC3 with PRG RAM, as TMNT II is, and from there builds them
+faster again and tests the bullets against the enemies faster: 620 to 970
+cycles a frame more, net of what the MMC3's bank switches cost, and
+nearly half fewer of the frames that overran.
 TMNT II's level 7 for two would slow a lot: 26 frames in 100, against 2.
 Its netplay ROM builds the sprites faster, from the cartridge's PRG RAM,
 which brings that to 3 in 100 (its README, "The frame rate"). A game's

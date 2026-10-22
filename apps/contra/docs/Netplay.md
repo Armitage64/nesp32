@@ -52,8 +52,8 @@ is the time they have to reach the other console. Nobody sets it: each
 console keeps its own, and it changes as the game goes (below).
 
 All of Contra's game runs inside its NMI handler, and so does this
-(`net/net.inc`, in the space at the end of bank 7). An NMI in a session is
-one of three things:
+(`net/net.inc`, which runs from the cartridge's PRG RAM: "The cartridge",
+below). An NMI in a session is one of three things:
 
 - **A tick.** The handler writes to the PPU, runs the sound engine, reads
   this console's controller, makes one exchange with the nesp32 (buttons
@@ -88,10 +88,13 @@ three; it now makes it this way too.
 - **The title's Start**, which goes to the menu first when 2 PLAYERS is
   picked.
 - **The reset**, which sets the line to the nesp32 and starts a session if
-  the menu asked for one.
-- **The sprite pass** (bank 1), which does less for the same sprites, to
-  give back some of the frame the exchange takes ("The sprite pass",
-  below). This is so in a local game too.
+  the menu asked for one; and before it, the MMC3's ("The cartridge").
+- **The bank switch** (`set_rom_bank_to_y`) and the lag frame's NMI,
+  for the MMC3 ("The cartridge").
+- **The sprite pass and the test of the bullets against each enemy**,
+  which are the netplay's own, from the PRG RAM, and do less for the same
+  result, to give back some of the frame the exchange takes ("The sprite
+  pass", below). This is so in a local game too.
 
 The sound engine is not part of the game for this purpose: it runs once in
 every NMI, tick or not, and its memory differs between the consoles.
@@ -106,22 +109,65 @@ its own delay, from 1 tick to 5, as its nesp32 advises; and one tick in
 256 carries a digest of the game in place of buttons, here of its zero
 page and its sprites.
 
+### The cartridge
+
+The game's own board is a UxROM: 128 KB of PRG ROM in banks of 16 KB, one
+switched in at $8000 and the last fixed at $C000, and 8 KB of CHR RAM. It
+has no PRG RAM, and the game leaves next to no room in its fixed bank. So
+the netplay ROM is on an MMC3, as TMNT II is, with 8 KB of PRG RAM at
+$6000 and the same 8 KB of CHR RAM, and twice the PRG ROM, for the room
+(`net/cart.inc`, `net/contra_net.cfg`, and the ROM's NES 2.0 header,
+mapper 4). `make ines` writes it with an iNES header instead, for a
+cartridge or an emulator that takes no NES 2.0: an iNES MMC3 with no CHR
+ROM has CHR RAM and 8 KB of PRG RAM.
+
+- **The banks.** The game's banks 0 to 6 are the MMC3's 8 KB banks two by
+  two, R6 at $8000 and R7 at $A000, and its fixed bank 7 is the last two,
+  at $C000 and $E000, which the MMC3 keeps there: the last in the file.
+  Banks 8 to 15 are new, between them. Every switch the game makes is
+  `set_rom_bank_to_y`, which jumps to `net_set_bank`: two of the MMC3's
+  registers, each picked by a write to $8000 and then given its bank by a
+  write to $8001. That is 24 cycles more a switch than the UxROM's one
+  write, at 12 switches in a frame as a median: some 300 cycles a frame,
+  a frame being 29780. Every change to bank 7 is the same length as what
+  it replaces, so none of the game's code moves.
+- **A lag frame's NMI** runs the sound engine in bank 1 and puts the bank
+  back, and can break into a switch between a register picked and its
+  bank written: the switch would go on to write its bank to the NMI's
+  pick. So once the bank is back, if the NMI is to return into
+  `net_set_bank`, it returns to its start instead (`net_lag_leave`), and
+  the switch is made again from its first write, with the Y the NMI puts
+  back. `tests/test_console.py` breaks into a switch before each of its
+  instructions.
+- **The reset vector** goes to `net_cart_start`, in the last 8 KB: until
+  the first write to $8000 sets the MMC3's mode, $C000 can be any bank, and
+  the game's reset is there. It lays the CHR banks over the CHR RAM in
+  order, sets the mirroring vertical as the game's board has it, turns the
+  PRG RAM on and the scanline counter's IRQ off.
+- **The PRG RAM** has netplay's code, which the reset copies there from
+  bank 8 (`net_cart_reset`), taking two frames: the session
+  (`net/net.inc`), and nesp32's library with its serial routines and its
+  CRC table. That is what made room in the fixed bank, and it reads the
+  same whichever bank the game has in.
+
+That it is the same game: played from power-on into stages 1, 4 and 6 for
+two, with the same buttons, the netplay ROM on the MMC3 and the one on the
+UxROM before it have the same memory at every tick, past the three frames
+the copy adds to the boot.
+
 ### The link
 
 nesp32's library for the console (`nes/lib/nesp.inc` there), with the
 receiver that gives up by counting, since every exchange is made in an NMI.
-Its serial routines count CPU cycles. They have the page before the samples
-in bank 7, its CRC table is in bank 1 (the sound engine's bank, which is
-the one in place when an exchange is made), and the menu is in bank 5
+Its serial routines count CPU cycles. They have a page of the PRG RAM to
+themselves, and its CRC table the next two. The menu is in bank 5
 (`net/menu.inc`), but for its screens. Bank 5 has no room for them
 beside the menu's code since it has rooms as well as addresses, so they
 are at the end of bank 6 (`net/menu_far.inc`), and the menu reaches them
-through a call in the fixed bank (`net_far_draw`). That bank had eight
-bytes to spare, and has two now: its calls to bank 1 write the bank
-number themselves rather than call the game's routine for it. The game has no run of zero page to spare, so the
-library's memory is placed a byte at a time (`net/ram.inc`): in seven bytes
-of zero page that the game never touches, and past the end of its buffer of
-writes for the PPU.
+through a call in the PRG RAM (`net_far_draw`). The game has no run of zero
+page to spare, so the library's memory is placed a byte at a time
+(`net/ram.inc`): in seven bytes of zero page that the game never touches,
+and past the end of its buffer of writes for the PPU.
 
 The exchange is the PEER service's TICKS as a *short frame*, five bytes out
 and four back, as in every netplay game.
@@ -203,39 +249,64 @@ console's clock fast, and with the music's samples taking their cycles
 throughout.
 
 **The sprite pass.** Building the sprites (`draw_sprites`, in bank 1) is
-the largest single part of a crowded frame: some 6000 to 7300 cycles in
-levels 1, 4, 6 and 8 as a median, and a quarter of the frames that come
-near the end of their time. The netplay ROM does three things in it with
-less work, and leaves the same sprites and the same memory:
+the largest single part of a frame: some 4300 cycles as a median in the
+netplay ROM's play of stages 1 and 6, with only some 12 tiles in a frame
+of it. That is the HUD's medals, about 740; the sprites, about 2900, at
+some 160 cycles a tile, about 5 tiles to a sprite; and the hiding of the
+places in the OAM buffer that no tile took, most of its 64, at 18 cycles
+each. The netplay ROM's pass (`net/sprites.inc`) runs from the PRG RAM,
+where `draw_sprites` jumps, and leaves the same sprites and the same
+memory:
 
-- the step to the next sprite in the buffer (`set_x_adv_OAMDMA_addr` and
-  `adv_OAMDMA_addr`, $C4 on) is made in line, where the game calls a
-  routine for it, for every tile and for every unused place it hides;
-- a tile's first byte is read once, where the game reads it twice;
-- a slot of `CPU_SPRITE_BUFFER` with no sprite, most of its 26, is passed
-  over with a load and a branch.
+- **A sprite's tiles.** What the game works out again for every tile, the
+  flips, the recoil's pixel and the attributes' mask, is worked out once a
+  sprite and written into the loop's own instructions, as immediates. A
+  flip is a subtraction in place of an addition, so there is a loop for
+  each of the four ways of flipping. A tile takes some 90 cycles.
+- **The places no tile took** are hidden by a run of stores, one for each
+  place in the order the game visits them ($C4 on, which goes round all
+  64), entered at the first and ended with an `RTS` written after the
+  last: 4 cycles a place.
+- **The HUD's medals** are the game's loop, with the step to the next
+  place in line, where the game calls a routine for it.
 
-That is some 900 cycles a frame, whatever the level: a third of what the
-exchange costs. The frames that would overrun with an exchange of 3112
-cycles, in two players' play from the start of each level (1500 frames
-each; the original's play, its frames replayed through both passes):
+**The bullets.** Each enemy is tested against the players' bullets
+(`bullet_enemy_collision_test`, in the fixed bank): all 16 places for one,
+from the last to the first, at 12 cycles for each empty one, looking again
+for each bullet at whether the level is outdoors. In a heavy frame of play
+that, with the enemy's box it works out first, is 1900 to 3800 cycles. The
+netplay ROM's (`net/collide.inc`), from the PRG RAM, has the 16 in line, a
+copy of the test for each place, so that an empty one is a load and a
+branch; and a run of them for each of the three ways the level and the
+enemy decide the test. The places are tested in the game's order, by the
+game's tests.
 
-| Level | The original | With the exchange | With it and the faster pass |
-|---|---|---|---|
-| 1 | 2.3% | 7.4% | 5.9% |
-| 3 | 0.0% | 0.0% | 0.0% |
-| 4 | 0.7% | 3.9% | 2.7% |
-| 6 | 10.7% | 28.0% | 24.3% |
-| 8 | 0.0% | 0.1% | 0.0% |
+`contra_net_slow.nes`, which `make` builds beside it, keeps bank 1's
+sprite pass (the game's, with the steps in line and the empty slots
+passed over quickly, from before the MMC3) and the game's test of the
+bullets. `tests/test_sprites.py` holds the netplay ROM's sprite pass to
+the original's on random memory, and the netplay ROM to the slow one in
+stages 1 and 6, tick by tick: the same memory before every tick, and the
+frames some 900 cycles shorter at the median.
 
-Level 6 is crowded even in the original. In its heaviest frames the next
-largest parts are the tests of the players' bullets against each enemy
-and of everything against the background, a third of the frame between
-them; those are in the fixed bank, which has no room for code that is
-larger, and the game no RAM to run it from. `tests/test_sprites.py`
-holds the netplay ROM's pass to the original's on random memory: the
-same OAM buffer and the same RAM, with the sprites' data 14 bytes on in
-bank 1.
+**What it comes to.** The netplay ROM before the MMC3, against it now, in
+two players' play from the start of stages 1, 4 and 6, 2000 ticks each
+with three runs of buttons (the same game in both, tick by tick), counting
+the frames of play with the picture on, some 1300 of each run; and of
+those, the ones that would overrun with an exchange of 3112 cycles:
+
+| Stage | Median, before | Median, now | Overrun, before | Overrun, now |
+|---|---|---|---|---|
+| 1 | 17840 to 20182 | 17221 to 19487 | 0.0% to 4.2% | 0.0% to 2.4% |
+| 4 | 17190 to 19075 | 16336 to 18109 | 0.0% to 2.8% | 0.0% to 1.1% |
+| 6 | 18008 to 20193 | 17260 to 19312 | 3.2% to 4.5% | 1.0% to 4.0% |
+
+That is 620 to 970 cycles a frame at the median, and 700 to 1100 in the
+heaviest tenth: the sprite pass's 870 and the bullets' test's, less the
+MMC3's 300 for its switches. Of the frames that overran, nearly half no
+longer do. This play is lighter than the original's in the tables above:
+the netplay ROM's random number is stirred once a tick, not in the idle
+loop, so the same buttons make another game.
 
 ## On hardware
 
@@ -337,14 +408,17 @@ on and its own leavings in memory, which the handler acted on.
 - **The slowdown when the screen is crowded.** Less than it was, and
   still there: those are the frames with least to spare, where the
   original overruns too, and the exchange takes a tenth of every frame.
-  The faster sprite pass gives back about a third of that ("The sprite
-  pass"); level 6 still overruns a quarter of its frames in the
-  simulation's play. What is left to try, if it is wanted: making no
-  wait for a reply in a frame whose buttons from the other console are
+  The faster sprite passes, bank 1's first and now the PRG RAM's, and the
+  bullets' test give back over half of it, net of the MMC3's switches
+  ("The sprite pass"). What is left to try, if it is wanted: the tests of
+  everything against the background (`bg_collision_logic` and
+  `read_bg_collision_byte`), 1100 to 2500 cycles of a heavy frame, and of
+  the players against each enemy, which can run from the PRG RAM too;
+  making no wait for a reply in a frame whose buttons from the other console are
   already here, which they are whenever its delay has a tick to spare;
-  leaving the reply's CRC at one byte; and the collision tests, if room
-  can be found in the fixed bank. And to see how a local two-player game
-  does in the same scenes, which is the least this can come to.
+  and leaving the reply's CRC at one byte. And to see how a local
+  two-player game does in the same scenes, which is the least this can
+  come to.
 - **Player 2 cannot pause.** The game reads only player 1's Start.
 - **Probotector**, the PAL release.
 
@@ -357,7 +431,8 @@ and "Known limits". What is left on the nesp32 itself is in
 ## Building and testing
 
 ```
-make            build/contra.nes and build/contra_net.nes
+make            build/contra.nes, build/contra_net.nes and build/contra_net_slow.nes
+make ines       build/contra_net_ines.nes, the netplay ROM with an iNES header
 make verify     check the original against its SHA-512
 make test       the simulation's tests
 ```
@@ -371,14 +446,18 @@ about a quarter of an hour.
 
 | | |
 |---|---|
-| `net/net.inc` | the session: bank 7 |
+| `net/net.inc` | the session: the PRG RAM, copied from bank 8 |
+| `net/cart.inc` | the MMC3: its setup, the bank switch, the copy into the PRG RAM: bank 7 |
+| `net/sprites.inc` | the sprite pass: the PRG RAM |
+| `net/collide.inc` | the test of the bullets against each enemy: the PRG RAM |
 | `net/menu.inc` | the menu: bank 5 |
 | `net/menu_far.inc` | the menu's screens: bank 6 |
 | `net/ram.inc` | the memory both use |
-| `net/contra_net.cfg` | the disassembly's `contra.cfg`, with room for the link's library |
-| `patches/` | the lines that call these, for the disassembly's `bank5.asm`, `bank6.asm`, `bank7.asm` and `ines_header.asm` |
+| `net/contra_net.cfg` | the disassembly's `contra.cfg`, on the MMC3, with the PRG RAM |
+| `patches/` | the lines that call these, for the disassembly's `bank1.asm`, `bank5.asm`, `bank6.asm`, `bank7.asm` and `ines_header.asm` |
 | `tests/console.py` | the simulated console |
 | `tests/netplay.py`, `tests/wire.py` | two of them, their nesp32s and the network |
 | `tests/test_console.py` | the original is not the same game on two consoles, and the netplay ROM is |
 | `tests/test_lockstep.py` | sessions |
+| `tests/test_sprites.py` | the sprite pass, against the original's; and the game, against the slow ROM's |
 | `tests/test_menu.py` | the menu, and HOST GAME and JOIN GAME ending in one game, by room code and by address |

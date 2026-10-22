@@ -14,8 +14,15 @@ py65 is a plain 6502. This adds:
 - OAM filled by the DMA at $4014, with the cycles it takes.
 - Controllers 1 and 2 as shift registers loaded from `pads`. Port 2 can be
   given to a serial line instead (joy2_level, on_joy1), as in nes-drmario.
-- The cartridge, a UxROM: a write to $8000-$FFFF picks the 16 KB bank at
-  $8000, and the last bank stays at $C000.
+- The cartridge, as the ROM's header says. The original's is a UxROM: a
+  write to $8000-$FFFF picks the 16 KB bank at $8000, and the last bank
+  stays at $C000. The netplay ROM's is an MMC3: 8 KB banks picked by R6
+  and R7, the last two fixed, with the mode bit that swaps $8000 and
+  $C000, and 8 KB of PRG RAM at $6000, there while $A001 has it on. It
+  powers on with the mode bit set and R6 and R7 at banks of no use, which
+  a reset has to put right. Its CHR banks and mirroring are kept for the
+  tests to look at, but nothing is drawn; its scanline counter is not
+  there, and the game never asks for its IRQ.
 - The sample channel as far as the CPU can tell: while a sample plays,
   each byte it fetches stops the CPU for a few cycles (`dmc_steal`). That
   is what a routine that counts cycles has to live with. Nothing is heard.
@@ -42,6 +49,10 @@ FRAME_CYCLES = 29780.5
 VBLANK_CYCLES = 20 * 341 / 3    # 2273: the vblank flag stands this long
 PRG_START = 0x8000
 BANK_SIZE = 0x4000
+MMC3_BANK = 0x2000
+MMC3 = 4                        # the header's mapper number
+PRG_RAM_START = 0x6000
+PRG_RAM_SIZE = 0x2000
 INES_HEADER = 16
 RAM_SIZE = 0x800
 
@@ -105,19 +116,22 @@ class Frame:
 class Bus:
     """The CPU's address space. py65 reads and writes it by index."""
 
-    def __init__(self, console, prg):
+    def __init__(self, console, prg, mmc3=False):
         self.console = console
         self.ram = bytearray(RAM_SIZE)
         self.prg = prg
-        self.low = self.high = 0    # where $8000 and $C000 are in the PRG
+        self.mmc3 = mmc3
+        self.prg_ram = bytearray(PRG_RAM_SIZE) if mmc3 else None
+        self.windows = [0, 0, 0, 0]  # where each 8 KB from $8000 is in the PRG
+        self.bank = 0               # the game's number for the bank at $8000
 
     def __getitem__(self, address):
-        if address >= 0xC000:
-            return self.prg[self.high + address - 0xC000]
         if address >= PRG_START:
-            return self.prg[self.low + address - PRG_START]
+            return self.prg[self.windows[(address - PRG_START) >> 13] + (address & 0x1FFF)]
         if address < 0x2000:
             return self.ram[address & 0x7FF]
+        if address >= PRG_RAM_START and self.prg_ram is not None and self.console.prg_ram_on:
+            return self.prg_ram[address - PRG_RAM_START]
         return self.console.read_io(address)
 
     def __setitem__(self, address, value):
@@ -125,6 +139,9 @@ class Bus:
             self.ram[address & 0x7FF] = value
         elif address >= PRG_START:
             self.console.write_mapper(address, value)
+        elif address >= PRG_RAM_START and self.prg_ram is not None:
+            if self.console.prg_ram_on:
+                self.prg_ram[address - PRG_RAM_START] = value
         else:
             self.console.write_io(address, value)
 
@@ -133,10 +150,29 @@ class Bus:
         return bytes(self[address + offset] for offset in range(length))
 
     def map(self, bank):
+        """The game's 16 KB bank at $8000, as either cartridge has it. On
+        the MMC3 the game's fixed bank 7 is the file's last, and its banks
+        from 8 on are one place before their number (net/contra_net.cfg)."""
         banks = len(self.prg) // BANK_SIZE
-        self.bank = bank % banks
-        self.low = self.bank * BANK_SIZE
-        self.high = (banks - 1) * BANK_SIZE
+        if not self.mmc3:
+            self.bank = bank % banks
+            low = self.bank * BANK_SIZE
+            self.windows = [low, low + MMC3_BANK] + self._fixed()
+            return
+        place = banks - 1 if bank == 7 else bank - 1 if bank > 7 else bank
+        self.map_mmc3(place * 2, place * 2 + 1, False)
+
+    def map_mmc3(self, r6, r7, swapped):
+        """R6 and R7, and the mode bit that puts R6 at $C000."""
+        banks = len(self.prg) // MMC3_BANK
+        last = banks - 1
+        order = (last - 1, r7, r6, last) if swapped else (r6, r7, last - 1, last)
+        self.windows = [(bank % banks) * MMC3_BANK for bank in order]
+        self.bank = self[PRG_START]
+
+    def _fixed(self):
+        last = len(self.prg) - BANK_SIZE
+        return [last, last + MMC3_BANK]
 
 
 class Console:
@@ -150,7 +186,14 @@ class Console:
             for name, value in load_labels(path).items():
                 self.labels.setdefault(name, value)
         self.prg = bytes(rom[INES_HEADER:INES_HEADER + rom[4] * BANK_SIZE])
-        self.bus = Bus(self, self.prg)
+        self.mapper = rom[6] >> 4 | (rom[7] & 0xF0)
+        self.bus = Bus(self, self.prg, mmc3=self.mapper == MMC3)
+        # The MMC3's registers. At power-on they are whatever they are; these
+        # are some of no use, with the mode bit that leaves $C000 to R6.
+        self.bank_select = 0x40
+        self.banks = [0x11, 0x13, 0x15, 0x17, 0x19, 0x1B, 0x05, 0x09]
+        self.mirroring = None       # 0 vertical, 1 horizontal: none written yet
+        self.prg_ram_on = False
         self.ram = self.bus.ram
         self.vram = bytearray(0x4000)
         self.oam = bytearray(256)
@@ -188,7 +231,10 @@ class Console:
         self.host_every = 0
         self._host_at = 0
         self.calls = {}             # address: times the program has come to it (count_calls)
-        self.bus.map(0)
+        if self.bus.mmc3:
+            self._map_mmc3()
+        else:
+            self.bus.map(0)
         self.mpu = MPU(memory=self.bus)
         self.mpu.pc = self.bus[0xFFFC] | self.bus[0xFFFD] << 8
         self.idle = self.labels.get(IDLE)
@@ -275,7 +321,24 @@ class Console:
                 self.samples += 1
 
     def write_mapper(self, address, value):
-        self.bus.map(value)
+        if not self.bus.mmc3:
+            self.bus.map(value)
+            return
+        even = not address & 1
+        if address < 0xA000:
+            if even:
+                self.bank_select = value
+            else:
+                self.banks[self.bank_select & 7] = value
+            self._map_mmc3()
+        elif address < 0xC000:
+            if even:
+                self.mirroring = value & 1
+            else:
+                self.prg_ram_on = value & 0xC0 == 0x80
+
+    def _map_mmc3(self):
+        self.bus.map_mmc3(self.banks[6], self.banks[7], bool(self.bank_select & 0x40))
 
     def _step_v(self):
         self.v = (self.v + (32 if self.ctrl & PPUCTRL_DOWN else 1)) & 0x7FFF
@@ -355,7 +418,7 @@ class Console:
             pc = mpu.pc
             if pc in self.calls:
                 self.calls[pc] += 1
-            if pc >= PRG_START:
+            if pc >= PRG_RAM_START:        # the cartridge's, ROM or the netplay's code in its RAM
                 if pc == self.idle and not self.nmi_depth and not self.stir_idle:
                     self._wait(limit)
                     continue

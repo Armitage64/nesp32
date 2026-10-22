@@ -10,7 +10,8 @@ each tick finds it.
 
 import random
 
-from console import PAD_A, PAD_B, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_SELECT, PAD_START, PAD_UP
+from console import (PAD_A, PAD_B, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_SELECT, PAD_START, PAD_UP,
+                     PPUCTRL_NMI)
 
 BOOT_TICKS = 60
 ROUTINE_LEVEL = 5               # GAME_ROUTINE_INDEX while a level is played
@@ -59,7 +60,9 @@ def play(console, script, immortal=True):
 
     def on_vblank(nes):
         # An NMI that finds NMI_CHECK set is a lag frame: it reads nothing.
-        if nes.ram[nmi_check] or len(states) > len(script):
+        # And with the NMI off there is no frame of the game at all, as
+        # while the reset is under way, however many vblanks it takes.
+        if not nes.ctrl & PPUCTRL_NMI or nes.ram[nmi_check] or len(states) > len(script):
             return
         if immortal and nes.ram[routine] == ROUTINE_LEVEL:
             nes.ram[lives] = nes.ram[lives + 1] = LIVES

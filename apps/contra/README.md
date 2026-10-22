@@ -8,6 +8,13 @@ three netplay games share: the menu, the nesp32, how the two games are
 kept the same, and the limits. [docs/Netplay.md](docs/Netplay.md) has what
 is Contra's own, what has been played on hardware and the figures.
 
+The netplay ROM is on another cartridge than the game's: an MMC3 (mapper
+4) with 8 KB of PRG RAM and 8 KB of CHR RAM, where the game's own is a
+UxROM, so that netplay's code can run from the RAM (docs/Netplay.md, "The
+cartridge"). A flash cartridge or an emulator has to take that, as for
+TMNT II; `make ines` writes it with an iNES header for one that takes no
+NES 2.0.
+
 **The game is not in this repository.** What is here is the netplay code,
 its tests, and a few lines to be put into the game's own code. The build
 takes the rest from two places:
@@ -22,7 +29,8 @@ takes the rest from two places:
 
 ```sh
 git submodule update --init third_party/nes-contra-us
-make            # build/contra.nes (the original) and build/contra_net.nes
+make            # build/contra.nes (the original), build/contra_net.nes, and
+                # build/contra_net_slow.nes, with the game's passes, for the tests
 make verify     # the original still matches its SHA-512
 make test       # needs: python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 ```
@@ -35,8 +43,8 @@ firmware's link and services for this computer.
 
 | Path | Purpose |
 |---|---|
-| `net/` | the netplay code: the session, the menu, their memory, and where the linker puts them |
-| `patches/` | the lines that call it, for three of the disassembly's files. All are under `.ifdef NETPLAY` |
+| `net/` | the netplay code: the session, the menu, the cartridge, the sprite pass and the bullets' test, their memory, and where the linker puts them |
+| `patches/` | the lines that call it, for five of the disassembly's files. All are under `.ifdef NETPLAY` |
 | `tools/extract_assets.py` | cuts the graphics and the sound out of `baserom.nes` |
 | `tests/` | a console on py65, and two of them with their nesp32s and a network between |
 | `docs/Netplay.md` | the design, the figures, and what has been learned |

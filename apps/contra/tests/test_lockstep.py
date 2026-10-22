@@ -130,7 +130,7 @@ def test_the_two_consoles_need_not_keep_the_same_delay(net_console):
     table.start()
     for console, delay in zip(table.consoles, (1, 3)):
         console.mpu.x = delay
-    table.run(4)
+    table.run(6)                # the reset, which copies netplay's code into the PRG RAM
     assert table.delays() == (1, 3)
     to_game(table)
     table.play(350, moves(seed=3))

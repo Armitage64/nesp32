@@ -1,7 +1,7 @@
 ; Netplay: a two-player game over two consoles, each with a nesp32 on
-; controller port 2 and the nesp32s joined over the network. In the space
-; the game leaves at the end of its fixed bank; bank7.asm includes it when
-; NETPLAY is defined.
+; controller port 2 and the nesp32s joined over the network. bank7.asm
+; includes it when NETPLAY is defined. It runs from the PRG RAM, where the
+; reset copies it (net/cart.inc).
 ;
 ; Both consoles run the whole game. What crosses the link is the buttons:
 ; one byte for each tick, where a tick is one frame of the game. A console
@@ -49,6 +49,8 @@
 ; Ticks are counted from -NET_DELAY_MAX on both consoles, and the first
 ; byte of the stream that the nesp32s pass on is tick 0's. The ticks before
 ; it have no buttons.
+
+.segment "NETCODE"
 
 .include "ram.inc"
 
@@ -164,35 +166,24 @@ net_menu_local:
     lda #$03
     jmp set_game_routine_index_to_a
 
-; From the menu, in bank 5: an exchange. The library's CRC table is in
-; bank 1. net_far_hello is nesp_hello; net_far_call is nesp_call for op X
-; of PEER's, with Y bytes of payload. Carry set if no reply came.
+; From the menu, in bank 5: an exchange. net_far_hello is nesp_hello;
+; net_far_call is nesp_call for op X of PEER's, with Y bytes of payload.
+; Carry set if no reply came.
 net_far_hello:
-    lda prg_rom_banks+1         ; set_rom_bank_to_y's, for bank 1, keeping Y
-    sta prg_rom_banks+1
-    jsr nesp_hello
-    jmp net_far_back
+    jmp nesp_hello
 
 net_far_call:
-    lda prg_rom_banks+1
-    sta prg_rom_banks+1
     lda #NESP_SVC_PEER
-    jsr nesp_call
-
-net_far_back:
-    php
-    ldy #$05
-    jsr set_rom_bank_to_y
-    plp
-    rts
+    jmp nesp_call
 
 ; From the menu: screen X, of those in bank 6 (menu_far.inc). Switching
 ; the bank keeps X.
 net_far_draw:
-    lda prg_rom_banks+6
-    sta prg_rom_banks+6
+    ldy #$06
+    jsr set_rom_bank_to_y
     jsr menu_far
-    jmp net_far_back
+    ldy #$05
+    jmp set_rom_bank_to_y
 
 ; An NMI after one that stalled. The PPU has had the last tick's writes
 ; and the picture stands, so only the sound engine runs before the buttons
@@ -597,3 +588,16 @@ net_unsent:
     sec
     sbc net_acked
     rts
+
+.ifndef NET_SLOW
+.export net_sprites, net_bullets
+.include "sprites.inc"
+.include "collide.inc"
+.endif
+
+; The end of what net_cart_reset copies into the PRG RAM: the library's
+; code is the last of it (net/contra_net.cfg).
+.pushseg
+.segment "CODE"
+net_image_end:
+.popseg

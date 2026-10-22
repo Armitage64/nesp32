@@ -1,19 +1,24 @@
 --- a/src/ines_header.asm
 +++ b/src/ines_header.asm
-@@ -36,0 +37,12 @@
+@@ -33,0 +34,17 @@
 +.ifdef NETPLAY
-+; The netplay ROM has an NES 2.0 header, which the MiSTer's core asks for:
-+; the same mapper with no submapper, no memory on the cartridge but 8 KB of
-+; CHR RAM, and NTSC timing.
++; The netplay ROM is on an MMC3, for the 8 KB of PRG RAM at $6000 that its
++; code runs from (net/net.inc), with twice the game's PRG ROM for the room.
++; It has an NES 2.0 header, which the MiSTer's core asks for: mapper 4 with
++; no submapper, 8 KB of PRG RAM with no battery, 8 KB of CHR RAM as the
++; game's own board has, and NTSC timing. The MMC3 sets the mirroring.
++.byte $10                     ; 16 banks of 16 KB of PRG ROM
++.byte $00                     ; no CHR ROM
++.byte $40                     ; mapper 4 (MMC3), low bits
 +.byte $08                     ; NES console, NES 2.0 header
 +.byte $00                     ; mapper high bits and submapper
 +.byte $00                     ; PRG and CHR ROM size high bits
-+.byte $00                     ; no PRG RAM
++.byte $07                     ; PRG RAM: 64 << 7 bytes
 +.byte $07                     ; CHR RAM: 64 << 7 bytes
 +.byte $00                     ; NTSC
 +.byte $00,$00,$00
 +.else
-@@ -38 +50,2 @@
+@@ -38 +55,2 @@
 -.byte 00,00,00,00,00,00,00,00 ; 8 zeroes
 \ No newline at end of file
 +.byte 00,00,00,00,00,00,00,00 ; 8 zeroes

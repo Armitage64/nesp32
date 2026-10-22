@@ -1,10 +1,14 @@
 # Contra build.
 #
 #   make            build/contra.nes, the original, and
-#                   build/contra_net.nes, for two consoles and two nesp32s
-#   make ines       build/contra_net_ines.nes: the netplay ROM with the
-#                   original's iNES header in place of its NES 2.0 one, for
-#                   a cartridge or an emulator that will not take that
+#                   build/contra_net.nes, for two consoles and two nesp32s;
+#                   and build/contra_net_slow.nes, the same with bank 1's
+#                   sprite pass and the game's test of the bullets, for
+#                   the tests to hold the faster to
+#   make ines       build/contra_net_ines.nes: the netplay ROM with an
+#                   iNES header in place of its NES 2.0 one, for a
+#                   cartridge or an emulator that will not take that. An
+#                   iNES MMC3 with no CHR ROM has CHR RAM, and 8 KB of PRG RAM
 #   make verify     check the original against the ROM's SHA-512
 #   make test       the simulation's tests (needs requirements-dev.txt)
 #   make patches    write patches/ again from the sources in build/src
@@ -31,6 +35,7 @@ NESP := $(NESP_BUILD)/nesp.stamp
 NESP_LIB := $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/gen_link.py
 ROM := $(BUILD)/contra.nes
 NET_ROM := $(BUILD)/contra_net.nes
+SLOW_ROM := $(BUILD)/contra_net_slow.nes
 SHA512_ORIGINAL := 1c747c78c678f14a68d4e5fcae065298a103f833638775860f0e5c5ffaa061f62d45fd8942148b1507c1fd57fde950a5d83f9f84a9782ec048a56067740c48e9
 # The disassembly, and the commit of it that patches/ was made against: a
 # patch has line numbers and none of the disassembly's lines to go by.
@@ -44,17 +49,18 @@ NAMES := ram constants ines_header bank0 bank1 bank2 bank3 bank4 bank5 bank6 ban
 SOURCES := $(NAMES:%=$(SRC)/%.asm)
 OBJECTS := $(NAMES:%=$(BUILD)/orig/%.o)
 NET_OBJECTS := $(NAMES:%=$(BUILD)/net/%.o)
+SLOW_OBJECTS := $(NAMES:%=$(BUILD)/slow/%.o)
 NET_SOURCES := $(wildcard net/*.inc) $(BUILD)/link.inc $(NESP_LIB) $(NESP)
 NET_INCLUDES := -I net -I $(BUILD) -I $(NESP_BUILD) -I $(NESP32)/nes/lib
 ASSETS := $(BUILD)/assets.stamp
 
 .PHONY: all ines verify test patches clean FORCE
 
-all: $(ROM) $(NET_ROM)
+all: $(ROM) $(NET_ROM) $(SLOW_ROM)
 
 .SECONDARY:
 
-$(BUILD) $(BUILD)/orig $(BUILD)/net:
+$(BUILD) $(BUILD)/orig $(BUILD)/net $(BUILD)/slow:
 	mkdir -p $@
 
 # The disassembly's sources, copied and patched. A patch that has changed
@@ -98,6 +104,9 @@ $(BUILD)/orig/%.o: $(SRC)/%.asm $(ASSETS) | $(BUILD)/orig
 $(BUILD)/net/%.o: $(SRC)/%.asm $(ASSETS) $(NET_SOURCES) | $(BUILD)/net
 	ca65 -D Contra -D NETPLAY --debug-info $(NET_INCLUDES) -o $@ $<
 
+$(BUILD)/slow/%.o: $(SRC)/%.asm $(ASSETS) $(NET_SOURCES) | $(BUILD)/slow
+	ca65 -D Contra -D NETPLAY -D NET_SLOW --debug-info $(NET_INCLUDES) -o $@ $<
+
 $(ROM): $(OBJECTS)
 	ld65 -C $(CONTRA_SRC)/contra.cfg --dbgfile $(BUILD)/contra.dbg -o $@ $(OBJECTS)
 
@@ -105,10 +114,15 @@ $(NET_ROM): $(NET_OBJECTS) net/contra_net.cfg
 	ld65 -C net/contra_net.cfg --dbgfile $(BUILD)/contra_net.dbg -m $(BUILD)/contra_net.map \
 		-o $@ $(NET_OBJECTS)
 
+$(SLOW_ROM): $(SLOW_OBJECTS) net/contra_net.cfg
+	ld65 -C net/contra_net.cfg --dbgfile $(BUILD)/contra_net_slow.dbg -o $@ $(SLOW_OBJECTS)
+
 ines: $(BUILD)/contra_net_ines.nes
 
-$(BUILD)/contra_net_ines.nes: $(NET_ROM) $(ROM)
-	{ head -c 16 $(ROM); tail -c +17 $(NET_ROM); } > $@
+# "NES", 16 banks of 16 KB of PRG ROM, no CHR ROM, mapper 4.
+$(BUILD)/contra_net_ines.nes: $(NET_ROM)
+	{ printf 'NES\032\020\000\100\000\000\000\000\000\000\000\000\000'; \
+		tail -c +17 $(NET_ROM); } > $@
 
 verify: $(ROM)
 	@test "$$(shasum -a 512 $(ROM) | cut -d' ' -f1)" = "$(SHA512_ORIGINAL)" \

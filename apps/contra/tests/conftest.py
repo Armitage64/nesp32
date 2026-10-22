@@ -66,3 +66,14 @@ def net_console(build):
     def make(**kwargs):
         return Console(str(build / "contra_net.nes"), str(build / "contra_net.dbg"), **kwargs)
     return make
+
+
+@pytest.fixture
+def slow_console(build):
+    """Make a Console on the netplay ROM with the sprite pass of bank 1."""
+    from console import Console
+
+    def make(**kwargs):
+        return Console(str(build / "contra_net_slow.nes"), str(build / "contra_net_slow.dbg"),
+                       **kwargs)
+    return make
