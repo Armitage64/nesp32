@@ -1,7 +1,9 @@
 # TMNT II build.
 #
 #   make            build/tmnt2.nes, the original, and
-#                   build/tmnt2_net.nes, for two consoles and two nesp32s
+#                   build/tmnt2_net.nes, for two consoles and two nesp32s;
+#                   and build/tmnt2_net_slow.nes, the same with the game's
+#                   own sprite pass, for the tests to hold the faster to
 #   make verify     check the original against the ROM's SHA-512
 #   make test       the simulation's tests (needs requirements-dev.txt)
 #   make patches    write patches/ again from the sources in build/src
@@ -32,6 +34,7 @@ NESP := $(NESP_BUILD)/nesp.stamp
 NESP_LIB := $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/gen_link.py
 ROM := $(BUILD)/tmnt2.nes
 NET_ROM := $(BUILD)/tmnt2_net.nes
+SLOW_ROM := $(BUILD)/tmnt2_net_slow.nes
 # Teenage Mutant Ninja Turtles II - The Arcade Game (USA), with its iNES
 # header.
 SHA512_ORIGINAL := f01d2492409536845999a95a763d9a3a9c03342b5b4c23162aa87ec85eecd5679cabe335367c4c044e79b8f0dac658887e0dd09ff524b967441419518c06010e
@@ -50,16 +53,17 @@ NAMES := header tmnt2 chr
 SOURCES := $(NAMES:%=$(SRC)/%.asm)
 OBJECTS := $(NAMES:%=$(BUILD)/orig/%.o)
 NET_OBJECTS := $(NAMES:%=$(BUILD)/net/%.o)
+SLOW_OBJECTS := $(NAMES:%=$(BUILD)/slow/%.o)
 NET_SOURCES := $(wildcard net/*.inc net/*.asm) $(BUILD)/link.inc $(NESP_LIB) $(NESP)
 NET_INCLUDES := -I net -I $(BUILD) -I $(NESP_BUILD) -I $(NESP32)/nes/lib
 
 .PHONY: all verify test patches clean FORCE
 
-all: $(ROM) $(NET_ROM)
+all: $(ROM) $(NET_ROM) $(SLOW_ROM)
 
 .SECONDARY:
 
-$(BUILD) $(BUILD)/orig $(BUILD)/net:
+$(BUILD) $(BUILD)/orig $(BUILD)/net $(BUILD)/slow:
 	mkdir -p $@
 
 $(CONVERTED): tools/convert.py $(BASEROM) | $(BUILD)
@@ -108,12 +112,19 @@ $(BUILD)/orig/%.o: $(SRC)/%.asm | $(BUILD)/orig
 $(BUILD)/net/%.o: $(SRC)/%.asm $(NET_SOURCES) | $(BUILD)/net
 	ca65 -D NETPLAY --debug-info --bin-include-dir $(BUILD) $(NET_INCLUDES) -o $@ $<
 
+$(BUILD)/slow/%.o: $(SRC)/%.asm $(NET_SOURCES) | $(BUILD)/slow
+	ca65 -D NETPLAY -D NET_SLOW_SPRITES --debug-info --bin-include-dir $(BUILD) \
+		$(NET_INCLUDES) -o $@ $<
+
 $(ROM): $(OBJECTS) tmnt2.cfg
 	ld65 -C tmnt2.cfg --dbgfile $(BUILD)/tmnt2.dbg -o $@ $(OBJECTS)
 
 $(NET_ROM): $(NET_OBJECTS) net/tmnt2_net.cfg
 	ld65 -C net/tmnt2_net.cfg --dbgfile $(BUILD)/tmnt2_net.dbg -m $(BUILD)/tmnt2_net.map \
 		-o $@ $(NET_OBJECTS)
+
+$(SLOW_ROM): $(SLOW_OBJECTS) net/tmnt2_net.cfg
+	ld65 -C net/tmnt2_net.cfg --dbgfile $(BUILD)/tmnt2_net_slow.dbg -o $@ $(SLOW_OBJECTS)
 
 verify: $(ROM)
 	@test "$$(shasum -a 512 $(ROM) | cut -d' ' -f1)" = "$(SHA512_ORIGINAL)" \

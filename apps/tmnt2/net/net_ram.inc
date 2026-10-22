@@ -98,9 +98,23 @@ nesp_rx         = NET_RAM + 46
 nesp_tx         = nesp_rx + NESP_RX_MASK + 1 + 7
 NET_RAM_END     = nesp_tx + NESP_TX_MAX + 7
 
+; The sort of the objects (net_sort, net/sprites.inc): the one being put
+; in its place.
+net_sort_key    = NET_RAM + $F0
+net_sort_obj    = NET_RAM + $F1
+.assert NET_RAM_END <= net_sort_key, error
+
 ; The menu's memory, from here on (net/menu.inc).
 MENU_RAM        = NET_RAM + $100
 .assert NET_RAM_END <= MENU_RAM, error
+
+; The sprite pass's loop (net/sprites.inc) runs from $6400, where the
+; reset copies it from bank 29 (net/tmnt2_net.cfg's NETRAM). With
+; NET_SLOW_SPRITES defined the game keeps its own, for the tests to hold
+; the two alike.
+.ifndef NET_SLOW_SPRITES
+NET_FAST_SPRITES = 1
+.endif
 
 ; The order to start a session, which is carried through the reset
 ; (net_start_session, net_reset): the mark, the role, the delay, a check.

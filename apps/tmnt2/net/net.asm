@@ -90,11 +90,15 @@ NESP_APP_VERSION = 1
 
 .segment "CODE"
 
-; From the reset, once it has cleared the memory: the PRG RAM on, OUT0 to
-; mark, and into a session if net_start_session asked for one.
+; From the reset, once it has cleared the memory: the PRG RAM on, the
+; sprite pass's loop into it, OUT0 to mark, and into a session if
+; net_start_session asked for one.
 net_reset:
     lda #MMC3_RAM_ON
     sta MMC3_PRG_RAM
+.ifdef NET_FAST_SPRITES
+    jsr net_sprites_copy
+.endif
     lda #OUT0_MARK
     sta JOY1
     lda #$00
@@ -606,6 +610,11 @@ net_unsent:
     rts
 
 .include "menu.inc"
+.ifdef NET_FAST_SPRITES
+.include "sprites.inc"
+.else
+.segment "SPRITES"              ; none: the game keeps its own
+.endif
 
 ; The last byte of bank 29 is the ROM's.
 .segment "NET29_END"

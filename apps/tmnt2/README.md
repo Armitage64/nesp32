@@ -99,8 +99,17 @@ fixed bank in the 187 bytes the game leaves at the end of bank 31, and the
 - **The NMI itself** (`net_nmi`). An NMI after one that stalled is the
   game's own for a frame that overran, with the exchange, and goes on into
   the game if the buttons came.
-- **The reset**, which turns the PRG RAM on, sets OUT0 to mark, and starts
-  a session if one was asked for, at the turtle select.
+- **The sprite pass**, which the exchange would otherwise slow too much
+  (below). Its loop over an object's tiles (`SPRITE_CREATE_FROM_PTR`)
+  and its sort of the objects jump to `net/sprites.inc`, which runs from
+  the PRG RAM: the loop works out once an object what the game's works out
+  for every tile, and writes it into its own instructions, and the sort
+  is an insertion sort in place of a bubble sort. The sprites and the RAM
+  are the game's own (`tests/test_sprites.py`, against
+  `tmnt2_net_slow.nes`, which keeps the game's).
+- **The reset**, which turns the PRG RAM on, copies the sprite pass's
+  loop into it, sets OUT0 to mark, and starts a session if one was asked
+  for, at the turtle select.
 - **The title's Start** with 2 TURTLES chosen (`net_title_start`), which
   is the menu's from then on; and the NMI, which is the menu's while it has
   the console.
@@ -175,8 +184,14 @@ splits stay where they are.
 **What the exchange costs.** The share of frames that would overrun, and
 so stand still, with an exchange of 3112 cycles added: level 7 34 in
 100, against 4 in the original; levels 5 and
-10 4 and 5; the others 2 at the most. Level 7 would play slowly. A faster
-exchange (nesp32's `docs/MULTIPLAYER.md`, To do) would help it most.
+10 4 and 5; the others 2 at the most. Level 7 would play slowly. So the
+netplay ROM has a faster sprite pass, which was half of level 7's frame
+(12269 cycles as a median, for 49 tiles): two players in level 7 now take
+22396 cycles a frame as a median against 25190, and the frames that
+would overrun with the exchange are 3 in 100 against 26 in the same play
+(`tests/test_sprites.py` prints the pass's own: level 7's 9855 cycles
+against 12514 for two players). A faster exchange (nesp32's `docs/MULTIPLAYER.md`,
+To do) would help as well.
 
 **Free RAM.** Bytes no level wrote, from the reset on: $0385 to $03BF
 (59 bytes, past the end of the PPU's buffer of writes at $0300, whose
@@ -223,15 +238,7 @@ the one picked.
    now that a session plays on hardware. Tested there: the session, the
    frame at the digest (no longer wrong), the menu's marker. Still to see
    on hardware: the splits on every level, through a whole game.
-2. **A faster sprite pass**, once the netplay plays. Level 7's frames
-   spend half their cycles building the sprites (12269 as a median, for
-   49 tiles), and the loop works out again for each tile what is the same
-   for the whole object: the tile's $40 for player 2, the palette, the
-   side of the screen. It flips by branches, and switches in the sprites'
-   banks for each object even when they are in place already. Worked out
-   once an object and with a loop for each flip, it should save more than
-   the exchange costs. It has to stay in the fixed banks, as the sprites'
-   data is read through the switched ones, and the simulation is to show
-   it the same as the original's, RAM and sprites, frame for frame.
-   Whether the original game gets it too, losing some of its slowdown, is
-   to be decided.
+2. **The faster sprite pass on hardware**: level 7 for two, in a session,
+   against how it played before. Whether the original game gets it too,
+   losing some of its slowdown, is to be decided: the original has no PRG
+   RAM to run it from, and the fixed banks have no room for it.

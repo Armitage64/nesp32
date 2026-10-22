@@ -58,11 +58,11 @@ def play(nes, game):
     return states
 
 
-def play_ticks(nes, game):
+def play_ticks(nes, game, digest=None):
     """Run the game a tick at a time: each tick's buttons are on the
     controllers when the game reads them (CTRL_READ_SAFE), so a lag frame
     does not move them to another tick. The digest at the start of each
-    read, before it."""
+    read, before it: nes.state(), or digest(nes)."""
     read = nes.labels["CTRL_READ_SAFE"]
     states = []
     step = nes.mpu.step
@@ -70,7 +70,7 @@ def play_ticks(nes, game):
     def stepped():
         if nes.mpu.pc == read and len(states) < len(game):
             nes.pads = list(game[len(states)])
-            states.append(nes.state())
+            states.append(digest(nes) if digest else nes.state())
         step()
     nes.mpu.step = stepped
     try:
