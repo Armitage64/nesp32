@@ -12,7 +12,9 @@ TURTLES at the title is the menu, HOST GAME and JOIN GAME meet by a room's
 code or by an address, and the two consoles play one game, kept the same
 by their buttons. On hardware too (2026-10-22): a session plays on a real
 NES, with no frame wrong at the digest since that was fixed (README's
-"The exchange"), and the menu's marker shows beside its lines.
+"The exchange"), and the menu's marker shows beside its lines. And with
+the faster sprite pass ("The frame rate", below) the game runs at its
+own speed in a session on hardware, level 7 for two too.
 
 **The game is not in this repository.** The build takes it from two places:
 
@@ -99,14 +101,10 @@ fixed bank in the 187 bytes the game leaves at the end of bank 31, and the
 - **The NMI itself** (`net_nmi`). An NMI after one that stalled is the
   game's own for a frame that overran, with the exchange, and goes on into
   the game if the buttons came.
-- **The sprite pass**, which the exchange would otherwise slow too much
-  (below). Its loop over an object's tiles (`SPRITE_CREATE_FROM_PTR`)
-  and its sort of the objects jump to `net/sprites.inc`, which runs from
-  the PRG RAM: the loop works out once an object what the game's works out
-  for every tile, and writes it into its own instructions, and the sort
-  is an insertion sort in place of a bubble sort. The sprites and the RAM
-  are the game's own (`tests/test_sprites.py`, against
-  `tmnt2_net_slow.nes`, which keeps the game's).
+- **The sprite pass**: its loop over an object's tiles
+  (`SPRITE_CREATE_FROM_PTR`) and its sort of the objects jump to
+  `net/sprites.inc`, which runs from the PRG RAM, so that the exchange
+  costs no frames ("The frame rate", below).
 - **The reset**, which turns the PRG RAM on, copies the sprite pass's
   loop into it, sets OUT0 to mark, and starts a session if one was asked
   for, at the turtle select.
@@ -139,6 +137,76 @@ game, and what the IRQs keep. Their handlers run in every frame, a
 stall's too, and step the background's animation in some levels (level
 0's flames, `_612_STEP_UNK` and the CHR bank it picks); the game reads
 nothing of it.
+
+## The frame rate
+
+**Why a session would drop frames.** All of TMNT II's game runs in its
+NMI, and the exchange of buttons is made there too: some 3100 cycles of
+cycle-timed serial with the nesp32, of a frame's 29780. A frame whose
+work does not end before the next NMI overruns, and the game stands
+still for a frame. Most levels have the room, but level 7's frames for two
+are nearly full already (25190 cycles as a median), and with the
+exchange 26 in 100 of them would overrun, against 2 in 100 without it:
+level 7 would play slowly, in a session only.
+
+**Where the time goes.** Building the sprites (`DISPLAY_OBJECTS_ROUTINE`)
+is about half of level 7's frame. Its loop over an object's tiles works
+out again for every tile what is the same for the whole object: whether
+it is flipped either way, whether the tile moves to player 2's sheet ($40
+on), the palette, and which side of the screen a tile has to be on to be
+shown. That is some 160 cycles a tile, and level 7 has some 45 tiles a
+frame. Then the objects are put in order by their X with a bubble sort,
+every pass of it, every frame.
+
+**What the netplay ROM does instead** (`net/sprites.inc`):
+
+- **The tiles' loop** works all of that out once an object and writes it
+  into its own instructions: the object's place as the immediates the
+  tile's Y and X are added to, the flip as the immediate the attributes
+  are EORed with, the $40 as an addition and a branch, the palette as a
+  compare and a branch, the side of the screen as an addition and a
+  limit. A flip is a subtraction in place of an addition, so there is a
+  loop for each of the four ways of flipping; and each comes plain, for an
+  object with no $40 and no palette of its own, which is 9 tiles in 10,
+  and full. A tile takes some 105 cycles in level 7, its object's own
+  work shared out among its tiles, in place of some 160.
+- **The sort** is an insertion sort, which is stable as the bubble sort
+  is, so the order is the same; and as the order is mostly the last
+  frame's, it takes about as many compares as there are objects.
+- **The PRG RAM** is where both run. The sprites' data is read through
+  the banks at $8000 and $A000, wherever it is, so the loop can be in no
+  switched bank; the fixed banks have no room; and code in RAM can write
+  its own instructions. They are linked in bank 29, and the reset copies
+  them to $6400.
+- **Two hooks** in the game, each four bytes in place of four, so nothing
+  else in it moves: `SPRITE_CREATE_FROM_PTR` jumps to the loop, and the
+  sort's first branch to the sort.
+
+**What it saves**, in the simulation's play:
+
+| | the game's pass | the netplay's |
+|---|---|---|
+| The sprite pass, level 7 for two | 12514 cycles | 9855 |
+| The sprite pass, level 7 for one | 10148 | 8062 |
+| The sprite pass, level 0 for one | 4844 | 4070 |
+| The sprite pass, level 3 for one | 5817 | 4737 |
+| A frame, level 7 for two (median) | 25190 | 22396 |
+| Frames that would overrun with the exchange, level 7 for two | 26 in 100 | 3 in 100 |
+
+So a session now drops about as many frames as the original game does on
+one console. On hardware the game runs at its own speed in a session,
+level 7 for two too (2026-10-22).
+
+**That it is the same game.** `tests/test_sprites.py` holds the netplay
+ROM to `tmnt2_net_slow.nes`, the same build with the game's own pass:
+3000 objects at random, and 400 passes over memory at random, leave the
+same sprites and the same RAM; and levels 0, 3 and 7, for one player and
+for two, are the same game tick by tick, compared as a session compares
+the two consoles. It matters beyond the speed: both consoles run the
+same build, but a sprite out of place would change the digest.
+
+The original game is left as it was, its slowdown too: it has no PRG RAM
+to run the loop from.
 
 ## The simulation
 
@@ -184,14 +252,9 @@ splits stay where they are.
 **What the exchange costs.** The share of frames that would overrun, and
 so stand still, with an exchange of 3112 cycles added: level 7 34 in
 100, against 4 in the original; levels 5 and
-10 4 and 5; the others 2 at the most. Level 7 would play slowly. So the
-netplay ROM has a faster sprite pass, which was half of level 7's frame
-(12269 cycles as a median, for 49 tiles): two players in level 7 now take
-22396 cycles a frame as a median against 25190, and the frames that
-would overrun with the exchange are 3 in 100 against 26 in the same play
-(`tests/test_sprites.py` prints the pass's own: level 7's 9855 cycles
-against 12514 for two players). A faster exchange (nesp32's `docs/MULTIPLAYER.md`,
-To do) would help as well.
+10 4 and 5; the others 2 at the most. Level 7 would play slowly, which
+the faster sprite pass mends ("The frame rate"). A faster exchange
+(nesp32's `docs/MULTIPLAYER.md`, To do) would help as well.
 
 **Free RAM.** Bytes no level wrote, from the reset on: $0385 to $03BF
 (59 bytes, past the end of the PPU's buffer of writes at $0300, whose
@@ -238,7 +301,6 @@ the one picked.
    now that a session plays on hardware. Tested there: the session, the
    frame at the digest (no longer wrong), the menu's marker. Still to see
    on hardware: the splits on every level, through a whole game.
-2. **The faster sprite pass on hardware**: level 7 for two, in a session,
-   against how it played before. Whether the original game gets it too,
-   losing some of its slowdown, is to be decided: the original has no PRG
-   RAM to run it from, and the fixed banks have no room for it.
+2. **The original game's slowdown**, if it is wanted: the faster sprite
+   pass needs somewhere to run, and the original has no PRG RAM. A build
+   of the original with PRG RAM asked for in its header would do.
