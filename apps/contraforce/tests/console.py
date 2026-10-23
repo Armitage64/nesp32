@@ -103,8 +103,11 @@ HUNT_CYCLES = 29
 # ram_nmi_flag_2 ($C4), which a lag frame's NMI sets for the bank switch it
 # breaks into, ram_save_stack_pointer ($03A0), where a lag frame's NMI may
 # have pushed the PPU's buffer from, and ram_03A1_irq_timer ($03A1), which
-# the IRQ counts down a frame.
-LEFT_OUT = frozenset([0x25, 0xC4, 0x3A0, 0x3A1] + list(range(0xE0, 0xF0)) + list(range(0x100, 0x200))
+# the IRQ counts down a frame. The stack is $01C0 on (it is never below
+# $01CC but where the PPU's buffers are read through it); below it are the
+# buffers, which are kept.
+STACK = range(0x1C0, 0x200)
+LEFT_OUT = frozenset([0x25, 0xC4, 0x3A0, 0x3A1] + list(range(0xE0, 0xF0)) + list(STACK)
                      + list(range(0x300, 0x330)) + list(range(0x540, 0x600)))
 
 

@@ -6,13 +6,13 @@ import random
 
 import pytest
 
+from console import STACK
 from drive import Player
 
 RETURN = 0x0FF0                 # a return address no code is at
 OBJECTS = 0x1A                  # the objects with sprites
 ANIMATION_LO, ANIMATION_HI = 0x061A, 0x0634
 POS_X, POS_Y = 0x064E, 0x0668
-STACK = range(0x100, 0x200)
 
 
 @pytest.mark.parametrize("two_players, seed", [(False, 1), (True, 2)])

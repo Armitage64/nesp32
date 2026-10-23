@@ -1,6 +1,6 @@
 --- a/bank_FF.asm
 +++ b/bank_FF.asm
-@@ -3,0 +4,9 @@
+@@ -3,0 +4,10 @@
 +.ifdef FAST
 +.include "fast.inc"
 +; What fast/ reads of the fixed bank.
@@ -9,41 +9,59 @@
 +.export sub_F066, sub_F068, sub_F098, sub_F0A4, sub_F0AD
 +.export fast_sprites_paused, sub_FBF0, tbl_D4C4, tbl_D4E2, tbl_D500, tbl_D51D
 +.export tbl_D53B, tbl_D53C, tbl_D55B
++.export fast_boxes_cleared
 +.endif
-@@ -881,0 +891,4 @@
+@@ -881,0 +892,4 @@
 +.ifdef FAST
 +; The sprite pass from the PRG RAM (fast/sprites.inc).
 +    JMP fast_sprites
 +.else
-@@ -883,0 +897 @@
+@@ -883,0 +898 @@
 +.endif
-@@ -890,0 +905 @@
+@@ -890,0 +906 @@
 +fast_sprites_paused:   ; the pause's sprites, which fast/sprites.inc leaves to the game
-@@ -7139,0 +7155,5 @@
+@@ -3113,0 +3130,4 @@
++.ifdef FAST
++; From the PRG RAM, in line (fast/loops.inc).
++    JMP fast_zeros
++.else
+@@ -3115,0 +3136 @@
++.endif
+@@ -7139,0 +7161,5 @@
 +.ifdef FAST
 +; The switch from the PRG RAM (fast/bankswitch.inc).
 +    JMP fast_bankswitch
 +    NOP
 +.else
-@@ -7141,0 +7162 @@
+@@ -7141,0 +7168 @@
 +.endif
-@@ -7158,0 +7180,4 @@
+@@ -7158,0 +7186,4 @@
 +.ifdef FAST
 +    JMP fast_switch_pair
 +    NOP
 +.else
-@@ -7160,0 +7186 @@
+@@ -7160,0 +7192 @@
 +.endif
-@@ -9634,0 +9661,6 @@
+@@ -8527,0 +8560,5 @@
++.ifdef FAST
++; The clearing in line, from the PRG RAM (fast/loops.inc).
++    JMP fast_clear_boxes
++    NOP
++.else
+@@ -8529,0 +8567 @@
++.endif
+@@ -8535,0 +8574 @@
++fast_boxes_cleared:    ; where fast/loops.inc's clearing comes back to
+@@ -9634,0 +9674,6 @@
 +.ifdef FAST
 +; The controllers read from the PRG RAM (fast/pads.inc).
 +    JMP fast_read_pads
 +    NOP
 +    NOP
 +.else
-@@ -9636,0 +9669 @@
+@@ -9636,0 +9682 @@
 +.endif
-@@ -9657,0 +9691,11 @@
+@@ -9657,0 +9704,11 @@
 +.ifdef FAST
 +; The faster ROM's reset (fast/fast.s): its own bank at $8000, where
 +; fast_boot turns the PRG RAM on and fills it, and then the game's reset.
@@ -55,11 +73,11 @@
 +    STA MMC3_DATA
 +    JMP fast_boot
 +.else
-@@ -9660,0 +9705 @@
+@@ -9660,0 +9718 @@
 +.endif
-@@ -9669,0 +9715,3 @@
+@@ -9669,0 +9728,3 @@
 +.ifdef FAST
 +    .word fast_reset
 +.else
-@@ -9670,0 +9719 @@
+@@ -9670,0 +9732 @@
 +.endif
