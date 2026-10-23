@@ -76,6 +76,7 @@ class Profiler:
         self.ram_starts = [value for value, _ in ram]
         self.ram_names = ["fast:" + name for _, name in ram]
         self.flat, self.incl = {}, {}
+        self.edges = {}             # (caller, callee): [calls, inclusive cycles]
         self.shadow = []
         self.broken_into = []       # the shadow stacks the interrupts put aside
         self.counting = False
@@ -125,7 +126,11 @@ class Profiler:
             self.flat[here] = self.flat.get(here, 0) + cycles
             for name in set(self.shadow):
                 self.incl[name] = self.incl.get(name, 0) + cycles
+            for pair in set(zip(self.shadow, self.shadow[1:])):
+                self.edges.setdefault(pair, [0, 0])[1] += cycles
             if opcode == JSR:
+                if self.shadow:
+                    self.edges.setdefault((self.shadow[-1], callee), [0, 0])[0] += 1
                 self.shadow.append(callee)
             elif opcode == RTS and self.shadow:
                 self.shadow.pop()
@@ -136,7 +141,7 @@ class Profiler:
 
 def run(rom, dbg, upstream, args):
     nes = Console(rom, dbg)
-    player = Player(nes, two_players=args.players == 2, seed=args.seed)
+    player = Player(nes, two_players=args.players == 2, seed=args.seed, stage=args.stage)
     profiler = Profiler(nes, upstream, dbg)
     profiler.install()
     player.to_play()
@@ -156,6 +161,8 @@ def main():
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--players", type=int, default=2, choices=(1, 2))
     parser.add_argument("--top", type=int, default=25)
+    parser.add_argument("--stage", type=int, default=0, help="0-4: stage 1 to 5")
+    parser.add_argument("--dump", help="write the faster ROM's counts here, as JSON")
     args = parser.parse_args()
     upstream = os.path.join(args.build, "upstream")
     results = []
@@ -163,7 +170,14 @@ def main():
         rom = os.path.join(args.build, name + ".nes")
         results.append(run(rom, os.path.join(args.build, name + ".dbg"), upstream, args))
     (orig, orig_costs), (fast, fast_costs) = results
-    print("%d players, seed %d, %d ticks of stage 1" % (args.players, args.seed, args.ticks))
+    print("%d players, seed %d, %d ticks of stage %d" % (args.players, args.seed, args.ticks,
+                                                       args.stage + 1))
+    if args.dump:
+        import json
+        with open(args.dump, "w") as handle:
+            json.dump({"ticks": args.ticks, "flat": fast.flat, "incl": fast.incl,
+                       "edges": [[a, b, n, c] for (a, b), (n, c) in fast.edges.items()],
+                       "orig_flat": orig.flat, "orig_incl": orig.incl}, handle)
     for label, costs in (("original", orig_costs), ("faster", fast_costs)):
         ranked = sorted(costs)
         print("  %-9s a tick: median %6.0f, 9 in 10 under %6.0f, over 29780: %4.1f%%" % (

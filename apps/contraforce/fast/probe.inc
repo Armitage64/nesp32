@@ -61,6 +61,7 @@ tile:
     lda FAST_METATILES,y
 .endmacro
 
+fast_probe_body:                ; the game's test, as tools/probe.py makes it
 .include "probe_game.inc"
 
 fast_probe:
