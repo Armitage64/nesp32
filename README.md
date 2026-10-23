@@ -29,7 +29,7 @@ to be configured from the NES itself.
 
 - The NESP32 grew out of [NES Radar](https://github.com/k6lcm/nes-radar) and [connectedNES](https://github.com/hxlnt/connectedNES), projects that first explored the use of the NES controller port as a data link.
 
-- This project is still just a proof of concept but with your help it could someday become a real boy!
+- NTSC-only for now. PAL support is planned.
 
 ## Quick Links
 
@@ -55,9 +55,10 @@ Please join our [Discord](https://discord.gg/kwSC7pwtmb)!
 | [NESpedia](apps/wiki) | Search and display Wikipedia articles |
 | [Jukebox](apps/jukebox) | Stream VGM/VGZ music files and PCM audio to the NES sound chip |
 | [Throughput](apps/throughput) | Test the bandwidth of the NES<>ESP32 interface |
-| [Dr. Mario 2P](apps/drmario)* | Dr. Mario online two-player |
-| [Contra, 2P](apps/contra)* | Contra's online two-player |
-| [Tetris 2P](apps/tetris)* | Tetris online two-player |
+| [Dr. Mario](apps/drmario)* | Dr. Mario online VS |
+| [Contra](apps/contra)* | Contra online co-op, with framerate optimizations |
+| [Tetris](apps/tetris)* | Tetris online VS |
+| [TMNT2 Arcade](apps/tmnt2)* | Teenage Mutant Ninja Turtles 2 Arcade online co-op, with framerate optimizations |
 | [NES Radar](apps/nes-radar) | [k6lcm](https://github.com/k6lcm)'s live air traffic scope, no PC required |
 | [National Public Radio](apps/npr) | NPR's live .mp3 radio stream with optional headline news |
 | [Weather](apps/weather) | Current conditions and a 5-day forecast for a US zip code, which the NESP32 remembers |
