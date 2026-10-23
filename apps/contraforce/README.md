@@ -6,12 +6,13 @@ a [nesp32](../..) on each, as [Contra](../contra) and [TMNT II](../tmnt2)
 are.
 
 **Status (October 2026): a faster ROM for one console, in the simulation
-only.** The original builds byte for byte. The faster ROM has its bank
-switch, its background test and its sprite pass from the PRG RAM, and
-plays the same game tick by tick; it is about 10% faster, which takes most
-of the slowdown out of one player's game but leaves two players far from
-the room a netplay session needs ("What part 1 has measured"). Not yet
-tried on hardware. No netplay.
+only.** The original builds byte for byte. The faster ROM runs eight of
+the game's passes from the PRG RAM (part 1, below) and plays the same
+game tick by tick; a tick of one player's play is 11% to 22% shorter at
+the median, which takes most of the slowdown out of stages 1 to 4 and
+some of it out of stage 5, but leaves two players far from the room a
+netplay session needs ("What part 1 has measured"). Not yet tried on
+hardware. Netplay is left for another time.
 
 **The game is not in this repository.** What is here is the faster
 passes, their tests, and a few lines to be put into the game's own code.
@@ -65,10 +66,14 @@ tick has to fit in about 26,700. Where the cycles of a two-player tick go:
 Each change is to the game's own code only where the game calls the
 faster code, the length of what it replaces, under `.ifdef FAST`; the
 faster code runs from the PRG RAM, copied there at the reset from a bank
-of its own (`fast/`). The tests hold the faster ROM to the original tick
-by tick: the same buttons give the same RAM before every tick, less what
-runs to the picture's clock rather than the game's (the music's, and two
-counters; `tests/console.py`'s `LEFT_OUT`).
+of its own (`fast/`). Where the faster code is the game's own with its
+calls in line, it is made from the disassembly at build time
+(`tools/probe.py`, `tools/columns.py`), so none of the game's code is kept
+here. The tests hold the faster ROM to the original tick by tick in
+stages 1, 3 and 5: the same buttons give the same RAM before every tick,
+less what runs to the picture's clock rather than the game's (the music's,
+and some counters; `tests/console.py`'s `LEFT_OUT`); and each pass to the
+game's on memory taken from play and then shaken.
 
 1. **The build and the simulation.** Done: the original byte for byte; the
    faster ROM on an MMC3 with 256 KB of PRG ROM and 8 KB of PRG RAM; the
@@ -85,34 +90,51 @@ counters; `tests/console.py`'s `LEFT_OUT`).
    what each tile works out again worked out once an object and written
    into the tile loops, the empty objects passed in two runs, and the
    empty places hidden by a run of stores. Done.
-5. **Measure it.** Done in the simulation ("What part 1 has measured").
+5. **The controllers** (`fast/pads.inc`): `sub_FFC8`'s loop in line, a
+   button's bit 0 or bit 1 taken by AND and CMP. Done.
+6. **The background test's helpers in line**, `sub_F066` to `sub_F0AD`,
+   where it calls them (`tools/probe.py`). Done.
+7. **Two loops** (`fast/loops.inc`): the clearing of the objects' boxes
+   (`sub_F994`) a run of stores, and `sub_DEBD`'s zeros into the PPU's
+   second buffer with no call for each. Done.
+8. **A metatile's tiles** as the screen scrolls (`fast/columns.inc`):
+   `$EC26` to the end of `sub_ECE7` from the PRG RAM, with its call for
+   each tile in line (`tools/columns.py`). Done.
+9. **Measure it.** Done in the simulation ("What part 1 has measured").
    Then on hardware, which has to have an MMC3 with PRG RAM and 128 KB of
    CHR ROM. Not yet.
-6. If two players are to fit: the background test's own body (inline its
-   helpers, `F0A4`, `F0AD`, `F098`), the bullets, the scroll's columns and
-   their scripts, and the IRQ handlers' waits.
+
+What is left is spread thin: the game's own logic for the players, the
+enemies and the bullets (some 2,000, 1,100 an enemy and 1,600 a bullet), the
+scroll's building of a column (some 5,000 a tick in stages 3 and 5, its
+own logic), and the music (some 1,500 a frame); none of it a loop that
+being faster would change by much. The one cheap thing left is the IRQ
+handlers' waits for a line's end, most of all the status bar's split
+(`ofs_irq_handler_F847_00`), which waits some 300 cycles a frame for a
+later line where a second IRQ could come instead: some 250 a frame, but a
+change to the picture's timing that only hardware can say is right.
 
 ### What part 1 has measured
 
 In the simulation, both ROMs playing the same game from the same buttons
 (`make bench`: each stage from its start, two seeds, 500 ticks of play
-each). The cycles of a tick, its lag frames' NMIs among them:
+each). The cycles of a tick, its lag frames' NMIs among them, and the
+ticks over a frame, which stand the game still for one:
 
-| Players | Stage | Original, median | Faster, median | Ticks over a frame, original | Faster |
-|---|---|---|---|---|---|
-| 1 | 1 | 28,901 | 25,381 | 39.0% | 11.2% |
-| 1 | 2 | 21,220 | 18,748 | 6.5% | 1.5% |
-| 1 | 3 | 34,532 | 27,981 | 74.9% | 19.8% |
-| 1 | 4 | 25,741 | 23,400 | 28.6% | 12.2% |
-| 1 | 5 | 38,742 | 35,732 | 92.0% | 75.4% |
-| 2 | 1 | 43,288 | 38,550 | 99.8% | 94.7% |
-| 2 | 2 | 28,703 | 25,333 | 46.2% | 26.4% |
-| 2 | 3 | 48,150 | 43,488 | 99.9% | 99.9% |
-| 2 | 4 | 35,366 | 29,763 | 64.1% | 49.9% |
-| 2 | 5 | 49,449 | 45,587 | 100.0% | 99.8% |
+| Stage | Original, median | Faster, median | Ticks over a frame, original | Faster |
+|---|---|---|---|---|
+| 1 | 28,901 | 24,526 | 39.0% | 5.8% |
+| 2 | 21,220 | 17,882 | 6.5% | 0.5% |
+| 3 | 34,532 | 27,076 | 74.9% | 14.3% |
+| 4 | 25,741 | 22,710 | 28.6% | 10.8% |
+| 5 | 38,742 | 34,487 | 92.0% | 65.4% |
 
-Against the estimates, for two players in stage 1 (`make profile`), the
-three saved about half what was estimated: 4,700 of 9,600.
+That is for one player. For two, after steps 2 to 4 alone, a tick was
+still 38,550 cycles at the median in stage 1 and 45,587 in stage 5, where
+a session needs it under about 26,700.
+
+Against the estimates, for two players in stage 1 (`make profile`), steps
+2 to 4 saved about half what was estimated: 4,700 of 9,600.
 
 | | Estimated | Measured |
 |---|---|---|
@@ -123,8 +145,17 @@ three saved about half what was estimated: 4,700 of 9,600.
 The background test's own body is some 450 cycles a call, not the 200 the
 estimate took, once it has to leave every temporary as the game's does;
 and most of the sprite pass's cycles are an object's and a group's, not a
-tile's. A session needs a tick under about 26,700 cycles: two players are
-over that by 12,000 to 19,000 cycles at the median in stages 1, 3 and 5.
+tile's.
+
+**The game depends on the picture's clock.** The IRQ at line 190 sends
+the PPU's second buffer and empties it, once a frame, and the scroll reads
+the buffer's index and waits while it is full. So a tick that finds the
+buffer sent or not, by how long the last one took, plays otherwise: the
+original against itself with longer frames is another game within some
+60 ticks of stage 3. The tests give the faster ROM the original's buffer
+where one has sent it and the other not. For two consoles this is a
+second thing, after the random number, that has to be made the same on
+both.
 
 ### Part 2: two consoles
 
@@ -141,10 +172,14 @@ As Contra's netplay ROM, from what it has learned:
    metatiles' 4 KB share, or in a bank of their own.
 4. **The controllers** read once, with the drum samples' double read where
    a sample plays (nesp32's `docs/PHANTOM-RIGHT.md`).
-5. **The lockstep tests** on two simulated consoles, and then hardware.
+5. **The PPU's second buffer**, sent by the IRQ at line 190 once a frame,
+   which the scroll reads ("What part 1 has measured"): sent at a point
+   in the tick, or the same on both consoles some other way.
+6. **The lockstep tests** on two simulated consoles, and then hardware.
 
 ## To do
 
 - The faster ROM on hardware.
-- Part 1, step 6, if part 2 is to be tried.
-- Part 2.
+- The status bar's IRQ: a second IRQ in place of its wait, tried on
+  hardware.
+- Part 2, another time.
