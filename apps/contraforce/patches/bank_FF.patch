@@ -9,7 +9,7 @@
 +.export sub_F066, sub_F068, sub_F098, sub_F0A4, sub_F0AD
 +.export fast_sprites_paused, sub_FBF0, tbl_D4C4, tbl_D4E2, tbl_D500, tbl_D51D
 +.export tbl_D53B, tbl_D53C, tbl_D55B
-+.export fast_boxes_cleared
++.export fast_boxes_cleared, loc_ED07
 +.endif
 @@ -881,0 +892,4 @@
 +.ifdef FAST
@@ -27,41 +27,49 @@
 +.else
 @@ -3115,0 +3136 @@
 +.endif
-@@ -7139,0 +7161,5 @@
+@@ -5746,0 +5768,5 @@
++.ifdef FAST
++; The tiles written from the PRG RAM (fast/columns.inc).
++    JMP fast_columns
++    NOP
++.else
+@@ -5748,0 +5775 @@
++.endif
+@@ -7139,0 +7167,5 @@
 +.ifdef FAST
 +; The switch from the PRG RAM (fast/bankswitch.inc).
 +    JMP fast_bankswitch
 +    NOP
 +.else
-@@ -7141,0 +7168 @@
+@@ -7141,0 +7174 @@
 +.endif
-@@ -7158,0 +7186,4 @@
+@@ -7158,0 +7192,4 @@
 +.ifdef FAST
 +    JMP fast_switch_pair
 +    NOP
 +.else
-@@ -7160,0 +7192 @@
+@@ -7160,0 +7198 @@
 +.endif
-@@ -8527,0 +8560,5 @@
+@@ -8527,0 +8566,5 @@
 +.ifdef FAST
 +; The clearing in line, from the PRG RAM (fast/loops.inc).
 +    JMP fast_clear_boxes
 +    NOP
 +.else
-@@ -8529,0 +8567 @@
+@@ -8529,0 +8573 @@
 +.endif
-@@ -8535,0 +8574 @@
+@@ -8535,0 +8580 @@
 +fast_boxes_cleared:    ; where fast/loops.inc's clearing comes back to
-@@ -9634,0 +9674,6 @@
+@@ -9634,0 +9680,6 @@
 +.ifdef FAST
 +; The controllers read from the PRG RAM (fast/pads.inc).
 +    JMP fast_read_pads
 +    NOP
 +    NOP
 +.else
-@@ -9636,0 +9682 @@
+@@ -9636,0 +9688 @@
 +.endif
-@@ -9657,0 +9704,11 @@
+@@ -9657,0 +9710,11 @@
 +.ifdef FAST
 +; The faster ROM's reset (fast/fast.s): its own bank at $8000, where
 +; fast_boot turns the PRG RAM on and fills it, and then the game's reset.
@@ -73,11 +81,11 @@
 +    STA MMC3_DATA
 +    JMP fast_boot
 +.else
-@@ -9660,0 +9718 @@
+@@ -9660,0 +9724 @@
 +.endif
-@@ -9669,0 +9728,3 @@
+@@ -9669,0 +9734,3 @@
 +.ifdef FAST
 +    .word fast_reset
 +.else
-@@ -9670,0 +9732 @@
+@@ -9670,0 +9738 @@
 +.endif

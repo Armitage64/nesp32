@@ -83,10 +83,15 @@ $(BUILD)/fast/bank_%.o: $(BUILD)/copy_bank_%.asm $(COPIES) $(FAST_SOURCES) | $(B
 	ca65 -U -g -D FAST -I $(BUILD) -I fast --bin-include-dir $(UP) -o $@ $<
 
 # The game's background test, for fast/probe.inc, made from the disassembly.
-$(BUILD)/probe_game.inc: $(UP)/bank_FF.asm tools/probe.py
-	$(PYTHON) tools/probe.py $< $@
+# Both are made from the disassembly's own bank_FF.asm, not the patched copy.
+$(BUILD)/probe_game.inc: $(UPSTREAM) tools/probe.py
+	$(PYTHON) tools/probe.py "$(CF_SRC)/bank_FF.asm" $@
 
-$(BUILD)/fast/fast.o: $(FAST_SOURCES) $(COPIES) $(BUILD)/probe_game.inc | $(BUILD)/fast
+# And its writing of a metatile's tiles, for fast/columns.inc.
+$(BUILD)/columns_game.inc: $(UPSTREAM) tools/columns.py tools/probe.py
+	$(PYTHON) tools/columns.py "$(CF_SRC)/bank_FF.asm" $@
+
+$(BUILD)/fast/fast.o: $(FAST_SOURCES) $(COPIES) $(BUILD)/probe_game.inc $(BUILD)/columns_game.inc | $(BUILD)/fast
 	ca65 -U -g -D FAST -I $(BUILD) -I fast -l $(BUILD)/fast/fast.lst -o $@ fast/fast.s
 
 $(BUILD)/contraforce.prg: $(OBJECTS) $(UP)/ld65.cfg

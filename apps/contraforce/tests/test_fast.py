@@ -15,18 +15,59 @@ ANIMATION_LO, ANIMATION_HI = 0x061A, 0x0634
 POS_X, POS_Y = 0x064E, 0x0668
 
 
-@pytest.mark.parametrize("two_players, seed", [(False, 1), (True, 2)])
-def test_the_same_game_tick_by_tick(console, fast_console, two_players, seed):
-    """From power-on, through the menu, into stage 1: the same RAM before
-    every tick (less what runs to the picture's clock), and the faster ROM
-    no slower at the median."""
+# The PPU's second buffer, its index and the upload's temporary: the IRQ
+# at line 190 sends the buffer and empties it, once a frame, so a tick may
+# find it sent or not by how long the last tick took; and the game reads
+# the index (the scroll waits while the buffer is full), so its play
+# depends on it. The original against itself with longer frames is
+# another game from the first tick that finds it otherwise.
+BUFFER_INDEX = 0x39
+BUFFER = [BUFFER_INDEX, 0x56] + list(range(0x160, 0x1C0))
+
+
+@pytest.mark.parametrize("two_players, seed, stage", [
+    (False, 1, 0), (True, 2, 0), (False, 3, 2), (True, 4, 4)])
+def test_the_same_game_tick_by_tick(console, fast_console, two_players, seed, stage):
+    """From power-on, through the menu, into a stage: stage 1, which
+    scrolls right, and stages 3 and 5, which scroll up. Before every tick
+    the same RAM, less what runs to the picture's clock (the buffer
+    among it where the two have sent it at other times, and then the
+    faster ROM is given the original's); and the faster ROM no slower at
+    the median."""
     original, fast = console(), fast_console()
-    players = [Player(nes, two_players, seed) for nes in (original, fast)]
-    for player in players:
-        player.to_play()
-        player.run(500)
-    theirs, ours = players
-    assert ours.states == theirs.states
+    theirs, ours = (Player(nes, two_players, seed, stage=stage) for nes in (original, fast))
+    hook = fast.on_vblank
+    synced = []
+
+    def given(nes):
+        tick = len(ours.states)
+        if nes.ctrl & 0x80 and not nes.ram[nes.labels["ram_nmi_flag_3"]] \
+                and tick < len(their_rams):
+            ram = their_rams[tick]
+            # One of the two sent, the other not: the IRQ's, not the game's.
+            if (ram[BUFFER_INDEX] == 0) != (nes.ram[BUFFER_INDEX] == 0):
+                for address in BUFFER:
+                    nes.ram[address] = ram[address]
+                synced.append(tick)
+        hook(nes)
+    fast.on_vblank = given
+
+    their_rams = []
+    their_hook = original.on_vblank
+
+    def kept(nes):
+        before = len(theirs.states)
+        their_hook(nes)
+        if len(theirs.states) > before:
+            their_rams.append(bytearray(nes.ram))
+    original.on_vblank = kept
+
+    theirs.to_play()
+    theirs.run(500)
+    ours.to_play()
+    ours.run(len(theirs.states) - len(ours.states))
+    assert ours.states == theirs.states[:len(ours.states)]
+    assert len(synced) < len(ours.states) // 2
     played = [tick for tick, play in enumerate(theirs.played) if play][:-1]
     their_cycles, our_cycles = theirs.tick_cycles(), ours.tick_cycles()
     assert sorted(our_cycles[t] for t in played)[len(played) // 2] \
