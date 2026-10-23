@@ -2,7 +2,10 @@
 """The game's background test for fast/probe.inc, made from the disassembly
 at build time, so that none of the game's code is kept in this repository.
 
-    probe.py BANK_FF.ASM OUT.INC
+    probe.py BANK_FF.ASM OUT.INC [--no-inline]
+
+(--no-inline leaves the calls as they are, for tools/ablate.py to measure
+what putting them in line saves.)
 
 It takes the game's script 00, from ofs_006_EE54_00 to the end of its
 test (tbl_EF73), as it is, in a scope of its own, and changes four
@@ -85,7 +88,7 @@ class Inliner:
         return ["; %s, in line" % name] + self.expand(renamed) + [end + ":"]
 
 
-def main(source, out):
+def main(source, out, no_inline=False):
     with open(source, encoding="latin-1") as handle:
         lines = handle.read().split("\n")
     start = lines.index(FIRST)
@@ -107,9 +110,9 @@ def main(source, out):
             continue
         body.append(code(line))
     assert tile_done and sum("fast_probe_done" in line for line in body) == len(RETURNS)
-    inliner = Inliner(lines)
-    body = inliner.expand(body)
-    assert not any(CALL.match(line) and CALL.match(line).group(1) in INLINE for line in body)
+    if not no_inline:
+        body = Inliner(lines).expand(body)
+        assert not any(CALL.match(line) and CALL.match(line).group(1) in INLINE for line in body)
     with open(out, "w") as handle:
         handle.write("; Made by tools/probe.py from the disassembly's bank_FF.asm. Not to be\n"
                      "; edited, or kept.\n.scope fast_probe_game\n")
@@ -128,4 +131,4 @@ def last_address(body):
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:3])
+    main(sys.argv[1], sys.argv[2], "--no-inline" in sys.argv[3:])
