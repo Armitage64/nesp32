@@ -1,0 +1,11 @@
+--- a/bank_04.asm
++++ b/bank_04.asm
+@@ -3040,0 +3041,6 @@
++.ifdef FAST
++; The background's test from the PRG RAM, with no switch (fast/probe.inc).
++    JSR fast_probe
++    NOP
++    NOP
++.else
+@@ -3042,0 +3049 @@
++.endif

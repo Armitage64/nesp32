@@ -1,0 +1,56 @@
+--- a/bank_FF.asm
++++ b/bank_FF.asm
+@@ -3,0 +4,9 @@
++.ifdef FAST
++.include "fast.inc"
++; What fast/ reads of the fixed bank.
++.export tbl_F389, tbl_F393_prg_pairs
++.export ofs_006_EE54_00, tbl_DA57_metatiles, tbl_EF73, tbl_EF8E
++.export sub_F066, sub_F068, sub_F098, sub_F0A4, sub_F0AD
++.export fast_sprites_paused, sub_FBF0, tbl_D4C4, tbl_D4E2, tbl_D500, tbl_D51D
++.export tbl_D53B, tbl_D53C, tbl_D55B
++.endif
+@@ -881,0 +891,4 @@
++.ifdef FAST
++; The sprite pass from the PRG RAM (fast/sprites.inc).
++    JMP fast_sprites
++.else
+@@ -883,0 +897 @@
++.endif
+@@ -890,0 +905 @@
++fast_sprites_paused:   ; the pause's sprites, which fast/sprites.inc leaves to the game
+@@ -7139,0 +7155,5 @@
++.ifdef FAST
++; The switch from the PRG RAM (fast/bankswitch.inc).
++    JMP fast_bankswitch
++    NOP
++.else
+@@ -7141,0 +7162 @@
++.endif
+@@ -7158,0 +7180,4 @@
++.ifdef FAST
++    JMP fast_switch_pair
++    NOP
++.else
+@@ -7160,0 +7186 @@
++.endif
+@@ -9657,0 +9684,11 @@
++.ifdef FAST
++; The faster ROM's reset (fast/fast.s): its own bank at $8000, where
++; fast_boot turns the PRG RAM on and fills it, and then the game's reset.
++.export vec_FD2B_RESET
++fast_reset:
++    LDA #$06
++    STA MMC3_SELECT
++    LDA #FAST_BANK
++    STA MMC3_DATA
++    JMP fast_boot
++.else
+@@ -9660,0 +9698 @@
++.endif
+@@ -9669,0 +9708,3 @@
++.ifdef FAST
++    .word fast_reset
++.else
+@@ -9670,0 +9712 @@
++.endif
