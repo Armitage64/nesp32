@@ -55,7 +55,8 @@ its own list in its README.
 - **PEER's session at a faster rate**: the line at 14 cycles a bit, then
   perhaps 10, from a session's start to its end, for a faster exchange in
   every netplay game ([MULTIPLAYER.md](MULTIPLAYER.md), "To do", has what
-  it gains and what it takes). The nesp32's part is to change its UART's
+  it gains and what it takes). On hold until every player's hardware can
+  run the line at those rates: some cannot yet (issue #15). The nesp32's part is to change its UART's
   rate both ways when the session begins and ends, as RAW does for a run.
   First, nes-throughput's trial of each rate with the music's samples
   playing, on a real NES with each board: the rates above were found with

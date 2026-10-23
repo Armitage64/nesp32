@@ -432,7 +432,9 @@ four games:
   Contra's would take its screen's tiles and its 8 KB of CHR RAM as well,
   about 12 KB, and going back to the title may well stay.
 - **A faster exchange: the line at 14 cycles a bit, then perhaps 10, in
-  a session.** The exchange is 3112 cycles: its 5 bytes out at 210 cycles
+  a session.** On hold: some players' hardware cannot run the line at
+  either rate yet, and a session has to work on every console that can
+  play one today (issue #15). The exchange is 3112 cycles: its 5 bytes out at 210 cycles
   each and 4 back at 231 are 1974 of them, and the rest is the nesp32's
   turnaround, the CRCs and the session's own work, which the rate does
   not change. At 14 cycles a bit the exchange would be some 2450 cycles,
