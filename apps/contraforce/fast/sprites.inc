@@ -25,6 +25,114 @@ FAST_OBJECTS    = $1A           ; objects with sprites, 0-$19
 OP_BCC          = $90
 OP_BCS          = $B0
 
+; One group's tiles: A the attributes, Y the first tile's first byte, X
+; (from fast_oam_x) the place in the OAM buffer. Each tile is its X, its
+; tile and its Y. The object's own values are written into the loop by
+; fast_tile_setup, once an object.
+.macro fast_tile_loop name, flipped, player
+.local tile, neg, show, kept, next, skip, full, done
+    sta .ident(.concat(.string(name), "_attr")) + 1
+    ldx fast_oam_x
+
+tile:
+    lda (ram_0002_t04_data),y
+.if flipped
+    eor #$FF
+    sec
+    sbc #$08
+.endif
+    bmi neg
+    clc
+.ident(.concat(.string(name), "_xpos")):
+    adc #$00
+    sta ram_spr_X,x
+    lda #$00                    ; ram_000E_t05: the tile's X not negative
+    sta ram_000E_t05
+    iny
+.ident(.concat(.string(name), "_skip_pos")):
+    bcs skip                    ; BCC or BCS, by the object's high byte
+show:
+.ident(.concat(.string(name), "_attr")):
+    lda #$00
+    sta ram_spr_A,x
+    lda (ram_0002_t04_data),y
+.if player
+.ident(.concat(.string(name), "_below")):
+    cmp #$00
+    bcc kept
+    cmp #$C0
+    bcs kept
+    sec
+.ident(.concat(.string(name), "_down")):
+    sbc #$00
+kept:
+.endif
+    sta ram_spr_T,x
+    iny
+    lda (ram_0002_t04_data),y
+    clc
+.ident(.concat(.string(name), "_ypos")):
+    adc #$00
+    sta ram_spr_Y,x
+    txa
+    clc
+    adc #$C4
+    tax
+    dec ram_0001_t37_sprites_counter
+    beq full
+
+next:
+    iny
+    dec ram_0000_t6F_loop_counter
+    bne tile
+    stx fast_oam_x
+    lda ram_001A_t08_lo
+    bpl done
+    jmp fast_group
+done:
+    rts
+
+neg:
+    clc
+.ident(.concat(.string(name), "_xneg")):
+    adc #$00
+    sta ram_spr_X,x
+    lda #$FF                    ; ram_000E_t05: negative
+    sta ram_000E_t05
+    iny
+.ident(.concat(.string(name), "_skip_neg")):
+    bcc skip                    ; BCC or BCS, the other of _skip_pos's
+    jmp show
+
+skip:
+    iny
+    jmp next
+
+full:
+    stx fast_oam_x
+    rts
+.endmacro
+
+; The object's own values into one of the loops: its X and Y, which of BCC
+; and BCS skips a tile off the screen, and a player's renumbering.
+.macro fast_tile_setup name, player
+    lda ram_0011_t02_pos_X_lo
+    sta .ident(.concat(.string(name), "_xpos")) + 1
+    sta .ident(.concat(.string(name), "_xneg")) + 1
+    lda ram_0010_t08_spr_Y
+    sta .ident(.concat(.string(name), "_ypos")) + 1
+    lda fast_skip_pos
+    sta .ident(.concat(.string(name), "_skip_pos"))
+    lda fast_skip_neg
+    sta .ident(.concat(.string(name), "_skip_neg"))
+.if player
+    lda ram_001D_t10
+    sta .ident(.concat(.string(name), "_below")) + 1
+    lda ram_001E_t13
+    sta .ident(.concat(.string(name), "_down")) + 1
+.endif
+.endmacro
+
 fast_sprites:
     lda ram_base_oam_offset
     clc
@@ -206,11 +314,16 @@ fast_object:
     sta ram_001D_t10
 @player:
     lda #$01
-    bne @kind                   ; always
+    sta fast_player
+    fast_tile_setup fast_tiles_player, 1
+    fast_tile_setup fast_tiles_player_flipped, 1
+    jmp @kind
 @enemy:
     lda #$00
-@kind:
     sta fast_player
+    fast_tile_setup fast_tiles, 0
+    fast_tile_setup fast_tiles_flipped, 0
+@kind:
     ldy #$00                    ; sub_D4A7: not flipped
     sty ram_001B_t02_hi
     sty ram_001C_t10_spr_A_flip
@@ -274,138 +387,14 @@ fast_group:
 @player_straight:
     jmp fast_tiles_player
 
-; One group's tiles: A the attributes, Y the first tile's first byte, X
-; (from fast_oam_x) the place in the OAM buffer. Each tile is its X, its
-; tile and its Y.
-.macro fast_tile_loop flipped, player
-.local tile, neg, xpos, xneg, skip_pos, skip_neg, show, attr, kept, below, ypos
-.local next, skip, full, done
-    sta attr + 1
-    lda ram_0011_t02_pos_X_lo
-    sta xpos + 1
-    sta xneg + 1
-    lda ram_0010_t08_spr_Y
-    sta ypos + 1
-    lda fast_skip_pos
-    sta skip_pos
-    lda fast_skip_neg
-    sta skip_neg
-.if player
-    lda ram_001D_t10
-    sta below + 1
-    lda ram_001E_t13
-    sta kept - 1
-.endif
-    ldx fast_oam_x
-
-tile:
-    lda (ram_0002_t04_data),y
-.if flipped
-    eor #$FF
-    sec
-    sbc #$08
-.endif
-    bmi neg
-    clc
-xpos:
-    adc #$00
-    sta ram_spr_X,x
-    iny
-skip_pos:
-    bcs skip                    ; BCC or BCS, by the object's high byte
-show:
-attr:
-    lda #$00
-    sta ram_spr_A,x
-    lda (ram_0002_t04_data),y
-.if player
-below:
-    cmp #$00
-    bcc kept
-    cmp #$C0
-    bcs kept
-    sec
-    sbc #$00
-kept:
-.endif
-    sta ram_spr_T,x
-    iny
-    lda (ram_0002_t04_data),y
-    clc
-ypos:
-    adc #$00
-    sta ram_spr_Y,x
-    txa
-    clc
-    adc #$C4
-    tax
-    dec ram_0001_t37_sprites_counter
-    beq full
-
-next:
-    iny
-    dec ram_0000_t6F_loop_counter
-    bne tile
-    stx fast_oam_x
-    dey                         ; the last tile's X, for ram_000E_t05
-    dey
-    dey
-    jsr fast_sign
-    iny
-    iny
-    iny
-    lda ram_001A_t08_lo
-    bpl done
-    jmp fast_group
-done:
-    rts
-
-neg:
-    clc
-xneg:
-    adc #$00
-    sta ram_spr_X,x
-    iny
-skip_neg:
-    bcc skip                    ; BCC or BCS, the other of skip_pos's
-    jmp show
-
-skip:
-    iny
-    jmp next
-
-full:
-    stx fast_oam_x
-    dey                         ; the tile's X
-    dey
-    jmp fast_sign
-.endmacro
-
 fast_tiles:
-    fast_tile_loop 0, 0
+    fast_tile_loop fast_tiles, 0, 0
 fast_tiles_flipped:
-    fast_tile_loop 1, 0
+    fast_tile_loop fast_tiles_flipped, 1, 0
 fast_tiles_player:
-    fast_tile_loop 0, 1
+    fast_tile_loop fast_tiles_player, 0, 1
 fast_tiles_player_flipped:
-    fast_tile_loop 1, 1
-
-; ram_000E_t05 as the game's tile leaves it: $FF if the tile's X, flipped
-; as the group is, is negative, else 0. Y is where the tile's X is; A, the
-; carry and the others are kept but for the flags.
-fast_sign:
-    pha
-    lda (ram_0002_t04_data),y
-    eor ram_001B_t02_hi
-    sec
-    sbc ram_001F_t14
-    asl                         ; the sign into the carry
-    lda #$00
-    adc #$FF
-    eor #$FF
-    sta ram_000E_t05
-    pla
-    rts
+    fast_tile_loop fast_tiles_player_flipped, 1, 1
 
 ; The places no tile took, from fast_oam_x on, ram_0001_t37_sprites_counter
 ; of them (1 to 64): the game stores $F4 as the Y of each, the next place

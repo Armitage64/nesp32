@@ -56,5 +56,7 @@ image_start:
 .include "probe.inc"
 .export fast_sprites
 .include "sprites.inc"
+.export fast_read_pads
+.include "pads.inc"
 image_end:
 .assert image_end - image_start <= IMAGE_PAGES * $100, error, "fast_boot copies too little"
