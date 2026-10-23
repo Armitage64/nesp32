@@ -10,7 +10,9 @@
 ; a branch, and there is a run of them for each way the level and the
 ; enemy decide it: outdoors, indoors and the bullet's age, indoors and its
 ; kind. The places are tested in the game's order, by the game's tests,
-; and leave the registers, the flags and $08-$11 as its loop does.
+; and leave the registers, the flags and $08-$11 as its loop does. The
+; enemy's box, which the game asks set_enemy_collision_box for, is worked
+; out in line.
 
 ; In place of bullet_enemy_collision_test: X is the enemy.
 net_bullets:
@@ -19,8 +21,46 @@ net_bullets:
     asl
     asl
     sta $10
+    ; set_enemy_collision_box for a bullet's box, 4, in line: the enemy's
+    ; box from collision_box_codes_04 into $08 to $0B, by its collision
+    ; code, with $0E-$0F, $11, Y, A and the flags as it leaves them. Code
+    ; $0F, worked out from the enemy's own variables, is the game's.
+    stx $11
+    ldx ENEMY_CURRENT_SLOT
+    lda #<collision_box_codes_04
+    sta $0e
+    lda #>collision_box_codes_04
+    sta $0f
+    lda ENEMY_SCORE_COLLISION,x
+    and #$0f
+    cmp #$0f
+    bne @box
+    ldx $11
     ldy #$04
-    jsr set_enemy_collision_box ; for a bullet: $08 to $0B
+    jsr set_enemy_collision_box
+    jmp @boxed
+
+@box:
+    asl                         ; the carry clear, as the game's ADC has it
+    asl
+    tay
+    lda ENEMY_Y_POS,x
+    adc collision_box_codes_04,y
+    sta $08
+    iny
+    lda ENEMY_X_POS,x
+    clc
+    adc collision_box_codes_04,y
+    sta $09
+    iny
+    lda collision_box_codes_04,y
+    sta $0a
+    iny
+    lda collision_box_codes_04,y
+    sta $0b
+    ldx $11
+
+@boxed:
     lda LEVEL_LOCATION_TYPE     ; the carry kept, as the game's loop finds it
     and #$01
     bne @indoor

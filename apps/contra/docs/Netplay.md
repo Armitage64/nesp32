@@ -279,7 +279,10 @@ netplay ROM's (`net/collide.inc`), from the PRG RAM, has the 16 in line, a
 copy of the test for each place, so that an empty one is a load and a
 branch; and a run of them for each of the three ways the level and the
 enemy decide the test. The places are tested in the game's order, by the
-game's tests.
+game's tests. The enemy's box for a bullet, which the game asks
+`set_enemy_collision_box` for, is worked out in line, from its table by
+name rather than by a pointer: 10 to 90 cycles a frame more at the
+median, and 40 to 180 in the heaviest tenth, most indoors.
 
 `contra_net_slow.nes`, which `make` builds beside it, keeps bank 1's
 sprite pass (the game's, with the steps in line and the empty slots
