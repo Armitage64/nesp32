@@ -192,6 +192,67 @@ def test_play_fetches_the_station(radio):
     assert radio.stick.fetches == 1
 
 
+OTHER_URL = "http://radio.example/stream.mp3"
+
+
+def test_url_sets_the_station_the_next_play_tunes_in(radio):
+    assert radio.ask(p.NESP_TUNER_URL, b"\x00" + OTHER_URL.encode())[0] == OFF
+    assert radio.stick.fetches == 0             # nothing until PLAY
+    assert radio.play() == TUNING
+    assert radio.stick.fetch_url == OTHER_URL
+    assert radio.stick.shown(0) == "RADIO"
+
+
+def test_a_long_url_goes_in_pieces_and_each_ends_it_where_it_ends(radio):
+    url = "https://example.com/" + "x" * 230
+    for at in range(0, len(url), 100):
+        radio.ask(p.NESP_TUNER_URL, bytes((at,)) + url[at:at + 100].encode())
+    radio.ask(p.NESP_TUNER_URL, bytes((len(url) - 3,)) + b"mp3")   # sent again: the same
+    url = url[:-3] + "mp3"
+    assert radio.play() == TUNING
+    assert radio.stick.fetch_url == url
+    radio.stop()
+    radio.ask(p.NESP_TUNER_URL, b"\x13/a.mp3")    # a piece cuts what was after it
+    radio.play()
+    assert radio.stick.fetch_url == "https://example.com/a.mp3"
+
+
+def test_an_empty_url_is_npr_again(radio):
+    radio.ask(p.NESP_TUNER_URL, b"\x00" + OTHER_URL.encode())
+    radio.ask(p.NESP_TUNER_URL, b"\x00")
+    radio.play()
+    assert radio.stick.fetch_url == STATION_URL and radio.stick.shown(0) == "NPR"
+
+
+@pytest.mark.parametrize("payload", [b"", bytes((201,)) + b"abc", bytes((200,)) + b"x" * 60, b"\x00a\x00b"])
+def test_a_url_that_does_not_follow_on_or_is_too_long_is_refused(radio, payload):
+    radio.ask(p.NESP_TUNER_URL, b"\x00" + b"y" * 100)
+    radio.ask(p.NESP_TUNER_URL, b"\x64" + b"y" * 100)    # 200 of them
+    assert radio.stick.ask(TUNER, p.NESP_TUNER_URL, payload).status == p.NESP_ST_BAD_ARG
+    radio.play()
+    assert radio.stick.fetch_url == "y" * 200      # and what was set stays
+
+
+def test_play_with_another_url_retunes_and_with_the_same_goes_on(radio):
+    radio.on_air()
+    radio.wait(200)
+    radio.stick.feed(b"\xfc" * p.NESP_SOUND_SAY)       # the console leaves the sound
+    radio.hear(100)
+    assert radio.state() == PAUSED
+    assert radio.play() == READY                # the same station: from where it was
+    assert radio.stick.fetches == 1
+    radio.ask(p.NESP_TUNER_URL, b"\x00" + OTHER_URL.encode())
+    assert radio.play() == TUNING               # another: tuned in afresh
+    assert radio.stick.fetches == 2 and radio.stick.fetch_url == OTHER_URL
+
+
+def test_a_hello_forgets_the_url(radio):
+    radio.ask(p.NESP_TUNER_URL, b"\x00" + OTHER_URL.encode())
+    assert radio.stick.hello(app=b"NPR ", services=(RAW, TUNER)).ok
+    radio.play()
+    assert radio.stick.fetch_url == STATION_URL
+
+
 def test_without_wifi_it_says_so(stick):
     radio = Set(stick)
     stick.set_wifi(p.NESP_WIFI_IDLE)

@@ -10,7 +10,9 @@ nothing else, or **medium quality with the news**, 11622 samples a second
 with NPR's headlines on the screen, one with its summary for half a minute
 and then the next.
 
-A proof of concept, with the one station. The way a sound takes the serial
+A list of stations is in the ROM (`nes/npr.s`, `stations`), NPR's first;
+the nesp32 is sent the address of the one chosen, and fetches any MP3
+stream it is given. The way a sound takes the serial
 line over is [the jukebox's](../jukebox) sampled sound, and so are the
 routines that play it; the one with the headlines has the cycles it had to
 spare put to receiving and drawing them. On the nesp32 it is the TUNER
@@ -68,34 +70,56 @@ With the nesp32 on a Wi-Fi network (the [setup ROM](../setup) joins one)
 and on controller port 2, start `build/npr.nes`. The screen's header is
 nesp32's, with `NATIONAL PUBLIC RADIO` under the name; the nesp32's own
 screen calls the program `NPR`. The foot of the screen says what A and B
-do: on the menu `A : SELECT`, and with a station a picture each for play
-and pause.
+do: on the menu `A : SELECT`, and with a station `A : STOP`.
 
 | | |
 |---|---|
 | **Up**, **Down** or **Select**, before a station is tuned in | the menu's other line: `HIGH QUALITY, NO HEADLINES` or `MED QUALITY, HEADLINE NEWS` |
+| **Left** or **Right**, before a station is tuned in | the station before or after, on the line over them, round from the last to the first |
 | **Start** or **A** on the controller | tune in, as the menu says: `TUNING`, and a second or two later `ON THE AIR`. Pressed again while it is tuning, give it up |
-| **A** on the controller, while the station plays | pause: `PAUSED`. Start or A plays it again, at once |
-| **B** on the controller, while it is tuning or paused | turn it off, and back to the menu (`B : BACK`) |
+| **A** on the controller, while the station plays | turn it off, and back to the menu: the nesp32 stops fetching it |
+| **B** on the controller, while it is tuning | turn it off, and back to the menu (`B : BACK`) |
 | **B** on the controller, on the menu | on nesp32's cartridge, back to its menu (`B : QUIT`); built by itself, nothing |
-| **A** (front) on the nesp32 | tune in; and while the station plays or is paused, turn it off |
+| **A** (front) on the nesp32 | tune in; and while the station plays, turn it off |
 
-**While the station plays, A on the controller pauses it and the nesp32's
-button stops it.** A console playing sampled sound does nothing else: its
-screen stands still, and of its controller it looks at button A alone,
-once a sample (the jukebox's `docs/PROTOCOL.md`, part 4, has how). Start
-and B are not seen until the station is paused, so its foot says nothing
-of B while it plays: A, then B, is back to the menu. Reset works too: the nesp32
-hears the console say hello and ends the sound.
+**While the station plays, A on the controller turns it off, and so does
+the nesp32's button.** A console playing sampled sound does nothing else:
+its screen stands still, and of its controller it looks at button A
+alone, once a sample (the jukebox's `docs/PROTOCOL.md`, part 4, has how).
+Start and B cannot be read then: the controller is read by taking OUT0
+low, and OUT0 is the line to the nesp32. So the foot says nothing of B
+while it plays. A leaves the sound and tells the nesp32, which pauses the
+station; the ROM then sends STOP, which turns it off. Reset works too: the
+nesp32 hears the console say hello and ends the sound.
 
-A paused station is fetched still, so that it plays again without tuning:
-the nesp32 holds its last 12 seconds (22 with the headlines, at their
-lower rate), and goes on from the oldest of
-them. Paused for longer than that, it has skipped what fell between.
-A station that has been paused for long plays from then on with the
-nesp32's ring nearly full, as far behind the station as it can be, and
-with no room to spare: whenever the station gets a little ahead of the
-console another second is dropped.
+TUNER can still pause a station (its `PAUSED` state, nesp32's
+`docs/PROTOCOL.md`), and the ROM still plays one that is paused with A
+and turns it off with B, but it pauses one only when its STOP is never
+answered. A paused station is fetched still, so that it plays again
+without tuning: the nesp32 holds its last 12 seconds (22 with the
+headlines, at their lower rate), and goes on from the oldest of them.
+
+### The stations
+
+| On the menu | Address |
+|---|---|
+| NPR | `https://npr-ice.streamguys1.com/live.mp3` |
+| WNYC 93.9 NEW YORK | `https://fm939.wnyc.org/wnycfm` |
+| WQXR 105.9 CLASSICAL | `https://stream.wqxr.org/wqxr` |
+| KEXP 90.3 SEATTLE | `https://kexp-mp3-128.streamguys1.com/kexp128.mp3` |
+| KUSC 91.5 LOS ANGELES | `https://playerservices.streamtheworld.com/api/livestream-redirect/KUSCMP128.mp3`, which sends the fetch on |
+| BBC WORLD SERVICE | `http://stream.live.vc.bbcmedia.co.uk/bbc_world_service` |
+| WBGO 88.3 JAZZ NEWARK | `https://ais-sa8.cdnstream1.com/3629_128.mp3` |
+| KCLU 88.3 THOUSAND OAKS | `https://kclustream.callutheran.edu/kclump3` |
+| KUVO 89.3 DENVER JAZZ | `https://kuvo-ice.streamguys1.com/kuvo-mp3-128` |
+| RADIO PARADISE | `https://stream.radioparadise.com/mp3-128` |
+| SOMAFM GROOVE SALAD | `https://ice2.somafm.com/groovesalad-128-mp3` |
+
+Another is a line of `station "NAME", "address"` in `nes/npr.s`: a name of
+up to 24 characters, capitals, and the address of an MP3 stream of up to
+255. The ROM sends the address in pieces of 24 characters (TUNER's URL)
+before PLAY. A nesp32 whose firmware has no URL plays NPR, and says
+`UPDATE NESP32` for any other.
 
 ### The headlines
 
@@ -172,9 +196,17 @@ high-quality mode's. The console's filters are not in it.
   that fell outside vblank would too. The tests say that on the simulated
   console every bit arrives and no write falls outside one, so it is
   something of the real line or the real PPU, and not yet looked into.
-- More than one station, and a station's name or programme on the screen.
+- A station's programme on the screen. The headlines are NPR's whatever
+  the station.
+- The stations other than NPR, and a fetch sent on (a 302), have not been
+  played on hardware. The list's addresses answered with MP3 on
+  2026-10-23; one that stops answering says why on the status line.
+- A list of stations kept on the nesp32, or typed in: the list is the
+  ROM's, and changing it is rebuilding the ROM.
 - Start during the sound: only A is looked at, and not in the samples that
   bring a character of a page (a fifth of a second in thirty).
+- A pause from the controller: A is the way out of a station now, and the
+  one button the console reads during a sound.
 - A station played again after a long pause brought nearer to the moment,
   with room in the ring, in place of from its oldest second.
 - Headlines newer than the moment of tuning in, which want a second fetch

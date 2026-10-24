@@ -14,8 +14,10 @@
 ;
 ;   SYS HELLO       until the nesp32 has answered it, and again whenever it
 ;                   says the service is not in use
-;   TUNER PLAY      Start or A was pressed, and nothing is being fetched,
-;                   or the station is paused: with the mode the menu has
+;   TUNER URL       Start or A was pressed, and nothing is being fetched,
+;                   or the station is paused: the station's address, a
+;                   piece an exchange, from the list of them here
+;   TUNER PLAY      once all of it has gone: with the mode the menu has
 ;   TUNER STOP      or something is, or B was, with a station tuning or
 ;                   paused. Sent again until it is answered
 ;   TUNER SOUND     the station is ready, the screen says so, and A is up
@@ -24,7 +26,10 @@
 ; There are two modes, and a menu in the middle of the screen to choose
 ; between them for as long as no station is tuned in: the station at 23244
 ; samples a second and nothing else, or at 11622 with the news headlines.
-; Up, Down and Select move between them. B there is the cartridge's menu
+; Up, Down and Select move between them. Over them is the station, from the
+; list at `stations`, which Left and Right go through; the nesp32 is sent
+; its address, and fetches whatever MP3 stream that is. The headlines are
+; NPR's whichever station plays. B there is the cartridge's menu
 ; again, on nesp32's cartridge; built by itself, this ROM has none.
 ;
 ; The foot of the screen says what A and B do, and changes with them: B is
@@ -33,9 +38,13 @@
 ;
 ; When SOUND is answered with GO the console does nothing but receive: the
 ; NMI is off, the screen stands still, and of the controller only button A
-; is looked at, which pauses: the console leaves the sound and tells the
-; nesp32 so (pcm_hush, with the sound's routines), which holds the station
-; where it is until PLAY. The button on the nesp32 ends the sound, with a
+; is looked at, which is the way out: the console leaves the sound and
+; tells the nesp32 so (pcm_hush, with the sound's routines), which pauses
+; the station, and then sends STOP, which turns it off, and the menu is on
+; the screen again. B cannot be read in the sound: the controller is read
+; by taking OUT0 low, and OUT0 is the line to the nesp32. A station is
+; paused only if that STOP is never answered; A then plays it again, and B
+; turns it off. The button on the nesp32 ends the sound, with a
 ; byte that says it was the last; so does a stream that is lost. Then the
 ; NMI goes back on and STATE says what happened.
 ;
@@ -76,6 +85,8 @@ PAD_START = $10
 PAD_B     = $40
 PAD_A     = $80
 PAD_MOVE  = $2C                 ; Select, Up and Down: the menu's other choice
+PAD_LEFT  = $02
+PAD_RIGHT = $01
 
 OUT0_MARK = $01
 
@@ -87,7 +98,8 @@ CART_STUB = $FFDA
 CART_STUB_FIRST = $EE           ; inc absolute
 
 NESP_RX_MASK = $1F              ; replies of up to 31 bytes: a state, and why
-NESP_TX_MAX  = 9                ; the hello, with its two services
+URL_PIECE    = 24               ; characters of a station's address to a request
+NESP_TX_MAX  = 1 + URL_PIECE    ; where they go, and they
 .define NESP_APP "NPR "
 NESP_APP_VERSION = 1
 
@@ -115,6 +127,7 @@ news_at:      .res 1            ; and where in the page the next one goes
 news_ctrl:    .res 1            ; PPUCTRL's bits for the nametable that is shown
 news_nt:      .res 1            ; the other one, 0 or 1: where the next page is drawn
 area_ptr:     .res 2            ; the NMI's: the line of the middle it draws
+url_ptr:      .res 2            ; the next piece of a station's address
 
 .segment "BSS"
 pad_prev:     .res 1
@@ -138,13 +151,17 @@ foot:         .res 1            ; FOOT_*: what the foot says,
 foot_at:      .res 1            ; where its text is in foot_text,
 foot_dirty:   .res 1            ; and that it is not on the screen yet
 on_cart:      .res 1            ; this is on nesp32's cartridge, which has a menu
+station:      .res 1            ; the menu's station, in `stations`
+turned:       .res 1            ; Left or Right went down: $FF or 1, the main loop's to act on
+url_at:       .res 1            ; characters of its address the nesp32 has, with a press of PLAY's
+url_piece:    .res 1            ; and how many are on their way
 
 .include "screen.inc"
 .include "nesp.inc"
 .include "pcm_rates.inc"
 .include "news.inc"
 
-.assert NESP_TX_MAX = NESP_HELLO_FIXED + 2, error, "the hello names two services"
+.assert NESP_TX_MAX >= NESP_HELLO_FIXED + 2, error, "the hello names two services"
 .assert STATUS_WIDTH = NESP_TUNER_TEXT_MAX, error, "why_buf holds what the nesp32 may say"
 .assert NESP_TUNER_TEXT_MAX + 1 <= NESP_RX_MASK, error, "a reply must fit its buffer"
 .assert NESP_TUNER_NEWS_RATE = NEWS_RATE, error, "news_stream is at the headlines' rate"
@@ -188,10 +205,65 @@ state_status:
 
 ; Where each foot's text is in foot_text, by FOOT_*.
 foot_place:
-.repeat 4, index
+.repeat 5, index
     .byte index * FOOT_WIDTH
 .endrepeat
 .assert FOOT_SELECT = 0 && FOOT_QUIT = 1 && FOOT_PLAIN = 2 && FOOT_BACK = 3, error, "foot_place"
+.assert FOOT_PAUSED = 4, error, "foot_place"
+
+; --- the stations ---------------------------------------------------------------------
+
+; A station: its name, as the menu's line has it between < and >, and the
+; address of its stream, which must be MP3 (any rate, one channel or two)
+; and may be http or https, and sent on elsewhere. The first is the one the
+; nesp32 has when it is told none.
+STATION_NAME_MAX = NEWS_COLUMNS - 4
+STATIONS .set 0
+.macro station name, url
+    .assert .strlen(name) <= STATION_NAME_MAX, error, "a station's name must fit its line"
+    .assert .strlen(url) <= NESP_TUNER_URL_MAX, error, "a station's address must fit the nesp32's"
+    .ident(.sprintf("station_name_%d", STATIONS)):
+    .byte "< "
+    .repeat (STATION_NAME_MAX - .strlen(name)) / 2
+        .byte ' '
+    .endrepeat
+    .byte name
+    .repeat STATION_NAME_MAX - .strlen(name) - (STATION_NAME_MAX - .strlen(name)) / 2
+        .byte ' '
+    .endrepeat
+    .byte " >"
+    .ident(.sprintf("station_url_%d", STATIONS)):
+    .byte url
+    .ident(.sprintf("station_url_len_%d", STATIONS)) = .strlen(url)
+    STATIONS .set STATIONS + 1
+.endmacro
+
+stations:
+    station "NPR",                  "https://npr-ice.streamguys1.com/live.mp3"
+    station "WNYC 93.9 NEW YORK",   "https://fm939.wnyc.org/wnycfm"
+    station "WQXR 105.9 CLASSICAL", "https://stream.wqxr.org/wqxr"
+    station "KEXP 90.3 SEATTLE",    "https://kexp-mp3-128.streamguys1.com/kexp128.mp3"
+    station "KUSC 91.5 LOS ANGELES", "https://playerservices.streamtheworld.com/api/livestream-redirect/KUSCMP128.mp3"
+    station "BBC WORLD SERVICE",    "http://stream.live.vc.bbcmedia.co.uk/bbc_world_service"
+    station "WBGO 88.3 JAZZ NEWARK", "https://ais-sa8.cdnstream1.com/3629_128.mp3"
+    station "KCLU 88.3 THOUSAND OAKS", "https://kclustream.callutheran.edu/kclump3"
+    station "KUVO 89.3 DENVER JAZZ", "https://kuvo-ice.streamguys1.com/kuvo-mp3-128"
+    station "RADIO PARADISE",       "https://stream.radioparadise.com/mp3-128"
+    station "SOMAFM GROOVE SALAD",  "https://ice2.somafm.com/groovesalad-128-mp3"
+.assert STATIONS > 0 && STATIONS < 128, error, "the menu counts stations in a byte, with a sign"
+
+; By station: where its name and address are, and the address's length.
+.macro station_table label, name, part
+label:
+    .repeat STATIONS, index
+        .byte part .ident(.sprintf(name, index))
+    .endrepeat
+.endmacro
+station_table station_name_lo, "station_name_%d", <
+station_table station_name_hi, "station_name_%d", >
+station_table station_url_lo, "station_url_%d", <
+station_table station_url_hi, "station_url_%d", >
+station_table station_url_len, "station_url_len_%d", +
 
 .segment "CODE"
 
@@ -355,9 +427,9 @@ main_wait:
 .endproc
 
 ; What the foot says follows the middle of the screen and the station: A
-; chooses the menu's line, and plays and pauses a station; B is the
-; cartridge's menu from the menu, and the menu from a station that is
-; tuning or paused, which are when B can be read.
+; chooses the menu's line, turns a station off, and plays one that is
+; paused; B is the cartridge's menu from the menu, and the menu from a
+; station that is tuning or paused, which are when B can be read.
 .proc pick_foot
     lda area
     cmp #AREA_BLANK
@@ -371,6 +443,9 @@ main_wait:
     lda #FOOT_PLAIN
     ldx tuner
     cpx #NESP_TUNER_READY
+    beq @set
+    lda #FOOT_PAUSED
+    cpx #NESP_TUNER_PAUSED
     beq @set
     lda #FOOT_BACK
 @set:
@@ -411,6 +486,26 @@ main_wait:
     sta mode
     jsr show_area
 @no_move:
+    lda turned
+    beq @no_turn
+    ldx #0
+    stx turned
+    ldx area                    ; only while the menu is on the screen
+    cpx #AREA_BLANK
+    beq @no_turn
+    clc
+    adc station                 ; the one before or after,
+    bpl @not_under
+    lda #STATIONS - 1           ; and round from the first to the last
+@not_under:
+    cmp #STATIONS
+    bcc @turn
+    lda #0                      ; or from the last to the first
+@turn:
+    sta station
+    lda #STATION_ROW            ; its line, and the menu's under it, again
+    sta area_row
+@no_turn:
     lda backed
     beq @no_back
     lda #0
@@ -447,6 +542,8 @@ main_wait:
     ldx #NESP_TUNER_PLAY
 @op:
     stx press_op
+    lda #0                      ; PLAY's goes with the station's address, all of it
+    sta url_at
     lda #PRESS_TRIES
     sta press_tries
 @no_press:
@@ -551,12 +648,20 @@ main_wait:
 .endproc
 
 ; The press, as PLAY or STOP, until it is answered. Either done twice is
-; done once.
+; done once. PLAY's is the station's address first, a piece an exchange
+; (send_url), and then PLAY.
 .proc send_press
     ldy #0
     ldx press_op
     cpx #NESP_TUNER_PLAY
     bne @send
+    ldx station
+    lda station_url_len,x
+    cmp url_at
+    beq @play
+    jmp send_url
+@play:
+    ldx #NESP_TUNER_PLAY
     lda mode                    ; PLAY says which
     sta nesp_request
     iny
@@ -576,6 +681,70 @@ main_wait:
     lda #TUNER_UNKNOWN          ; a station that fails twice may say something new
     sta status
     jsr take_state
+    jmp link_heard
+.endproc
+
+; The next piece of the station's address, from url_at, in a URL. Sent
+; again, the same piece is the same address. A nesp32 with no URL has
+; firmware older than this ROM: it plays NPR, the first, all the same, and
+; the screen says so for any other.
+.proc send_url
+    ldx station
+    lda station_url_len,x
+    sec
+    sbc url_at
+    cmp #URL_PIECE + 1
+    bcc @fits
+    lda #URL_PIECE
+@fits:
+    sta url_piece
+    lda station_url_lo,x
+    clc
+    adc url_at
+    sta url_ptr
+    lda station_url_hi,x
+    adc #0
+    sta url_ptr + 1
+    lda url_at
+    sta nesp_request
+    ldy #0
+@char:
+    lda (url_ptr),y
+    sta nesp_request + 1,y
+    iny
+    cpy url_piece
+    bne @char
+    iny                         ; and AT
+    lda #NESP_SVC_TUNER
+    ldx #NESP_TUNER_URL
+    jsr nesp_call
+    bcc @came
+    dec press_tries
+    jmp link_silent
+@came:
+    cmp #NESP_ST_OK
+    beq @ok
+    cmp #NESP_ST_NO_OP
+    beq @old
+    jmp link_refused
+@ok:
+    lda url_at
+    clc
+    adc url_piece
+    sta url_at
+    jmp link_heard
+@old:
+    lda station
+    bne @not_npr
+    ldx #0
+    lda station_url_len,x       ; NPR's: as if all of it had gone
+    sta url_at
+    jmp link_heard
+@not_npr:
+    lda #0
+    sta press_tries
+    lda #STATUS_OLD
+    jsr set_status
     jmp link_heard
 .endproc
 
@@ -731,7 +900,8 @@ main_wait:
 ; which is how the nesp32 knows that the console heard.
 ;
 ; The routine comes back with carry set if it was left because button A is
-; down. The nesp32 is told (pcm_hush), and pauses the station. The press
+; down. The nesp32 is told (pcm_hush), and pauses the station, and then
+; STOP turns it off: it goes as a press, until it is answered. The press
 ; was this, and is not to be taken for another by the NMI's next read.
 .proc sound_go
     lda news_ctrl               ; the NMI off, and the nametable as it was
@@ -754,6 +924,10 @@ main_wait:
     lda pad_prev
     ora #PAD_A
     sta pad_prev
+    lda #NESP_TUNER_STOP
+    sta press_op
+    lda #PRESS_TRIES
+    sta press_tries
     bne @back
 @ended:
     ldx #SOUND_REST
@@ -833,6 +1007,15 @@ main_wait:
     lda #1
     sta backed
 @no_back:
+    txa
+    and #PAD_LEFT | PAD_RIGHT
+    beq @no_turn
+    and #PAD_RIGHT              ; 1 for Right; $FF for Left
+    bne @turned
+    lda #$FF
+@turned:
+    sta turned
+@no_turn:
     lda status_dirty
     beq @foot
     lda #>STATUS_ADDR           ; on both nametables: either may be the one shown
@@ -868,6 +1051,17 @@ main_wait:
     sta area_ptr
     lda area_hi,y
     sta area_ptr + 1
+    cpx #STATION_ROW            ; the menu's station is the list's
+    bne @line
+    lda area
+    cmp #AREA_BLANK
+    beq @line
+    ldy station
+    lda station_name_lo,y
+    sta area_ptr
+    lda station_name_hi,y
+    sta area_ptr + 1
+@line:
     lda area_screen_hi,x
     sta PPUADDR
     lda area_screen_lo,x

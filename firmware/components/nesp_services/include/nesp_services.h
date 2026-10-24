@@ -738,6 +738,8 @@ typedef struct {
     nesp_sink_t sink;
     uint8_t state;                  /* NESP_TUNER_* */
     char why[NESP_TUNER_TEXT_MAX + 1];  /* with FAILED */
+    char url[NESP_TUNER_URL_MAX + 1];   /* the station the next PLAY tunes in, as URL set it */
+    char tuned[NESP_TUNER_URL_MAX + 1]; /* and the one that is tuned in, or was last */
     /* What the link's task and the fetch's both touch, under the hal's
      * lock: which fetch is wanted, the ring of levels for the console's
      * DAC that it fills, and that it has ended. */

@@ -982,11 +982,10 @@ the firmware was 123 KB.
 
 ### TUNER `$13`: a radio station
 
-One station, NPR's live stream (`https://npr-ice.streamguys1.com/live.mp3`:
-MP3, 96 kbps, 32 kHz, two channels), played on the console as JUKE's
+A radio station's live MP3 stream, played on the console as JUKE's
 sampled sound is: a run of RAW's, a byte a sample, written to `$4011` as
-it arrives. A proof of concept; a service for more than one station would
-add ops to this one.
+it arrives. The station is NPR's (`https://npr-ice.streamguys1.com/live.mp3`:
+MP3, 96 kbps, 32 kHz, two channels) unless URL has set another.
 
 | `OP` | Name | Request | Reply |
 |---|---|---|---|
@@ -994,6 +993,7 @@ add ops to this one.
 | `$01` | PLAY | `MODE`, or nothing | the same |
 | `$02` | STOP | | the same |
 | `$03` | SOUND | `RATE` | `STATE`, `ANSWER` |
+| `$04` | URL | `AT`, `TEXT` | `STATE` |
 
 | `STATE` | Name | Meaning |
 |---|---|---|
@@ -1022,6 +1022,19 @@ sends each as the byte the console's receiver turns into it.
   the station with the headlines at a rate that leaves the console the
   cycles to draw them. With no `MODE` it is `$00`, as it was before there
   were two. A station that is PAUSED is made READY in the mode it has.
+- **URL** sets the address the next PLAY tunes in: `TEXT`, up to 126
+  characters, goes at `AT` in it, and the address ends where `TEXT` ends.
+  So a longer one, up to `TUNER_URL_MAX` (255), goes in pieces, in order,
+  each `AT` the length so far; sent again, a piece is the same address.
+  `AT` past the end, an address too long, or a 0 in `TEXT` is BAD_ARG, and
+  nothing changes. `AT` 0 with no `TEXT` is NPR's again, as is every hello.
+  The address may be http or https, and is followed where it sends the
+  fetch on (301, 302, 303, 307, 308, as many as five); its stream must be
+  MP3, at any rate, one channel or two. A station that is on plays on:
+  PLAY then, with the address not the one tuned in, turns it off and
+  tunes the new one in, in the mode PLAY says. The headlines are NPR's
+  whatever the station, and the nesp32's screen says `RADIO` for any
+  station but NPR's.
 - **SOUND** is JUKE's, with no epoch: `RATE` is the mode's, 6 (7 CPU cycles
   a bit, 255682 baud, 23244 samples a second, after JUKE's lead of 8
   bytes) or with the headlines 2 (14

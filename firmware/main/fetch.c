@@ -12,7 +12,8 @@
  * more of a fetch once it has been replaced or stopped.
  *
  * The server is authenticated against ESP-IDF's bundle of root
- * certificates.
+ * certificates. An address that sends the fetch on to another (a 301, 302,
+ * 303, 307 or 308) is followed, as far as REDIRECTS_MAX of them.
  */
 #include "fetch.h"
 
@@ -33,6 +34,7 @@
 #define FETCH_CORE 0                /* with Wi-Fi; the link has core 1 */
 #define TIMEOUT_MS 10000
 #define CHUNK 1024
+#define REDIRECTS_MAX 5
 
 static const char *TAG = "fetch";
 
@@ -116,9 +118,27 @@ static void fetch(const order_t *order, uint32_t began)
     esp_http_client_set_header(client, "Accept-Encoding", "identity");
     int64_t started = esp_timer_get_time();
     size_t total = 0;
-    if (esp_http_client_open(client, 0) != ESP_OK) {
-        failed(order, began, "THE SITE DID NOT ANSWER");
-    } else if (esp_http_client_fetch_headers(client) < 0) {
+    bool answered = false;
+    for (int hops = 0;; hops++) {
+        if (esp_http_client_open(client, 0) != ESP_OK
+            || esp_http_client_fetch_headers(client) < 0) {
+            break;
+        }
+        int code = esp_http_client_get_status_code(client);
+        bool moved = code == 301 || code == 302 || code == 303 || code == 307 || code == 308;
+        if (!moved || hops == REDIRECTS_MAX || !wanted(began)) {
+            answered = true;
+            break;
+        }
+        /* Sent on: the same fetch, from the address it was sent to. */
+        if (esp_http_client_set_redirection(client) != ESP_OK) {
+            answered = true;        /* with nowhere to go: said as the code it had */
+            break;
+        }
+        esp_http_client_close(client);
+        ESP_LOGI(TAG, "fetch %lu: sent on (%d)", (unsigned long)order->id, code);
+    }
+    if (!answered) {
         failed(order, began, "THE SITE DID NOT ANSWER");
     } else if (esp_http_client_get_status_code(client) != 200) {
         snprintf(why, sizeof(why), "THE SITE SAID %d", esp_http_client_get_status_code(client));
