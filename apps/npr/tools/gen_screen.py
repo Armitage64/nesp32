@@ -14,8 +14,10 @@ Under the header are a status line that the ROM writes, the middle of the
 screen, which it also writes, and at the foot what the buttons do, which
 it writes too: on the menu A chooses its line, and B is the cartridge's
 menu again; with a station A plays and pauses, which it says with a
-picture of each, and B is the menu again while it is tuning or paused. The middle is the menu, with one of its two lines chosen, while no station is
-tuned in; then nothing, and where the headlines go (tools/gen_news.py says
+picture of each, and B is the menu again while it is tuning or paused. The
+middle is the menu while no station is tuned in: the station, which Left
+and Right change and the ROM draws from its own list, and under it two
+lines, one of them chosen; then nothing, and where the headlines go (tools/gen_news.py says
 where, and how). screen.bin is the nametable and its attributes
 with all of that on it; screen.inc tells the ROM where the status line is
 and holds what it may say.
@@ -44,10 +46,17 @@ STATUS_TEXT = (("WAITING", "WAITING FOR LINK"), ("OFF", ""),
                ("NO_WIFI", "NO WI-FI"), ("TUNING", "TUNING"), ("ON_AIR", "ON THE AIR"),
                ("PAUSED", "PAUSED"),
                ("OLD", "UPDATE NESP32"))
-# The foot, by the ROM's FOOT_* numbers: the jukebox's, with its pictures
-# of play and pause.
+# The foot, by the ROM's FOOT_* numbers: the jukebox's menus, and for a
+# station A as the way out of it, but for one that is paused, which A plays
+# again (the jukebox's pictures of play and pause).
 PLAY, PAUSE, A_HELP = gen_ui.PLAY, gen_ui.PAUSE, gen_ui.A_HELP
-FOOT_TEXT, FOOT_WIDTH, FOOT_COLUMN = gen_ui.FOOT_TEXT, gen_ui.FOOT_WIDTH, gen_ui.FOOT_COLUMN
+FOOT_WIDTH, FOOT_COLUMN = gen_ui.FOOT_WIDTH, gen_ui.FOOT_COLUMN
+FOOT_TEXT = (("SELECT", "A : SELECT"),              # the menu of a ROM built by itself
+             ("QUIT", "A : SELECT   B : QUIT"),     # the menu, on the cartridge
+             ("PLAIN", "A : STOP"),                 # on the air
+             ("BACK", "A : STOP   B : BACK"),       # tuning
+             ("PAUSED", A_HELP + "   B : BACK"))    # paused
+assert all(len(text) <= FOOT_WIDTH for _, text in FOOT_TEXT)
 ICONS, icon_pixels = gen_ui.ICONS, gen_ui.icon_pixels
 
 
@@ -56,6 +65,11 @@ ICONS, icon_pixels = gen_ui.ICONS, gen_ui.icon_pixels
 MENU = ("HIGH QUALITY, NO HEADLINES", "MED QUALITY, HEADLINE NEWS")
 MENU_ROWS = (2, 4)
 CURSOR = "> "
+# The station's line, over them, which the ROM fills in from its list of
+# stations, and what changes it.
+STATION_ROW = 0
+HINT_ROW = 7
+HINT = "LEFT, RIGHT: STATION"
 
 
 def areas():
@@ -66,11 +80,18 @@ def areas():
         lines = [""] * gen_news.ROWS
         for index, (row, words) in enumerate(zip(MENU_ROWS, MENU)):
             lines[row] = (CURSOR if index == chosen else " " * len(CURSOR)) + words
+        lines[HINT_ROW] = HINT.center(gen_news.COLUMNS).rstrip()
         out.append(lines)
     out.append([""] * gen_news.ROWS)
     for lines in out:
         assert all(len(line) <= gen_news.COLUMNS for line in lines)
     return out
+
+
+def station_line(name):
+    """A station's name as the ROM's list has it on the menu (npr.s,
+    `station`)."""
+    return "< " + name.center(gen_news.COLUMNS - 4) + " >"
 
 
 # A page of headlines, for the preview: what the nesp32 makes of a story.
@@ -104,7 +125,8 @@ def screen_include(screen):
              "STATUS_ADDR = $%04X" % gen_ui.address(STATUS_COLUMN, STATUS_ROW),
              "STATUS_WIDTH = %d" % STATUS_WIDTH,
              "FOOT_ADDR = $%04X" % gen_ui.address(FOOT_COLUMN, gen_ui.HELP_ROW),
-             "FOOT_WIDTH = %d" % FOOT_WIDTH]
+             "FOOT_WIDTH = %d" % FOOT_WIDTH,
+             "STATION_ROW = %d          ; of the middle: the menu's station" % STATION_ROW]
     lines += ["FOOT_%s = %d" % (name, index) for index, (name, _) in enumerate(FOOT_TEXT)]
     text = []
     for index, (name, words) in enumerate(STATUS_TEXT):
@@ -156,10 +178,12 @@ def main(argv=None):
                   .decode("latin-1"))
         for row, text in enumerate(areas()[0]):
             menu.text(gen_news.NEWS_COLUMN, gen_news.NEWS_ROW + row, text)
+        menu.text(gen_news.NEWS_COLUMN, gen_news.NEWS_ROW + STATION_ROW, station_line("NPR"))
         gen_ui.write_png(args.preview, gen_ui.render(menu.chr(), menu.nametable()))
         # And with the station playing in the second mode: a page.
         screen.centered(STATUS_ROW, "ON THE AIR")
-        screen.text(FOOT_COLUMN, gen_ui.HELP_ROW, foot_tiles(A_HELP, screen).decode("latin-1"))
+        screen.text(FOOT_COLUMN, gen_ui.HELP_ROW,
+                    foot_tiles(dict(FOOT_TEXT)["PLAIN"], screen).decode("latin-1"))
         for row, text in enumerate(SAMPLE):
             screen.text(gen_news.NEWS_COLUMN, gen_news.NEWS_ROW + row, text)
         base, extension = os.path.splitext(args.preview)

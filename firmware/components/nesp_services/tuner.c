@@ -1,8 +1,10 @@
 /* TUNER: a radio station from the Internet, played on the console as
  * sampled sound (docs/PROTOCOL.md).
  *
- * There is one station, NPR's. Its stream is MP3, fetched as any address
- * is and never ending. As it arrives it is decoded, mixed to one channel,
+ * The station is NPR's unless the console has said otherwise: URL sets
+ * the address the next PLAY tunes in, which may be any MP3 stream, sent in
+ * pieces when it is longer than a request. Its stream is fetched as any
+ * address is, following where it is sent on, and never ends. As it arrives it is decoded, mixed to one channel,
  * brought to the rate the console plays at and made into levels for the
  * console's DAC, and those are kept in a ring: a dozen seconds of them.
  * When a couple of seconds are held the console is told the station is
@@ -54,7 +56,8 @@
 
 #define STATION "https://npr-ice.streamguys1.com/live.mp3"
 #define NEWS "https://feeds.npr.org/1001/rss.xml"
-#define STATION_NAME "NPR"
+#define STATION_NAME "NPR"         /* on the nesp32's screen, for that one; any other is */
+#define OTHER_NAME "RADIO"
 #define AGENT "nesp32-npr/0.1 (NPR on a NES, on a nesp32; +https://github.com/Armitage64/nesp32)"
 
 /* Samples a second, on the wire: the UART is the clock, a byte a sample.
@@ -415,6 +418,7 @@ static void play(nesp_tuner_t *tuner, uint8_t mode)
     unlock(tuner);
     tuner->dry = 0;
     tuner->mode = mode;
+    memcpy(tuner->tuned, tuner->url, sizeof(tuner->tuned));
     tuner->period = mode == NESP_TUNER_MODE_NEWS ? NESP_TUNER_NEWS_PERIOD : NESP_TUNER_PERIOD;
     tuner->page = 0;
     /* The headlines first. Nothing of the last fetch is on its way to
@@ -440,7 +444,7 @@ static void tune(nesp_tuner_t *tuner)
     uint32_t id = ++tuner->generation;
     unlock(tuner);
     tuner->news_wanted = false;
-    if (!tuner->hal->fetch(tuner->hal->ctx, STATION, AGENT, id, &tuner->sink)) {
+    if (!tuner->hal->fetch(tuner->hal->ctx, tuner->tuned, AGENT, id, &tuner->sink)) {
         fail(tuner, "THE NESP32 IS BUSY");
     }
 }
@@ -730,17 +734,52 @@ static void sound(nesp_tuner_t *tuner, const nesp_request_t *request, nesp_reply
     reply->once = true;             /* asked again, the wait for the run starts again */
 }
 
+/* URL: AT, then the address from there to its end. What was set before AT
+ * stays, and AT may be no further than its end, so a long address goes in
+ * pieces, in order; one with no text at 0 is NPR's again. A station that
+ * is on plays on: the address is the next PLAY's. */
+static bool set_url(nesp_tuner_t *tuner, const nesp_request_t *request)
+{
+    if (request->len < 1) {
+        return false;
+    }
+    size_t at = request->data[0];
+    size_t len = (size_t)request->len - 1;
+    if (at > strlen(tuner->url) || at + len > NESP_TUNER_URL_MAX
+        || memchr(request->data + 1, 0, len) != NULL) {
+        return false;
+    }
+    if (at == 0 && len == 0) {
+        snprintf(tuner->url, sizeof(tuner->url), "%s", STATION);
+        return true;
+    }
+    memcpy(tuner->url + at, request->data + 1, len);
+    tuner->url[at + len] = '\0';
+    return true;
+}
+
 static void handle(void *ctx, const nesp_request_t *request, nesp_reply_t *reply)
 {
     nesp_tuner_t *tuner = ctx;
     settle(tuner);
     switch (request->op) {
+    case NESP_TUNER_URL:
+        if (!set_url(tuner, request)) {
+            reply->status = NESP_ST_BAD_ARG;
+            return;
+        }
+        break;
     case NESP_TUNER_PLAY:
         if (request->len > 1 || (request->len == 1 && request->data[0] > NESP_TUNER_MODE_NEWS)) {
             reply->status = NESP_ST_BAD_ARG;
             return;
         }
-        if (tuner->state == NESP_TUNER_PAUSED) {
+        if ((tuner->state == NESP_TUNER_TUNING || tuner->state == NESP_TUNER_READY
+             || tuner->state == NESP_TUNER_PAUSED)
+            && strcmp(tuner->url, tuner->tuned) != 0) {
+            /* Another station: this one off, and that one on. */
+            play(tuner, request->len == 1 ? request->data[0] : NESP_TUNER_MODE_HIGH);
+        } else if (tuner->state == NESP_TUNER_PAUSED) {
             tuner->state = NESP_TUNER_READY;    /* what the ring holds, from where it is */
             tuner->show = true;
         } else if (tuner->state != NESP_TUNER_TUNING && tuner->state != NESP_TUNER_READY) {
@@ -812,7 +851,8 @@ static void show(nesp_tuner_t *tuner, uint32_t now)
                  tuner->state < sizeof(states) / sizeof(states[0]) && states[tuner->state] != NULL
                      ? states[tuner->state] : tuner->why);
     }
-    tuner->hal->show(tuner->hal->ctx, 0, STATION_NAME);
+    tuner->hal->show(tuner->hal->ctx, 0,
+                     strcmp(tuner->tuned, STATION) == 0 ? STATION_NAME : OTHER_NAME);
     tuner->hal->show(tuner->hal->ctx, 1, text);
 }
 
@@ -878,6 +918,8 @@ static void activate(void *ctx)
     tuner->dry = 0;
     tuner->mode = NESP_TUNER_MODE_HIGH;
     tuner->period = NESP_TUNER_PERIOD;
+    snprintf(tuner->url, sizeof(tuner->url), "%s", STATION);    /* until the ROM says another */
+    memcpy(tuner->tuned, tuner->url, sizeof(tuner->tuned));
     tuner->show = true;
 }
 

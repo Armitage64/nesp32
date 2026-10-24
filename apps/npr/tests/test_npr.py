@@ -15,8 +15,8 @@ import pytest
 
 import pcm
 import wav2pcm
-from nes_harness import (PAD_A, PAD_B, PAD_DOWN, PAD_SELECT, PAD_START, PAD_UP, PPUADDR, PPUCTRL,
-                         PPUDATA, VBLANK_CYCLES)
+from nes_harness import (PAD_A, PAD_B, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_SELECT, PAD_START,
+                         PAD_UP, PPUADDR, PPUCTRL, PPUDATA, VBLANK_CYCLES)
 from radio import PPUSCROLL, Radio, ms
 
 import gen_news
@@ -181,7 +181,7 @@ def test_the_screen_stands_still_and_only_a_is_looked_at(radio, tone):
     assert len(machine.requests()) == asked     # nothing was said on the line
 
 
-def pause(machine):
+def stop(machine):
     """Hold A until the console has left the sound, then let go."""
     machine.pad = PAD_A
     machine.until(lambda: not machine.deaf, limit=60)
@@ -190,52 +190,36 @@ def pause(machine):
     machine.wait(2)                             # the console sees it let go
 
 
-def test_a_pauses_the_station_and_a_again_plays_it_on(radio, tone):
+def test_a_turns_the_station_off_and_brings_the_menu_back(radio, tone):
     machine = on_air(radio(), tone)
     machine.advance(ms(300))
     before = len(machine.level_log)
-    pause(machine)
+    stop(machine)
     levels = played(machine)
     assert levels[-1] == 0                      # the DAC is left at its rest
     assert levels[-20:] == list(range(19, -1, -1))  # and came to it a step at a time
     assert len(levels) - before < 0.05 * RATE   # at once: A is looked at with every sample
-    machine.until(lambda: machine.status == "PAUSED", limit=30)
+    machine.until(lambda: machine.off, limit=30)
     assert machine.port.period == p.NESP_PERIOD     # the line is the link's again
-    assert machine.stick.fetching and machine.stick.fetches == 1
+    assert machine.asked(p.NESP_TUNER_STOP) == 1 and not machine.stick.fetching
     failed = machine.word("link_failed")
-    machine.wait(60)
-    assert machine.status == "PAUSED" and machine.byte("sounds") == 1
-    assert machine.word("link_failed") == failed
-    # Played again: what the nesp32 held, with nothing tuned in anew.
-    count = len(machine.level_log)
-    machine.press(PAD_A)
-    machine.until(lambda: machine.deaf, limit=60)
-    assert machine.status == "ON THE AIR"
-    machine.advance(ms(300))
-    assert machine.deaf and machine.byte("sounds") == 2 and machine.stick.fetches == 1
-    assert len(machine.level_log) > count + 0.1 * RATE
+    machine.wait(gen_news.ROWS + 30)
+    assert middle(machine) == MENU and machine.foot() == FOOT["SELECT"]
+    assert machine.byte("sounds") == 1 and machine.word("link_failed") == failed
+    assert machine.asked(p.NESP_TUNER_PLAY) == 1        # and nothing played it again
 
 
-def test_start_plays_a_paused_station_too(radio, tone):
-    machine = on_air(radio(), tone)
-    machine.advance(ms(200))
-    pause(machine)
-    machine.until(lambda: machine.status == "PAUSED", limit=30)
-    machine.press(PAD_START)
-    machine.until(lambda: machine.deaf, limit=60)
-    assert machine.byte("sounds") == 2 and machine.stick.fetches == 1
-
-
-def test_the_press_that_pauses_is_not_taken_for_one_that_plays(radio, tone):
+def test_the_press_that_stops_is_not_taken_for_one_that_plays(radio, tone):
     machine = on_air(radio(), tone)
     machine.advance(ms(200))
     machine.pad = PAD_A                         # and held, a second and more
-    machine.until(lambda: machine.status == "PAUSED", limit=60)
+    machine.until(lambda: machine.off, limit=60)
     machine.wait(90)
-    assert machine.status == "PAUSED" and not machine.deaf
+    assert machine.off and not machine.deaf
     machine.pad = 0
     machine.wait(30)
-    assert machine.status == "PAUSED" and machine.byte("sounds") == 1
+    assert machine.off and machine.byte("sounds") == 1
+    assert machine.asked(p.NESP_TUNER_PLAY) == 1
 
 
 def test_a_held_down_does_not_end_the_sound_as_it_begins(radio, tone):
@@ -251,25 +235,6 @@ def test_a_held_down_does_not_end_the_sound_as_it_begins(radio, tone):
     machine.until(lambda: machine.deaf, limit=30)
     machine.advance(ms(300))
     assert machine.deaf and machine.byte("sounds") == 1
-
-
-def test_the_nesp32s_button_turns_a_paused_station_off(radio, tone):
-    machine = on_air(radio(), tone)
-    machine.advance(ms(200))
-    pause(machine)
-    machine.until(lambda: machine.status == "PAUSED", limit=30)
-    machine.press_button(p.NESP_EVENT_BUTTON_A)
-    machine.until(lambda: machine.off, limit=30)
-    assert not machine.stick.fetching
-
-
-def test_a_station_lost_while_it_is_paused_says_why(radio, tone):
-    machine = on_air(radio(), tone)
-    machine.advance(ms(200))
-    pause(machine)
-    machine.until(lambda: machine.status == "PAUSED", limit=30)
-    machine.stick.fetch_done(False, b"THE CONNECTION DROPPED")
-    machine.until(lambda: machine.status == "THE CONNECTION DROPPED", limit=30)
 
 
 def test_the_nesp32s_button_ends_the_sound_and_the_link_goes_on(radio, tone):
@@ -326,8 +291,12 @@ def test_a_console_that_is_reset_in_a_sound_is_heard_and_greeted_again(radio, to
 
 # --- the menu ----------------------------------------------------------------------------
 
-MENU = ["", "", "> HIGH QUALITY, NO HEADLINES", "", "  MED QUALITY, HEADLINE NEWS", "", "", "", ""]
-MENU_NEWS = ["", "", "  HIGH QUALITY, NO HEADLINES", "", "> MED QUALITY, HEADLINE NEWS", "", "", "", ""]
+NPR = gen_screen.station_line("NPR")
+HINT = gen_screen.HINT.center(28).rstrip()
+MENU = [NPR, "", "> HIGH QUALITY, NO HEADLINES", "", "  MED QUALITY, HEADLINE NEWS", "", "", HINT,
+        ""]
+MENU_NEWS = [NPR, "", "  HIGH QUALITY, NO HEADLINES", "", "> MED QUALITY, HEADLINE NEWS", "", "",
+             HINT, ""]
 BLANK = [""] * 9
 
 
@@ -382,6 +351,78 @@ def test_start_plays_what_the_menu_has_and_the_menu_goes(radio, tone, feed):
     machine.until(lambda: machine.stick.fetches == 2, limit=30)
     assert plays(machine)[-1] == bytes((p.NESP_TUNER_MODE_NEWS,))
     assert machine.stick.fetch_url == NEWS_URL
+
+
+def turn(machine, *buttons):
+    """Left or Right, a press each, let go between."""
+    for button in buttons:
+        machine.press(button)
+        machine.wait(2)
+
+
+def urls(machine):
+    """The URLs the console has sent: (AT, text)."""
+    return [(payload[0], bytes(payload[1:]).decode()) for service, op, payload in machine.requests()
+            if (service, op) == (TUNER, p.NESP_TUNER_URL)]
+
+
+@pytest.mark.parametrize("button, name, url", [
+    (PAD_RIGHT, "WNYC 93.9 NEW YORK", "https://fm939.wnyc.org/wnycfm"),
+    (PAD_LEFT, "SOMAFM GROOVE SALAD", "https://ice2.somafm.com/groovesalad-128-mp3"),
+])
+def test_left_and_right_go_round_the_stations_and_start_plays_the_one_shown(radio, button, name,
+                                                                            url):
+    machine = radio()
+    machine.until(lambda: machine.off, limit=60)
+    machine.press(button)
+    machine.wait(12)
+    assert middle(machine) == [gen_screen.station_line(name).rstrip()] + MENU[1:]
+    machine.press(PAD_START)
+    machine.until(lambda: machine.stick.fetches == 1, limit=30)
+    assert machine.stick.fetch_url == url
+    # In pieces, from the first, and then PLAY.
+    sent = urls(machine)
+    assert [at for at, _ in sent] == list(range(0, len(url), 24))
+    assert "".join(text for _, text in sent) == url
+    assert plays(machine) == [bytes((p.NESP_TUNER_MODE_HIGH,))]
+
+
+def test_the_list_goes_round_both_ways(radio):
+    machine = radio()
+    machine.until(lambda: machine.off, limit=60)
+    turn(machine, PAD_LEFT, PAD_RIGHT)
+    machine.wait(12)
+    assert middle(machine) == MENU
+    turn(machine, PAD_LEFT, PAD_RIGHT, PAD_RIGHT)       # past the last, the first
+    machine.wait(12)
+    assert middle(machine)[0] == gen_screen.station_line("WNYC 93.9 NEW YORK").rstrip()
+
+
+def test_a_long_address_goes_in_pieces_and_the_station_plays_with_the_headlines(radio, tone):
+    url = "https://playerservices.streamtheworld.com/api/livestream-redirect/KUSCMP128.mp3"
+    machine = radio()
+    machine.until(lambda: machine.off, limit=60)
+    turn(machine, *[PAD_RIGHT] * 4)
+    machine.press(PAD_DOWN)
+    machine.wait(12)
+    assert middle(machine)[0] == gen_screen.station_line("KUSC 91.5 LOS ANGELES").rstrip()
+    machine.press(PAD_START)
+    machine.until(lambda: machine.stick.fetches == 1, limit=30)
+    assert machine.stick.fetch_url == NEWS_URL          # NPR's headlines, whatever the station
+    machine.stick.fetch_done(False, b"")
+    machine.until(lambda: machine.stick.fetches == 2, limit=30)
+    assert machine.stick.fetch_url == url
+    assert [at for at, _ in urls(machine)] == [0, 24, 48, 72]
+
+
+def test_the_menu_does_not_change_the_station_while_one_is_tuned_in(radio, tone):
+    machine = radio()
+    machine.until(lambda: machine.off, limit=60)
+    machine.press(PAD_START)
+    machine.until(lambda: machine.stick.fetches == 1, limit=30)
+    machine.press(PAD_RIGHT)
+    machine.wait(15)
+    assert middle(machine) == BLANK and machine.byte("station") == 0
 
 
 def test_a_station_that_fails_brings_the_menu_back(radio):
@@ -543,26 +584,8 @@ def test_with_no_headlines_the_station_plays_all_the_same(radio, tone):
     assert len(levels) > 0.5 * NEWS_RATE and levels == sent[:len(levels)]
 
 
-def test_a_pause_keeps_the_page_and_playing_again_goes_on_from_it(radio, tone, feed):
-    machine = news_on_air(radio(), tone, feed)
-    shown_page(machine)
-    second = turned(machine)
-    pause(machine)
-    machine.until(lambda: machine.status == "PAUSED", limit=30)
-    machine.wait(30)
-    assert middle(machine) == second and machine.shown == 0x2000
-    machine.level_log.clear()
-    machine.press(PAD_A)
-    machine.until(lambda: machine.deaf, limit=60)
-    assert machine.status == "ON THE AIR" and middle(machine) == second
-    # The same page is sent again, and drawn again on the other nametable.
-    assert shown_page(machine) == second and machine.shown == 0x2800
-    assert turned(machine)[0] == HEADLINES[2] and machine.shown == 0x2000
-    assert not machine.ppu_strays and machine.stick.fetches == 2
-
-
 @pytest.mark.parametrize("at", ["a page being sent", "a page being drawn"])
-def test_a_pause_in_the_middle_of_a_page_leaves_the_screen_whole(radio, tone, feed, at):
+def test_a_in_the_middle_of_a_page_leaves_the_menu_whole(radio, tone, feed, at):
     machine = news_on_air(radio(), tone, feed)
     first = shown_page(machine)
     machine.stick.tuner_turn()
@@ -576,15 +599,10 @@ def test_a_pause_in_the_middle_of_a_page_leaves_the_screen_whole(radio, tone, fe
             machine.advance(ms(1))
         else:
             raise AssertionError("no page was begun")
-    pause(machine)
-    machine.until(lambda: machine.status == "PAUSED", limit=30)
-    machine.wait(10)
-    assert middle(machine) == first and machine.shown == 0x2800     # the new one is out of sight
-    machine.level_log.clear()
-    machine.press(PAD_A)
-    machine.until(lambda: machine.deaf, limit=60)
-    assert shown_page(machine)[:3] == [
-        "CAFE OWNERS WEIGH A LONGER", "HEADLINE THAN THREE LINES OF", "TWENTY-EIGHT CHARACTERS..."]
+    stop(machine)
+    machine.until(lambda: machine.off, limit=30)
+    machine.wait(gen_news.ROWS + 10)
+    assert middle(machine) == MENU_NEWS and machine.shown == 0x2000
     assert not machine.ppu_strays
 
 
@@ -666,7 +684,7 @@ def test_a_console_left_in_the_sound_is_freed_by_a_nesp32_starting_up(radio, ton
 # --- the foot, and B -----------------------------------------------------------------
 
 
-def test_the_foot_has_pictures_for_play_and_pause(radio, tone):
+def test_the_foot_has_pictures_for_play_and_pause_and_on_the_air_says_a_stops(radio, tone):
     screen = gen_screen.build_screen()
     tiles = screen.chr()
     play, pause = (screen.icons[char] for char in (gen_screen.PLAY, gen_screen.PAUSE))
@@ -680,7 +698,7 @@ def test_the_foot_has_pictures_for_play_and_pause(radio, tone):
     on_air(machine, tone)
     raw = machine.screen_text(gen_screen.FOOT_COLUMN, gen_screen.gen_ui.HELP_ROW,
                               gen_screen.FOOT_WIDTH)
-    assert raw.strip() == "A : %c/%c" % (play, pause)
+    assert raw.strip() == "A : STOP"
     assert machine.screen_text(gen_screen.FOOT_COLUMN, gen_screen.gen_ui.HELP_ROW,
                                gen_screen.FOOT_WIDTH, 0x2800) == raw    # and on the other nametable
 
@@ -709,17 +727,6 @@ def test_b_while_tuning_is_the_menu_again(radio, tone):
     assert machine.foot() == FOOT["SELECT"]
 
 
-def test_on_the_air_the_foot_says_nothing_of_b_and_paused_b_is_the_menu_again(radio, tone):
+def test_on_the_air_the_foot_says_nothing_of_b(radio, tone):
     machine = on_air(radio(), tone)
     assert machine.foot() == FOOT["PLAIN"]      # B is not read in the sound
-    machine.advance(ms(200))
-    pause(machine)
-    machine.until(lambda: machine.status == "PAUSED", limit=30)
-    machine.until(lambda: machine.foot() == FOOT["BACK"], limit=30)
-    machine.press(PAD_B)
-    machine.until(lambda: machine.off, limit=30)
-    assert machine.asked(p.NESP_TUNER_STOP) == 1 and not machine.stick.fetching
-    assert machine.asked(p.NESP_TUNER_PLAY) == 1        # and nothing played it again
-    machine.wait(gen_news.ROWS + 5)
-    assert machine.page()[gen_screen.MENU_ROWS[0]] == "> " + gen_screen.MENU[0]
-    assert machine.foot() == FOOT["SELECT"]
