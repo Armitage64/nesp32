@@ -482,7 +482,8 @@ EVERY = 1000        # bytes of sound between the stream's blocks of titles
 TITLES = ("Dark Chisme - Suffer Like Me", "Badmarsh & Shri - Into the Sunset",
           "Olivier Deriviere - The Land")
 ARTISTS = ("DARK CHISME", "BADMARSH & SHRI", "OLIVIER DERIVIERE")
-NOW_PLAYING = ["NOW PLAYING", "", "DARK CHISME", "", "", "", "SUFFER LIKE ME", "", ""]
+NOW_PLAYING = [line.center(28).rstrip()
+               for line in ["NOW PLAYING", "", "DARK CHISME", "", "", "", "SUFFER LIKE ME", "", ""]]
 PAGE_MS = 550       # a page sent, 0.18 seconds, and drawn, four frames and the wait for the first
 
 
@@ -618,7 +619,7 @@ def test_each_new_title_is_drawn_as_it_comes(radio, tone, title):
         pages.append(turned(machine))
         shown.append(machine.shown)
     assert machine.deaf and not machine.ppu_strays
-    assert tuple(page[2] for page in pages) == ARTISTS + ARTISTS[:1]
+    assert tuple(page[2].strip() for page in pages) == ARTISTS + ARTISTS[:1]
     assert shown == [0x2800, 0x2000, 0x2800, 0x2000]
     levels = played(machine)
     sent = pcm.decode(machine.port.runs[-1][2])
@@ -633,7 +634,7 @@ def test_the_titles_come_from_a_nesp32_whose_clock_is_1_percent_off(radio, tone,
     for new in TITLES[1:]:
         retitled(machine, new)
         pages.append(turned(machine))
-    assert tuple(page[2] for page in pages) == ARTISTS
+    assert tuple(page[2].strip() for page in pages) == ARTISTS
     levels = played(machine)
     sent = pcm.decode(machine.port.runs[-1][2])
     assert levels == sent[:len(levels)] and not machine.ppu_strays
@@ -713,7 +714,7 @@ def test_tuned_in_again_the_last_title_is_not_kept(radio, tone, title):
     machine.air(Icy(tone).more(4.0, "Another One - From 1990"))
     machine.until(lambda: machine.deaf, limit=120)
     assert middle(machine) == BLANK and machine.shown == 0x2000
-    assert shown_page(machine)[2] == "ANOTHER ONE"
+    assert shown_page(machine)[2].strip() == "ANOTHER ONE"
 
 
 def test_a_console_reset_in_the_sound_with_its_titles_is_greeted_again(radio, tone, title):

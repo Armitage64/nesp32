@@ -680,9 +680,9 @@ def titles(stick):
 
 def page(*lines):
     """A page as the nesp32 lays it out: NOW PLAYING, a blank line, and
-    these."""
+    these, each centered."""
     out = ["NOW PLAYING", ""] + list(lines)
-    return out + [""] * (ROWS - len(out))
+    return [line.center(COLUMNS).rstrip() for line in out + [""] * (ROWS - len(out))]
 
 
 KEXP = page("DARK CHISME", "", "", "", "SUFFER LIKE ME")

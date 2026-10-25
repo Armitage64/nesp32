@@ -1049,7 +1049,8 @@ sends each as the byte the console's receiver turns into it.
   capitals: `NOW PLAYING`, a blank line, and the artist and the song on up
   to three lines each with a blank line between (split at the first
   ` - `), or a title with no ` - ` on the seven; `...` where either was
-  cut. Entities and UTF-8 become the nearest ASCII. A stream with no
+  cut; every line centered. Entities and UTF-8 become the nearest ASCII.
+  A stream with no
   titles sends no page, and the station plays.
 - **What is playing goes in the samples.** The console's DAC takes seven bits
   of a byte. In this mode the eighth is a line of its own, a bit a sample:

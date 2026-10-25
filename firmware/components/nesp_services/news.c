@@ -7,7 +7,8 @@
  * of NESP_TUNER_NEWS_ROWS lines of NESP_TUNER_NEWS_COLUMNS characters:
  * NOW PLAYING at the top, a blank line, and then an artist and a song on
  * up to three lines each, a blank line between, or a title with no " - "
- * on the seven, with "..." where either was cut.
+ * on the seven, with "..." where either was cut. Every line is centered,
+ * under the console's dial.
  *
  * A title may have entities, or UTF-8; the console's font is capitals, so
  * everything is made that.
@@ -226,6 +227,27 @@ static size_t trimmed(const uint8_t *text, size_t len)
     return len;
 }
 
+/* A line moved to the middle of its width. */
+static void center(uint8_t *line)
+{
+    size_t used = COLUMNS;
+    while (used != 0 && line[used - 1] == ' ') {
+        used--;
+    }
+    size_t left = (COLUMNS - used) / 2;
+    if (used != 0 && left != 0) {
+        memmove(line + left, line, used);
+        memset(line, ' ', left);
+    }
+}
+
+static void center_all(nesp_page_t page)
+{
+    for (size_t row = 0; row < ROWS; row++) {
+        center(page[row]);
+    }
+}
+
 void nesp_news_title(nesp_page_t page, uint8_t *title, size_t len)
 {
     memset(page, ' ', sizeof(nesp_page_t));
@@ -237,10 +259,12 @@ void nesp_news_title(nesp_page_t page, uint8_t *title, size_t len)
     }
     if (split + 3 > len || split == 0) {
         lay_out(title, len, page + FIRST_ROW, ROWS - FIRST_ROW);
+        center_all(page);
         return;
     }
     size_t song = split + 3;
     lay_out(title, trimmed(title, split), page + FIRST_ROW, PART_ROWS);
     lay_out(title + song, trimmed(title + song, len - song), page + FIRST_ROW + PART_ROWS + 1,
             PART_ROWS);
+    center_all(page);
 }

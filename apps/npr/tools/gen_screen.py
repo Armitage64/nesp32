@@ -134,7 +134,8 @@ gen_ui.NES_RGB.setdefault(0x27, (212, 136, 32))
 gen_ui.NES_RGB.setdefault(0x38, (228, 196, 144))
 
 # A page for the preview: what the nesp32 makes of a station's title.
-SAMPLE = ("NOW PLAYING", "", "DARK CHISME", "", "", "", "SUFFER LIKE ME")
+SAMPLE = tuple(line.center(gen_news.COLUMNS) for line in
+               ("NOW PLAYING", "", "DARK CHISME", "", "", "", "SUFFER LIKE ME"))
 assert STATUS_ROW < DIAL_ROW and DIAL_ROW + 4 <= gen_news.NEWS_ROW
 assert gen_news.NEWS_ROW % 2 == 0 and gen_news.NEWS_ROW + gen_news.ROWS <= HINT_ROW
 assert all(row < gen_news.ROWS for row in STATION_LINES + (QUALITY_ROW,))
