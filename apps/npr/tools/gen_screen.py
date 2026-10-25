@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Write the NPR ROM's tiles, palette and the screen it comes up with, and
-the status line's texts.
+"""Write the NESradio ROM's tiles, palette and the screen it comes up with,
+the status line's texts, and its stations.
 
     tools/gen_screen.py build
     tools/gen_screen.py build --preview screen.png
@@ -10,15 +10,25 @@ each character at its ASCII code, its palettes, and its header, the name in
 the big letters over the credit line, with what this ROM is between the two.
 The font has capitals only.
 
-Under the header are a status line that the ROM writes, the middle of the
-screen, which it also writes, and at the foot what the buttons do, which
-it writes too: on the menu A chooses its line, and B is the cartridge's
-menu again; with a station A plays and pauses, which it says with a
-picture of each, and B is the menu again while it is tuning or paused. The middle is the menu, with one of its two lines chosen, while no station is
-tuned in; then nothing, and where the headlines go (tools/gen_news.py says
-where, and how). screen.bin is the nametable and its attributes
-with all of that on it; screen.inc tells the ROM where the status line is
-and holds what it may say.
+Under the header are a status line that the ROM writes; a radio's dial, an
+FM scale that is on the screen from the start, with a needle at the
+station's frequency, which is a sprite the ROM moves and hides for a station
+with none; the middle of the screen, which the ROM writes; and at the foot
+what the buttons do, which it writes too: on the menu A chooses its line,
+and B is the cartridge's menu again; with a station A plays and pauses,
+which it says with a picture of each, and B is the menu again while it is
+tuning or paused. Over the foot, on the menu, is what changes the station,
+which the ROM draws with the foot.
+
+The middle is the station, which Left and Right change: its letters, big,
+then where it is and what it plays, from the list here, which the ROM
+draws whatever the middle shows; and under them, while no station is tuned
+in, the quality, which Up, Down and Select change. With a station tuned in
+in the second mode, what it is playing takes the middle, a page the
+nesp32 makes of the titles in its stream (tools/gen_news.py says where,
+and how). screen.bin is the nametable and its attributes with all
+of that on it; screen.inc tells the ROM where the status line is, holds
+what it may say, and the stations.
 """
 
 import argparse
@@ -32,7 +42,7 @@ sys.path.insert(0, HERE)
 import gen_news  # noqa: E402
 import gen_ui  # noqa: E402
 
-SUBTITLE = "NATIONAL PUBLIC RADIO"
+SUBTITLE = "NESRADIO"
 # The status line: as wide as what the nesp32 may say of a station that
 # failed (NESP_TUNER_TEXT_MAX), which the ROM writes there as it comes.
 STATUS_ROW = 8
@@ -44,28 +54,114 @@ STATUS_TEXT = (("WAITING", "WAITING FOR LINK"), ("OFF", ""),
                ("NO_WIFI", "NO WI-FI"), ("TUNING", "TUNING"), ("ON_AIR", "ON THE AIR"),
                ("PAUSED", "PAUSED"),
                ("OLD", "UPDATE NESP32"))
-# The foot, by the ROM's FOOT_* numbers: the jukebox's, with its pictures
-# of play and pause.
+# The foot, by the ROM's FOOT_* numbers: the jukebox's menus, and for a
+# station A as the way out of it, but for one that is paused, which A plays
+# again (the jukebox's pictures of play and pause).
 PLAY, PAUSE, A_HELP = gen_ui.PLAY, gen_ui.PAUSE, gen_ui.A_HELP
-FOOT_TEXT, FOOT_WIDTH, FOOT_COLUMN = gen_ui.FOOT_TEXT, gen_ui.FOOT_WIDTH, gen_ui.FOOT_COLUMN
+FOOT_WIDTH, FOOT_COLUMN = gen_ui.FOOT_WIDTH, gen_ui.FOOT_COLUMN
+FOOT_TEXT = (("SELECT", "A : PLAY"),                # the menu of a ROM built by itself
+             ("QUIT", "A : PLAY   B : QUIT"),       # the menu, on the cartridge
+             ("PLAIN", "A : STOP"),                 # on the air
+             ("BACK", "A : STOP   B : BACK"),       # tuning
+             ("PAUSED", A_HELP + "   B : BACK"))    # paused
+assert all(len(text) <= FOOT_WIDTH for _, text in FOOT_TEXT)
 ICONS, icon_pixels = gen_ui.ICONS, gen_ui.icon_pixels
+# What changes the station, over the foot, which the ROM draws with the
+# menu's feet and takes off with the others.
+HINT_ROW = gen_ui.HELP_ROW - 1
+HINT = "< / > : SELECT STATION"
+HINT_WIDTH = len(HINT)
+HINT_COLUMN = (gen_ui.SCREEN_COLUMNS - HINT_WIDTH) // 2
+
+# The stations, in the menu's order: the letters the middle has big, the FM
+# frequency the dial's needle is at (None for one that is only on the
+# Internet: no needle), where it is and what it plays, and the address of
+# its stream, which must be MP3 (any rate, one channel or two) and may be
+# http or https, and sent on elsewhere. The first is the one the nesp32 has
+# when it is told none. Frequencies checked 2026-10-24.
+STATIONS = (
+    ("NPR", None, "WASHINGTON, DC", "NEWS & TALK",
+     "https://npr-ice.streamguys1.com/live.mp3"),
+    ("WNYC", 93.9, "NEW YORK", "NEWS & TALK", "https://fm939.wnyc.org/wnycfm"),
+    ("WQXR", 105.9, "NEW YORK", "CLASSICAL", "https://stream.wqxr.org/wqxr"),
+    ("KEXP", 90.3, "SEATTLE", "ECLECTIC", "https://kexp-mp3-128.streamguys1.com/kexp128.mp3"),
+    ("KUSC", 91.5, "LOS ANGELES", "CLASSICAL",
+     "https://playerservices.streamtheworld.com/api/livestream-redirect/KUSCMP128.mp3"),
+    ("BBC", None, "LONDON", "WORLD NEWS", "http://stream.live.vc.bbcmedia.co.uk/bbc_world_service"),
+    ("WBGO", 88.3, "NEWARK", "JAZZ", "https://ais-sa8.cdnstream1.com/3629_128.mp3"),
+    ("KCLU", 88.3, "THOUSAND OAKS", "NEWS & TALK", "https://kclustream.callutheran.edu/kclump3"),
+    ("KUVO", 89.3, "DENVER", "JAZZ", "https://kuvo-ice.streamguys1.com/kuvo-mp3-128"),
+    ("PARADISE", None, "PARADISE, CA", "ECLECTIC", "https://stream.radioparadise.com/mp3-128"),
+    ("SOMAFM", None, "SAN FRANCISCO", "DOWNTEMPO", "https://ice2.somafm.com/groovesalad-128-mp3"),
+)
+URL_MAX = 255           # NESP_TUNER_URL_MAX, which the ROM asserts
 
 
-# The menu, in the order of the nesp32's modes, and the rows of the middle
-# its lines are on.
-MENU = ("HIGH QUALITY, NO HEADLINES", "MED QUALITY, HEADLINE NEWS")
-MENU_ROWS = (2, 4)
-CURSOR = "> "
+def on_air(station):
+    """The status line for a station that is on the air: which one it is,
+    since what it is playing takes the middle of the screen."""
+    letters, freq, city, genre, url = station
+    return "ON THE AIR: " + letters + (" %.1f" % freq if freq is not None else "")
+
+
+def where(station):
+    letters, freq, city, genre, url = station
+    return ("%.1f FM" % freq if freq is not None else "INTERNET") + "  " + city
+
+
+# The middle: the station's lines, by the row of the middle they are on (the
+# big letters' two, where, and what), and the quality's two, one of them
+# chosen, in the order of the nesp32's modes.
+STATION_ROW = 0         # the first of the station's: where the ROM starts again on a turn
+STATION_LINES = (0, 1, 3, 5)
+QUALITY_ROW = 7
+QUALITY = ("QUALITY:  > HIGH    MED+INFO", "QUALITY:    HIGH  > MED+INFO")
+
+# The dial: rows of tiles under the status line, and an FM scale across it
+# at a tile a megahertz, with a tick each half; the needle is three sprites.
+DIAL_ROW = 10           # its top line; then the numbers, the ticks, and its bottom line
+DIAL_FIRST, DIAL_LAST = 2, 29       # the lines' columns
+SCALE_COLUMN, SCALE_MHZ = 4, 86     # the scale starts at this column at this frequency
+SCALE_LAST = 110
+LABELS = (88, 92, 96, 100, 104, 108)
+NEEDLE_TOP = 8 * DIAL_ROW + 6       # its first line on the screen, and its last
+NEEDLE_BOTTOM = 8 * (DIAL_ROW + 3) + 1
+NEEDLE_NONE = 0xFF                  # the ROM's needle_x for a station with no frequency
+DIAL_COLOR, NEEDLE_COLOR = 2, 1     # in palette 1, and the sprites' 0
+
+# Palettes: the jukebox's text and logo, the dial's and the big letters'
+# (red, orange and cream), and the hint's grey; and the needle's red.
+PALETTES = (gen_ui.PALETTES[gen_ui.PALETTE_TEXT], (0x16, 0x27, 0x38), (0x00, 0x00, 0x10),
+            gen_ui.PALETTES[gen_ui.PALETTE_LOGO])
+PALETTE_DIAL, PALETTE_HINT = 1, 2
+SPRITE_PALETTES = ((0x16, 0x16, 0x16), (0x16, 0x16, 0x16), (0x16, 0x16, 0x16),
+                   (0x16, 0x16, 0x16))
+# For the preview: the colors the jukebox's has not.
+gen_ui.NES_RGB.setdefault(0x27, (212, 136, 32))
+gen_ui.NES_RGB.setdefault(0x38, (228, 196, 144))
+
+# A page for the preview: what the nesp32 makes of a station's title.
+SAMPLE = tuple(line.center(gen_news.COLUMNS) for line in
+               ("NOW PLAYING", "", "DARK CHISME", "", "", "", "SUFFER LIKE ME"))
+assert STATUS_ROW < DIAL_ROW and DIAL_ROW + 4 <= gen_news.NEWS_ROW
+assert gen_news.NEWS_ROW % 2 == 0 and gen_news.NEWS_ROW + gen_news.ROWS <= HINT_ROW
+assert all(row < gen_news.ROWS for row in STATION_LINES + (QUALITY_ROW,))
+assert all(len(line) <= gen_news.COLUMNS for line in QUALITY)
+
+
+def scale_x(mhz):
+    """Where a frequency is on the screen, to the pixel."""
+    return 8 * SCALE_COLUMN + int(round(8 * (mhz - SCALE_MHZ)))
 
 
 def areas():
     """What the middle of the screen may show, as lines of text: the menu
-    with each of its lines chosen, and nothing."""
+    with each quality chosen, and nothing, which a station has. The
+    station's own lines are the ROM's, from station_rows."""
     out = []
-    for chosen in range(len(MENU)):
+    for chosen in range(len(QUALITY)):
         lines = [""] * gen_news.ROWS
-        for index, (row, words) in enumerate(zip(MENU_ROWS, MENU)):
-            lines[row] = (CURSOR if index == chosen else " " * len(CURSOR)) + words
+        lines[QUALITY_ROW] = QUALITY[chosen]
         out.append(lines)
     out.append([""] * gen_news.ROWS)
     for lines in out:
@@ -73,11 +169,67 @@ def areas():
     return out
 
 
-# A page of headlines, for the preview: what the nesp32 makes of a story.
-SAMPLE = ("A CONSOLE FROM 1985 LEARNS", "TO READ THE NEWS", "",
-          "ENGINEERS SAY THE MACHINE'S", "2 KILOBYTES OF MEMORY HOLD",
-          "FOUR STORIES AT A TIME,", "\"WHICH IS PLENTY,\" ONE SAID", "& LAUGHED.")
-assert STATUS_ROW < gen_news.NEWS_ROW and gen_news.NEWS_ROW + gen_news.ROWS <= gen_ui.HELP_ROW
+def pixels(width, height):
+    return [[0] * width for _ in range(height)]
+
+
+def tile(rows):
+    """A tile from rows of 8 digits, each a color."""
+    return [[int(char) for char in row] for row in rows]
+
+
+LINE_TOP = tile(["00000000"] * 4 + ["22222222"] + ["00000000"] * 3)
+LINE_BOTTOM = tile(["00000000"] * 3 + ["22222222"] + ["00000000"] * 4)
+TICKS = tile(["00000000"] * 4 + ["20002000"] * 4)
+TICKS_MAJOR = tile(["00000000"] + ["20000000"] * 3 + ["20002000"] * 4)
+NEEDLE = tile(["00011000"] * 8)
+END_ROWS = NEEDLE_BOTTOM - (NEEDLE_TOP + 16) + 1     # of the third sprite
+NEEDLE_END = tile(["00011000"] * END_ROWS + ["00000000"] * (8 - END_ROWS))
+
+
+def add_tile(screen, pixels8):
+    """A tile of its own, not on the screen: its number."""
+    data = gen_ui.tile_bytes(pixels8)
+    if data not in screen.shared:
+        if screen.next_tile > 0xFF:
+            raise ValueError("out of background tiles")
+        screen.shared[data] = screen.next_tile
+        screen.tiles[screen.next_tile] = data
+        screen.next_tile += 1
+    return screen.shared[data]
+
+
+def draw_dial(screen):
+    top, bottom = add_tile(screen, LINE_TOP), add_tile(screen, LINE_BOTTOM)
+    ticks, major = add_tile(screen, TICKS), add_tile(screen, TICKS_MAJOR)
+    for column in range(DIAL_FIRST, DIAL_LAST + 1):
+        screen.put(column, DIAL_ROW, top)
+        screen.put(column, DIAL_ROW + 3, bottom)
+    for mhz in range(SCALE_MHZ, SCALE_LAST):
+        column = SCALE_COLUMN + mhz - SCALE_MHZ
+        screen.put(column, DIAL_ROW + 2, major if mhz in LABELS else ticks)
+    for mhz in LABELS:
+        # From the column before its tick's: "88" ends on it, "100" is
+        # over it to within a few pixels.
+        screen.text(SCALE_COLUMN + mhz - SCALE_MHZ - 1, DIAL_ROW + 1, str(mhz))
+    screen.palette_rows(DIAL_ROW, DIAL_ROW + 3, PALETTE_DIAL)
+
+
+def big_rows(screen, letters):
+    """A station's letters in the header's big ones, centered in the
+    middle: its two lines of tiles. They are drawn on the middle to be given
+    numbers, and taken off again."""
+    row = gen_news.NEWS_ROW
+    column = gen_news.NEWS_COLUMN + (gen_news.COLUMNS - 2 * len(letters)) // 2
+    for index, char in enumerate(letters):
+        if char != " ":
+            screen.picture(column + 2 * index, row, gen_ui.big_letter(char))
+    lines = []
+    for line in (row, row + 1):
+        start = line * gen_ui.SCREEN_COLUMNS + gen_news.NEWS_COLUMN
+        lines.append(bytes(screen.names[start:start + gen_news.COLUMNS]))
+        screen.names[start:start + gen_news.COLUMNS] = b" " * gen_news.COLUMNS
+    return lines
 
 
 def build_screen():
@@ -85,6 +237,19 @@ def build_screen():
     screen.names[:] = b" " * len(screen.names)  # the ROM writes text over text
     gen_ui.header(screen, SUBTITLE)
     screen.icons = gen_ui.icon_tiles(screen, FOOT_COLUMN, gen_ui.HELP_ROW)
+    draw_dial(screen)
+    screen.needle = (add_tile(screen, NEEDLE), add_tile(screen, NEEDLE_END))
+    # The station's lines, by station: its big letters' two, and the two of
+    # text, centered.
+    screen.station_rows = []
+    for station in STATIONS:
+        letters, freq, city, genre, url = station
+        rows = big_rows(screen, letters)
+        rows += [text.center(gen_news.COLUMNS).encode("ascii")
+                 for text in (where(station), genre)]
+        screen.station_rows.append(rows)
+    screen.palette_rows(gen_news.NEWS_ROW, gen_news.NEWS_ROW + 1, PALETTE_DIAL)
+    screen.palette_rows(HINT_ROW - 1, HINT_ROW, PALETTE_HINT)
     return screen
 
 
@@ -94,9 +259,18 @@ def foot_tiles(text, screen):
 
 def palette_data():
     data = bytearray()
-    for colors in gen_ui.PALETTES:
+    for colors in PALETTES + SPRITE_PALETTES:
         data += bytes((gen_ui.BACKDROP,) + colors)
     return bytes(data)
+
+
+def needle_x(station):
+    """Where the needle's sprites go across for a station, or NEEDLE_NONE."""
+    freq = station[1]
+    if freq is None:
+        return NEEDLE_NONE
+    assert SCALE_MHZ <= freq < SCALE_LAST
+    return scale_x(freq) - 3        # its line is the tile's fourth and fifth pixels
 
 
 def screen_include(screen):
@@ -104,7 +278,14 @@ def screen_include(screen):
              "STATUS_ADDR = $%04X" % gen_ui.address(STATUS_COLUMN, STATUS_ROW),
              "STATUS_WIDTH = %d" % STATUS_WIDTH,
              "FOOT_ADDR = $%04X" % gen_ui.address(FOOT_COLUMN, gen_ui.HELP_ROW),
-             "FOOT_WIDTH = %d" % FOOT_WIDTH]
+             "FOOT_WIDTH = %d" % FOOT_WIDTH,
+             "HINT_ADDR = $%04X" % gen_ui.address(HINT_COLUMN, HINT_ROW),
+             "HINT_WIDTH = %d" % HINT_WIDTH,
+             "STATION_ROW = %d          ; of the middle: the station's first" % STATION_ROW,
+             "STATIONS = %d" % len(STATIONS),
+             "STATION_LINES = %d" % len(STATION_LINES),
+             "NEEDLE_NONE = $%02X" % NEEDLE_NONE,
+             "NEEDLE_SPRITES = 3"]
     lines += ["FOOT_%s = %d" % (name, index) for index, (name, _) in enumerate(FOOT_TEXT)]
     text = []
     for index, (name, words) in enumerate(STATUS_TEXT):
@@ -117,6 +298,9 @@ def screen_include(screen):
     lines += gen_ui.byte_lines("status_text", text, per_line=STATUS_WIDTH)
     foot = b"".join(foot_tiles(text, screen) for _, text in FOOT_TEXT)
     lines += gen_ui.byte_lines("foot_text", list(foot), per_line=FOOT_WIDTH)
+    # Over the foot: the menu's, and the others' nothing.
+    lines += gen_ui.byte_lines("hint_text", list((HINT + " " * HINT_WIDTH).encode("ascii")),
+                               per_line=HINT_WIDTH)
     # The middle of the screen: where each of its lines is, in the ROM and
     # on the first nametable.
     middle = []
@@ -133,7 +317,69 @@ def screen_include(screen):
     lines += ["area_screen_lo: .byte " + ", ".join("$%02X" % (place & 0xFF) for place in places),
               "area_screen_hi: .byte " + ", ".join("$%02X" % (place >> 8) for place in places)]
     lines += gen_ui.byte_lines("area_text", middle, per_line=gen_news.COLUMNS)
+    # The station's own lines of the middle: by row of it, which of them
+    # ($FF for none), and by station times STATION_LINES plus that, where.
+    field = [0xFF] * gen_news.ROWS
+    for index, row in enumerate(STATION_LINES):
+        field[row] = index
+    lines += gen_ui.byte_lines("station_field", field, per_line=gen_news.ROWS)
+    count = len(STATIONS) * len(STATION_LINES)
+    lines += ["station_row_lo: .byte " + ", ".join(
+                  "<(station_rows + %d)" % (index * gen_news.COLUMNS) for index in range(count)),
+              "station_row_hi: .byte " + ", ".join(
+                  ">(station_rows + %d)" % (index * gen_news.COLUMNS) for index in range(count))]
+    rows = b"".join(b"".join(station) for station in screen.station_rows)
+    lines += gen_ui.byte_lines("station_rows", list(rows), per_line=gen_news.COLUMNS)
+    # The stations' addresses, and the needle: where it goes across, and its
+    # three sprites' lines and tiles, top to bottom.
+    for index, station in enumerate(STATIONS):
+        url = station[4]
+        assert len(url) <= URL_MAX
+        lines += ["station_url_%d: .byte \"%s\"" % (index, url)]
+    for label, part in (("station_url_lo", "<"), ("station_url_hi", ">")):
+        lines.append(label + ": .byte " + ", ".join(
+            "%s(station_url_%d)" % (part, index) for index in range(len(STATIONS))))
+    lines.append("station_url_len: .byte " + ", ".join(
+        "%d" % len(station[4]) for station in STATIONS))
+    # The status line on the air, by station, as wide as the line.
+    for index, station in enumerate(STATIONS):
+        text = on_air(station)
+        assert len(text) <= STATUS_WIDTH
+        lines.append("station_on_air_%d: .byte \"%s\"" % (index, text.center(STATUS_WIDTH)))
+    for label, part in (("station_on_air_lo", "<"), ("station_on_air_hi", ">")):
+        lines.append(label + ": .byte " + ", ".join(
+            "%s(station_on_air_%d)" % (part, index) for index in range(len(STATIONS))))
+    lines.append("needle_x: .byte " + ", ".join(
+        "$%02X" % needle_x(station) for station in STATIONS))
+    tops = [NEEDLE_TOP + 8 * index - 1 for index in range(3)]     # OAM's Y is a line early
+    lines.append("needle_sprite_y: .byte " + ", ".join("%d" % top for top in tops))
+    needle, end = screen.needle
+    lines.append("needle_sprite_tile: .byte $%02X, $%02X, $%02X" % (needle, needle, end))
     return "\n".join(lines) + "\n"
+
+
+def preview(screen, station, sprites=True):
+    """The screen as rows of RGB, with the needle drawn in, which render()
+    leaves out, being a sprite's."""
+    rows = gen_ui.render(screen.chr(), screen.nametable(), PALETTES)
+    x = needle_x(STATIONS[station])
+    if sprites and x != NEEDLE_NONE:
+        red = gen_ui.NES_RGB[SPRITE_PALETTES[0][0]]
+        for y in range(NEEDLE_TOP, NEEDLE_BOTTOM + 1):
+            rows[y][x + 3] = rows[y][x + 4] = red
+    return rows
+
+
+def show_station(screen, station, area):
+    """Lay the middle out as the ROM would, on a copy, for the preview."""
+    shown = screen.copy()
+    for row, text in enumerate(areas()[area]):
+        shown.text(gen_news.NEWS_COLUMN, gen_news.NEWS_ROW + row, text)
+    for index, row in enumerate(STATION_LINES):
+        line = screen.station_rows[station][index]
+        start = (gen_news.NEWS_ROW + row) * gen_ui.SCREEN_COLUMNS + gen_news.NEWS_COLUMN
+        shown.names[start:start + gen_news.COLUMNS] = line
+    return shown
 
 
 def main(argv=None):
@@ -150,21 +396,21 @@ def main(argv=None):
     gen_ui.write_if_changed(os.path.join(args.out_dir, "screen.inc"),
                             screen_include(screen).encode())
     if args.preview:
-        # As it is when it starts: the menu, and a status line with nothing on it.
-        menu = screen.copy()
+        # The menu, with WNYC on the dial and a status line with nothing on it.
+        menu = show_station(screen, 1, 0)
         menu.text(FOOT_COLUMN, gen_ui.HELP_ROW, foot_tiles(dict(FOOT_TEXT)["QUIT"], screen)
                   .decode("latin-1"))
-        for row, text in enumerate(areas()[0]):
-            menu.text(gen_news.NEWS_COLUMN, gen_news.NEWS_ROW + row, text)
-        gen_ui.write_png(args.preview, gen_ui.render(menu.chr(), menu.nametable()))
-        # And with the station playing in the second mode: a page.
-        screen.centered(STATUS_ROW, "ON THE AIR")
-        screen.text(FOOT_COLUMN, gen_ui.HELP_ROW, foot_tiles(A_HELP, screen).decode("latin-1"))
+        menu.text(HINT_COLUMN, HINT_ROW, HINT)
+        gen_ui.write_png(args.preview, preview(menu, 1))
+        # And KEXP playing in the second mode: a page.
+        playing = screen.copy()
+        playing.centered(STATUS_ROW, on_air(STATIONS[3]))
+        playing.text(FOOT_COLUMN, gen_ui.HELP_ROW,
+                     foot_tiles(dict(FOOT_TEXT)["PLAIN"], screen).decode("latin-1"))
         for row, text in enumerate(SAMPLE):
-            screen.text(gen_news.NEWS_COLUMN, gen_news.NEWS_ROW + row, text)
+            playing.text(gen_news.NEWS_COLUMN, gen_news.NEWS_ROW + row, text)
         base, extension = os.path.splitext(args.preview)
-        gen_ui.write_png(base + "-news" + extension,
-                         gen_ui.render(screen.chr(), screen.nametable()))
+        gen_ui.write_png(base + "-news" + extension, preview(playing, 3))
     return 0
 
 

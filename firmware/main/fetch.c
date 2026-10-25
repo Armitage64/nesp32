@@ -12,12 +12,18 @@
  * more of a fetch once it has been replaced or stopped.
  *
  * The server is authenticated against ESP-IDF's bundle of root
- * certificates.
+ * certificates. An address that sends the fetch on to another (a 301, 302,
+ * 303, 307 or 308) is followed, as far as REDIRECTS_MAX of them.
+ *
+ * A sink that wants a stream's titles (its `icy`) has them asked for, and
+ * is told the reply's icy-metaint before its body.
  */
 #include "fetch.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
@@ -33,6 +39,7 @@
 #define FETCH_CORE 0                /* with Wi-Fi; the link has core 1 */
 #define TIMEOUT_MS 10000
 #define CHUNK 1024
+#define REDIRECTS_MAX 5
 
 static const char *TAG = "fetch";
 
@@ -95,8 +102,23 @@ static void failed(const order_t *order, uint32_t began, const char *why)
     }
 }
 
+/* The reply's headers come only to an event handler: icy-metaint, of the
+ * last answer when the fetch was sent on. */
+static esp_err_t on_event(esp_http_client_event_t *event)
+{
+    uint32_t *metaint = event->user_data;
+    if (event->event_id == HTTP_EVENT_ON_CONNECTED) {
+        *metaint = 0;
+    } else if (event->event_id == HTTP_EVENT_ON_HEADER
+               && strcasecmp(event->header_key, "icy-metaint") == 0) {
+        *metaint = (uint32_t)strtoul(event->header_value, NULL, 10);
+    }
+    return ESP_OK;
+}
+
 static void fetch(const order_t *order, uint32_t began)
 {
+    static uint32_t metaint;
     static uint8_t chunk[CHUNK];
     char why[32];
     esp_http_client_config_t config = {
@@ -106,7 +128,10 @@ static void fetch(const order_t *order, uint32_t began)
         .timeout_ms = TIMEOUT_MS,
         .buffer_size = CHUNK,
         .buffer_size_tx = 1024,     /* the request's line is the address, and long */
+        .event_handler = on_event,
+        .user_data = &metaint,
     };
+    metaint = 0;
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (client == NULL) {
         failed(order, began, "THE NESP32 IS OUT OF MEMORY");
@@ -114,11 +139,32 @@ static void fetch(const order_t *order, uint32_t began)
     }
     /* Not compressed: the body is read as it comes. */
     esp_http_client_set_header(client, "Accept-Encoding", "identity");
+    if (order->sink->icy != NULL) {
+        esp_http_client_set_header(client, "Icy-MetaData", "1");
+    }
     int64_t started = esp_timer_get_time();
     size_t total = 0;
-    if (esp_http_client_open(client, 0) != ESP_OK) {
-        failed(order, began, "THE SITE DID NOT ANSWER");
-    } else if (esp_http_client_fetch_headers(client) < 0) {
+    bool answered = false;
+    for (int hops = 0;; hops++) {
+        if (esp_http_client_open(client, 0) != ESP_OK
+            || esp_http_client_fetch_headers(client) < 0) {
+            break;
+        }
+        int code = esp_http_client_get_status_code(client);
+        bool moved = code == 301 || code == 302 || code == 303 || code == 307 || code == 308;
+        if (!moved || hops == REDIRECTS_MAX || !wanted(began)) {
+            answered = true;
+            break;
+        }
+        /* Sent on: the same fetch, from the address it was sent to. */
+        if (esp_http_client_set_redirection(client) != ESP_OK) {
+            answered = true;        /* with nowhere to go: said as the code it had */
+            break;
+        }
+        esp_http_client_close(client);
+        ESP_LOGI(TAG, "fetch %lu: sent on (%d)", (unsigned long)order->id, code);
+    }
+    if (!answered) {
         failed(order, began, "THE SITE DID NOT ANSWER");
     } else if (esp_http_client_get_status_code(client) != 200) {
         snprintf(why, sizeof(why), "THE SITE SAID %d", esp_http_client_get_status_code(client));
@@ -127,6 +173,11 @@ static void fetch(const order_t *order, uint32_t began)
         /* In longs: this firmware's printf has no long long. */
         ESP_LOGI(TAG, "fetch %lu: answered in %lu ms", (unsigned long)order->id,
                  (unsigned long)((esp_timer_get_time() - started) / 1000));
+        if (order->sink->icy != NULL && wanted(began)) {
+            ESP_LOGI(TAG, "fetch %lu: titles every %lu bytes", (unsigned long)order->id,
+                     (unsigned long)metaint);
+            order->sink->icy(order->sink->ctx, order->id, metaint);
+        }
         for (;;) {
             int count = esp_http_client_read(client, (char *)chunk, sizeof(chunk));
             if (!wanted(began)) {

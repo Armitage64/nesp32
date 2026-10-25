@@ -93,7 +93,7 @@ The link ROM begins with a menu of the nesp32's tracks, a row each where
 the bars go, and the game and name of the one the cursor is on above it.
 It is the menu whenever the music is stopped, with the cursor on the
 track it was at. The foot of the screen says what A and B do: on the
-menu `A : SELECT`, and on the cartridge `B : QUIT`; with the music
+menu `A : PLAY`, and on the cartridge `B : QUIT`; with the music
 playing, a picture each for play and pause, and `B : BACK`.
 
 Controller 1:

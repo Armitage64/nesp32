@@ -105,7 +105,7 @@ PROGRAMS = (
     Program("jukebox", "Jukebox", 4, 2),
     Program("wiki", "NESpedia", 2, 1),
     Program("radar", "NES Radar", 8, 5, pages=2, mapper=MAPPER_MMC1),
-    Program("npr", "National Public Radio", 10, 7),
+    Program("npr", "NESradio", 10, 7),
     Program("weather", "Weather", 12, 8),
     Program("bluesky", "Bluesky", 14, 9, banks=1),
     Program("throughput", "Throughput Test", 6, 3),

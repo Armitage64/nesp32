@@ -137,7 +137,7 @@ def test_power_on_is_the_menu(cart):
     assert at_menu(c)
     assert c.mapper[:2] == [0x0E, 2 * cart_layout.MENU_PAGE]
     for index, name in enumerate(("Jukebox", "NESpedia", "NES Radar",
-                                  "National Public Radio", "Weather", "Bluesky",
+                                  "NESradio", "Weather", "Bluesky",
                                   "Throughput Test", "Setup")):
         assert c.line(cart_layout.LIST_ROW + cart_layout.LIST_STEP * index) == name
     assert c.line(layout.HELP_ROW) == ""         # A is the button: no help says so
@@ -394,7 +394,7 @@ def test_the_jukebox_waits_for_a_start_of_its_own(cart, images):
 
 # How each looks while it waits for a Start: NPR's status line has nothing
 # on it, under its menu.
-WAITING = {"npr": lambda c: c.line(8) == "" and "A : SELECT" in c.screen(),
+WAITING = {"npr": lambda c: c.line(8) == "" and "A : PLAY" in c.screen(),
            "throughput": lambda c: "PRESS START" in c.screen()}
 
 
@@ -445,7 +445,7 @@ def test_b_in_the_jukeboxs_menu_is_the_menu_again(cart, images):
     c.run_until(lambda: stick.hellos, 300)
     c.run(40)
     assert not c.home
-    assert c.line(16) == "> First" and c.line(26) == "A : SELECT   B : QUIT"
+    assert c.line(16) == "> First" and c.line(26) == "A : PLAY   B : QUIT"
     c.press(PAD_B)
     c.strict = True
     c.run(6)

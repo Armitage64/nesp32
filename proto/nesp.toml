@@ -142,6 +142,7 @@ STATE = 0x00            # how it stands with the station (enum TUNER), and why i
 PLAY = 0x01             # start on the station's stream
 STOP = 0x02             # and give it up
 SOUND = 0x03            # the console's rate: send the station as samples (enum SOUND)
+URL = 0x04              # AT, then text: the address the next PLAY tunes in, from AT on
 
 [services.WEATHER]
 id = 0x14
@@ -376,6 +377,7 @@ TUNER_NEWS_HOME = 0x15  # a page follows, from its first character
 TUNER_NEWS_SHOW = 0x1A  # the page is whole: draw it, and show it
 TUNER_NEWS_IDLE = 0xFF  # nothing: what the bit is at rest
 TUNER_TEXT_MAX = 28     # characters in why a station failed, for the console's screen
+TUNER_URL_MAX = 255     # characters in a station's address, which URL sets
 TUNER_READY_MS = 2000   # this much of a station is held before it is offered
 TUNER_HEARD = 4         # bytes from the console during a station's sound that pause it
 RADAR_TARGETS_MAX = 8   # aircraft in a scene, the nearest first

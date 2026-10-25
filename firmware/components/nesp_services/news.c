@@ -1,36 +1,30 @@
-/* Headlines for a console's screen, out of an RSS feed (TUNER's NEWS).
+/* What a station is playing, as a page for a console's screen (TUNER's
+ * second mode).
  *
- * The feed is NPR's news (docs/PROTOCOL.md, TUNER): a few dozen <item>s,
- * each with a <title> and a <description> of a sentence or two. Up to
- * NESP_TUNER_NEWS_PAGES of them are laid out as a page each, of
- * NESP_TUNER_NEWS_ROWS lines of NESP_TUNER_NEWS_COLUMNS characters: the
- * headline on up to three lines, a blank line, and as much of the summary
- * as the rest holds, with "..." where either was cut.
+ * A station's stream may carry titles (ICY: tuner.c takes them out of it),
+ * of whatever the station likes: most say "ARTIST - SONG", some the
+ * programme, some only the station's name. The title is laid out as a page
+ * of NESP_TUNER_NEWS_ROWS lines of NESP_TUNER_NEWS_COLUMNS characters:
+ * NOW PLAYING at the top, a blank line, and then an artist and a song on
+ * up to three lines each, a blank line between, or a title with no " - "
+ * on the seven, with "..." where either was cut. Every line is centered,
+ * under the console's dial.
  *
- * It is fed in pieces of any size and holds an item's two texts and no
- * more of the feed. A text may be in a CDATA section or have its
- * characters as entities, and either may have tags in it, which go. The
- * console's font is capitals, so everything is made that.
+ * A title may have entities, or UTF-8; the console's font is capitals, so
+ * everything is made that.
  */
 #include <string.h>
 
 #include "nesp_services.h"
 #include "nesp_text.h"
 
-enum { TEXT, TAG, CDATA };
-enum { F_NONE, F_TITLE, F_SUMMARY };
-
 #define COLUMNS NESP_TUNER_NEWS_COLUMNS
 #define ROWS NESP_TUNER_NEWS_ROWS
-#define TITLE_ROWS 3
+#define HEADING "NOW PLAYING"
+#define FIRST_ROW 2             /* under the heading and a blank line */
+#define PART_ROWS 3             /* an artist's, and a song's */
 
-void nesp_news_init(nesp_news_t *news)
-{
-    memset(news, 0, sizeof(*news));
-    memset(news->rows, ' ', sizeof(news->rows));
-}
-
-/* --- an item's text, made plain ------------------------------------------------ */
+/* --- a text, made plain ------------------------------------------------ */
 
 static const struct {
     const char *name;
@@ -223,108 +217,54 @@ static uint8_t lay_out(const uint8_t *text, size_t len, uint8_t (*lines)[COLUMNS
     return (uint8_t)(row + (column != 0));
 }
 
-/* An item has ended: a page of it, if it has a headline and there is room. */
-static void end_item(nesp_news_t *news)
+/* Trailing separators off a part: "BULLSEYE WITH JESSE THORN-" is a
+ * station's title for its programme. */
+static size_t trimmed(const uint8_t *text, size_t len)
 {
-    if (news->count < NESP_TUNER_NEWS_PAGES) {
-        size_t title = make_plain(news->title, news->title_len);
-        size_t summary = make_plain(news->summary, news->summary_len);
-        if (title != 0) {
-            uint8_t (*page)[COLUMNS] = news->rows[news->count];
-            uint8_t used = lay_out(news->title, title, page, TITLE_ROWS);
-            lay_out(news->summary, summary, page + used + 1, (uint8_t)(ROWS - used - 1));
-            news->count++;
-        }
+    while (len != 0 && (text[len - 1] == ' ' || text[len - 1] == '-')) {
+        len--;
     }
-    news->title_len = news->summary_len = 0;
+    return len;
 }
 
-/* --- the feed ---------------------------------------------------------------- */
-
-static void keep(nesp_news_t *news, uint8_t byte)
+/* A line moved to the middle of its width. */
+static void center(uint8_t *line)
 {
-    if (news->field == F_TITLE && news->title_len < sizeof(news->title)) {
-        news->title[news->title_len++] = byte;
-    } else if (news->field == F_SUMMARY && news->summary_len < sizeof(news->summary)) {
-        news->summary[news->summary_len++] = byte;
+    size_t used = COLUMNS;
+    while (used != 0 && line[used - 1] == ' ') {
+        used--;
+    }
+    size_t left = (COLUMNS - used) / 2;
+    if (used != 0 && left != 0) {
+        memmove(line + left, line, used);
+        memset(line, ' ', left);
     }
 }
 
-static bool named(const nesp_news_t *news, const char *name)
+static void center_all(nesp_page_t page)
 {
-    size_t len = strlen(name);
-    return news->tag_len >= len && memcmp(news->tag, name, len) == 0
-           && (news->tag_len == len || news->tag[len] == ' ' || news->tag[len] == '/');
-}
-
-static void end_tag(nesp_news_t *news)
-{
-    if (named(news, "item")) {
-        news->in_item = true;
-        news->title_len = news->summary_len = 0;
-    } else if (named(news, "/item")) {
-        if (news->in_item) {
-            end_item(news);
-        }
-        news->in_item = false;
-        news->field = F_NONE;
-    } else if (named(news, "title")) {
-        news->field = news->in_item ? F_TITLE : F_NONE;
-    } else if (named(news, "description")) {
-        news->field = news->in_item ? F_SUMMARY : F_NONE;
-    } else if (named(news, "/title") || named(news, "/description")) {
-        news->field = F_NONE;
-    } else {
-        keep(news, ' ');            /* a tag in a text, where a space might have been */
+    for (size_t row = 0; row < ROWS; row++) {
+        center(page[row]);
     }
 }
 
-void nesp_news_feed(nesp_news_t *news, const uint8_t *data, size_t len)
+void nesp_news_title(nesp_page_t page, uint8_t *title, size_t len)
 {
-    for (size_t index = 0; index < len; index++) {
-        uint8_t byte = data[index];
-        switch (news->mode) {
-        case TEXT:
-            if (byte == '<') {
-                news->mode = TAG;
-                news->tag_len = 0;
-            } else {
-                keep(news, byte);
-            }
-            break;
-        case TAG:
-            if (byte == '>') {
-                news->mode = TEXT;
-                end_tag(news);
-                break;
-            }
-            if (news->tag_len < sizeof(news->tag)) {
-                news->tag[news->tag_len++] = byte;
-            }
-            if (news->tag_len == 8 && memcmp(news->tag, "![CDATA[", 8) == 0) {
-                news->mode = CDATA;
-                news->closing = 0;
-            }
-            break;
-        default:
-            /* To "]]>". The brackets are kept back until it is known that
-             * they are not its end. */
-            if (byte == ']') {
-                if (news->closing == 2) {
-                    keep(news, ']');
-                } else {
-                    news->closing++;
-                }
-            } else if (byte == '>' && news->closing == 2) {
-                news->mode = TEXT;
-            } else {
-                while (news->closing != 0) {
-                    keep(news, ']');
-                    news->closing--;
-                }
-                keep(news, byte);
-            }
-            break;
-        }
+    memset(page, ' ', sizeof(nesp_page_t));
+    memcpy(page[0], HEADING, sizeof(HEADING) - 1);
+    len = trimmed(title, make_plain(title, len));
+    size_t split = 0;
+    while (split + 3 <= len && memcmp(title + split, " - ", 3) != 0) {
+        split++;
     }
+    if (split + 3 > len || split == 0) {
+        lay_out(title, len, page + FIRST_ROW, ROWS - FIRST_ROW);
+        center_all(page);
+        return;
+    }
+    size_t song = split + 3;
+    lay_out(title, trimmed(title, split), page + FIRST_ROW, PART_ROWS);
+    lay_out(title + song, trimmed(title + song, len - song), page + FIRST_ROW + PART_ROWS + 1,
+            PART_ROWS);
+    center_all(page);
 }

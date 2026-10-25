@@ -51,7 +51,6 @@ def tone():
 
 
 @pytest.fixture(scope="session")
-def feed():
-    """The headlines' feed: nesp32's fixture of one (its tests/fixtures)."""
-    with open(os.path.join(NESP32, "tests", "fixtures", "npr_news.xml"), "rb") as handle:
-        return handle.read()
+def title():
+    """What the station says it is playing, in its stream."""
+    return "Dark Chisme - Suffer Like Me"

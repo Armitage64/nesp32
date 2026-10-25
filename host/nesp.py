@@ -87,6 +87,9 @@ def library():
                                         ctypes.c_size_t]
         lib.host_fetch_done.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_bool,
                                         ctypes.c_char_p]
+        lib.host_fetch_wants_icy.restype = ctypes.c_bool
+        lib.host_fetch_wants_icy.argtypes = [ctypes.c_void_p]
+        lib.host_fetch_icy.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32]
         lib.host_to_ascii.restype = ctypes.c_int
         lib.host_to_ascii.argtypes = [ctypes.c_uint32, ctypes.c_char_p]
         lib.host_vgm_to_jbs.restype = ctypes.c_size_t
@@ -756,11 +759,13 @@ class Stick:
 
     @property
     def tuner_page(self):
-        """The headline that is on the console's screen, or going there."""
+        """Which of the station's titles the run has sent, or is sending:
+        1 for the first, 0 for none yet."""
         return self._lib.host_tuner_page(self._host)
 
     def tuner_turn(self):
-        """Have the station send its next page of headlines now."""
+        """Let a page that is waiting go now, not a couple of seconds
+        after the last."""
         self._lib.host_tuner_turn(self._host)
 
     @property
@@ -853,6 +858,16 @@ class Stick:
         data = bytes(data)
         return self._lib.host_fetch_body(self._host, self.fetch_id if fetch is None else fetch,
                                          data, len(data))
+
+    @property
+    def fetch_wants_icy(self):
+        """The last fetch asked a stream for its titles."""
+        return self._lib.host_fetch_wants_icy(self._host)
+
+    def fetch_icy(self, metaint, fetch=None):
+        """The reply's icy-metaint, before any of its body: bytes of sound
+        between two of the stream's blocks of titles."""
+        self._lib.host_fetch_icy(self._host, self.fetch_id if fetch is None else fetch, metaint)
 
     def fetch_done(self, ok=True, why=b"", fetch=None):
         self._lib.host_fetch_done(self._host, self.fetch_id if fetch is None else fetch,

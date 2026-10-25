@@ -11,7 +11,7 @@ the ESP32 microcontroller.
 </p>
 <p float="left">
   <img src="apps/weather/docs/screen.png" width="24%" alt="The weather app" />
-  <img src="apps/npr/docs/screen-news.png" width="24%" alt="National Public Radio with a headline" />
+  <img src="apps/npr/docs/screen-news.png" width="24%" alt="NESradio with what is playing" />
   <img src="apps/nes-radar/docs/scope.png" width="24%" alt="NES Radar's scope" />
   <img src="apps/bluesky/docs/screen-splash.png" width="24%" alt="Bluesky's splash, after ConnectedNES" />
 </p>
@@ -62,7 +62,7 @@ Please join our [Discord](https://discord.gg/kwSC7pwtmb)!
 | [Tetris](apps/tetris)* | Tetris online VS |
 | [TMNT2 Arcade](apps/tmnt2)* | Teenage Mutant Ninja Turtles 2 Arcade online co-op, with framerate optimizations |
 | [NES Radar](apps/nes-radar) | [k6lcm](https://github.com/k6lcm)'s live air traffic scope, no PC required |
-| [National Public Radio](apps/npr) | NPR's live .mp3 radio stream with optional headline news |
+| [NESradio](apps/npr) | Live .mp3 radio stations on a radio dial, with what is playing |
 | [Weather](apps/weather) | Current conditions and a 5-day forecast for a US zip code, which the NESP32 remembers |
 | [Bluesky](apps/bluesky) | Bluesky posts from a list of favorite accounts the NESP32 remembers, after [ConnectedNES](https://github.com/hxlnt/connectedNES) |
 
