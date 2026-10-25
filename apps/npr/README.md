@@ -1,6 +1,6 @@
-# National Public Radio
+# NESradio
 
-NPR's live radio stream on a NES, through the console's own sample
+Live radio stations on a NES, through the console's own sample
 channel. A [nesp32](../..) on controller port 2 fetches the stream from the
 Internet, decodes it, and sends it to the console a byte a sample; the ROM
 writes each byte to `$4011`, the channel's 7-bit DAC, as it arrives.
@@ -10,9 +10,12 @@ nothing else, or **medium quality with the news**, 11622 samples a second
 with NPR's headlines on the screen, one with its summary for half a minute
 and then the next.
 
-A list of stations is in the ROM (`nes/npr.s`, `stations`), NPR's first;
-the nesp32 is sent the address of the one chosen, and fetches any MP3
-stream it is given. The way a sound takes the serial
+A list of stations is in the ROM (`tools/gen_screen.py`, `STATIONS`), NPR's
+first; the nesp32 is sent the address of the one chosen, and fetches any
+MP3 stream it is given. A radio's dial under the status line has a red
+needle at the station's FM frequency, and none for a station that is only
+on the Internet; under the dial are the station's letters, big, where it
+is and what it plays. The way a sound takes the serial
 line over is [the jukebox's](../jukebox) sampled sound, and so are the
 routines that play it; the one with the headlines has the cycles it had to
 spare put to receiving and drawing them. On the nesp32 it is the TUNER
@@ -68,14 +71,15 @@ make test
 
 With the nesp32 on a Wi-Fi network (the [setup ROM](../setup) joins one)
 and on controller port 2, start `build/npr.nes`. The screen's header is
-nesp32's, with `NATIONAL PUBLIC RADIO` under the name; the nesp32's own
+nesp32's, with `NESRADIO` under the name; the nesp32's own
 screen calls the program `NPR`. The foot of the screen says what A and B
-do: on the menu `A : SELECT`, and with a station `A : STOP`.
+do: on the menu `A : SELECT`, and with a station `A : STOP`. Over it, on
+the menu, is `< / > : SELECT STATION`.
 
 | | |
 |---|---|
-| **Up**, **Down** or **Select**, before a station is tuned in | the menu's other line: `HIGH QUALITY, NO HEADLINES` or `MED QUALITY, HEADLINE NEWS` |
-| **Left** or **Right**, before a station is tuned in | the station before or after, on the line over them, round from the last to the first |
+| **Up**, **Down** or **Select**, before a station is tuned in | the other quality: `HIGH`, or `MED+NEWS` with the headlines |
+| **Left** or **Right**, before a station is tuned in | the station before or after, and the dial's needle with it, round from the last to the first |
 | **Start** or **A** on the controller | tune in, as the menu says: `TUNING`, and a second or two later `ON THE AIR`. Pressed again while it is tuning, give it up |
 | **A** on the controller, while the station plays | turn it off, and back to the menu: the nesp32 stops fetching it |
 | **B** on the controller, while it is tuning | turn it off, and back to the menu (`B : BACK`) |

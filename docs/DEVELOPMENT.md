@@ -104,7 +104,7 @@ What is still to do on the hardware and the firmware is in
 | The firmware (`firmware/main/`): UART, Wi-Fi, HTTPS, the screen, the files, the USB drive, the connection to another nesp32 | working on a StickS3 and on a StickC Plus2, with the MiSTer and with a real NES ([its README](../firmware/README.md)) |
 | The nesp32's files, in a FAT filing system, with rips converted on the nesp32 itself | working on hardware: written over USB with `tools/put_files.py` to a StickC Plus2, and copied to a StickS3 as a USB drive |
 | A computer in place of a nesp32 (`host/serial_host.py`) | written, not run on a cable |
-| The cartridge (`nes/cart/`): eight programs and a menu, on an MMC1 | working on hardware with the first five, a real NES and the MiSTer, with each board. National Public Radio, Weather and Bluesky start from the menu on a simulated console; the cartridge with them has not yet run on hardware |
+| The cartridge (`nes/cart/`): eight programs and a menu, on an MMC1 | working on hardware with the first five, a real NES and the MiSTer, with each board. NESradio, Weather and Bluesky start from the menu on a simulated console; the cartridge with them has not yet run on hardware |
 | [Setup](../apps/setup), SYS, NET, DIAG | working on hardware |
 | [NESpedia](../apps/wiki), WIKI | working on hardware |
 | [Jukebox](../apps/jukebox), JUKE and RAW | working on hardware |
@@ -112,7 +112,7 @@ What is still to do on the hardware and the firmware is in
 | [Dr. Mario](../apps/drmario) and [Contra](../apps/contra), PEER | working on hardware, two consoles on one network |
 | [Tetris](../apps/tetris), PEER | the game for two, finished, and a session, on two simulated consoles; not yet on hardware |
 | [NES Radar](../apps/nes-radar), RADAR | working on hardware |
-| [National Public Radio](../apps/npr), TUNER | working on hardware, and for long runs |
+| [NESradio](../apps/npr), TUNER | working on hardware, and for long runs |
 | [Weather](../apps/weather), WEATHER | working on hardware, the ROM by itself |
 | [Bluesky](../apps/bluesky), BSKY | on a simulated console against the firmware's code; not yet on hardware |
 

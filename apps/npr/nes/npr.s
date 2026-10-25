@@ -1,6 +1,6 @@
-; NPR: a radio station on the console's sample channel.
+; NESradio: radio stations on the console's sample channel.
 ;
-; A nesp32 on controller port 2 fetches NPR's live stream from the Internet,
+; A nesp32 on controller port 2 fetches a station's live stream from the Internet,
 ; decodes it, and sends it a byte a sample; this ROM writes each byte to
 ; $4011, the 7-bit DAC of the console's sample channel, as it arrives. The
 ; sound's routines and the way a sound takes the line over are the
@@ -27,14 +27,18 @@
 ; between them for as long as no station is tuned in: the station at 23244
 ; samples a second and nothing else, or at 11622 with the news headlines.
 ; Up, Down and Select move between them. Over them is the station, from the
-; list at `stations`, which Left and Right go through; the nesp32 is sent
-; its address, and fetches whatever MP3 stream that is. The headlines are
-; NPR's whichever station plays. B there is the cartridge's menu
+; list in screen.inc (tools/gen_screen.py), which Left and Right go through;
+; the nesp32 is sent its address, and fetches whatever MP3 stream that is.
+; The headlines are NPR's whichever station plays. The station's own lines
+; of the middle, its letters, where it is and what it plays, are on it
+; whatever else is, and a radio's dial over it has a needle at its
+; frequency: three sprites, which a station with none has off the screen. B there is the cartridge's menu
 ; again, on nesp32's cartridge; built by itself, this ROM has none.
 ;
 ; The foot of the screen says what A and B do, and changes with them: B is
 ; read only with the NMI on, so a station's foot says nothing of it while
-; it plays (FOOT_* in screen.inc).
+; it plays (FOOT_* in screen.inc). Over the menu's feet is what changes the
+; station, which the NMI draws with them, and takes off with the others.
 ;
 ; When SOUND is answered with GO the console does nothing but receive: the
 ; NMI is off, the screen stands still, and of the controller only button A
@@ -57,29 +61,32 @@
 ; station is tuned in, are drawn on the first, by the NMI, a line a frame.
 ;
 ; The NMI reads the controller, draws the status line or the foot when it
-; has changed, or a line of the middle of the screen when one is due, and
-; nothing else: the
+; has changed, sends the needle's sprites when it has moved, or draws a
+; line of the middle of the screen when one is due, and nothing else: the
 ; exchange's request goes out at a fixed point after it.
 
 PPUCTRL   = $2000
 PPUMASK   = $2001
 PPUSTATUS = $2002
+OAMADDR   = $2003
 PPUSCROLL = $2005
 PPUADDR   = $2006
 PPUDATA   = $2007
 APU_DMC   = $4010
 APU_DMC_LEVEL = $4011           ; the sample channel's 7-bit DAC
+OAMDMA    = $4014
 APU_STATUS = $4015
 JOY1      = $4016
 JOY2      = $4017
 APU_FRAME = $4017               ; writes; reads are JOY2
 
 PPUCTRL_NMI = $80
-PPUMASK_BACKGROUND = $0A        ; background on, left column included
+PPUMASK_ON = $1E                ; background and sprites, left column included
 FRAME_IRQ_INHIBIT = $40
 NAMETABLE = $2000
 NAMETABLE_2 = $2800             ; the other one: the mirroring is horizontal
 PALETTE   = $3F00
+OAM       = $0400               ; the sprites, for the DMA: the needle's, and the rest off
 
 PAD_START = $10
 PAD_B     = $40
@@ -155,6 +162,7 @@ station:      .res 1            ; the menu's station, in `stations`
 turned:       .res 1            ; Left or Right went down: $FF or 1, the main loop's to act on
 url_at:       .res 1            ; characters of its address the nesp32 has, with a press of PLAY's
 url_piece:    .res 1            ; and how many are on their way
+needle_dirty: .res 1            ; the needle has moved, and OAM is not the screen's yet
 
 .include "screen.inc"
 .include "nesp.inc"
@@ -210,60 +218,15 @@ foot_place:
 .endrepeat
 .assert FOOT_SELECT = 0 && FOOT_QUIT = 1 && FOOT_PLAIN = 2 && FOOT_BACK = 3, error, "foot_place"
 .assert FOOT_PAUSED = 4, error, "foot_place"
+.assert FOOT_SELECT < FOOT_PLAIN && FOOT_QUIT < FOOT_PLAIN, error, "the menu's feet come first"
 
 ; --- the stations ---------------------------------------------------------------------
 
-; A station: its name, as the menu's line has it between < and >, and the
-; address of its stream, which must be MP3 (any rate, one channel or two)
-; and may be http or https, and sent on elsewhere. The first is the one the
-; nesp32 has when it is told none.
-STATION_NAME_MAX = NEWS_COLUMNS - 4
-STATIONS .set 0
-.macro station name, url
-    .assert .strlen(name) <= STATION_NAME_MAX, error, "a station's name must fit its line"
-    .assert .strlen(url) <= NESP_TUNER_URL_MAX, error, "a station's address must fit the nesp32's"
-    .ident(.sprintf("station_name_%d", STATIONS)):
-    .byte "< "
-    .repeat (STATION_NAME_MAX - .strlen(name)) / 2
-        .byte ' '
-    .endrepeat
-    .byte name
-    .repeat STATION_NAME_MAX - .strlen(name) - (STATION_NAME_MAX - .strlen(name)) / 2
-        .byte ' '
-    .endrepeat
-    .byte " >"
-    .ident(.sprintf("station_url_%d", STATIONS)):
-    .byte url
-    .ident(.sprintf("station_url_len_%d", STATIONS)) = .strlen(url)
-    STATIONS .set STATIONS + 1
-.endmacro
-
-stations:
-    station "NPR",                  "https://npr-ice.streamguys1.com/live.mp3"
-    station "WNYC 93.9 NEW YORK",   "https://fm939.wnyc.org/wnycfm"
-    station "WQXR 105.9 CLASSICAL", "https://stream.wqxr.org/wqxr"
-    station "KEXP 90.3 SEATTLE",    "https://kexp-mp3-128.streamguys1.com/kexp128.mp3"
-    station "KUSC 91.5 LOS ANGELES", "https://playerservices.streamtheworld.com/api/livestream-redirect/KUSCMP128.mp3"
-    station "BBC WORLD SERVICE",    "http://stream.live.vc.bbcmedia.co.uk/bbc_world_service"
-    station "WBGO 88.3 JAZZ NEWARK", "https://ais-sa8.cdnstream1.com/3629_128.mp3"
-    station "KCLU 88.3 THOUSAND OAKS", "https://kclustream.callutheran.edu/kclump3"
-    station "KUVO 89.3 DENVER JAZZ", "https://kuvo-ice.streamguys1.com/kuvo-mp3-128"
-    station "RADIO PARADISE",       "https://stream.radioparadise.com/mp3-128"
-    station "SOMAFM GROOVE SALAD",  "https://ice2.somafm.com/groovesalad-128-mp3"
-.assert STATIONS > 0 && STATIONS < 128, error, "the menu counts stations in a byte, with a sign"
-
-; By station: where its name and address are, and the address's length.
-.macro station_table label, name, part
-label:
-    .repeat STATIONS, index
-        .byte part .ident(.sprintf(name, index))
-    .endrepeat
-.endmacro
-station_table station_name_lo, "station_name_%d", <
-station_table station_name_hi, "station_name_%d", >
-station_table station_url_lo, "station_url_%d", <
-station_table station_url_hi, "station_url_%d", >
-station_table station_url_len, "station_url_len_%d", +
+; The stations are tools/gen_screen.py's, in screen.inc: by station, their
+; addresses (station_url_lo, _hi and _len), and where the needle goes
+; (needle_x); and their lines of the middle, which the NMI draws.
+.assert STATIONS > 0 && STATIONS * STATION_LINES < 256, error, "a station's lines are found in a byte"
+.assert STATION_LINES = 4, error, "the NMI finds a station's lines with two shifts"
 
 .segment "CODE"
 
@@ -296,6 +259,11 @@ station_table station_url_len, "station_url_len_%d", +
     sta $0700,x
     inx
     bne @clear
+    lda #$FF                    ; every sprite off the screen
+@hide:
+    sta OAM,x
+    inx
+    bne @hide
 
 @vblank2:
     bit PPUSTATUS
@@ -307,6 +275,7 @@ station_table station_url_len, "station_url_len_%d", +
     inc on_cart
 @alone:
     jsr screen_init             ; rendering is off; the first NMI turns it on
+    jsr set_needle              ; for the first station
     lda #NESP_TUNER_MODE_HIGH   ; the menu, with its first line chosen
     sta mode
     jsr show_area
@@ -357,7 +326,7 @@ main_wait:
     lda palette_data,x
     sta PPUDATA
     inx
-    cpx #16
+    cpx #32                     ; the background's, and the sprites'
     bne @palette
 
     lda #>NAMETABLE
@@ -423,6 +392,43 @@ main_wait:
     lda #1
     sta foot_dirty
 @done:
+    rts
+.endproc
+
+; The needle is to be at the station's frequency, or off the screen for one
+; with none: its sprites in OAM, which the NMI sends.
+.proc set_needle
+    lda #0
+    sta needle_dirty            ; not while it is half made
+    ldy station
+    lda needle_x,y
+    pha
+    ldx #0
+    ldy #0
+@sprite:
+    pla
+    pha
+    sta OAM + 3,x               ; across
+    cmp #NEEDLE_NONE
+    lda #$FF                    ; off the screen, with no frequency
+    bcs @y
+    lda needle_sprite_y,y
+@y:
+    sta OAM,x
+    lda needle_sprite_tile,y
+    sta OAM + 1,x
+    lda #0                      ; the first palette, in front
+    sta OAM + 2,x
+    inx
+    inx
+    inx
+    inx
+    iny
+    cpy #NEEDLE_SPRITES
+    bne @sprite
+    pla
+    lda #1
+    sta needle_dirty
     rts
 .endproc
 
@@ -503,6 +509,7 @@ main_wait:
     lda #0                      ; or from the last to the first
 @turn:
     sta station
+    jsr set_needle
     lda #STATION_ROW            ; its line, and the menu's under it, again
     sta area_row
 @no_turn:
@@ -1024,7 +1031,7 @@ main_wait:
     jsr @status
     lda #0
     sta status_dirty
-    beq @done                   ; a line of the headlines waits for the next frame
+    jmp @done                   ; a line of the headlines waits for the next frame
 @foot:
     lda foot_dirty              ; the foot likewise
     beq @drawn
@@ -1032,10 +1039,24 @@ main_wait:
     jsr @foot_line
     lda #>(FOOT_ADDR - NAMETABLE + NAMETABLE_2)
     jsr @foot_line
+    lda #>HINT_ADDR             ; and over it, the menu's hint or nothing
+    jsr @hint_line
+    lda #>(HINT_ADDR - NAMETABLE + NAMETABLE_2)
+    jsr @hint_line
     lda #0
     sta foot_dirty
     beq @done
 @drawn:
+    lda needle_dirty            ; the needle likewise, as the cartridge's menu
+    beq @middle                 ; sends its sprites
+    lda #0
+    sta OAMADDR
+    lda #>OAM
+    sta OAMDMA
+    lda #0
+    sta needle_dirty
+    beq @done
+@middle:
     ; The middle of the screen, a line a frame, when it is to change.
     ldx area_row
     cpx #NEWS_ROWS
@@ -1051,15 +1072,17 @@ main_wait:
     sta area_ptr
     lda area_hi,y
     sta area_ptr + 1
-    cpx #STATION_ROW            ; the menu's station is the list's
-    bne @line
-    lda area
-    cmp #AREA_BLANK
-    beq @line
-    ldy station
-    lda station_name_lo,y
+    lda station_field,x         ; a line of the station's own, whatever the area
+    bmi @line
+    sta area_ptr                ; which of them, for a moment
+    lda station
+    asl a
+    asl a
+    ora area_ptr
+    tay
+    lda station_row_lo,y
     sta area_ptr
-    lda station_name_hi,y
+    lda station_row_hi,y
     sta area_ptr + 1
 @line:
     lda area_screen_hi,x
@@ -1081,7 +1104,7 @@ main_wait:
     lda #0
     sta PPUSCROLL
     sta PPUSCROLL
-    lda #PPUMASK_BACKGROUND
+    lda #PPUMASK_ON
     sta PPUMASK
     inc frame_count
     nesp_nmi_hook
@@ -1115,6 +1138,24 @@ main_wait:
     inx
     dey
     bne @tile
+    rts
+@hint_line:
+    sta PPUADDR
+    lda #<HINT_ADDR
+    sta PPUADDR
+    ldx #0                      ; the menu's feet have the hint
+    lda foot
+    cmp #FOOT_PLAIN
+    bcc @hint
+    ldx #HINT_WIDTH             ; and the others the nothing after it
+@hint:
+    ldy #HINT_WIDTH
+@hint_tile:
+    lda hint_text,x
+    sta PPUDATA
+    inx
+    dey
+    bne @hint_tile
     rts
 .endproc
 

@@ -78,7 +78,7 @@ FIRST = int(1.5 * PERIOD - gen_pcm.MEAN_EDGE - gen_pcm.ROOMY_HUNT_TO_CODE
 
 ROWS = 9
 COLUMNS = 28
-NEWS_ROW = 10                           # on the screen
+NEWS_ROW = 16                           # on the screen, under the dial
 NEWS_COLUMN = 2
 STAGE = 0x0300
 NAMETABLES = (0x2000, 0x2800)

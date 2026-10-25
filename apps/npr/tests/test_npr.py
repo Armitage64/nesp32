@@ -291,13 +291,22 @@ def test_a_console_that_is_reset_in_a_sound_is_heard_and_greeted_again(radio, to
 
 # --- the menu ----------------------------------------------------------------------------
 
-NPR = gen_screen.station_line("NPR")
-HINT = gen_screen.HINT.center(28).rstrip()
-MENU = [NPR, "", "> HIGH QUALITY, NO HEADLINES", "", "  MED QUALITY, HEADLINE NEWS", "", "", HINT,
-        ""]
-MENU_NEWS = [NPR, "", "  HIGH QUALITY, NO HEADLINES", "", "> MED QUALITY, HEADLINE NEWS", "", "",
-             HINT, ""]
-BLANK = [""] * 9
+SCREEN = gen_screen.build_screen()
+STATION = {station[0]: index for index, station in enumerate(gen_screen.STATIONS)}
+
+
+def station_middle(station=0, area=0):
+    """The middle as the ROM draws it: the station's own lines, its letters
+    big and where it is and what it plays, over the area's."""
+    lines = list(gen_screen.areas()[area])
+    for index, row in enumerate(gen_screen.STATION_LINES):
+        lines[row] = SCREEN.station_rows[station][index].decode("latin-1")
+    return [line.rstrip() for line in lines]
+
+
+MENU = station_middle(0, 0)
+MENU_NEWS = station_middle(0, 1)
+BLANK = station_middle(0, 2)        # a station tuned in: the menu is off, the station's lines stay
 
 
 def middle(machine):
@@ -367,8 +376,8 @@ def urls(machine):
 
 
 @pytest.mark.parametrize("button, name, url", [
-    (PAD_RIGHT, "WNYC 93.9 NEW YORK", "https://fm939.wnyc.org/wnycfm"),
-    (PAD_LEFT, "SOMAFM GROOVE SALAD", "https://ice2.somafm.com/groovesalad-128-mp3"),
+    (PAD_RIGHT, "WNYC", "https://fm939.wnyc.org/wnycfm"),
+    (PAD_LEFT, "SOMAFM", "https://ice2.somafm.com/groovesalad-128-mp3"),
 ])
 def test_left_and_right_go_round_the_stations_and_start_plays_the_one_shown(radio, button, name,
                                                                             url):
@@ -376,7 +385,7 @@ def test_left_and_right_go_round_the_stations_and_start_plays_the_one_shown(radi
     machine.until(lambda: machine.off, limit=60)
     machine.press(button)
     machine.wait(12)
-    assert middle(machine) == [gen_screen.station_line(name).rstrip()] + MENU[1:]
+    assert middle(machine) == station_middle(STATION[name])
     machine.press(PAD_START)
     machine.until(lambda: machine.stick.fetches == 1, limit=30)
     assert machine.stick.fetch_url == url
@@ -395,7 +404,39 @@ def test_the_list_goes_round_both_ways(radio):
     assert middle(machine) == MENU
     turn(machine, PAD_LEFT, PAD_RIGHT, PAD_RIGHT)       # past the last, the first
     machine.wait(12)
-    assert middle(machine)[0] == gen_screen.station_line("WNYC 93.9 NEW YORK").rstrip()
+    assert middle(machine) == station_middle(STATION["WNYC"])
+
+
+OAM, OAMDMA = 0x0400, 0x4014
+
+
+def needle(machine):
+    """The needle's sprites as OAM has them: (y, tile, attributes, x)."""
+    return [tuple(machine.memory[OAM + 4 * index + part] for part in range(4))
+            for index in range(3)]
+
+
+def test_the_dial_s_needle_is_at_the_station_s_frequency_or_off_the_screen(radio):
+    machine = radio()
+    dmas = []
+    machine.memory.subscribe_to_write([OAMDMA], lambda address, value: dmas.append(value))
+    machine.until(lambda: machine.off, limit=60)
+    machine.wait(gen_news.ROWS + 5)                                 # the screen drawn
+    assert all(y == 0xFF for y, _, _, _ in needle(machine))        # NPR: on the Internet only
+    assert machine.byte("needle_dirty") == 0                       # sent
+    sent = len(dmas)
+    turn(machine, PAD_RIGHT)                                        # WNYC, 93.9
+    machine.wait(2)
+    tile, end = SCREEN.needle
+    x = gen_screen.needle_x(gen_screen.STATIONS[STATION["WNYC"]])
+    assert x == gen_screen.scale_x(93.9) - 3
+    assert needle(machine) == [(gen_screen.NEEDLE_TOP - 1, tile, 0, x),
+                               (gen_screen.NEEDLE_TOP + 7, tile, 0, x),
+                               (gen_screen.NEEDLE_TOP + 15, end, 0, x)]
+    assert dmas[sent:] == [OAM >> 8] and machine.byte("needle_dirty") == 0
+    turn(machine, PAD_LEFT)
+    machine.wait(2)
+    assert all(y == 0xFF for y, _, _, _ in needle(machine))
 
 
 def test_a_long_address_goes_in_pieces_and_the_station_plays_with_the_headlines(radio, tone):
@@ -405,7 +446,7 @@ def test_a_long_address_goes_in_pieces_and_the_station_plays_with_the_headlines(
     turn(machine, *[PAD_RIGHT] * 4)
     machine.press(PAD_DOWN)
     machine.wait(12)
-    assert middle(machine)[0] == gen_screen.station_line("KUSC 91.5 LOS ANGELES").rstrip()
+    assert middle(machine) == station_middle(STATION["KUSC"], 1)
     machine.press(PAD_START)
     machine.until(lambda: machine.stick.fetches == 1, limit=30)
     assert machine.stick.fetch_url == NEWS_URL          # NPR's headlines, whatever the station
@@ -684,6 +725,12 @@ def test_a_console_left_in_the_sound_is_freed_by_a_nesp32_starting_up(radio, ton
 # --- the foot, and B -----------------------------------------------------------------
 
 
+def hint(machine, nametable=None):
+    """What is over the foot."""
+    return machine.screen_text(gen_screen.HINT_COLUMN, gen_screen.HINT_ROW, gen_screen.HINT_WIDTH,
+                               nametable)
+
+
 def test_the_foot_has_pictures_for_play_and_pause_and_on_the_air_says_a_stops(radio, tone):
     screen = gen_screen.build_screen()
     tiles = screen.chr()
@@ -695,7 +742,9 @@ def test_the_foot_has_pictures_for_play_and_pause_and_on_the_air_says_a_stops(ra
     machine = radio()
     machine.until(lambda: machine.off, limit=60)
     assert machine.foot() == "A : SELECT"       # the menu's says what A does there
+    assert hint(machine) == hint(machine, 0x2800) == gen_screen.HINT    # over it, the station
     on_air(machine, tone)
+    assert hint(machine).strip() == hint(machine, 0x2800).strip() == ""  # which a station has not
     raw = machine.screen_text(gen_screen.FOOT_COLUMN, gen_screen.gen_ui.HELP_ROW,
                               gen_screen.FOOT_WIDTH)
     assert raw.strip() == "A : STOP"
@@ -723,7 +772,7 @@ def test_b_while_tuning_is_the_menu_again(radio, tone):
     machine.until(lambda: machine.off, limit=30)
     assert machine.asked(p.NESP_TUNER_STOP) == 1 and not machine.stick.fetching
     machine.wait(gen_news.ROWS + 5)
-    assert machine.page()[gen_screen.MENU_ROWS[1]] == "> " + gen_screen.MENU[1]
+    assert machine.page()[gen_screen.QUALITY_ROW] == gen_screen.QUALITY[1]
     assert machine.foot() == FOOT["SELECT"]
 
 
