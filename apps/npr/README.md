@@ -72,7 +72,7 @@ make test
 With the nesp32 on a Wi-Fi network (the [setup ROM](../setup) joins one)
 and on controller port 2, start `build/npr.nes`. The screen's header is
 nesp32's, with `NESRADIO` under the name; the nesp32's own
-screen calls the program `NPR`. The foot of the screen says what A and B
+screen calls the program `NESradio`. The foot of the screen says what A and B
 do: on the menu `A : SELECT`, and with a station `A : STOP`. Over it, on
 the menu, is `< / > : SELECT STATION`.
 
@@ -164,8 +164,8 @@ when nothing answers, `UPDATE NESP32` when the firmware there has no TUNER,
 lost (`THE SITE DID NOT ANSWER`, `THE CONNECTION DROPPED`). Start tries
 again.
 
-The nesp32's screen shows `NPR` and how it stands; while the station
-plays, `ON THE AIR`. How its ring fares is in its log, on the USB serial
+The nesp32's screen shows the station, `NPR` for NPR's and `RADIO` for
+any other, and how it stands; while the station plays, `ON THE AIR`. How its ring fares is in its log, on the USB serial
 port, every two seconds while the station plays:
 
 ```
