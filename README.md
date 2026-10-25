@@ -35,11 +35,13 @@ to be configured from the NES itself.
 
 - [NESP32 Home Page](https://nesp32.retrobits.tv/)
 
-- [Purchase the M5 StickS3](https://amzn.to/3TVUV0y)
+- [Purchase the M5 StickS3](https://amzn.to/3TVUV0y)*
 
-- [PCB Gerber Files](hardware/)
+- [Hardware Requirements and Gerber Files](hardware/)
 
 - [Online Firmware Installer](https://nesp32.retrobits.tv/flash/)
+
+\* Generic ESP32 boards can be used as well.
 
 ## NESP32 needs YOU
 
