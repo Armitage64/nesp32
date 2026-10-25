@@ -374,6 +374,14 @@ main_wait:
     sta text_ptr
     lda status_hi,x
     sta text_ptr + 1
+    cpx #STATUS_ON_AIR          ; on the air, it says which station
+    bne @said
+    ldy station
+    lda station_on_air_lo,y
+    sta text_ptr
+    lda station_on_air_hi,y
+    sta text_ptr + 1
+@said:
     lda #1
     sta status_dirty
 @done:

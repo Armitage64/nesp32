@@ -133,7 +133,8 @@ the MP3, which the nesp32 takes out before decoding. With the menu's
 second line, each title that is new is laid out as a page: `NOW PLAYING`,
 and under it the artist and the song, split at the title's first ` - `,
 on up to three lines each, or a title with no ` - ` on seven, every line
-centered under the dial.
+centered under the dial. The status line over the dial names the station while it plays:
+`ON THE AIR: KEXP 90.3`, or `ON THE AIR: NPR` for one with no frequency.
 
 The page is on the screen about half a second after the sound begins, and
 a new one about half a second after the station's title changes. Paused,

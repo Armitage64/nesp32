@@ -97,6 +97,13 @@ STATIONS = (
 URL_MAX = 255           # NESP_TUNER_URL_MAX, which the ROM asserts
 
 
+def on_air(station):
+    """The status line for a station that is on the air: which one it is,
+    since what it is playing takes the middle of the screen."""
+    letters, freq, city, genre, url = station
+    return "ON THE AIR: " + letters + (" %.1f" % freq if freq is not None else "")
+
+
 def where(station):
     letters, freq, city, genre, url = station
     return ("%.1f FM" % freq if freq is not None else "INTERNET") + "  " + city
@@ -334,6 +341,14 @@ def screen_include(screen):
             "%s(station_url_%d)" % (part, index) for index in range(len(STATIONS))))
     lines.append("station_url_len: .byte " + ", ".join(
         "%d" % len(station[4]) for station in STATIONS))
+    # The status line on the air, by station, as wide as the line.
+    for index, station in enumerate(STATIONS):
+        text = on_air(station)
+        assert len(text) <= STATUS_WIDTH
+        lines.append("station_on_air_%d: .byte \"%s\"" % (index, text.center(STATUS_WIDTH)))
+    for label, part in (("station_on_air_lo", "<"), ("station_on_air_hi", ">")):
+        lines.append(label + ": .byte " + ", ".join(
+            "%s(station_on_air_%d)" % (part, index) for index in range(len(STATIONS))))
     lines.append("needle_x: .byte " + ", ".join(
         "$%02X" % needle_x(station) for station in STATIONS))
     tops = [NEEDLE_TOP + 8 * index - 1 for index in range(3)]     # OAM's Y is a line early
@@ -389,7 +404,7 @@ def main(argv=None):
         gen_ui.write_png(args.preview, preview(menu, 1))
         # And KEXP playing in the second mode: a page.
         playing = screen.copy()
-        playing.centered(STATUS_ROW, "ON THE AIR")
+        playing.centered(STATUS_ROW, on_air(STATIONS[3]))
         playing.text(FOOT_COLUMN, gen_ui.HELP_ROW,
                      foot_tiles(dict(FOOT_TEXT)["PLAIN"], screen).decode("latin-1"))
         for row, text in enumerate(SAMPLE):

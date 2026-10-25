@@ -31,6 +31,7 @@ RATE = pcm.sample_rate(PERIOD)
 SAMPLE_CYCLES = PERIOD * pcm.FRAME_BITS         # a byte on the line
 TONE_HZ, TONE_LEVEL = 1000, 0.475               # nesp32's tests/fixtures/README.md
 FOOT = dict(gen_screen.FOOT_TEXT)
+ON_AIR = gen_screen.on_air(gen_screen.STATIONS[0])     # the status line: NPR's, with no frequency
 
 
 @pytest.fixture
@@ -150,7 +151,7 @@ def test_firmware_older_than_the_rom_is_told_apart_from_none(radio):
 
 def test_the_station_plays_on_the_dac(radio, tone):
     machine = on_air(radio(), tone)
-    assert machine.status == "ON THE AIR"       # said before the screen stood still
+    assert machine.status == ON_AIR       # said before the screen stood still
     assert machine.asked(p.NESP_TUNER_SOUND) == 1
     machine.advance(ms(700))
     assert machine.deaf
@@ -227,7 +228,7 @@ def test_a_held_down_does_not_end_the_sound_as_it_begins(radio, tone):
     machine.pad = PAD_A                         # tuned in with A, which stays down
     machine.until(lambda: machine.stick.fetches == 1, limit=30)
     machine.air(tone)
-    machine.until(lambda: machine.status == "ON THE AIR", limit=60)
+    machine.until(lambda: machine.status == ON_AIR, limit=60)
     machine.wait(30)
     assert not machine.deaf and machine.asked(p.NESP_TUNER_SOUND) == 0
     machine.pad = 0
@@ -438,6 +439,16 @@ def test_the_dial_s_needle_is_at_the_station_s_frequency_or_off_the_screen(radio
     assert all(y == 0xFF for y, _, _, _ in needle(machine))
 
 
+def test_on_the_air_the_status_line_names_the_station(radio, tone):
+    machine = radio()
+    machine.until(lambda: machine.off, limit=60)
+    turn(machine, PAD_RIGHT, PAD_RIGHT, PAD_RIGHT)      # KEXP
+    on_air(machine, tone)
+    assert machine.status == "ON THE AIR: KEXP 90.3" and ON_AIR == "ON THE AIR: NPR"
+    assert machine.screen_text(gen_screen.STATUS_COLUMN, gen_screen.STATUS_ROW,
+                               gen_screen.STATUS_WIDTH, 0x2800).strip() == machine.status
+
+
 def test_a_long_address_goes_in_pieces_and_the_station_plays_with_its_titles(radio, tone):
     url = "https://playerservices.streamtheworld.com/api/livestream-redirect/KUSCMP128.mp3"
     machine = radio()
@@ -562,7 +573,7 @@ def vblanks(machine):
 
 def test_the_station_with_its_titles_plays_at_its_own_rate(radio, tone, title):
     machine = news_on_air(radio(), tone, title)
-    assert machine.status == "ON THE AIR"
+    assert machine.status == ON_AIR
     assert [bytes(payload) for service, op, payload in machine.requests()
             if (service, op) == (TUNER, p.NESP_TUNER_SOUND)] == [bytes((p.NESP_TUNER_NEWS_RATE,))]
     machine.advance(ms(900))
@@ -582,7 +593,7 @@ def test_the_title_comes_with_the_sound_and_is_drawn_out_of_sight(radio, tone, t
     assert middle(machine) == BLANK and machine.shown == 0x2000
     machine.read_log = []
     assert shown_page(machine) == NOW_PLAYING and machine.shown == 0x2800
-    assert machine.status == "ON THE AIR"       # the header and the status line are on both
+    assert machine.status == ON_AIR       # the header and the status line are on both
     assert machine.nametable(0x2800)[:32 * 10] == machine.nametable(0x2000)[:32 * 10]
     assert [line.rstrip() for line in machine.page(0x2000)] == BLANK
 
@@ -644,7 +655,7 @@ def test_the_titles_come_from_a_nesp32_whose_clock_is_1_percent_off(radio, tone,
 def test_with_no_titles_the_station_plays_all_the_same(radio, tone):
     machine = news_on_air(radio(), tone)        # a stream that has none
     machine.advance(ms(900))
-    assert machine.deaf and machine.status == "ON THE AIR"
+    assert machine.deaf and machine.status == ON_AIR
     assert middle(machine) == BLANK and not machine.ppu_writes and not machine.ppu_strays
     levels = played(machine)
     sent = pcm.decode(machine.port.runs[-1][2])
