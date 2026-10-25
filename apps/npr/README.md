@@ -74,11 +74,12 @@ and on controller port 2, start `build/npr.nes`. The screen's header is
 nesp32's, with `NESRADIO` under the name; the nesp32's own
 screen calls the program `NESradio`. The foot of the screen says what A and B
 do: on the menu `A : PLAY`, and with a station `A : STOP`. Over it, on
-the menu, is `< / > : SELECT STATION`.
+the menu, are `< / > : CHOOSE STATION` and the quality: `SELECT : 23kHz`,
+or `SELECT : 12kHz + INFO` with what is playing.
 
 | | |
 |---|---|
-| **Up**, **Down** or **Select**, before a station is tuned in | the other quality: `HIGH`, or `MED+INFO` with what is playing |
+| **Select**, before a station is tuned in | the other quality: `23kHz`, or `12kHz + INFO` with what is playing |
 | **Left** or **Right**, before a station is tuned in | the station before or after, and the dial's needle with it, round from the last to the first |
 | **Start** or **A** on the controller | tune in, as the menu says: `TUNING`, and a second or two later `ON THE AIR`. Pressed again while it is tuning, give it up |
 | **A** on the controller, while the station plays | turn it off, and back to the menu: the nesp32 stops fetching it |

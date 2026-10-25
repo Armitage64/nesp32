@@ -23,13 +23,14 @@
 ;   TUNER SOUND     the station is ready, the screen says so, and A is up
 ;   TUNER STATE     otherwise: how it stands, for the status line
 ;
-; There are two modes, and a menu in the middle of the screen to choose
+; There are two modes, and a line over the foot of the screen to choose
 ; between them for as long as no station is tuned in: the station at 23244
 ; samples a second and nothing else, or at 11622 with what it is playing,
 ; from the titles in its stream (the nesp32's pages: "the headlines" below).
-; Up, Down and Select move between them. Over them is the station, from the
-; list in screen.inc (tools/gen_screen.py), which Left and Right go through;
-; the nesp32 is sent its address, and fetches whatever MP3 stream that is.
+; Select moves between them. In the middle of the screen is the station,
+; from the list in screen.inc (tools/gen_screen.py), which Left and Right
+; go through; the nesp32 is sent its address, and fetches whatever MP3
+; stream that is.
 ; The station's own lines
 ; of the middle, its letters, where it is and what it plays, are on it
 ; whatever else is, and a radio's dial over it has a needle at its
@@ -38,8 +39,8 @@
 ;
 ; The foot of the screen says what A and B do, and changes with them: B is
 ; read only with the NMI on, so a station's foot says nothing of it while
-; it plays (FOOT_* in screen.inc). Over the menu's feet is what changes the
-; station, which the NMI draws with them, and takes off with the others.
+; it plays (FOOT_* in screen.inc). Over the menu's feet is the mode, which
+; the NMI draws with them, and takes off with the others.
 ;
 ; When SOUND is answered with GO the console does nothing but receive: the
 ; NMI is off, the screen stands still, and of the controller only button A
@@ -92,7 +93,7 @@ OAM       = $0400               ; the sprites, for the DMA: the needle's, and th
 PAD_START = $10
 PAD_B     = $40
 PAD_A     = $80
-PAD_MOVE  = $2C                 ; Select, Up and Down: the menu's other choice
+PAD_MOVE  = $20                 ; Select: the menu's other mode
 PAD_LEFT  = $02
 PAD_RIGHT = $01
 
@@ -111,7 +112,8 @@ NESP_TX_MAX  = 1 + URL_PIECE    ; where they go, and they
 .define NESP_APP "NPR "
 NESP_APP_VERSION = 1
 
-AREA_BLANK = 2                  ; area: 0 and 1 are the menu, with that mode chosen
+AREA_MENU  = 0                  ; area: the menu
+AREA_BLANK = 1                  ; and nothing, a station's
 
 TUNER_UNKNOWN = $FF             ; tuner: the nesp32 has not said how it stands
 PRESS_TRIES = 30                ; frames a press is sent for before it is given up
@@ -151,7 +153,7 @@ link_failed:  .res 2            ; every exchange with none, for a debugger's wat
 sounds:       .res 1            ; times the sound has played, likewise
 why_buf:      .res 28           ; the nesp32's words for a station that failed
 mode:         .res 1            ; NESP_TUNER_MODE_*: the menu's choice
-moved:        .res 1            ; Select, Up or Down went down: the main loop's to act on
+moved:        .res 1            ; Select went down: the main loop's to act on
 area:         .res 1            ; what the middle of the screen is to show: AREA_*
 area_row:     .res 1            ; lines of it that are on the screen: NEWS_ROWS is all
 backed:       .res 1            ; B went down: the main loop's to act on
@@ -175,7 +177,7 @@ needle_dirty: .res 1            ; the needle has moved, and OAM is not the scree
 .assert NESP_TUNER_TEXT_MAX + 1 <= NESP_RX_MASK, error, "a reply must fit its buffer"
 .assert NESP_TUNER_NEWS_RATE = NEWS_RATE, error, "news_stream is at the headlines' rate"
 .assert NEWS_ROWS = NESP_TUNER_NEWS_ROWS && NEWS_COLUMNS = NESP_TUNER_NEWS_COLUMNS, error, "a page is the nesp32's"
-.assert NESP_TUNER_MODE_HIGH = 0 && NESP_TUNER_MODE_NEWS = 1, error, "mode is the menu's line"
+.assert NESP_TUNER_MODE_HIGH = 0 && NESP_TUNER_MODE_NEWS = 1, error, "mode is quality_text's line"
 pcm_stream = .ident(.sprintf("pcm_stream_%d", NESP_TUNER_RATE))    ; the station alone
 
 ; wait_unit is 2306 cycles. A run of RAW's is listened for from
@@ -277,8 +279,9 @@ foot_place:
 @alone:
     jsr screen_init             ; rendering is off; the first NMI turns it on
     jsr set_needle              ; for the first station
-    lda #NESP_TUNER_MODE_HIGH   ; the menu, with its first line chosen
+    lda #NESP_TUNER_MODE_HIGH   ; the menu, with the first mode chosen
     sta mode
+    lda #AREA_MENU
     jsr show_area
     lda #TUNER_UNKNOWN
     sta tuner
@@ -497,9 +500,11 @@ main_wait:
     lda area                    ; only while the menu is on the screen
     cmp #AREA_BLANK
     beq @no_move
+    lda mode
     eor #1
     sta mode
-    jsr show_area
+    lda #1                      ; which the NMI draws with the foot
+    sta foot_dirty
 @no_move:
     lda turned
     beq @no_turn
@@ -841,18 +846,17 @@ main_wait:
     beq @want
     cmp #NESP_TUNER_PAUSED
     beq @want
-    ldx mode
+    ldx #AREA_MENU
 @want:
     txa
-    eor area
-    cmp #AREA_BLANK             ; the menu for the blank, or the blank for the menu?
-    bcc @done                   ; neither: a paused station's page stays, and the menu
-    txa
+    cmp area                    ; the menu for the blank, or the blank for the menu?
+    beq @done                   ; neither: a paused station's page stays, and the menu
     jsr show_area
 @done:
     jmp pick_foot
 .endproc
-.assert AREA_BLANK = 2, error, "tuned_or_not tells the menu's two from the blank by bit 1"
+
+.assert QUALITY_HIGH_RATE = NESP_TUNER_RATE && QUALITY_NEWS_RATE = NESP_TUNER_NEWS_RATE, error, "the rates quality_text says"
 
 ; The middle of the screen is to show A (AREA_*), from its first line, on
 ; the first nametable, which is the one shown from now on.
@@ -1048,10 +1052,10 @@ main_wait:
     jsr @foot_line
     lda #>(FOOT_ADDR - NAMETABLE + NAMETABLE_2)
     jsr @foot_line
-    lda #>HINT_ADDR             ; and over it, the menu's hint or nothing
-    jsr @hint_line
-    lda #>(HINT_ADDR - NAMETABLE + NAMETABLE_2)
-    jsr @hint_line
+    lda #>QUALITY_ADDR          ; and over it, the menu's mode or nothing
+    jsr @quality_line
+    lda #>(QUALITY_ADDR - NAMETABLE + NAMETABLE_2)
+    jsr @quality_line
     lda #0
     sta foot_dirty
     beq @done
@@ -1148,23 +1152,27 @@ main_wait:
     dey
     bne @tile
     rts
-@hint_line:
+@quality_line:
     sta PPUADDR
-    lda #<HINT_ADDR
+    lda #<QUALITY_ADDR
     sta PPUADDR
-    ldx #0                      ; the menu's feet have the hint
+    ldx #0                      ; the menu's feet have the mode's line
+    lda mode
+    beq @first
+    ldx #QUALITY_WIDTH
+@first:
     lda foot
     cmp #FOOT_PLAIN
-    bcc @hint
-    ldx #HINT_WIDTH             ; and the others the nothing after it
-@hint:
-    ldy #HINT_WIDTH
-@hint_tile:
-    lda hint_text,x
+    bcc @quality
+    ldx #2 * QUALITY_WIDTH      ; and the others the nothing after the two
+@quality:
+    ldy #QUALITY_WIDTH
+@quality_tile:
+    lda quality_text,x
     sta PPUDATA
     inx
     dey
-    bne @hint_tile
+    bne @quality_tile
     rts
 .endproc
 
