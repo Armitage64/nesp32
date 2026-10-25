@@ -1,5 +1,5 @@
 # NESP32 Hat
-This PCB connects the M5 StickS3 to controller port 2 of the NES for bidirectional serial communication.
+This PCB connects the M5 StickS3 (and StickC-Plus2) to controller port 2 of the NES for bidirectional serial communication.
 
 ## Purpose
 The StickS3 used by the NESP32 is already capable of serial communication on its GPIO header. The ESP32 uses 3.3V signalling while the NES uses 5V. This hat shifts the levels between both devices and is designed to fit in the footprint of the M5 Proto Hat's enclosure.
