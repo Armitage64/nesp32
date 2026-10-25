@@ -21,20 +21,20 @@
  * says hello into the run in the same way, and then again when the run is
  * over, which turns the station off. The nesp32's front button stops it.
  *
- * With the headlines, they come first: NPR's news feed is fetched and laid
- * out as pages (news.c) before the station's stream is asked for, since the
- * nesp32 fetches one thing at a time, and a station's stream never ends.
- * A feed that cannot be had is no
- * headlines, and the station plays without.
+ * The stream is asked for its titles (ICY): a station that has them puts
+ * a block of text in the stream every so many bytes, which says what it
+ * is playing, and those are taken out before the decoder sees them. A
+ * title that is new is laid out as a page (news.c).
  *
  * PLAY says which of two modes: the station at 23244 samples a second and
- * nothing else, or at 11622 with the headlines, which leaves the console
- * the cycles to draw them in. With the headlines, they go to the console
- * in the samples themselves: the DAC takes seven bits of a byte, and the
- * eighth, which says "more to come" in the other mode, carries a
- * character to every eight samples. A page goes at the start of a run and
- * every half minute after, the console draws it when it has it whole, and
- * a character of its own ends the run.
+ * nothing else, or at 11622 with what it is playing, which leaves the
+ * console the cycles to draw it. The page goes to the console in the
+ * samples themselves: the DAC takes seven bits of a byte, and the eighth,
+ * which says "more to come" in the other mode, carries a character to
+ * every eight samples. The latest page goes at the start of a run and
+ * again whenever the title changes, the console draws it when it has it
+ * whole, and a character of its own ends the run. A station with no
+ * titles sends no page, and the console's screen keeps the station.
  *
  * Nothing keeps the station's clock and the console's together. The ring
  * is the slack: when the station runs ahead and the ring fills, its oldest
@@ -55,7 +55,6 @@
 #include "nesp_services.h"
 
 #define STATION "https://npr-ice.streamguys1.com/live.mp3"
-#define NEWS "https://feeds.npr.org/1001/rss.xml"
 #define STATION_NAME "NPR"         /* on the nesp32's screen, for that one; any other is */
 #define OTHER_NAME "RADIO"
 #define AGENT "nesp32-npr/0.1 (NPR on a NES, on a nesp32; +https://github.com/Armitage64/nesp32)"
@@ -69,7 +68,7 @@
 #define DROP_SAMPLES(tuner) RATE(tuner)     /* dropped from a ring that is full */
 #define RAMP_SAMPLES(tuner) (RATE(tuner) / 50u)     /* 20 ms from the DAC's rest, and back */
 #define SPOKE_SAMPLES(tuner) (2u * RATE(tuner))     /* bytes from the console count together within this */
-#define TURN_SAMPLES(tuner) (RATE(tuner) * (NESP_TUNER_NEWS_TURN_MS / 1000u))
+#define GAP_SAMPLES(tuner) (2u * RATE(tuner))     /* at least, from one page to the next */
 #define LEAD_CHARS 8                /* of nothing, before a run's first page */
 #define TRAIL_SAMPLES 4             /* after the character that ends a run: the console is a sample behind */
 #define SHOW_MS 1000
@@ -89,6 +88,9 @@
 #define STEPS 1024                  /* places between silence's two ends a sample is rounded to */
 #define MORE 0x80                   /* in what the console holds for every byte but the last */
 #define OUT 256
+#define META_MAX 512                /* of a block of titles: the title is at its start */
+#define TITLE_KEY "StreamTitle='"
+#define TITLE_END "';"
 
 static const uint32_t rings[] = {256 * 1024, 128 * 1024, 64 * 1024};
 
@@ -114,6 +116,19 @@ struct nesp_tuner_work {
     uint8_t level[STEPS];           /* the DAC's level for each place */
     uint8_t out[OUT];               /* levels on their way to the ring */
     size_t out_len;
+    /* The stream's titles (ICY): every `every` bytes of sound, a byte
+     * that is their length in 16s, and that many bytes of them. */
+    uint32_t icy_id;                /* the fetch `every` was said of */
+    uint32_t every;                 /* 0: the stream has none */
+    uint32_t sound_left;            /* bytes of sound before the next block */
+    uint32_t meta_left;             /* of the block under way */
+    bool in_meta;                   /* a block, or its length, is next */
+    bool meta_len;                  /* its length is the next byte */
+    size_t meta_used;
+    uint8_t meta[META_MAX];
+    uint8_t last[META_MAX];         /* the last title, as it came */
+    size_t last_len;
+    nesp_page_t page;
 };
 
 static void lock(nesp_tuner_t *tuner)
@@ -283,6 +298,53 @@ static bool current(nesp_tuner_t *tuner, uint32_t id)
     return same;
 }
 
+/* How far apart the stream's titles are, before any of its body. */
+static void icy(void *ctx, uint32_t id, uint32_t metaint)
+{
+    nesp_tuner_t *tuner = ctx;
+    struct nesp_tuner_work *work = tuner->work;
+    if (work != NULL) {
+        work->icy_id = id;
+        work->every = metaint;
+    }
+}
+
+/* A block of titles is whole: a page of its title, if that is new and not
+ * empty, for the run to send. */
+static void titled(nesp_tuner_t *tuner, struct nesp_tuner_work *work, uint32_t id)
+{
+    const uint8_t *at = work->meta;
+    size_t len = work->meta_used;
+    size_t key = sizeof(TITLE_KEY) - 1;
+    size_t start = 0;
+    while (start + key <= len && memcmp(at + start, TITLE_KEY, key) != 0) {
+        start++;
+    }
+    if (start + key > len) {
+        return;
+    }
+    start += key;
+    size_t end = start;     /* the title may have a ' in it: it ends at "';" */
+    while (end < len && !(at[end] == '\'' && (end + 1 == len || at[end + 1] == ';'))) {
+        end++;
+    }
+    size_t title = end - start;
+    if (title == 0 || (title == work->last_len && memcmp(work->last, at + start, title) == 0)) {
+        return;
+    }
+    memcpy(work->last, at + start, title);
+    work->last_len = title;
+    uint8_t text[META_MAX];
+    memcpy(text, at + start, title);
+    nesp_news_title(work->page, text, title);
+    lock(tuner);
+    if (tuner->generation == id) {
+        memcpy(tuner->title_page, work->page, sizeof(nesp_page_t));
+        tuner->titles++;
+    }
+    unlock(tuner);
+}
+
 static bool body(void *ctx, uint32_t id, const uint8_t *data, size_t len)
 {
     nesp_tuner_t *tuner = ctx;
@@ -300,33 +362,53 @@ static bool body(void *ctx, uint32_t id, const uint8_t *data, size_t len)
         if (!work->levelled) {
             make_levels(work);
         }
+        if (work->icy_id != id) {
+            work->every = 0;
+        }
+        work->sound_left = work->every;
+        work->in_meta = false;
+        work->last_len = 0;
     }
-    nesp_mp3_feed(&work->mp3, data, len, frame, work);
+    if (work->every == 0) {
+        nesp_mp3_feed(&work->mp3, data, len, frame, work);
+        return true;
+    }
+    /* Sound, and the titles' blocks between, taken out. */
+    while (len != 0) {
+        if (!work->in_meta) {
+            size_t count = len < work->sound_left ? len : work->sound_left;
+            nesp_mp3_feed(&work->mp3, data, count, frame, work);
+            data += count;
+            len -= count;
+            work->sound_left -= (uint32_t)count;
+            if (work->sound_left == 0) {
+                work->in_meta = true;
+                work->meta_len = true;
+            }
+        } else if (work->meta_len) {
+            work->meta_left = 16u * data[0];
+            work->meta_used = 0;
+            work->meta_len = false;
+            data++;
+            len--;
+        } else {
+            size_t count = len < work->meta_left ? len : work->meta_left;
+            size_t room = META_MAX - work->meta_used;
+            memcpy(work->meta + work->meta_used, data, count < room ? count : room);
+            work->meta_used += count < room ? count : room;
+            data += count;
+            len -= count;
+            work->meta_left -= (uint32_t)count;
+        }
+        if (work->in_meta && !work->meta_len && work->meta_left == 0) {
+            if (work->meta_used != 0) {
+                titled(tuner, work, id);
+            }
+            work->in_meta = false;
+            work->sound_left = work->every;
+        }
+    }
     return true;
-}
-
-/* The headlines' feed, as it comes. */
-static bool news_body(void *ctx, uint32_t id, const uint8_t *data, size_t len)
-{
-    nesp_tuner_t *tuner = ctx;
-    if (!current(tuner, id)) {
-        return false;
-    }
-    nesp_news_feed(&tuner->news, data, len);
-    return tuner->news.count < NESP_TUNER_NEWS_PAGES;   /* the rest of it is not wanted */
-}
-
-/* However it ended: what was laid out is what there is. */
-static void news_done(void *ctx, uint32_t id, bool ok, const char *why)
-{
-    nesp_tuner_t *tuner = ctx;
-    (void)ok;
-    (void)why;
-    lock(tuner);
-    if (tuner->generation == id) {
-        tuner->news_landed = true;
-    }
-    unlock(tuner);
 }
 
 /* A station's stream has no end: one that ends, however it ends, is lost. */
@@ -373,9 +455,7 @@ static void forget(nesp_tuner_t *tuner)
     tuner->generation++;            /* a fetch still on its way adds nothing */
     tuner->head = tuner->held = 0;
     tuner->landed = 0;
-    tuner->news_landed = false;
     unlock(tuner);
-    tuner->news_wanted = false;
 }
 
 static void stop(nesp_tuner_t *tuner)
@@ -395,8 +475,7 @@ static void fail(nesp_tuner_t *tuner, const char *why)
 
 static void tune(nesp_tuner_t *tuner);
 
-/* Start on the station: its stream, or with the headlines their feed, and
- * then it. */
+/* Start on the station's stream. */
 static void play(nesp_tuner_t *tuner, uint8_t mode)
 {
     nesp_wifi_t wifi;
@@ -413,49 +492,35 @@ static void play(nesp_tuner_t *tuner, uint8_t mode)
         return;
     }
     lock(tuner);
-    uint32_t id = tuner->generation;
     tuner->dropped = 0;
     unlock(tuner);
     tuner->dry = 0;
     tuner->mode = mode;
     memcpy(tuner->tuned, tuner->url, sizeof(tuner->tuned));
     tuner->period = mode == NESP_TUNER_MODE_NEWS ? NESP_TUNER_NEWS_PERIOD : NESP_TUNER_PERIOD;
-    tuner->page = 0;
-    /* The headlines first. Nothing of the last fetch is on its way to
-     * `news` now: forget stopped it, and its id is not this one. */
-    nesp_news_init(&tuner->news);
     tuner->state = NESP_TUNER_TUNING;
-    if (mode != NESP_TUNER_MODE_NEWS) {
-        tune(tuner);
-        return;
-    }
-    if (!tuner->hal->fetch(tuner->hal->ctx, NEWS, AGENT, id, &tuner->news_sink)) {
-        fail(tuner, "THE NESP32 IS BUSY");
-        return;
-    }
-    tuner->news_wanted = true;
-    tuner->state = NESP_TUNER_TUNING;
+    tune(tuner);
 }
 
-/* The headlines have come, or will not: now the station. */
 static void tune(nesp_tuner_t *tuner)
 {
     lock(tuner);
     uint32_t id = ++tuner->generation;
+    tuner->titles = 0;              /* the last station's are not this one's */
     unlock(tuner);
-    tuner->news_wanted = false;
+    tuner->page_title = 0;
     if (!tuner->hal->fetch(tuner->hal->ctx, tuner->tuned, AGENT, id, &tuner->sink)) {
         fail(tuner, "THE NESP32 IS BUSY");
     }
 }
 
-/* --- the headlines, in the samples' eighth bit --------------------------------- */
+/* --- what is playing, in the samples' eighth bit ------------------------------- */
 
 enum { C_IDLE, C_PAGE, C_END, C_OVER };
 
-/* A run begins: a few characters of nothing, and then the page that is
- * the current one. From there a page every NESP_TUNER_NEWS_TURN_MS. A
- * character begins with a 0 and nothing is all 1s, which is how the
+/* A run begins: a few characters of nothing, and then the latest page, if
+ * there is one. From there the latest again whenever it is new, at least
+ * GAP_SAMPLES apart. A character begins with a 0 and nothing is all 1s, which is how the
  * console finds where one starts: the first 0 after nothing. So what goes
  * between two characters of nothing is sent with none between. */
 static void begin_channel(nesp_tuner_t *tuner)
@@ -467,6 +532,25 @@ static void begin_channel(nesp_tuner_t *tuner)
     tuner->chan_turn = 8u * LEAD_CHARS;
     tuner->chan_fresh = true;
     tuner->chan_trail = TRAIL_SAMPLES;
+}
+
+/* Is a page to go: the run's first, or one newer than the last that went?
+ * If so it is the run's to send, copied. The count is looked at before the
+ * lock is taken, since this is asked a character at a time. */
+static bool page_waiting(nesp_tuner_t *tuner)
+{
+    uint32_t titles = *(volatile uint32_t *)&tuner->titles;
+    if (titles == 0 || (titles == tuner->page_title && !tuner->chan_fresh)) {
+        return false;
+    }
+    lock(tuner);
+    titles = tuner->titles;
+    if (titles != 0) {
+        memcpy(tuner->page, tuner->title_page, sizeof(nesp_page_t));
+    }
+    unlock(tuner);
+    tuner->page_title = titles;
+    return titles != 0;
 }
 
 /* The next sample's eighth bit. `ending` says the run is to end: the
@@ -482,19 +566,16 @@ static bool channel_bit(nesp_tuner_t *tuner, bool ending)
             ch = NESP_TUNER_NEWS_END;
         } else if (tuner->chan == C_PAGE) {
             if (tuner->chan_at < NESP_TUNER_NEWS_ROWS * NESP_TUNER_NEWS_COLUMNS) {
-                ch = tuner->news.rows[tuner->page][tuner->chan_at / NESP_TUNER_NEWS_COLUMNS]
-                                     [tuner->chan_at % NESP_TUNER_NEWS_COLUMNS];
+                ch = tuner->page[tuner->chan_at / NESP_TUNER_NEWS_COLUMNS]
+                                [tuner->chan_at % NESP_TUNER_NEWS_COLUMNS];
                 tuner->chan_at++;
             } else {
                 ch = NESP_TUNER_NEWS_SHOW;
                 tuner->chan = C_IDLE;
             }
-        } else if (tuner->news.count != 0 && tuner->chan_sent >= tuner->chan_turn) {
-            if (!tuner->chan_fresh) {
-                tuner->page = (uint8_t)((tuner->page + 1) % tuner->news.count);
-            }
+        } else if (tuner->chan_sent >= tuner->chan_turn && page_waiting(tuner)) {
             tuner->chan_fresh = false;
-            tuner->chan_turn = tuner->chan_sent + TURN_SAMPLES(tuner);
+            tuner->chan_turn = tuner->chan_sent + GAP_SAMPLES(tuner);
             tuner->chan = C_PAGE;
             tuner->chan_at = 0;
             ch = NESP_TUNER_NEWS_HOME;
@@ -666,16 +747,9 @@ static void settle(nesp_tuner_t *tuner)
     char why[sizeof(tuner->why)];
     lock(tuner);
     bool landed = tuner->landed != 0;
-    bool news = tuner->news_landed;
     uint32_t held = tuner->held;
     memcpy(why, tuner->landed_why, sizeof(why));
     unlock(tuner);
-    if (tuner->news_wanted) {
-        if (news) {
-            tune(tuner);
-        }
-        return;
-    }
     if (landed) {
         fail(tuner, why);
     } else if (tuner->state == NESP_TUNER_TUNING && held >= READY_SAMPLES(tuner)) {
@@ -956,9 +1030,7 @@ void nesp_tuner_service(nesp_service_t *service, nesp_tuner_t *tuner, nesp_raw_t
     tuner->sink.ctx = tuner;
     tuner->sink.body = body;
     tuner->sink.done = done;
-    tuner->news_sink.ctx = tuner;
-    tuner->news_sink.body = news_body;
-    tuner->news_sink.done = news_done;
+    tuner->sink.icy = icy;
     memset(service, 0, sizeof(*service));
     service->id = NESP_SVC_TUNER;
     service->name = "TUNER";

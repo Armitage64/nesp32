@@ -1019,8 +1019,8 @@ sends each as the byte the console's receiver turns into it.
   are safe to send again. The nesp32's front button does one or the other,
   and turns a station that is paused off.
 - **PLAY's `MODE`** is `$00`, the station alone at its best rate, or `$01`,
-  the station with the headlines at a rate that leaves the console the
-  cycles to draw them. With no `MODE` it is `$00`, as it was before there
+  the station with what it is playing, at a rate that leaves the console
+  the cycles to draw it. With no `MODE` it is `$00`, as it was before there
   were two. A station that is PAUSED is made READY in the mode it has.
 - **URL** sets the address the next PLAY tunes in: `TEXT`, up to 126
   characters, goes at `AT` in it, and the address ends where `TEXT` ends.
@@ -1032,25 +1032,26 @@ sends each as the byte the console's receiver turns into it.
   fetch on (301, 302, 303, 307, 308, as many as five); its stream must be
   MP3, at any rate, one channel or two. A station that is on plays on:
   PLAY then, with the address not the one tuned in, turns it off and
-  tunes the new one in, in the mode PLAY says. The headlines are NPR's
-  whatever the station, and the nesp32's screen says `RADIO` for any
-  station but NPR's.
+  tunes the new one in, in the mode PLAY says. The nesp32's screen says
+  `RADIO` for any station but NPR's.
 - **SOUND** is JUKE's, with no epoch: `RATE` is the mode's, 6 (7 CPU cycles
   a bit, 255682 baud, 23244 samples a second, after JUKE's lead of 8
-  bytes) or with the headlines 2 (14
+  bytes) or with what is playing 2 (14
   cycles, 127841 baud, 11622 samples a second), or `$FF` from
   a console that cannot play it. The answer is WAIT while TUNING, GO when
   READY, and GONE otherwise. After GO the run is RAW's in every way.
-- **With the headlines, their feed comes first.** PLAY fetches NPR's news
-  feed (`https://feeds.npr.org/1001/rss.xml`, RSS) before the station,
-  since the nesp32 fetches one thing at a time and a station's stream
-  never ends, and the state is TUNING through both. Its items with a
-  title, up to sixteen, are laid out as a page each, 9 lines of 28
-  characters, in capitals: the title on up to three lines, a blank line,
-  and as much of the description as the rest holds, either ending in `...`
-  where it was cut. Tags go, and entities and UTF-8 become the nearest
-  ASCII. A feed that cannot be had is no headlines, and the station plays.
-- **The headlines go in the samples.** The console's DAC takes seven bits
+- **What is playing comes from the stream.** In either mode the station
+  is asked for its titles (ICY, `Icy-MetaData: 1`). A stream whose reply
+  has `icy-metaint` has a block every that many bytes: a byte that is its
+  length in 16s, and that many bytes of text, which is taken out before
+  the MP3 decoder sees it. A block's `StreamTitle='...';` that is new and
+  not empty is laid out as a page of 9 lines of 28 characters, in
+  capitals: `NOW PLAYING`, a blank line, and the artist and the song on up
+  to three lines each with a blank line between (split at the first
+  ` - `), or a title with no ` - ` on the seven; `...` where either was
+  cut. Entities and UTF-8 become the nearest ASCII. A stream with no
+  titles sends no page, and the station plays.
+- **What is playing goes in the samples.** The console's DAC takes seven bits
   of a byte. In this mode the eighth is a line of its own, a bit a sample:
   1 at rest, and characters of eight bits, the first bit first, with
   nothing between those sent together. A character begins with a 0, so
@@ -1064,9 +1065,9 @@ sends each as the byte the console's receiver turns into it.
   | `$1A` | SHOW: the page is whole. The console draws it and shows it, and nothing but rest may be sent for the 0.2 seconds that takes |
   | any other below `$20` | the sound is over, and the console leaves it. `$00` is what the nesp32 sends |
 
-  A page goes eight characters into every run, the one that was on the
-  screen if the run is a paused station played again, and the next every
-  30 seconds from then, round and round. The run ends, where the other
+  The latest page goes eight characters into every run, and again whenever
+  the station's title changes, at least two seconds after the last. A
+  station tuned in starts with none: the last one's title is not sent. The run ends, where the other
   mode's ends with `$FC`, with `$00` when the character under way is done,
   at the DAC's rest, and four samples more: the console takes each bit a
   sample late.

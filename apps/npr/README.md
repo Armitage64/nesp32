@@ -6,9 +6,9 @@ Internet, decodes it, and sends it to the console a byte a sample; the ROM
 writes each byte to `$4011`, the channel's 7-bit DAC, as it arrives.
 
 A menu offers it two ways: **high quality**, 23244 samples a second and
-nothing else, or **medium quality with the news**, 11622 samples a second
-with NPR's headlines on the screen, one with its summary for half a minute
-and then the next.
+nothing else, or **medium quality with what is playing**, 11622 samples
+a second with the artist and song on the screen, from the titles in the
+station's stream.
 
 A list of stations is in the ROM (`tools/gen_screen.py`, `STATIONS`), NPR's
 first; the nesp32 is sent the address of the one chosen, and fetches any
@@ -49,7 +49,7 @@ falls in a vblank.
 | Part | State |
 |---|---|
 | TUNER on the nesp32: the stream fetched, decoded (MP3), resampled and made into levels for the DAC | working on a StickS3 at both rates, for long runs; tested on a computer at both rates, with the test as the Internet |
-| The headlines: NPR's news feed fetched, laid out as pages, and sent in the samples | working on hardware, with now and then a wrong character; tested on a computer, with a feed of the test's own |
+| What is playing: the stream's titles (ICY) taken out of it, laid out as a page, and sent in the samples | tested on a computer, with a stream of the test's own; not yet on hardware. The pages go to the console as the headlines did, which worked on hardware with now and then a wrong character |
 | The ROM (`build/npr.nes`) | working on hardware, both modes; tested on py65 against that code, over the simulated line |
 | A nesp32 decoding the stream as fast as it arrives | measured on a StickS3, with no console: 11.5% of one core ([nesp32's firmware](../../firmware/README.md), "The radio") |
 | How it sounds | clear speech on hardware, and quiet. `tools/npr_preview.py` gives it without a console |
@@ -67,7 +67,7 @@ make test
 ## Playing
 
 ![The screen, as it starts](docs/screen.png)
-![With the station playing and a headline on it](docs/screen-news.png)
+![With a station playing and what it is playing on it](docs/screen-news.png)
 
 With the nesp32 on a Wi-Fi network (the [setup ROM](../setup) joins one)
 and on controller port 2, start `build/npr.nes`. The screen's header is
@@ -78,7 +78,7 @@ the menu, is `< / > : SELECT STATION`.
 
 | | |
 |---|---|
-| **Up**, **Down** or **Select**, before a station is tuned in | the other quality: `HIGH`, or `MED+NEWS` with the headlines |
+| **Up**, **Down** or **Select**, before a station is tuned in | the other quality: `HIGH`, or `MED+INFO` with what is playing |
 | **Left** or **Right**, before a station is tuned in | the station before or after, and the dial's needle with it, round from the last to the first |
 | **Start** or **A** on the controller | tune in, as the menu says: `TUNING`, and a second or two later `ON THE AIR`. Pressed again while it is tuning, give it up |
 | **A** on the controller, while the station plays | turn it off, and back to the menu: the nesp32 stops fetching it |
@@ -125,30 +125,28 @@ up to 24 characters, capitals, and the address of an MP3 stream of up to
 before PLAY. A nesp32 whose firmware has no URL plays NPR, and says
 `UPDATE NESP32` for any other.
 
-### The headlines
+### What is playing
 
-With the menu's second line, the nesp32 first fetches NPR's news feed
-(`https://feeds.npr.org/1001/rss.xml`) and lays out its stories, up to
-sixteen, a page each: the headline on up to three lines, and under it as
-much of the summary as the rest of nine holds. Then it tunes the station
-in, which this makes a second or two longer.
+The nesp32 asks every station for the titles in its stream (ICY): a
+station that has them puts a short block of text every few kilobytes of
+the MP3, which the nesp32 takes out before decoding. With the menu's
+second line, each title that is new is laid out as a page: `NOW PLAYING`,
+and under it the artist and the song, split at the title's first ` - `,
+on up to three lines each, or a title with no ` - ` on seven.
 
-The first page is on the screen about half a second after the sound
-begins. Every 30 seconds the next takes its place, and after the last the
-first again. Paused, the page stays; played again, it has its whole half
-minute. If the feed cannot be had the station plays without, and the
-middle of the screen is blank.
-
-They are the headlines of the moment the station was tuned in, until it is
-turned off and tuned in again: the nesp32 fetches one thing at a time, and
-the station's stream never ends.
+The page is on the screen about half a second after the sound begins, and
+a new one about half a second after the station's title changes. Paused,
+the page stays; played again, it is sent again. A station with no titles
+sends no page, and the middle of the screen keeps the station. On
+2026-10-24 most of the list had titles: NPR's was empty, BBC's and
+KCLU's were their own names, WNYC's its programme, and SomaFM's did not
+answer the check.
 
 **Nothing of the sound is given up for them but the rate.** The console's
 DAC takes seven bits of each byte, and the nesp32 sends a character of
 the page in the eighth, eight samples to a character: a page takes under a
 fifth of a second, and no sample is held or missed for it. The console
-keeps the page it is being sent and no other, so the feed can be as long
-as it likes. How a console with no cycles to spare takes the characters
+keeps the page it is being sent and no other. How a console with no cycles to spare takes the characters
 in, and draws a page in the middle of a sound, is at the head of
 [`tools/gen_news.py`](tools/gen_news.py), which writes the routine. In
 short: at 14 CPU cycles a bit there are 8 spare between one look at the
@@ -193,15 +191,13 @@ high-quality mode's. The console's filters are not in it.
 
 ## Not done
 
-- **Now and then a wrong character in the headlines**: a typo, an odd
+- **Now and then a wrong character in a page**: a typo, an odd
   character, or one in the wrong colour, here and there on a page, while
   the sound plays on unharmed for long periods. A sample misread is a bit
   of a character misread, which would look like this; a write to the PPU
   that fell outside vblank would too. The tests say that on the simulated
   console every bit arrives and no write falls outside one, so it is
   something of the real line or the real PPU, and not yet looked into.
-- A station's programme on the screen. The headlines are NPR's whatever
-  the station.
 - The stations other than NPR, and a fetch sent on (a 302), have not been
   played on hardware. The list's addresses answered with MP3 on
   2026-10-23; one that stops answering says why on the status line.
@@ -213,8 +209,6 @@ high-quality mode's. The console's filters are not in it.
   one button the console reads during a sound.
 - A station played again after a long pause brought nearer to the moment,
   with room in the ring, in place of from its oldest second.
-- Headlines newer than the moment of tuning in, which want a second fetch
-  on the nesp32 while the station plays.
 - A samples' stall in the middle of a page being drawn. The drawing goes at
   the pace of the samples; if the nesp32 fell silent for more than a
   millisecond or two just then, the rest of that vblank's writes would come
@@ -239,7 +233,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 `make test` does the same, with nesp32's Python if it has one. The console
 and the serial line are the jukebox's (`../jukebox/tests`), and the
 station's stream is an MP3 of a tone from nesp32's `tests/fixtures`, with
-a news feed beside it. The console's PPU is modelled as far as the sound's
+titles put in it as a station's are. The console's PPU is modelled as far as the sound's
 routine needs: `$2002` says when vblank begins, and every write to the PPU
 with the NMI off is checked to be inside one. They need cc65 and skip
 without it.

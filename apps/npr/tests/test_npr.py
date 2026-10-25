@@ -26,7 +26,6 @@ TUNER = p.NESP_SVC_TUNER
 PERIOD = p.NESP_TUNER_PERIOD
 NEWS_PERIOD = p.NESP_TUNER_NEWS_PERIOD
 NEWS_RATE = pcm.sample_rate(NEWS_PERIOD)
-NEWS_URL = "https://feeds.npr.org/1001/rss.xml"
 STATION_URL = "https://npr-ice.streamguys1.com/live.mp3"
 RATE = pcm.sample_rate(PERIOD)
 SAMPLE_CYCLES = PERIOD * pcm.FRAME_BITS         # a byte on the line
@@ -339,13 +338,13 @@ def test_up_down_and_select_move_between_the_two(radio, button):
     assert machine.stick.fetches == 0 and not plays(machine)    # nothing is chosen until Start
 
 
-def test_start_plays_what_the_menu_has_and_the_menu_goes(radio, tone, feed):
+def test_start_plays_what_the_menu_has_and_the_menu_goes(radio, tone):
     machine = radio()
     machine.until(lambda: machine.off, limit=60)
     machine.press(PAD_START)
     machine.until(lambda: machine.stick.fetches == 1, limit=30)
     assert plays(machine) == [bytes((p.NESP_TUNER_MODE_HIGH,))]
-    assert machine.stick.fetch_url == STATION_URL       # the station alone: no feed
+    assert machine.stick.fetch_url == STATION_URL
     machine.wait(15)
     assert middle(machine) == BLANK and machine.status == "TUNING"
     machine.press(PAD_DOWN)                     # which does nothing now
@@ -359,7 +358,7 @@ def test_start_plays_what_the_menu_has_and_the_menu_goes(radio, tone, feed):
     machine.press(PAD_A)
     machine.until(lambda: machine.stick.fetches == 2, limit=30)
     assert plays(machine)[-1] == bytes((p.NESP_TUNER_MODE_NEWS,))
-    assert machine.stick.fetch_url == NEWS_URL
+    assert machine.stick.fetch_url == STATION_URL       # with what it is playing: the same
 
 
 def turn(machine, *buttons):
@@ -439,7 +438,7 @@ def test_the_dial_s_needle_is_at_the_station_s_frequency_or_off_the_screen(radio
     assert all(y == 0xFF for y, _, _, _ in needle(machine))
 
 
-def test_a_long_address_goes_in_pieces_and_the_station_plays_with_the_headlines(radio, tone):
+def test_a_long_address_goes_in_pieces_and_the_station_plays_with_its_titles(radio, tone):
     url = "https://playerservices.streamtheworld.com/api/livestream-redirect/KUSCMP128.mp3"
     machine = radio()
     machine.until(lambda: machine.off, limit=60)
@@ -449,10 +448,7 @@ def test_a_long_address_goes_in_pieces_and_the_station_plays_with_the_headlines(
     assert middle(machine) == station_middle(STATION["KUSC"], 1)
     machine.press(PAD_START)
     machine.until(lambda: machine.stick.fetches == 1, limit=30)
-    assert machine.stick.fetch_url == NEWS_URL          # NPR's headlines, whatever the station
-    machine.stick.fetch_done(False, b"")
-    machine.until(lambda: machine.stick.fetches == 2, limit=30)
-    assert machine.stick.fetch_url == url
+    assert machine.stick.fetch_url == url and machine.stick.fetch_wants_icy
     assert [at for at, _ in urls(machine)] == [0, 24, 48, 72]
 
 
@@ -474,42 +470,68 @@ def test_a_station_that_fails_brings_the_menu_back(radio):
     machine.until(lambda: machine.stick.fetches == 1, limit=30)
     machine.wait(15)
     assert middle(machine) == BLANK
-    machine.stick.fetch_done(False, b"")        # no headlines: on to the station
-    machine.until(lambda: machine.stick.fetches == 2, limit=30)
     machine.stick.fetch_done(False, b"THE SITE SAID 404")
     machine.until(lambda: machine.status == "THE SITE SAID 404", limit=30)
     machine.wait(15)
     assert middle(machine) == MENU_NEWS         # with what was chosen still chosen
 
 
-# --- the station with the headlines --------------------------------------------------------
+# --- the station with what it is playing ------------------------------------------------
 
-HEADLINES = ("A CONSOLE FROM 1985 LEARNS", "CAFE OWNERS WEIGH A LONGER", "SHORT ONE",
-             "A SUMMARY THAT RUNS ON AND", "A FIFTH STORY THAT IS NOT")
-FIRST = ["A CONSOLE FROM 1985 LEARNS", "TO READ THE NEWS", "",
-         "ENGINEERS SAY THE MACHINE'S", "2 KILOBYTES OF MEMORY HOLD", "FOUR STORIES AT A TIME,",
-         "\"WHICH IS PLENTY,\" ONE SAID", "& LAUGHED.", ""]
+EVERY = 1000        # bytes of sound between the stream's blocks of titles
+TITLES = ("Dark Chisme - Suffer Like Me", "Badmarsh & Shri - Into the Sunset",
+          "Olivier Deriviere - The Land")
+ARTISTS = ("DARK CHISME", "BADMARSH & SHRI", "OLIVIER DERIVIERE")
+NOW_PLAYING = ["NOW PLAYING", "", "DARK CHISME", "", "", "", "SUFFER LIKE ME", "", ""]
 PAGE_MS = 550       # a page sent, 0.18 seconds, and drawn, four frames and the wait for the first
 
 
-def news_on_air(machine, tone, feed=None):
-    """Choose the station with the headlines, give the nesp32 their feed,
-    or none, and the stream, and run until the console is in the sound."""
+class Icy:
+    """A station's stream with its titles in it (ICY), as nesp32's
+    tests/test_tuner.py has one: every EVERY bytes of the tone, a block,
+    which has the title in the first of them and nothing in the rest."""
+
+    def __init__(self, tone):
+        self.tone, self.at = tone, 0
+
+    def more(self, seconds, title=None):
+        out = bytearray()
+        for index in range(max(1, int(len(self.tone) / 4.0 * seconds) // EVERY)):
+            sound = (self.tone + self.tone)[self.at:self.at + EVERY]
+            self.at = (self.at + EVERY) % len(self.tone)
+            block = b"\x00"
+            if index == 0 and title is not None:
+                text = b"StreamTitle='" + title.encode() + b"';"
+                text += b"\x00" * (-len(text) % 16)
+                block = bytes((len(text) // 16,)) + text
+            out += sound + block
+        return bytes(out)
+
+
+def news_on_air(machine, tone, title=None, seconds=4.0):
+    """Choose the station with what it is playing, give the nesp32 its
+    stream, with this title in it or none, and run until the console is in
+    the sound."""
     machine.until(lambda: machine.off, limit=60)
     count = machine.stick.fetches
     machine.press(PAD_DOWN)
     machine.press(PAD_START)
     machine.until(lambda: machine.stick.fetches == count + 1, limit=30)
-    assert machine.stick.fetch_url == NEWS_URL
-    if feed is None:
-        machine.stick.fetch_done(False, b"THE SITE DID NOT ANSWER")
+    assert machine.stick.fetch_url == STATION_URL and machine.stick.fetch_wants_icy
+    machine.icy = Icy(tone)
+    if title is None:
+        machine.stick.fetch_icy(0)
+        machine.air(tone[:int(len(tone) * seconds / 4.0)])
     else:
-        machine.stick.fetch_body(feed)
-        machine.stick.fetch_done()
-    machine.until(lambda: machine.stick.fetches == count + 2, limit=30)
-    machine.air(tone)
+        machine.stick.fetch_icy(EVERY)
+        machine.air(machine.icy.more(seconds, title))
     machine.until(lambda: machine.deaf, limit=120)
     return machine
+
+
+def retitled(machine, title):
+    """The station plays something else: more of its stream says so."""
+    machine.air(machine.icy.more(0.5, title))
 
 
 def shown_page(machine):
@@ -519,8 +541,8 @@ def shown_page(machine):
 
 
 def turned(machine):
-    """Have the nesp32 send its next page now, where it waits half a
-    minute, and return it as shown."""
+    """Have the nesp32 send a page that is waiting now, where it waits a
+    couple of seconds from the last, and return it as shown."""
     machine.stick.tuner_turn()
     return shown_page(machine)
 
@@ -537,8 +559,8 @@ def vblanks(machine):
     return out
 
 
-def test_the_station_with_the_headlines_plays_at_its_own_rate(radio, tone, feed):
-    machine = news_on_air(radio(), tone, feed)
+def test_the_station_with_its_titles_plays_at_its_own_rate(radio, tone, title):
+    machine = news_on_air(radio(), tone, title)
     assert machine.status == "ON THE AIR"
     assert [bytes(payload) for service, op, payload in machine.requests()
             if (service, op) == (TUNER, p.NESP_TUNER_SOUND)] == [bytes((p.NESP_TUNER_NEWS_RATE,))]
@@ -554,11 +576,11 @@ def test_the_station_with_the_headlines_plays_at_its_own_rate(radio, tone, feed)
     assert min(gaps) >= byte - 8 and max(gaps) <= byte + 8
 
 
-def test_the_first_headline_comes_with_the_sound_and_is_drawn_out_of_sight(radio, tone, feed):
-    machine = news_on_air(radio(), tone, feed)
+def test_the_title_comes_with_the_sound_and_is_drawn_out_of_sight(radio, tone, title):
+    machine = news_on_air(radio(), tone, title)
     assert middle(machine) == BLANK and machine.shown == 0x2000
     machine.read_log = []
-    assert shown_page(machine) == FIRST and machine.shown == 0x2800
+    assert shown_page(machine) == NOW_PLAYING and machine.shown == 0x2800
     assert machine.status == "ON THE AIR"       # the header and the status line are on both
     assert machine.nametable(0x2800)[:32 * 10] == machine.nametable(0x2000)[:32 * 10]
     assert [line.rstrip() for line in machine.page(0x2000)] == BLANK
@@ -587,36 +609,39 @@ def test_the_first_headline_comes_with_the_sound_and_is_drawn_out_of_sight(radio
     assert sum(1 for writes in drawn for register, _ in writes if register == PPUDATA) == 9 * 28
 
 
-def test_every_story_in_the_feed_comes_round(radio, tone, feed):
-    machine = news_on_air(radio(), tone, feed)
+def test_each_new_title_is_drawn_as_it_comes(radio, tone, title):
+    machine = news_on_air(radio(), tone, title)
     pages = [shown_page(machine)]
     shown = [machine.shown]
-    for _ in range(5):
+    for new in TITLES[1:] + TITLES[:1]:
+        retitled(machine, new)
         pages.append(turned(machine))
         shown.append(machine.shown)
     assert machine.deaf and not machine.ppu_strays
-    assert tuple(page[0] for page in pages[:5]) == HEADLINES
-    assert pages[5] == pages[0]                 # and round again
-    assert shown == [0x2800, 0x2000, 0x2800, 0x2000, 0x2800, 0x2000]
+    assert tuple(page[2] for page in pages) == ARTISTS + ARTISTS[:1]
+    assert shown == [0x2800, 0x2000, 0x2800, 0x2000]
     levels = played(machine)
     sent = pcm.decode(machine.port.runs[-1][2])
     assert levels == sent[:len(levels)]
 
 
 @pytest.mark.parametrize("clock_error", [-0.01, 0.01])
-def test_the_headlines_come_from_a_nesp32_whose_clock_is_1_percent_off(radio, tone, feed,
-                                                                       clock_error):
-    machine = news_on_air(radio(clock_error=clock_error), tone, feed)
-    pages = [shown_page(machine)] + [turned(machine) for _ in range(2)]
-    assert tuple(page[0] for page in pages) == HEADLINES[:3]
+def test_the_titles_come_from_a_nesp32_whose_clock_is_1_percent_off(radio, tone, title,
+                                                                    clock_error):
+    machine = news_on_air(radio(clock_error=clock_error), tone, title)
+    pages = [shown_page(machine)]
+    for new in TITLES[1:]:
+        retitled(machine, new)
+        pages.append(turned(machine))
+    assert tuple(page[2] for page in pages) == ARTISTS
     levels = played(machine)
     sent = pcm.decode(machine.port.runs[-1][2])
     assert levels == sent[:len(levels)] and not machine.ppu_strays
     assert max(into for into, _, _ in machine.ppu_writes) < VBLANK_CYCLES - 100
 
 
-def test_with_no_headlines_the_station_plays_all_the_same(radio, tone):
-    machine = news_on_air(radio(), tone)        # the feed could not be had
+def test_with_no_titles_the_station_plays_all_the_same(radio, tone):
+    machine = news_on_air(radio(), tone)        # a stream that has none
     machine.advance(ms(900))
     assert machine.deaf and machine.status == "ON THE AIR"
     assert middle(machine) == BLANK and not machine.ppu_writes and not machine.ppu_strays
@@ -626,9 +651,10 @@ def test_with_no_headlines_the_station_plays_all_the_same(radio, tone):
 
 
 @pytest.mark.parametrize("at", ["a page being sent", "a page being drawn"])
-def test_a_in_the_middle_of_a_page_leaves_the_menu_whole(radio, tone, feed, at):
-    machine = news_on_air(radio(), tone, feed)
+def test_a_in_the_middle_of_a_page_leaves_the_menu_whole(radio, tone, title, at):
+    machine = news_on_air(radio(), tone, title)
     first = shown_page(machine)
+    retitled(machine, TITLES[1])
     machine.stick.tuner_turn()
     if at == "a page being sent":
         machine.advance(ms(90))
@@ -647,8 +673,8 @@ def test_a_in_the_middle_of_a_page_leaves_the_menu_whole(radio, tone, feed, at):
     assert not machine.ppu_strays
 
 
-def test_the_nesp32s_button_ends_the_sound_with_the_headlines_too(radio, tone, feed):
-    machine = news_on_air(radio(), tone, feed)
+def test_the_nesp32s_button_ends_the_sound_with_the_titles_too(radio, tone, title):
+    machine = news_on_air(radio(), tone, title)
     shown_page(machine)
     machine.press_button(p.NESP_EVENT_BUTTON_A)
     machine.advance(ms(300))
@@ -666,35 +692,32 @@ def test_the_nesp32s_button_ends_the_sound_with_the_headlines_too(radio, tone, f
     assert machine.word("link_failed") == failed
 
 
-def test_a_stream_that_is_lost_with_the_headlines_is_played_out(radio, tone, feed):
-    machine = news_on_air(radio(), tone[:len(tone) * 2 // 3], feed)
+def test_a_stream_that_is_lost_with_its_titles_is_played_out(radio, tone, title):
+    machine = news_on_air(radio(), tone, title, seconds=2.6)
     machine.stick.fetch_done(False, b"THE CONNECTION DROPPED")
     machine.advance(ms(4500))
     assert not machine.deaf and played(machine)[-1] == 0
     machine.until(lambda: machine.status == "THE CONNECTION DROPPED", limit=30)
 
 
-def test_tuned_in_again_the_headlines_are_fetched_again(radio, tone, feed):
-    machine = news_on_air(radio(), tone, feed)
+def test_tuned_in_again_the_last_title_is_not_kept(radio, tone, title):
+    machine = news_on_air(radio(), tone, title)
     shown_page(machine)
-    turned(machine)
     machine.press_button(p.NESP_EVENT_BUTTON_A)
     machine.advance(ms(300))
     machine.until(lambda: machine.off, limit=30)
     machine.wait(15)
     machine.press(PAD_START)                    # the menu is where it was left
-    machine.until(lambda: machine.stick.fetches == 3, limit=30)
-    machine.stick.fetch_body(feed.replace(b"A console from 1985", b"Another one from 1990"))
-    machine.stick.fetch_done()
-    machine.until(lambda: machine.stick.fetches == 4, limit=30)
-    machine.air(tone)
+    machine.until(lambda: machine.stick.fetches == 2, limit=30)
+    machine.stick.fetch_icy(EVERY)
+    machine.air(Icy(tone).more(4.0, "Another One - From 1990"))
     machine.until(lambda: machine.deaf, limit=120)
     assert middle(machine) == BLANK and machine.shown == 0x2000
-    assert shown_page(machine)[0] == "ANOTHER ONE FROM 1990 LEARNS"
+    assert shown_page(machine)[2] == "ANOTHER ONE"
 
 
-def test_a_console_reset_in_the_sound_with_the_headlines_is_greeted_again(radio, tone, feed):
-    machine = news_on_air(radio(), tone, feed)
+def test_a_console_reset_in_the_sound_with_its_titles_is_greeted_again(radio, tone, title):
+    machine = news_on_air(radio(), tone, title)
     shown_page(machine)
     machine.reset()
     machine.advance(ms(100))
@@ -706,12 +729,12 @@ def test_a_console_reset_in_the_sound_with_the_headlines_is_greeted_again(radio,
 
 
 @pytest.mark.parametrize("news", [False, True])
-def test_a_console_left_in_the_sound_is_freed_by_a_nesp32_starting_up(radio, tone, feed, news):
+def test_a_console_left_in_the_sound_is_freed_by_a_nesp32_starting_up(radio, tone, title, news):
     """The routines have no timeout. A console whose nesp32 lost its power
     waits for the rest until one starts up, whose first bytes, twelve of 0
     at the link's rate, it takes for the sound's end: a byte with no more
     to come, or with the headlines a character that is none of theirs."""
-    machine = news_on_air(radio(), tone, feed) if news else on_air(radio(), tone)
+    machine = news_on_air(radio(), tone, title) if news else on_air(radio(), tone)
     machine.advance(ms(700))
     machine.power_off()
     machine.advance(ms(400))

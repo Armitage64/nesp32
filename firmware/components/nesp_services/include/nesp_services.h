@@ -59,6 +59,10 @@ typedef struct {
     /* The fetch is over. ok: the whole reply came (or body said to stop).
      * Otherwise why is a few words for the console's screen. */
     void (*done)(void *ctx, uint32_t id, bool ok, const char *why);
+    /* May be NULL. Set: the fetch asks a stream for its titles (ICY), and
+     * says, before any of the body, how many bytes of it come between two
+     * of them: the reply's icy-metaint, or 0 for a reply with none. */
+    void (*icy)(void *ctx, uint32_t id, uint32_t metaint);
 } nesp_sink_t;
 
 typedef struct {
@@ -709,26 +713,10 @@ typedef struct {
 } nesp_peer_t;
 
 /* TUNER: a radio station as sampled sound (tuner.c). */
-/* Headlines out of an RSS feed, a page each for a console's screen
- * (news.c). */
-typedef struct {
-    uint8_t rows[NESP_TUNER_NEWS_PAGES][NESP_TUNER_NEWS_ROWS][NESP_TUNER_NEWS_COLUMNS];
-    uint8_t count;                  /* pages laid out */
-    /* Where the feed has got to. */
-    uint8_t mode;
-    uint8_t field;                  /* which of an item's texts is being kept */
-    bool in_item;
-    uint8_t closing;                /* of "]]>" that have come */
-    uint8_t tag_len;
-    uint8_t tag[16];
-    uint16_t title_len;
-    uint16_t summary_len;
-    uint8_t title[256];
-    uint8_t summary[768];
-} nesp_news_t;
-
-void nesp_news_init(nesp_news_t *news);
-void nesp_news_feed(nesp_news_t *news, const uint8_t *data, size_t len);
+/* A page for a console's screen of what a station is playing, from the
+ * title in its stream (news.c). The title is made plain in place. */
+typedef uint8_t nesp_page_t[NESP_TUNER_NEWS_ROWS][NESP_TUNER_NEWS_COLUMNS];
+void nesp_news_title(nesp_page_t page, uint8_t *title, size_t len);
 
 struct nesp_tuner_work;             /* the decoder's memory, which the fetch's task has */
 
@@ -760,16 +748,15 @@ typedef struct {
     bool ended;
     bool lost;                      /* the stream ended, and all of it has been played */
     bool hushed;                    /* the console left the sound: paused */
-    /* The headlines, which are fetched before the station is. The fetch's
-     * task has `news` until it says, under the lock, that they have
-     * landed. */
-    nesp_sink_t news_sink;
-    nesp_news_t news;
-    bool news_wanted;               /* their fetch is the one under way */
-    bool news_landed;
+    /* What the station is playing, from the titles in its stream: the
+     * fetch's task lays a page out, and under the hal's lock puts it here
+     * and counts it; the run takes a copy of the latest to send. */
+    nesp_page_t title_page;
+    uint32_t titles;                /* pages laid out since the station was tuned in */
+    nesp_page_t page;               /* the run's: the page on its way */
+    uint32_t page_title;            /* which of `titles` it is; 0, none yet */
     uint8_t mode;                   /* NESP_TUNER_MODE_*, as PLAY chose */
     uint8_t period;                 /* and its rate, in CPU cycles a bit */
-    uint8_t page;                   /* the headline that is on the console's screen, or going there */
     /* Where the run's eighth bit has got to (tuner.c). */
     uint8_t chan;
     uint8_t chan_char;              /* what is left of the character being sent, */

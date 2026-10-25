@@ -14,11 +14,16 @@
  * The server is authenticated against ESP-IDF's bundle of root
  * certificates. An address that sends the fetch on to another (a 301, 302,
  * 303, 307 or 308) is followed, as far as REDIRECTS_MAX of them.
+ *
+ * A sink that wants a stream's titles (its `icy`) has them asked for, and
+ * is told the reply's icy-metaint before its body.
  */
 #include "fetch.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
@@ -97,8 +102,23 @@ static void failed(const order_t *order, uint32_t began, const char *why)
     }
 }
 
+/* The reply's headers come only to an event handler: icy-metaint, of the
+ * last answer when the fetch was sent on. */
+static esp_err_t on_event(esp_http_client_event_t *event)
+{
+    uint32_t *metaint = event->user_data;
+    if (event->event_id == HTTP_EVENT_ON_CONNECTED) {
+        *metaint = 0;
+    } else if (event->event_id == HTTP_EVENT_ON_HEADER
+               && strcasecmp(event->header_key, "icy-metaint") == 0) {
+        *metaint = (uint32_t)strtoul(event->header_value, NULL, 10);
+    }
+    return ESP_OK;
+}
+
 static void fetch(const order_t *order, uint32_t began)
 {
+    static uint32_t metaint;
     static uint8_t chunk[CHUNK];
     char why[32];
     esp_http_client_config_t config = {
@@ -108,7 +128,10 @@ static void fetch(const order_t *order, uint32_t began)
         .timeout_ms = TIMEOUT_MS,
         .buffer_size = CHUNK,
         .buffer_size_tx = 1024,     /* the request's line is the address, and long */
+        .event_handler = on_event,
+        .user_data = &metaint,
     };
+    metaint = 0;
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (client == NULL) {
         failed(order, began, "THE NESP32 IS OUT OF MEMORY");
@@ -116,6 +139,9 @@ static void fetch(const order_t *order, uint32_t began)
     }
     /* Not compressed: the body is read as it comes. */
     esp_http_client_set_header(client, "Accept-Encoding", "identity");
+    if (order->sink->icy != NULL) {
+        esp_http_client_set_header(client, "Icy-MetaData", "1");
+    }
     int64_t started = esp_timer_get_time();
     size_t total = 0;
     bool answered = false;
@@ -147,6 +173,11 @@ static void fetch(const order_t *order, uint32_t began)
         /* In longs: this firmware's printf has no long long. */
         ESP_LOGI(TAG, "fetch %lu: answered in %lu ms", (unsigned long)order->id,
                  (unsigned long)((esp_timer_get_time() - started) / 1000));
+        if (order->sink->icy != NULL && wanted(began)) {
+            ESP_LOGI(TAG, "fetch %lu: titles every %lu bytes", (unsigned long)order->id,
+                     (unsigned long)metaint);
+            order->sink->icy(order->sink->ctx, order->id, metaint);
+        }
         for (;;) {
             int count = esp_http_client_read(client, (char *)chunk, sizeof(chunk));
             if (!wanted(began)) {

@@ -976,10 +976,11 @@ uint32_t host_tuner_held(const host_t *host) { return host->stick.tuner.held; }
 uint32_t host_tuner_dropped(const host_t *host) { return host->stick.tuner.dropped; }
 uint32_t host_tuner_dry(const host_t *host) { return host->stick.tuner.dry; }
 const char *host_watched(const host_t *host) { return host->watched; }
-uint32_t host_tuner_page(const host_t *host) { return host->stick.tuner.page; }
+uint32_t host_tuner_page(const host_t *host) { return host->stick.tuner.page_title; }
 
-/* The next page of the headlines now, where a station waits half a minute:
- * for a test with a console that takes a minute to play a second. */
+/* A page that is waiting may go now, where a station waits a couple of
+ * seconds from the last: for a test with a console that takes a minute to
+ * play a second. */
 void host_tuner_turn(host_t *host)
 {
     host->stick.tuner.chan_turn = host->stick.tuner.chan_sent;
@@ -1056,6 +1057,20 @@ void host_set_alloc_most(host_t *host, size_t bytes) { host->alloc_most = bytes;
 bool host_fetch_body(host_t *host, uint32_t id, const uint8_t *data, size_t len)
 {
     return host->sink != NULL && host->sink->body(host->sink->ctx, id, data, len);
+}
+
+/* Whether the last fetch's sink wants a stream's titles, and its reply's
+ * icy-metaint, before any of its body. */
+bool host_fetch_wants_icy(const host_t *host)
+{
+    return host->sink != NULL && host->sink->icy != NULL;
+}
+
+void host_fetch_icy(host_t *host, uint32_t id, uint32_t metaint)
+{
+    if (host->sink != NULL && host->sink->icy != NULL) {
+        host->sink->icy(host->sink->ctx, id, metaint);
+    }
 }
 
 void host_fetch_done(host_t *host, uint32_t id, bool ok, const char *why)

@@ -24,8 +24,9 @@ The middle is the station, which Left and Right change: its letters, big,
 then where it is and what it plays, from the list here, which the ROM
 draws whatever the middle shows; and under them, while no station is tuned
 in, the quality, which Up, Down and Select change. With a station tuned in
-in the second mode, the headlines take the middle (tools/gen_news.py says
-where, and how). screen.bin is the nametable and its attributes with all
+in the second mode, what it is playing takes the middle, a page the
+nesp32 makes of the titles in its stream (tools/gen_news.py says where,
+and how). screen.bin is the nametable and its attributes with all
 of that on it; screen.inc tells the ROM where the status line is, holds
 what it may say, and the stations.
 """
@@ -107,7 +108,7 @@ def where(station):
 STATION_ROW = 0         # the first of the station's: where the ROM starts again on a turn
 STATION_LINES = (0, 1, 3, 5)
 QUALITY_ROW = 7
-QUALITY = ("QUALITY:  > HIGH    MED+NEWS", "QUALITY:    HIGH  > MED+NEWS")
+QUALITY = ("QUALITY:  > HIGH    MED+INFO", "QUALITY:    HIGH  > MED+INFO")
 
 # The dial: rows of tiles under the status line, and an FM scale across it
 # at a tile a megahertz, with a tick each half; the needle is three sprites.
@@ -132,10 +133,8 @@ SPRITE_PALETTES = ((0x16, 0x16, 0x16), (0x16, 0x16, 0x16), (0x16, 0x16, 0x16),
 gen_ui.NES_RGB.setdefault(0x27, (212, 136, 32))
 gen_ui.NES_RGB.setdefault(0x38, (228, 196, 144))
 
-# A page of headlines, for the preview: what the nesp32 makes of a story.
-SAMPLE = ("A CONSOLE FROM 1985 LEARNS", "TO READ THE NEWS", "",
-          "ENGINEERS SAY THE MACHINE'S", "2 KILOBYTES OF MEMORY HOLD",
-          "FOUR STORIES AT A TIME,", "\"WHICH IS PLENTY,\" ONE SAID", "& LAUGHED.")
+# A page for the preview: what the nesp32 makes of a station's title.
+SAMPLE = ("NOW PLAYING", "", "DARK CHISME", "", "", "", "SUFFER LIKE ME")
 assert STATUS_ROW < DIAL_ROW and DIAL_ROW + 4 <= gen_news.NEWS_ROW
 assert gen_news.NEWS_ROW % 2 == 0 and gen_news.NEWS_ROW + gen_news.ROWS <= HINT_ROW
 assert all(row < gen_news.ROWS for row in STATION_LINES + (QUALITY_ROW,))

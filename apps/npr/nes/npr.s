@@ -25,11 +25,12 @@
 ;
 ; There are two modes, and a menu in the middle of the screen to choose
 ; between them for as long as no station is tuned in: the station at 23244
-; samples a second and nothing else, or at 11622 with the news headlines.
+; samples a second and nothing else, or at 11622 with what it is playing,
+; from the titles in its stream (the nesp32's pages: "the headlines" below).
 ; Up, Down and Select move between them. Over them is the station, from the
 ; list in screen.inc (tools/gen_screen.py), which Left and Right go through;
 ; the nesp32 is sent its address, and fetches whatever MP3 stream that is.
-; The headlines are NPR's whichever station plays. The station's own lines
+; The station's own lines
 ; of the middle, its letters, where it is and what it plays, are on it
 ; whatever else is, and a radio's dial over it has a needle at its
 ; frequency: three sprites, which a station with none has off the screen. B there is the cartridge's menu
