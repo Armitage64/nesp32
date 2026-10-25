@@ -776,7 +776,7 @@ def test_the_foot_has_pictures_for_play_and_pause_and_on_the_air_says_a_stops(ra
             gen_screen.icon_pixels(gen_screen.ICONS[char]))
     machine = radio()
     machine.until(lambda: machine.off, limit=60)
-    assert machine.foot() == "A : SELECT"       # the menu's says what A does there
+    assert machine.foot() == "A : PLAY"         # the menu's says what A does there
     assert hint(machine) == hint(machine, 0x2800) == gen_screen.HINT    # over it, the station
     on_air(machine, tone)
     assert hint(machine).strip() == hint(machine, 0x2800).strip() == ""  # which a station has not

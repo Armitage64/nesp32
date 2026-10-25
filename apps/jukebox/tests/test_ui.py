@@ -122,7 +122,7 @@ def play(rom, frames, nmis, **kwargs):
 def test_the_screen_is_the_one_the_generator_laid_out(rom, link_rom):
     link, standalone = gen_ui.build_screens()
     for paths, screen, help_text in ((rom, standalone, gen_ui.HELP_STANDALONE),
-                                     (link_rom, link, "A : SELECT")):
+                                     (link_rom, link, "A : PLAY")):
         machine = Console(*paths) if paths is rom else LinkConsole(*paths)
         machine.run(1)
         # Nothing has been drawn over it yet but the status line.

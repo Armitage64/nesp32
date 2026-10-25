@@ -59,8 +59,8 @@ STATUS_TEXT = (("WAITING", "WAITING FOR LINK"), ("OFF", ""),
 # again (the jukebox's pictures of play and pause).
 PLAY, PAUSE, A_HELP = gen_ui.PLAY, gen_ui.PAUSE, gen_ui.A_HELP
 FOOT_WIDTH, FOOT_COLUMN = gen_ui.FOOT_WIDTH, gen_ui.FOOT_COLUMN
-FOOT_TEXT = (("SELECT", "A : SELECT"),              # the menu of a ROM built by itself
-             ("QUIT", "A : SELECT   B : QUIT"),     # the menu, on the cartridge
+FOOT_TEXT = (("SELECT", "A : PLAY"),                # the menu of a ROM built by itself
+             ("QUIT", "A : PLAY   B : QUIT"),       # the menu, on the cartridge
              ("PLAIN", "A : STOP"),                 # on the air
              ("BACK", "A : STOP   B : BACK"),       # tuning
              ("PAUSED", A_HELP + "   B : BACK"))    # paused

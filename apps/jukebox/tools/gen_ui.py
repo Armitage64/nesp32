@@ -64,8 +64,8 @@ HELP_STANDALONE = "START=PAUSE"
 # sampled sound plays: then the foot says nothing of it.
 PLAY, PAUSE = "\x01", "\x02"
 A_HELP = "A : " + PLAY + "/" + PAUSE
-FOOT_TEXT = (("SELECT", "A : SELECT"),              # the menu of a ROM built by itself
-             ("QUIT", "A : SELECT   B : QUIT"),     # the menu, on the cartridge
+FOOT_TEXT = (("SELECT", "A : PLAY"),                # the menu of a ROM built by itself
+             ("QUIT", "A : PLAY   B : QUIT"),       # the menu, on the cartridge
              ("PLAIN", A_HELP),                     # sampled sound playing
              ("BACK", A_HELP + "   B : BACK"))      # music, or a sound paused
 FOOT_WIDTH = max(len(text) for _, text in FOOT_TEXT)

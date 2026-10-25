@@ -73,7 +73,7 @@ With the nesp32 on a Wi-Fi network (the [setup ROM](../setup) joins one)
 and on controller port 2, start `build/npr.nes`. The screen's header is
 nesp32's, with `NESRADIO` under the name; the nesp32's own
 screen calls the program `NESradio`. The foot of the screen says what A and B
-do: on the menu `A : SELECT`, and with a station `A : STOP`. Over it, on
+do: on the menu `A : PLAY`, and with a station `A : STOP`. Over it, on
 the menu, is `< / > : SELECT STATION`.
 
 | | |
