@@ -295,14 +295,18 @@ last:
     rts
 .endif
 
+; A tile off the screen's side: below the picture, and the rest of it 0.
+; Written last to first, where the game's own pass writes first to last,
+; so that the patch for players holds no run of the game's bytes
+; (tools/gen_patch.py).
 invalid:
+    lda #$00
+    sta SPRITE_PAGE+3,x
+    sta SPRITE_PAGE+2,x
+    sta SPRITE_PAGE+1,x
     lda #$F4
     sta SPRITE_PAGE,x
-    lda #$00
-    sta SPRITE_PAGE+1,x
-    sta SPRITE_PAGE+2,x
-    sta SPRITE_PAGE+3,x
-    beq next
+    bne next                    ; always
 .endmacro
 
 net_sprites_00:
