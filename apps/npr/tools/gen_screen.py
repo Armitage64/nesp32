@@ -15,10 +15,10 @@ FM scale that is on the screen from the start, with a needle at the
 station's frequency, which is a sprite the ROM moves and hides for a station
 with none; the middle of the screen, which the ROM writes; and at the foot
 what the buttons do, which it writes too: on the menu A plays the
-station, and B is the cartridge's menu again; with a station A plays and
-pauses, which it says with a picture of each, and B is the menu again
+station, and Select is the cartridge's menu again; with a station A plays
+and pauses, which it says with a picture of each, and B is the menu again
 while it is tuning or paused. Over the foot, on the menu, is the quality,
-which Select changes, and which the ROM draws with the foot.
+which Up and Down change, and which the ROM draws with the foot.
 
 The middle is the station, which Left and Right change: its letters, big,
 then where it is and what it plays, from the list here, which the ROM
@@ -60,16 +60,16 @@ STATUS_TEXT = (("WAITING", "WAITING FOR LINK"), ("OFF", ""),
 # again (the jukebox's pictures of play and pause).
 PLAY, PAUSE, A_HELP = gen_ui.PLAY, gen_ui.PAUSE, gen_ui.A_HELP
 FOOT_WIDTH, FOOT_COLUMN = gen_ui.FOOT_WIDTH, gen_ui.FOOT_COLUMN
-FOOT_TEXT = (("SELECT", "A : PLAY"),                # the menu of a ROM built by itself
-             ("QUIT", "A : PLAY   B : QUIT"),       # the menu, on the cartridge
+FOOT_TEXT = (("ALONE", "A : PLAY"),                 # the menu of a ROM built by itself
+             ("CART", "A : PLAY   SELECT : MENU"),  # the menu, on the cartridge
              ("PLAIN", "A : STOP"),                 # on the air
              ("BACK", "A : STOP   B : BACK"),       # tuning
              ("PAUSED", A_HELP + "   B : BACK"))    # paused
 assert all(len(text) <= FOOT_WIDTH for _, text in FOOT_TEXT)
 ICONS, icon_pixels = gen_ui.ICONS, gen_ui.icon_pixels
 # The quality, over the foot, in the order of the nesp32's modes, which the
-# ROM draws with the menu's feet and takes off with the others: Select
-# changes it. Its rates are NESP_TUNER_RATE's and NESP_TUNER_NEWS_RATE's,
+# ROM draws with the menu's feet and takes off with the others: Up and
+# Down change it. Its rates are NESP_TUNER_RATE's and NESP_TUNER_NEWS_RATE's,
 # which the ROM asserts; "k" and "z" are tiles of their own, the font's
 # lowercase being its capitals.
 QUALITY_ROW = gen_ui.HELP_ROW - 1
@@ -80,7 +80,7 @@ def khz(rate):
     return "%dkHz" % round(pcm.sample_rate(pcm.PERIODS[rate]) / 1000)
 
 
-QUALITY = ("SELECT : " + khz(QUALITY_RATES[0]), "SELECT : %s + INFO" % khz(QUALITY_RATES[1]))
+QUALITY = ("UP/DOWN : " + khz(QUALITY_RATES[0]), "UP/DOWN : %s + INFO" % khz(QUALITY_RATES[1]))
 QUALITY_WIDTH = max(len(line) for line in QUALITY)
 QUALITY_COLUMN = (gen_ui.SCREEN_COLUMNS - QUALITY_WIDTH) // 2
 LOWERCASE = {"k": "10 10 12 14 18 14 12", "z": "00 00 1F 02 04 08 1F"}
@@ -280,7 +280,7 @@ def foot_tiles(text, screen):
 
 def quality_tiles(text, screen):
     """A line of the quality, with the lowercase tiles in it: the two start
-    alike, so that Select changes only what follows "SELECT :"."""
+    alike, so that Up and Down change only what follows "UP/DOWN :"."""
     return bytes(screen.lowercase.get(char, ord(char)) for char in text.ljust(QUALITY_WIDTH))
 
 
@@ -427,7 +427,7 @@ def main(argv=None):
     if args.preview:
         # The menu, with WNYC on the dial and a status line with nothing on it.
         menu = show_station(screen, 1, 0)
-        menu.text(FOOT_COLUMN, gen_ui.HELP_ROW, foot_tiles(dict(FOOT_TEXT)["QUIT"], screen)
+        menu.text(FOOT_COLUMN, gen_ui.HELP_ROW, foot_tiles(dict(FOOT_TEXT)["CART"], screen)
                   .decode("latin-1"))
         menu.text(QUALITY_COLUMN, QUALITY_ROW,
                   quality_tiles(QUALITY[0], screen).decode("latin-1"))

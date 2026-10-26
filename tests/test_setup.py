@@ -13,7 +13,7 @@ import pytest
 from console import VBLANK_CYCLES
 from drive import (PAD_A, PAD_B, PAD_DOWN, PAD_SELECT, PAD_START, PAD_UP, STATE_FAILED,
                    STATE_JOINING, STATE_KEYS, STATE_LIST, STATE_SCAN, STATE_STATUS, STATE_TEST,
-                   STATE_USB, Setup)
+                   STATE_USB, Setup, find_key)
 from drive import MENU_FLIP, MENU_TEST, MENU_USB
 from nesp import Stick
 from wire import link, ms
@@ -198,10 +198,10 @@ def test_a_name_with_odd_bytes_is_shown_without_them(setup):
     assert s.listed()[0][0] == "caf???"
 
 
-def test_select_looks_again_and_b_goes_back(setup):
+def test_start_looks_again_and_b_goes_back(setup):
     s = setup()
     s.scan(NETWORKS)
-    s.press(PAD_SELECT)
+    s.press(PAD_START)
     s.wait_for(STATE_SCAN)
     s.c.run_until(lambda: s.stick.scans == 2, 60)
     s.stick.scan_set([CAFE])
@@ -312,15 +312,29 @@ def test_the_three_sets_of_keys_are_drawn(setup):
                          layout.KEY_STEP * layout.KEY_COLUMNS)[::layout.KEY_STEP]
                 for row in range(layout.KEY_ROWS)]
 
-    for layer in (0, 1, 2, 0):
-        assert keys() == list(layout.LAYERS[layer])
-        s.press(PAD_SELECT)
-        s.settle(10)
-    assert s.c.line(layout.SPACE_ROW) == "SPACE"
     # The cursor is a bar under its key.
     x, y, tile = s.c.sprite()
     assert s.tile_names()[tile] == "UNDER"
     assert (x, y) == (8 * layout.KEY_COLUMN, 8 * (layout.KEY_ROW + layout.KEY_STEP) + 8)
+    # The set key is named for the set it brings up.
+    for layer, name in ((0, "ABC"), (1, "#+="), (2, "abc"), (0, "ABC")):
+        assert keys() == list(layout.LAYERS[layer])
+        assert s.c.line(layout.SPACE_ROW) == name + "     SPACE"
+        s.next_set()
+        s.settle(10)
+    # and the cursor is under it.
+    x, y, tile = s.c.sprite()
+    assert (x, y) == (8 * layout.KEY_COLUMN, 8 * layout.SPACE_ROW + 8)
+
+
+def test_select_changes_no_set_of_keys(setup):
+    s = setup()
+    s.scan(NETWORKS)
+    s.choose(0)
+    s.wait_for(STATE_KEYS)
+    s.press(PAD_SELECT)                 # built by itself, it has no menu to go to
+    s.settle(10)
+    assert s.state == STATE_KEYS and s.c.byte("keys_layer") == 0
 
 
 def test_an_empty_key_types_nothing_and_b_deletes(setup):
@@ -329,8 +343,11 @@ def test_an_empty_key_types_nothing_and_b_deletes(setup):
     s.choose(0)
     s.wait_for(STATE_KEYS)
     s.type("ab")
-    s.press(PAD_SELECT)
-    s.press(PAD_SELECT)                 # the signs: the b's row has none
+    s.next_set()
+    s.next_set()                        # the signs: the b's row has none
+    _, row, column = find_key("b")
+    s._move_to_row(row)
+    s._move_to_column(column)
     s.press(PAD_A)
     s.settle(4)
     assert s.field == "ab_"
@@ -380,7 +397,7 @@ def test_a_join_that_fails_says_why_and_the_password_can_be_put_right(setup, why
     s.stick.set_wifi(p.NESP_WIFI_FAILED, why=why)
     s.wait_for(STATE_FAILED)
     s.settle(10)
-    assert s.message == text and s.c.line(layout.HELP_ROW) == "A:TRY AGAIN  B:BACK"
+    assert s.message == text and s.c.line(layout.HELP_ROW) == "A : TRY AGAIN   B : BACK"
     s.press(PAD_A)
     s.wait_for(STATE_KEYS)
     assert s.field == "wrnog_"          # what was typed is still there
@@ -496,7 +513,7 @@ def test_a_stick_switched_off_and_on_takes_the_console_back_to_its_hello(setup):
     # A new Stick on the same line: it has heard no hello, and says so.
     fresh = Stick(s.port)
     s.c.host = fresh.poll
-    s.press(PAD_SELECT)                 # look again: the first request it refuses
+    s.press(PAD_START)                  # look again: the first request it refuses
     s.wait_for(STATE_STATUS, 200)
     s.c.run_until(lambda: fresh.hellos == 1, 200)
     s.settle(80)
@@ -646,7 +663,7 @@ def test_a_nesp32_that_cannot_flip_its_screen_is_left_as_it_is(setup):
 
 # --- the USB drive ---------------------------------------------------------------
 
-def test_select_lends_the_files_to_a_computer_and_says_how_that_stands(setup):
+def test_the_usb_drive_lends_the_files_to_a_computer_and_says_how_that_stands(setup):
     s = setup()
     assert s.stick.drive == p.NESP_DRIVE_OFF
     s.menu(MENU_USB)

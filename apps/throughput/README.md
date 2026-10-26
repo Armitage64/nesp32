@@ -108,15 +108,15 @@ make                      # build/linktest.nes
    controller port 2. The line at the foot of the screen says `WAITING FOR
    THE NESP32` until the nesp32 answers, and then `PRESS START`. `UPDATE
    THE NESP32` means its firmware has no RAW service.
-2. Press Start on controller 1, or button A on the nesp32. Nothing is
-   tested until then.
-3. When both halves say `DONE`, the foot says `START : RE-TEST`, and
-   either button runs it again. On nesp32's cartridge it says `START :
-   RE-TEST   B : QUIT`, and B, there or while it waits to be started, is
-   the cartridge's menu again.
+2. Press Start or A on controller 1, or button A on the nesp32. Nothing
+   is tested until then.
+3. When both halves say `DONE`, the foot says `A : RE-TEST`, and any of
+   those buttons runs it again. On nesp32's cartridge it says `A :
+   RE-TEST   SELECT : MENU`, and Select, there or while it waits to be
+   started, is the cartridge's menu again.
 
 **A sweep**, for finding out what a line does past the first rate it
-fails: press **Select** on controller 1 in place of Start. The console
+fails: press **Up** on controller 1 in place of Start. The console
 runs every rate to the NES from 14 cycles a bit (127841 baud) to 5, each a
 whole trial of four blocks however many of its bytes come wrong, and
 stops at none. Nothing is run from the console. The two halves of the
@@ -232,7 +232,7 @@ On a line with no limit of its own, the upper half ends like this:
   the baud error the fast receiver takes falls from 5.5% at 9622 baud as
   the rate rises; the tracking one takes 1% from 223722 up.
 - A climb stops at the first rate that fails, and a rate above it may
-  pass: each routine samples at its own points in a bit. A sweep (Select)
+  pass: each routine samples at its own points in a bit. A sweep (Up)
   tries them all.
 - A direction that ends on the last rate of its ladder passed everything
   there is. Its limit is then the console's routine, not the wire.

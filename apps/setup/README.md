@@ -32,8 +32,8 @@ computer, and music copied to it.
 | Screen | Buttons |
 |---|---|
 | Status: the nesp32, its firmware, its Wi-Fi, address, signal, battery, and a menu: Wi-Fi setup, test interface, enable USB drive, flip LCD, and on the cartridge quit | Up, Down. A: choose |
-| Networks, strongest first, with a lock on those that want a password | Up, Down. A: choose. Select: look again. B: back |
-| Keyboard, for a password (or the name of a network that hides it) | D-pad. A: type. B: delete. Select: `abc`, `ABC`, `#+=`. Start: join |
+| Networks, strongest first, with a lock on those that want a password | Up, Down. A: choose. Start: look again. B: back |
+| Keyboard, for a password (or the name of a network that hides it) | D-pad. A: type; on the set key, left of the space bar, `abc`, `ABC` or `#+=`. B: delete. Start: join |
 | Link test: a checked request every frame, and the nesp32's time to reply | B: back |
 | USB drive: a StickS3's files lent to a computer, for music to be copied to | B: back, and the nesp32 restarts |
 
@@ -43,8 +43,9 @@ password goes to the nesp32 and is never sent back.
 
 Flip LCD turns the nesp32's own screen the other way up, and the
 nesp32 keeps it that way when it is switched off. Quit goes back to the
-cartridge's menu, as reset does; Setup built as a ROM of its own has no
-menu to go back to, and no Quit.
+cartridge's menu, as reset does, and so does Select from any screen; a
+USB drive is taken back first, as B does. Setup built as a ROM of its own
+has no menu to go back to, and no Quit.
 
 The USB drive is how the jukebox's music gets onto a StickS3:
 [nes-jukebox](../jukebox/README.md#music-on-a-nesp32) has what to copy and

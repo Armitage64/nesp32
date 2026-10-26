@@ -72,26 +72,27 @@ make test
 With the nesp32 on a Wi-Fi network (the [setup ROM](../setup) joins one)
 and on controller port 2, start `build/npr.nes`. The screen's header is
 nesp32's, with `NESRADIO` under the name; the nesp32's own
-screen calls the program `NESradio`. The foot of the screen says what A and B
-do: on the menu `A : PLAY`, and with a station `A : STOP`. Over it, on
-the menu, are `< / > : CHOOSE STATION` and the quality: `SELECT : 23kHz`,
-or `SELECT : 12kHz + INFO` with what is playing.
+screen calls the program `NESradio`. The foot of the screen says what the
+buttons do: on the menu `A : PLAY` (and `SELECT : MENU` on nesp32's
+cartridge), and with a station `A : STOP`. Over it, on the menu, are
+`< / > : CHOOSE STATION` and the quality: `UP/DOWN : 23kHz`, or
+`UP/DOWN : 12kHz + INFO` with what is playing.
 
 | | |
 |---|---|
-| **Select**, before a station is tuned in | the other quality: `23kHz`, or `12kHz + INFO` with what is playing |
+| **Up** or **Down**, before a station is tuned in | the other quality: `23kHz`, or `12kHz + INFO` with what is playing |
 | **Left** or **Right**, before a station is tuned in | the station before or after, and the dial's needle with it, round from the last to the first |
 | **Start** or **A** on the controller | tune in, as the menu says: `TUNING`, and a second or two later `ON THE AIR`. Pressed again while it is tuning, give it up |
 | **A** on the controller, while the station plays | turn it off, and back to the menu: the nesp32 stops fetching it |
 | **B** on the controller, while it is tuning | turn it off, and back to the menu (`B : BACK`) |
-| **B** on the controller, on the menu | on nesp32's cartridge, back to its menu (`B : QUIT`); built by itself, nothing |
+| **Select** on the controller, but while the station plays | on nesp32's cartridge, back to its menu (`SELECT : MENU`); built by itself, nothing |
 | **A** (front) on the nesp32 | tune in; and while the station plays, turn it off |
 
 **While the station plays, A on the controller turns it off, and so does
 the nesp32's button.** A console playing sampled sound does nothing else:
 its screen stands still, and of its controller it looks at button A
 alone, once a sample (the jukebox's `docs/PROTOCOL.md`, part 4, has how).
-Start and B cannot be read then: the controller is read by taking OUT0
+Start, B and Select cannot be read then: the controller is read by taking OUT0
 low, and OUT0 is the line to the nesp32. So the foot says nothing of B
 while it plays. A leaves the sound and tells the nesp32, which pauses the
 station; the ROM then sends STOP, which turns it off. Reset works too: the

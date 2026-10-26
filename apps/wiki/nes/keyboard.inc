@@ -163,13 +163,7 @@ row_first: .byte 0, KEY_COLUMNS, 2 * KEY_COLUMNS, 3 * KEY_COLUMNS
     lda kb_dirty
     ora #DIRTY_FIELD
     sta kb_dirty
-@case:
-    lda pad_new
-    and #PAD_SELECT
-    beq @search
-    lda on_cart                 ; Select: back to the cartridge's menu
-    beq @search
-    jmp quit
+@case:                          ; Select, the cartridge's menu, is the main loop's
 @search:
     lda pad_new
     and #PAD_START

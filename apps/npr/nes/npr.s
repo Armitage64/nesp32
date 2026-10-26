@@ -27,19 +27,24 @@
 ; between them for as long as no station is tuned in: the station at 23244
 ; samples a second and nothing else, or at 11622 with what it is playing,
 ; from the titles in its stream (the nesp32's pages: "the headlines" below).
-; Select moves between them. In the middle of the screen is the station,
+; Up and Down move between them. In the middle of the screen is the station,
 ; from the list in screen.inc (tools/gen_screen.py), which Left and Right
 ; go through; the nesp32 is sent its address, and fetches whatever MP3
 ; stream that is.
 ; The station's own lines
 ; of the middle, its letters, where it is and what it plays, are on it
 ; whatever else is, and a radio's dial over it has a needle at its
-; frequency: three sprites, which a station with none has off the screen. B there is the cartridge's menu
-; again, on nesp32's cartridge; built by itself, this ROM has none.
+; frequency: three sprites, which a station with none has off the screen.
 ;
-; The foot of the screen says what A and B do, and changes with them: B is
-; read only with the NMI on, so a station's foot says nothing of it while
-; it plays (FOOT_* in screen.inc). Over the menu's feet is the mode, which
+; Select is the cartridge's menu again, from wherever the controller is
+; read, on nesp32's cartridge; built by itself, this ROM has none. B is only
+; ever back a step, from a station tuning or paused to the menu, and never
+; out of the program, so that B pressed again and again cannot leave it.
+; The next program's hello turns off whatever station was left.
+;
+; The foot of the screen says what A, B and Select do, and changes with
+; them: B and Select are read only with the NMI on, so a station's foot
+; says nothing of them while it plays (FOOT_* in screen.inc). Over the menu's feet is the mode, which
 ; the NMI draws with them, and takes off with the others.
 ;
 ; When SOUND is answered with GO the console does nothing but receive: the
@@ -91,9 +96,10 @@ PALETTE   = $3F00
 OAM       = $0400               ; the sprites, for the DMA: the needle's, and the rest off
 
 PAD_START = $10
+PAD_SELECT = $20                ; the cartridge's menu
 PAD_B     = $40
 PAD_A     = $80
-PAD_MOVE  = $20                 ; Select: the menu's other mode
+PAD_MOVE  = $0C                 ; Up or Down: the menu's other mode
 PAD_LEFT  = $02
 PAD_RIGHT = $01
 
@@ -153,10 +159,11 @@ link_failed:  .res 2            ; every exchange with none, for a debugger's wat
 sounds:       .res 1            ; times the sound has played, likewise
 why_buf:      .res 28           ; the nesp32's words for a station that failed
 mode:         .res 1            ; NESP_TUNER_MODE_*: the menu's choice
-moved:        .res 1            ; Select went down: the main loop's to act on
+moved:        .res 1            ; Up or Down went down: the main loop's to act on
 area:         .res 1            ; what the middle of the screen is to show: AREA_*
 area_row:     .res 1            ; lines of it that are on the screen: NEWS_ROWS is all
 backed:       .res 1            ; B went down: the main loop's to act on
+quitting:     .res 1            ; Select went down: likewise
 foot:         .res 1            ; FOOT_*: what the foot says,
 foot_at:      .res 1            ; where its text is in foot_text,
 foot_dirty:   .res 1            ; and that it is not on the screen yet
@@ -219,9 +226,9 @@ foot_place:
 .repeat 5, index
     .byte index * FOOT_WIDTH
 .endrepeat
-.assert FOOT_SELECT = 0 && FOOT_QUIT = 1 && FOOT_PLAIN = 2 && FOOT_BACK = 3, error, "foot_place"
+.assert FOOT_ALONE = 0 && FOOT_CART = 1 && FOOT_PLAIN = 2 && FOOT_BACK = 3, error, "foot_place"
 .assert FOOT_PAUSED = 4, error, "foot_place"
-.assert FOOT_SELECT < FOOT_PLAIN && FOOT_QUIT < FOOT_PLAIN, error, "the menu's feet come first"
+.assert FOOT_ALONE < FOOT_PLAIN && FOOT_CART < FOOT_PLAIN, error, "the menu's feet come first"
 
 ; --- the stations ---------------------------------------------------------------------
 
@@ -446,16 +453,17 @@ main_wait:
 
 ; What the foot says follows the middle of the screen and the station: A
 ; chooses the menu's line, turns a station off, and plays one that is
-; paused; B is the cartridge's menu from the menu, and the menu from a
-; station that is tuning or paused, which are when B can be read.
+; paused; B is the menu from a station that is tuning or paused; and on the
+; cartridge, Select is its menu from all but a station on the air, which are
+; when B and Select can be read.
 .proc pick_foot
     lda area
     cmp #AREA_BLANK
     beq @station
-    lda #FOOT_QUIT
+    lda #FOOT_CART
     ldx on_cart
     bne @set
-    lda #FOOT_SELECT
+    lda #FOOT_ALONE
     beq @set
 @station:
     lda #FOOT_PLAIN
@@ -473,8 +481,8 @@ main_wait:
 ; Back to the cartridge's menu, as reset would go: through its stub, with
 ; the NMI off first, since the stub's `inc` puts the menu's bank, and its
 ; NMI, under this. The menu says nothing to the nesp32; the next program's
-; hello is what tells it this one has gone, and no station is tuned in
-; while the menu is on the screen.
+; hello is what tells it this one has gone, and turns off a station that
+; was left tuning or paused.
 .proc quit
     lda #0
     sta PPUCTRL
@@ -489,6 +497,12 @@ main_wait:
 ; new frame at once; one that ended inside its frame, good or not, leaves
 ; the next for the next NMI.
 .proc link_service
+    lda quitting                ; Select: back to the cartridge's menu, with a
+    beq @no_quit                ; nesp32 or none
+    lda on_cart
+    beq @no_quit
+    jmp quit
+@no_quit:
     lda greeted
     bne @greeted
     jmp say_hello
@@ -531,13 +545,9 @@ main_wait:
     beq @no_back
     lda #0
     sta backed
-    lda area
+    lda area                    ; the menu: nothing to go back to
     cmp #AREA_BLANK
-    beq @station
-    lda on_cart                 ; the menu: back to the cartridge's
-    beq @no_back
-    jmp quit
-@station:
+    bne @no_back
     lda tuner                   ; a station: off, if it is tuning or paused
     cmp #NESP_TUNER_TUNING
     beq @stop
@@ -1027,6 +1037,12 @@ main_wait:
     lda #1
     sta backed
 @no_back:
+    txa
+    and #PAD_SELECT
+    beq @no_quit
+    lda #1
+    sta quitting
+@no_quit:
     txa
     and #PAD_LEFT | PAD_RIGHT
     beq @no_turn

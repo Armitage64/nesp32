@@ -245,6 +245,14 @@ main_wait:
     beq main_wait
     sta served_frame
     jsr read_input
+    lda pad_new                 ; Select: back to the cartridge's menu, from
+    and #PAD_SELECT             ; every screen. B is only ever back a step,
+    beq @screen                 ; and never out of the program, so that B
+    lda CART_STUB               ; pressed again and again cannot leave it
+    cmp #CART_STUB_FIRST
+    bne @screen
+    jmp select_quit
+@screen:
     jsr run_screen
     jsr draw_message
     jmp main_loop

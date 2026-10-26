@@ -45,23 +45,23 @@ The ROM is on nes-radar's
 ## Using it
 
 1. Load the ROM with the nesp32 in port 2, or choose NES Radar from the
-   cartridge's menu. The splash shows the version, `V0.5.0`, for two
+   cartridge's menu. The splash shows the version, `V0.6.0`, for two
    seconds; on a ROM by itself Start skips it.
-2. Up and Down change a letter, Left and Right (or A and B) move along the
+2. Up and Down change a letter, and Left and Right move along the
    four. The editor begins at the last airport the nesp32 found, which it
    keeps when it is switched off; with none kept, or no nesp32, at `KSBA`.
-3. Press Start.
+3. Press Start or A.
 
-On the scope the direction buttons choose among the aircraft, and Select
-is the editor again. **On the cartridge, Select in the editor is the menu
-again** (the editor says `SELECT MENU`), as Reset is. On a ROM by itself
-there is no menu, and Select in the editor does nothing.
+On the scope the direction buttons choose among the aircraft, and B goes
+back to the ICAO editor. **On the cartridge, Select goes back to the menu
+from the editor or the scope** (the editor says `SELECT MENU`), as Reset
+does. On a ROM by itself there is no menu, and Select does nothing.
 
 | The editor says | |
 |---|---|
 | `REQUESTING` | the nesp32 is being asked, and is asking where the airport is: a second or two |
 | `INVALID AIRPORT` | Wikidata knows no airport with those letters as its ICAO code |
-| `LOOKUP FAILED` | Wikidata did not answer. Start asks again |
+| `LOOKUP FAILED` | Wikidata did not answer. Start or A asks again |
 | `NO NESP32 ANSWER` | no nesp32 is there, or it is running something else |
 | `NESP32 NO WI-FI` | Setup has not been run, or the network is out of reach |
 | `UPDATE NESP32` | its firmware is older than this ROM, and has no RADAR |
@@ -128,9 +128,9 @@ for the splash's tiles and the scope's, with each page once in place of the
 CN-ROM's four. It is a part of that cartridge and not a ROM to run by
 itself: it counts on the menu having set the mapper, and is built for the
 place on the cartridge its tiles have (`CART_CHR`). The same build makes
-Select in the editor the menu, says `SELECT MENU`, and leaves the splash
-up for its two seconds, since the Start that chose it from the menu is
-still held.
+Select return to the menu from the editor or scope, says `SELECT MENU` in
+the editor, and leaves the splash up for its two seconds, since the Start
+that chose it from the menu is still held.
 
 ## What the nesp32 changed, and what it did not
 
@@ -156,7 +156,7 @@ so none of that is needed:
   front every frame, whatever the link is doing.
 - **Names are fetched before the scene they belong to**, a slot a frame,
   and only when a scene's reply says they have changed.
-- **Select is the editor at once.** There is nobody to ask.
+- **B returns to the ICAO editor at once.** There is nobody to ask.
 - **A nesp32 switched off and on** is told who is on the console and
   which airport again, and the scope goes on.
 - **The nesp32 has no table of airports.** The 0.4.x server had ten

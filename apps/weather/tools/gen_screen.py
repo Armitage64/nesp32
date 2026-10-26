@@ -63,7 +63,7 @@ CREDIT_TILES = 14                   # the tiles it is drawn across
 CREDIT_COLUMN = (gen_ui.SCREEN_COLUMNS - CREDIT_TILES) // 2
 FOOT_ROW = gen_ui.HELP_ROW
 FOOT_FORM = "A : SUBMIT"
-FOOT_FORM_CART = "A : SUBMIT   B : QUIT"   # on the cartridge, B is its menu again
+FOOT_FORM_CART = "A : SUBMIT   SELECT : MENU"     # on the cartridge, Select is its menu again
 FOOT_REPORT = "B : BACK"
 # What the ROM paints, a row at a time: the middle's rows, then the foot.
 PAINT_ROWS = ROWS + 1

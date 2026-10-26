@@ -18,7 +18,7 @@
 ; rate, and ends early at a block with a bad byte. Each direction is
 ; climbed by itself (README.md).
 ;
-; Select in place of Start sweeps the direction to the console instead:
+; Up in place of Start sweeps the direction to the console instead:
 ; every rate of its ladder from SWEEP_FIRST up, each a whole trial however
 ; many bytes come wrong, with no climb that stops at the first to fail. The
 ; screen's two halves become a table of them, and the next climb puts the
@@ -64,13 +64,14 @@ PPUMASK_BACKGROUND = $0A        ; background on, left column included
 NAMETABLE = $2000
 PALETTE   = $3F00
 OUT0_MARK = $01
+PAD_UP    = $08                 ; a sweep
 PAD_START = $10
-PAD_SELECT = $20
-PAD_B     = $40
+PAD_SELECT = $20                ; the cartridge's menu
+PAD_A     = $80
 ; The cartridge's reset stub (nesp32's nes/cart/gen_cart.py) is at the same
 ; place in every program's bank: an `inc` of itself, which resets the
 ; mapper and puts the menu's bank at $C000, and a jump to the menu. Built by
-; itself, this ROM has padding there. As Weather's B does.
+; itself, this ROM has padding there. As Weather's Select does.
 CART_STUB = $FFDA
 CART_STUB_FIRST = $EE           ; inc absolute
 
@@ -195,8 +196,8 @@ label:
 state_text waiting_text, "WAITING FOR THE NESP32"
 state_text update_text, "UPDATE THE NESP32"
 state_text press_text, "PRESS START"
-state_text again_text, "START : RE-TEST"
-state_text again_cart_text, "START : RE-TEST   B : QUIT"   ; on the cartridge, B is its menu
+state_text again_text, "A : RE-TEST"
+state_text again_cart_text, "A : RE-TEST   SELECT : MENU"    ; on the cartridge, Select is its menu
 state_text testing_text, "TESTING"
 state_text sweep_state, "SWEEPING"
 idle_text:     .byte "WAITING", 0
@@ -336,12 +337,13 @@ of_text:       .byte " OF ", 0
 @again_cart:
     say again_cart_text
 
-    ; Wait to be started: Start on controller 1, or button A on the nesp32.
-    ; On the cartridge, B is its menu. A request a frame keeps watch on the
-    ; nesp32 meanwhile.
+    ; Wait to be started: Start or A on controller 1, or button A on the
+    ; nesp32. On the cartridge, Select is its menu; B, which is only ever
+    ; back a step, has none to go back to here. A request a frame keeps
+    ; watch on the nesp32 meanwhile.
 @idle:
     lda pad
-    and #PAD_START | PAD_SELECT | PAD_B
+    and #PAD_START | PAD_A | PAD_SELECT | PAD_UP
     bne @down
     lda #1
     sta start_up
@@ -350,14 +352,14 @@ of_text:       .byte " OF ", 0
     lda start_up
     beq @watch
     lda pad
-    and #PAD_B
+    and #PAD_SELECT
     beq @start
     lda on_cart
     beq @watch
     jmp quit
 @start:
     lda pad
-    and #PAD_SELECT
+    and #PAD_UP
     beq @go
     jsr sweep
     jmp @ran

@@ -362,6 +362,14 @@ main_wait:
 @some:
     ldx #0
     stx pad_new
+    tax
+    and #PAD_SELECT             ; Select: back to the cartridge's menu, from
+    beq @no_quit                ; either view, with a nesp32 or none
+    lda on_cart
+    beq @no_quit
+    jmp quit
+@no_quit:
+    txa
     ldx asked_last              ; until the nesp32 has said what it keeps there
     beq @done                   ; is neither view to work
     sta presses
@@ -374,17 +382,10 @@ main_wait:
     jsr set_status
     jmp show_form
 @form:
-    lda presses
-    and #PAD_A | PAD_START
-    beq @back
+    lda presses                 ; B: nothing to go back to, and never out of
+    and #PAD_A | PAD_START      ; the program, so that B pressed again and
+    beq @move                   ; again cannot leave it
     jmp submit
-@back:
-    lda presses
-    and #PAD_B
-    beq @move
-    lda on_cart                 ; B: back to the cartridge's menu
-    beq @move
-    jmp quit
 @move:
     lda presses
     and #PAD_DIRECTIONS
@@ -549,7 +550,7 @@ main_wait:
 
 ; A row of the form for the NMI, if there is one to draw and the last has
 ; been drawn: its tiles from the ROM, with the digits on their row, and on
-; the cartridge the foot that says B is its menu.
+; the cartridge the foot that says Select is its menu.
 .proc paint_form
     lda row_dirty
     bne @done

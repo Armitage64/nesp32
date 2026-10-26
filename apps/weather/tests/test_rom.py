@@ -4,8 +4,8 @@ import gen_screen as layout
 import nesp
 import nesp_proto as p
 import pytest
-from forecast import (KEPT, NOT_FOUND, PAD_A, PAD_B, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_START,
-                      PAD_UP, VIEW_REPORT)
+from forecast import (KEPT, NOT_FOUND, PAD_A, PAD_B, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_SELECT,
+                      PAD_START, PAD_UP, VIEW_REPORT)
 
 WEATHER = p.NESP_SVC_WEATHER
 COLUMNS = p.NESP_WEATHER_COLUMNS
@@ -153,6 +153,19 @@ def test_b_in_the_form_does_nothing_on_no_cartridge(sky):
     s.press(PAD_B)                  # nor once a report has been asked for
     s.run(30)
     assert s.form_is_up() == "90210" and s.view != VIEW_REPORT
+
+
+def test_select_does_nothing_on_no_cartridge(sky):
+    s = sky(kept=KEPT)
+    assert s.form_is_up() == "90210" and s.c.byte("on_cart") == 0
+    s.press(PAD_SELECT)
+    s.run(30)
+    assert s.form_is_up() == "90210" and s.asked(p.NESP_WEATHER_ZIP) == []
+    s.go()
+    s.report_is_up()
+    s.press(PAD_SELECT)
+    s.run(30)
+    assert s.view == VIEW_REPORT
 
 
 def test_the_days_names_are_centered_over_their_pictures(sky):

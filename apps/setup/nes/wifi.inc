@@ -4,7 +4,7 @@
 ;   scan      the Stick is looking; this asks it how that is going
 ;   list      the networks it found, strongest first, and OTHER NETWORK for
 ;             one that does not say its name. Up and Down move, A chooses,
-;             Select looks again, B goes back
+;             Start looks again, B goes back
 ;   send      the name and the password go to the Stick in pieces, then JOIN
 ;   joining   the Stick is trying; this asks it how that is going
 ;   failed    it did not work, and why. A tries another password, B another
@@ -50,13 +50,13 @@ net_pass:     .res NESP_PASSWORD_MAX
 .segment "RODATA"
 scan_screen:
     text  HEADING_ROW, LEFT, "CHOOSE A NETWORK"
-    text  HELP_ROW, LEFT, "B:BACK"
+    text  HELP_ROW, LEFT, "B : BACK"
     .byte 0
 
 list_screen:
     text  HEADING_ROW, LEFT, "CHOOSE A NETWORK"
-    text  HELP_ROW, LEFT, "A:CHOOSE  B:BACK"
-    text  HELP_ROW + 1, LEFT, "SELECT:LOOK AGAIN"
+    text  HELP_ROW, LEFT, "A : CHOOSE   B : BACK"
+    text  HELP_ROW + 1, LEFT, "START : LOOK AGAIN"
     .byte 0
 
 join_screen:
@@ -81,7 +81,7 @@ refused_text:   .byte "THE NESP32 REFUSED IT", 0
 password_text:  .byte "WRONG PASSWORD", 0
 no_network_text: .byte "NETWORK NOT FOUND", 0
 no_join_text:   .byte "COULD NOT JOIN", 0
-failed_help:    .byte "A:TRY AGAIN  B:BACK", 0
+failed_help:    .byte "A : TRY AGAIN   B : BACK", 0
 
 .segment "CODE"
 
@@ -230,7 +230,7 @@ failed_help:    .byte "A:TRY AGAIN  B:BACK", 0
     jmp open_status
 @again:
     lda pad_new
-    and #PAD_SELECT
+    and #PAD_START
     beq @arrow
     jmp open_scan
 @arrow:

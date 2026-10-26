@@ -677,7 +677,7 @@ def test_the_menu_lists_the_tracks_with_the_cursors_game_and_name_over_it(menu):
     assert list_rows(machine) == names(0, 8, 0)
     assert (game_line(machine).strip(), title_line(machine).strip()) == ("Game A", "Track 00")
     assert status_line(machine) == "" and time_line(machine).strip("\x00") == ""
-    assert foot_line(machine) == FOOT["SELECT"]    # built by itself: B has no menu to go back to
+    assert foot_line(machine) == FOOT["ALONE"]    # built by itself: Select has no menu to go back to
     tap(machine, PAD_DOWN)
     menu_is_up(machine)
     assert list_rows(machine) == names(0, 8, 1)
@@ -725,7 +725,7 @@ def test_b_while_music_plays_is_the_menu_at_its_track(link_rom, demo):
     assert button_requests(machine) == [p.NESP_PRESS_STOP]
     menu_is_up(machine)
     assert list_rows(machine)[:3] == ["> First track", "  Second track", ""]
-    assert foot_line(machine) == FOOT["SELECT"] and machine.memory[0x4015] == 0
+    assert foot_line(machine) == FOOT["ALONE"] and machine.memory[0x4015] == 0
     assert not machine.byte("playing")
     tap(machine, PAD_DOWN)
     tap(machine, PAD_START)                       # and another from there
@@ -738,7 +738,7 @@ def test_with_no_music_the_menu_is_empty_and_a_chooses_nothing(link_rom):
     machine = LinkConsole(*link_rom)
     machine.run(30)
     assert status_line(machine) == "NO MUSIC FOUND" and list_rows(machine) == [""] * 8
-    assert foot_line(machine) == FOOT["SELECT"]
+    assert foot_line(machine) == FOOT["ALONE"]
     tap(machine, PAD_A)
     tap(machine, PAD_DOWN)
     machine.run(10)

@@ -61,11 +61,12 @@ HELP_STANDALONE = "START=PAUSE"
 # The link ROM's foot, which it writes, by its FOOT_* numbers; NPR's is the
 # same. PLAY and PAUSE are pictures, in tiles of their own (ICONS), and
 # stand for them here. B is read only with the NMI on, so not while
-# sampled sound plays: then the foot says nothing of it.
+# sampled sound plays: then the foot says nothing of it. Select, which is
+# the cartridge's menu from anywhere, is on the menu's foot alone.
 PLAY, PAUSE = "\x01", "\x02"
 A_HELP = "A : " + PLAY + "/" + PAUSE
-FOOT_TEXT = (("SELECT", "A : PLAY"),                # the menu of a ROM built by itself
-             ("QUIT", "A : PLAY   B : QUIT"),       # the menu, on the cartridge
+FOOT_TEXT = (("ALONE", "A : PLAY"),                 # the menu of a ROM built by itself
+             ("CART", "A : PLAY   SELECT : MENU"),  # the menu, on the cartridge
              ("PLAIN", A_HELP),                     # sampled sound playing
              ("BACK", A_HELP + "   B : BACK"))      # music, or a sound paused
 FOOT_WIDTH = max(len(text) for _, text in FOOT_TEXT)

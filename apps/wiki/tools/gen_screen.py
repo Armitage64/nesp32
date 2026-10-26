@@ -77,7 +77,7 @@ SPACE_COLUMN = (SCREEN_COLUMNS - len(SPACE_TEXT)) // 2
 SHIFT_CHAR = "\x7f"
 STATUS_COLUMN, STATUS_ROW = 2, 24   # COLUMNS wide
 HELP = ((26, "A : TYPE   B : DELETE"), (28, "START : SEARCH"))
-HELP_CART = "START : SEARCH   SELECT : QUIT"   # on the cartridge, Select is its menu
+HELP_CART = "START : SEARCH   SELECT : MENU"   # on the cartridge, Select is its menu
 DEFAULT_QUERY = "Nintendo Entertainment System"
 
 THUMB_X = 244                       # the scroll thumb, right of the text

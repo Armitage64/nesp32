@@ -759,6 +759,12 @@ main_wait:
     ldx #0
     stx pad_new
     sta presses
+    and #PAD_SELECT             ; Select: back to the cartridge's menu, from
+    beq @view                   ; every view. B is only ever back a step, and
+    lda on_cart                 ; never out of the program, so that B pressed
+    beq @view                   ; again and again cannot leave it
+    jmp quit
+@view:
     lda view
     beq splash_buttons
     cmp #VIEW_LIST
@@ -783,13 +789,6 @@ main_wait:
 .endproc
 
 .proc list_buttons
-    lda presses
-    and #PAD_SELECT
-    beq @start
-    lda on_cart                 ; Select: back to the cartridge's menu
-    beq @start
-    jmp quit
-@start:
     lda presses
     and #PAD_START
     bne @remove_asked

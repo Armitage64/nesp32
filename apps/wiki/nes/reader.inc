@@ -128,8 +128,8 @@ factor:    .res 1
     beq @select
     jmp lost_article
 @select:
-    lda pad_new
-    and #PAD_SELECT
+    lda pad_new                 ; B: back a step, to the search screen
+    and #PAD_B
     beq @start
     lda #STATUS_NONE
     jmp back_to_search
@@ -152,7 +152,7 @@ factor:    .res 1
     beq @glide
 @page_up:
     lda pad_new
-    and #PAD_B | PAD_LEFT
+    and #PAD_LEFT
     beq @move
     lda #1
 @glide:

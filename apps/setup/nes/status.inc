@@ -66,7 +66,7 @@ status_screen:
     text  MENU_ROW + 1, MENU_COLUMN, "TEST INTERFACE"
     text  MENU_ROW + 2, MENU_COLUMN, "ENABLE USB DRIVE"
     text  MENU_ROW + MENU_FLIP, MENU_COLUMN, "FLIP LCD"
-    text  HELP_ROW, LEFT, "UP/DOWN:MOVE  A:CHOOSE"
+    text  HELP_ROW, LEFT, "A : CHOOSE"
     .byte 0
 
 ; Which line each step of the round writes, and what works it out.
@@ -219,6 +219,18 @@ wifi_failed:   .byte "COULD NOT JOIN", 0
     sta flipping
 @done:
     rts
+.endproc
+
+; Select, on the cartridge: its menu, from any screen. A nesp32 that is
+; lending its files to a computer is told to take them back first, as B
+; there does.
+.proc select_quit
+    lda state
+    cmp #STATE_USB
+    bne quit
+    lda #NESP_LEND_STOP
+    jsr usb_ask
+    ; fall through
 .endproc
 
 ; Back to the cartridge's menu, as reset would go: through its stub, with

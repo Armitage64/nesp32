@@ -60,7 +60,7 @@ pulses, white through the header's blues and back, as the key under
 | **Left**, **Right** | the next digit, either way; from the last round to the first |
 | **Up**, **Down** | change it, `9` round to `0`. Held down, it goes on changing |
 | **A** or **Start** | ask for that zip code's weather (`A : SUBMIT`) |
-| **B** | on nesp32's cartridge, back to its menu (`B : QUIT`); built by itself, nothing |
+| **Select** | on nesp32's cartridge, back to its menu (`SELECT : MENU`), here or from a report; built by itself, nothing |
 
 and with the report on the screen:
 

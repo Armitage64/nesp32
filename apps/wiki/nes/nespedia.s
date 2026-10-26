@@ -231,6 +231,13 @@ main_wait:
     jsr split                   ; first: it is tied to the raster
 @input:
     jsr read_input
+    lda pad_new                 ; Select: back to the cartridge's menu, from
+    and #PAD_SELECT             ; every screen. B is only ever back a step,
+    beq @dispatch               ; and never out of the program, so that B
+    lda on_cart                 ; pressed again and again cannot leave it
+    beq @dispatch
+    jmp quit
+@dispatch:
     lda state
     beq @search
     cmp #STATE_LOADING
