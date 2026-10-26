@@ -35,6 +35,7 @@
 
 #include "esp_hidh.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
@@ -50,6 +51,7 @@
 #define TASK_STACK 6144             /* opening a keyboard reads its services in this task */
 #define HID_STACK 4096
 #define TASK_PRIORITY 2
+#define OPENING_US 5000000          /* how often the log hears that it is still opening */
 
 /* What is not a character. */
 #define KEY_BACKSPACE 0x08
@@ -210,6 +212,9 @@ static void hid_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         }
         break;
     case ESP_HIDH_INPUT_EVENT:
+        ESP_LOGI(TAG, "report: %s, map %u, id %u, %u bytes", esp_hid_usage_str(param->input.usage),
+                 param->input.map_index, param->input.report_id, param->input.length);
+        ESP_LOG_BUFFER_HEX(TAG, param->input.data, param->input.length);
         if (param->input.usage == ESP_HID_USAGE_KEYBOARD) {
             report(param->input.data, param->input.length);
         }
@@ -306,6 +311,70 @@ static const seen_t *scan(void)
     return best;
 }
 
+/* For the log: what happens to the connection, which esp_hid's host says
+ * little of. A listener hears these besides the connection's own handler. */
+static int gap_watch(struct ble_gap_event *event, void *arg)
+{
+    (void)arg;
+    switch (event->type) {
+    case BLE_GAP_EVENT_CONNECT:
+        ESP_LOGI(TAG, "gap: connect, status %d", event->connect.status);
+        break;
+    case BLE_GAP_EVENT_DISCONNECT:
+        ESP_LOGI(TAG, "gap: disconnect, reason $%x", event->disconnect.reason);
+        break;
+    case BLE_GAP_EVENT_ENC_CHANGE: {
+        struct ble_gap_conn_desc desc;
+        if (ble_gap_conn_find(event->enc_change.conn_handle, &desc) == 0) {
+            ESP_LOGI(TAG, "gap: encryption, status $%x: encrypted %d, authenticated %d, bonded %d",
+                     event->enc_change.status, desc.sec_state.encrypted,
+                     desc.sec_state.authenticated, desc.sec_state.bonded);
+        } else {
+            ESP_LOGI(TAG, "gap: encryption, status $%x", event->enc_change.status);
+        }
+        break;
+    }
+    case BLE_GAP_EVENT_CONN_UPDATE:
+        ESP_LOGI(TAG, "gap: connection updated, status %d", event->conn_update.status);
+        break;
+    case BLE_GAP_EVENT_REPEAT_PAIRING:
+        ESP_LOGI(TAG, "gap: the keyboard pairs again");
+        break;
+    case BLE_GAP_EVENT_IDENTITY_RESOLVED:
+        ESP_LOGI(TAG, "gap: identity resolved");
+        break;
+    default:
+        break;
+    }
+    return 0;
+}
+
+static void still_opening(void *arg)
+{
+    int64_t *began = arg;
+    ESP_LOGW(TAG, "still opening the keyboard, %ld s", (long)((esp_timer_get_time() - *began) / 1000000));
+}
+
+/* esp_hid's host connects, reads the keyboard's services and listens to
+ * its reports, and waits for each step with no end: the log says so while
+ * it waits. */
+static esp_hidh_dev_t *open(ble_addr_t addr)
+{
+    static int64_t began;
+    static esp_timer_handle_t timer;
+    if (timer == NULL) {
+        esp_timer_create_args_t args = {.callback = still_opening, .arg = &began, .name = "opening"};
+        esp_timer_create(&args, &timer);
+    }
+    began = esp_timer_get_time();
+    esp_timer_start_periodic(timer, OPENING_US);
+    esp_hidh_dev_t *device = esp_hidh_dev_open(addr.val, ESP_HID_TRANSPORT_BLE, addr.type);
+    esp_timer_stop(timer);
+    ESP_LOGI(TAG, "open %s after %ld ms", device != NULL ? "done" : "failed",
+             (long)((esp_timer_get_time() - began) / 1000));
+    return device;
+}
+
 static void host(void *arg)
 {
     (void)arg;
@@ -321,6 +390,8 @@ static void run(void *arg)
     while (!ble_hs_synced()) {
         vTaskDelay(pdMS_TO_TICKS(10));
     }
+    static struct ble_gap_event_listener listener;
+    ble_gap_event_listener_register(&listener, gap_watch, NULL);
     for (;;) {
         ble_addr_t paired;
         int count = 0;
@@ -328,13 +399,12 @@ static void run(void *arg)
         xEventGroupClearBits(happened, OPENED | CLOSED);
         if (ble_store_util_bonded_peers(&paired, &count, 1) == 0 && count != 0) {
             ESP_LOGI(TAG, "waiting for the paired keyboard: press a key");
-            device = esp_hidh_dev_open(paired.val, ESP_HID_TRANSPORT_BLE, paired.type);
+            device = open(paired);
         } else {
             const seen_t *found = scan();
             if (found != NULL) {
                 ESP_LOGI(TAG, "pairing with %s", found->name[0] ? found->name : "(no name)");
-                ble_addr_t addr = found->addr;
-                device = esp_hidh_dev_open(addr.val, ESP_HID_TRANSPORT_BLE, addr.type);
+                device = open(found->addr);
             }
         }
         if (device != NULL) {
@@ -349,6 +419,9 @@ void keyboard_start(void)
 {
 #ifdef NESP_KBD_SPIKE
     happened = xEventGroupCreate();
+    /* What esp_hid's host does as it opens a keyboard. */
+    esp_log_level_set("NIMBLE_HIDH", ESP_LOG_DEBUG);
+    esp_log_level_set("ESP_HIDH", ESP_LOG_DEBUG);
     ESP_ERROR_CHECK(nimble_port_init());
     esp_hidh_config_t config = {
         .callback = hid_event,
