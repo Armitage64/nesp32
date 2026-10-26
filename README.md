@@ -61,12 +61,15 @@ Please join our [Discord](https://discord.gg/kwSC7pwtmb)!
 | [Contra](apps/contra)* | Contra online co-op, with framerate optimizations |
 | [Tetris](apps/tetris)* | Tetris online VS |
 | [TMNT2 Arcade](apps/tmnt2)* | Teenage Mutant Ninja Turtles 2 Arcade online co-op, with framerate optimizations |
+| [SMBX](apps/smbx)** | The Super Mario Bros. hack for two players at once, online co-op |
 | [NES Radar](apps/nes-radar) | [k6lcm](https://github.com/k6lcm)'s live air traffic scope, no PC required |
 | [NESradio](apps/npr) | Live .mp3 radio stations on a radio dial, with what is playing |
 | [Weather](apps/weather) | Current conditions and a 5-day forecast for a US zip code, which the NESP32 remembers |
 | [Bluesky](apps/bluesky) | Bluesky posts from a list of favorite accounts the NESP32 remembers, after [ConnectedNES](https://github.com/hxlnt/connectedNES) |
 
 \* These games contain copyrighted material. You must build the ROM yourself using the publicly available disassembly and the NESP32 patch provided here.
+
+\*\* Built from your own copy of the hack's ROM: none of the game is in this repository, only the netplay's code and where it goes.
 
 ## How it works
 
