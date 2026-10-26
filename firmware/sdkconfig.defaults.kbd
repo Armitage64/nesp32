@@ -1,0 +1,28 @@
+# Bluetooth, for a keyboard (main/keyboard.c): only in the keyboard's spike
+# for now, which is built with this file after the others:
+#
+#   idf.py -B build-kbd -D SDKCONFIG=build-kbd/sdkconfig -D IDF_TARGET=esp32s3 \
+#          -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.defaults.kbd" \
+#          -D NESP_KBD_SPIKE=1 build
+#
+# A StickS3's chip has Bluetooth LE and no Classic, so only LE keyboards
+# can pair. NimBLE is the smaller of ESP-IDF's two stacks; the nesp32 is a
+# central and scans.
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_ROLE_CENTRAL=y
+CONFIG_BT_NIMBLE_ROLE_OBSERVER=y
+CONFIG_BT_NIMBLE_ROLE_BROADCASTER=n
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
+# esp_hid's host on NimBLE is built only with NimBLE's HID service, which
+# ESP-IDF offers only with a GATT server, which it offers only to a
+# peripheral: so the nesp32 can be one, and never is.
+CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=y
+CONFIG_BT_NIMBLE_GATT_SERVER=y
+CONFIG_BT_NIMBLE_HID_SERVICE=y
+# The keyboard it was paired with, kept over power-off.
+CONFIG_BT_NIMBLE_NVS_PERSIST=y
+# The host's memory from PSRAM: the chip's own is Wi-Fi's and the link's.
+CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL=y
+# Wi-Fi and Bluetooth take turns at the one radio.
+CONFIG_ESP_COEX_SW_COEXIST_ENABLE=y

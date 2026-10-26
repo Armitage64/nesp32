@@ -28,6 +28,7 @@
 #include "board.h"
 #include "conn.h"
 #include "fetch.h"
+#include "keyboard.h"
 #include "link.h"
 #include "radio.h"
 #ifdef NESP_SPIKE
@@ -269,6 +270,7 @@ extern "C" void app_main(void)
     store_start(converting);
     link_start(radio_hal());
     radio_start();
+    keyboard_start();
     ESP_LOGI(TAG, "nesp32 %s on a %s", NESP_FIRMWARE_TEXT, BOARD_NAME);
 
     uint32_t screen_at = 0;
