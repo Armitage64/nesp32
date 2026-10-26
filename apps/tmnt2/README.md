@@ -54,10 +54,32 @@ make            # build/tmnt2.nes, the original, and build/tmnt2_net.nes
 make verify     # the original matches its SHA-512
 make test       # the simulation's tests (needs requirements-dev.txt)
 make patches    # patches/ again, from what has been changed in build/src
+make bps        # dist/'s patches again, for players ("The patch", below)
 ```
 
 Needs cc65 (`ca65`, `ld65`), Python 3, `patch`, and a C compiler: the
 tests run the ROM against nesp32's firmware built for this computer.
+
+## The patch, for players
+
+`make bps` writes the netplay ROM as a patch to the US release, for
+players who build nothing: `dist/tmnt2_net.bps`, to apply to their own copy
+of the game with any BPS patcher (Floating IPS, or RomPatcher.js in a
+browser), and put the ROM it makes on a flash cartridge. A BPS patch knows
+the ROM it is for, and a patcher refuses any other: the US release, with
+its iNES header, as `make verify` knows it. `dist/tmnt2_net.ips` is the
+same for a patcher that takes only IPS, which checks nothing: it has to be
+applied to the right ROM. `dist/` is written by whoever has the game, and
+kept in the repository.
+
+The patches hold none of the game. Nothing of the game moves in the
+netplay build, every change being the length of what it replaces, so the
+bytes that differ are the netplay's own: its code in bank 29 and in the
+fixed banks' free bytes, its header, and the few instructions that call
+it. `tools/gen_patch.py` (at the top of this repository) refuses to write
+a patch with sixteen bytes in a row that are found anywhere in the game,
+and `tests/test_patch.py` holds the patches in `dist/` to the ROM this tree
+builds: after a change to the netplay, `make bps` writes them again.
 
 ## The cartridge
 

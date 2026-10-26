@@ -7,6 +7,8 @@
 #   make verify     check the original against the ROM's SHA-512
 #   make test       the simulation's tests (needs requirements-dev.txt)
 #   make patches    write patches/ again from the sources in build/src
+#   make bps        dist/tmnt2_net.bps and .ips again, the netplay ROM as
+#                   a patch to the game, which players apply to their own
 #   make clean
 #
 # The game is not here. Its disassembly is Aaron Bottegal's
@@ -34,6 +36,11 @@ NESP := $(NESP_BUILD)/nesp.stamp
 NESP_LIB := $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/gen_link.py
 ROM := $(BUILD)/tmnt2.nes
 NET_ROM := $(BUILD)/tmnt2_net.nes
+# The netplay ROM as a patch to the US release, for players who build
+# nothing: kept in the repository, as it holds none of the game
+# (tools/gen_patch.py refuses one that would).
+DIST := dist
+GEN_PATCH := $(NESP32)/tools/gen_patch.py
 SLOW_ROM := $(BUILD)/tmnt2_net_slow.nes
 # Teenage Mutant Ninja Turtles II - The Arcade Game (USA), with its iNES
 # header.
@@ -57,7 +64,7 @@ SLOW_OBJECTS := $(NAMES:%=$(BUILD)/slow/%.o)
 NET_SOURCES := $(wildcard net/*.inc net/*.asm) $(BUILD)/link.inc $(NESP_LIB) $(NESP)
 NET_INCLUDES := -I net -I $(BUILD) -I $(NESP_BUILD) -I $(NESP32)/nes/lib
 
-.PHONY: all verify test patches clean FORCE
+.PHONY: all verify test patches bps clean FORCE
 
 all: $(ROM) $(NET_ROM) $(SLOW_ROM)
 
@@ -133,6 +140,12 @@ verify: $(ROM)
 
 test:
 	$(PYTHON) -m pytest -q tests
+
+# From the original as built, once it is known to be the game: the patch
+# is for the US release and no other.
+bps: verify $(NET_ROM)
+	mkdir -p $(DIST)
+	$(PYTHON) $(GEN_PATCH) $(ROM) $(NET_ROM) $(DIST)/tmnt2_net.bps --ips $(DIST)/tmnt2_net.ips
 
 # What a source in build/src has that the converted one has not.
 PATCH_OF = diff -U0 --label a/src/$(1).asm --label b/src/$(1).asm \
