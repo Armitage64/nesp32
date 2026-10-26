@@ -170,18 +170,21 @@ static void pressed(uint8_t usage, uint8_t modifiers)
     keep((uint8_t)(shift ? SHIFTED[usage - USAGE_A] : plain));
 }
 
-/* A keyboard's input report: its modifiers, a byte that is nothing, and
- * the six keys down. A key is typed when it is in a report and was not in
- * the one before. */
+/* A keyboard's input report: its modifiers, and the keys down. The boot
+ * report has a byte that is nothing between the two, and is 8 bytes; a
+ * report of the keyboard's own may leave the byte out (an MX Keys S's is
+ * 7). A key is typed when it is in a report and was not in the one
+ * before. */
 static void report(const uint8_t *data, size_t length)
 {
     ESP_LOG_BUFFER_HEX_LEVEL(TAG, data, length, ESP_LOG_DEBUG);
-    if (length < 3) {
+    size_t first = length >= 8 ? 2 : 1;
+    if (length <= first) {
         return;
     }
     uint8_t modifiers = data[0];
-    const uint8_t *keys = data + 2;
-    size_t count = length - 2 < sizeof(down) ? length - 2 : sizeof(down);
+    const uint8_t *keys = data + first;
+    size_t count = length - first < sizeof(down) ? length - first : sizeof(down);
     for (size_t at = 0; at < count; at++) {
         if (keys[at] == USAGE_ROLLOVER) {
             return;
