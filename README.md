@@ -80,6 +80,11 @@ Please join our [Discord](https://discord.gg/kwSC7pwtmb)!
 
 ## Building
 
+**Just want to install the firmware?** You don't need to build anything: connect the StickS3
+(or StickC-Plus2) over USB and flash the latest release from your browser with the
+[Online Firmware Installer](https://nesp32.retrobits.tv/flash/). The steps below are for
+building the firmware and ROMs from source.
+
 You will need [cc65](https://cc65.github.io/) (`ca65`, `ld65`), a C compiler, `make`, `patch`,
 Python 3, and for the firmware [ESP-IDF 5.x](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/)
 installed in `~/esp/esp-idf` (or wherever `IDF_PATH` points).
