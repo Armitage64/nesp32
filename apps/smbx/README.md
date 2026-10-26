@@ -28,10 +28,31 @@ are good for that file and no other.
 make            # build/smbx_net.nes
 make verify     # baserom.nes is the hack this is for
 make test       # the simulation's tests (needs requirements-dev.txt)
+make bps        # dist/'s patches again, for players ("The patch", below)
 ```
 
 Needs cc65 (`ca65`, `ld65`), Python 3, and a C compiler: the tests run the
 ROM against nesp32's firmware built for this computer.
+
+## The patch, for players
+
+To play, there is no need to build anything. `dist/smbx_net.bps` is the
+netplay ROM as a patch to the hack: apply it to your own copy of the hack
+with any BPS patcher (Floating IPS, or RomPatcher.js in a browser), and put
+the ROM it makes on a flash cartridge. A BPS patch knows the ROM it is
+for, and a patcher refuses any other: the hack is a 73744-byte file, CRC32
+`393BC874`, and the same SHA-512 as the Makefile's. `dist/smbx_net.ips`
+is the same for a patcher that takes only IPS, which checks nothing: it
+has to be applied to that file.
+
+The patches hold none of the game: 4959 bytes in 51 places, all of them
+the netplay's. They are its header, its code in bank 1 (all $FF in the
+hack) and in the fixed bank's unused bytes (all 0 in the hack), and the
+five instructions that call it, each in place of one of the same length.
+`tools/gen_patch.py` (at the top of this repository) refuses to write a
+patch with sixteen bytes in a row that are found anywhere in the hack,
+and `tests/test_patch.py` holds the patches in `dist/` to the ROM this tree
+builds: after a change to the netplay, `make bps` writes them again.
 
 ## What is where
 
@@ -43,6 +64,7 @@ ROM against nesp32's firmware built for this computer.
 | `net/net.asm` | the session: the exchange, the ticks, the digest (bank 1) |
 | `net/menu.inc` | the menu (bank 1), TMNT II's with this game's screen |
 | `net/net_ram.inc` | the netplay's memory, in the cartridge's PRG RAM |
+| `dist/` | the netplay ROM as BPS and IPS patches to the hack |
 | `tests/` | a console on py65 with the VRC6 and the 2A03's unofficial opcodes, and two of them with their nesp32s and a network between |
 
 ## The cartridge

@@ -130,17 +130,19 @@ net_nmi_draw:
 @skip:
     pla
     pla
-.repeat DRAW_SCRATCH, i
-    lda net_drawn + i
-    sta i
-.endrepeat
+    lda PPU_MASK_RAM_COPY
+    sta PPU_MASK
+    ldx #DRAW_SCRATCH - 1
+:
+    lda net_drawn,x
+    sta $00,x
+    dex
+    bpl :-
     lda #$00
     sta PPU_SCROLL
     sta PPU_SCROLL
     sta PPU_ADDR
     sta PPU_ADDR
-    ldx PPU_MASK_RAM_COPY
-    stx PPU_MASK
     jmp HOOK_NMI_DRAWN
 
 ; At the end of the reset, in place of its call to hide the sprites, which

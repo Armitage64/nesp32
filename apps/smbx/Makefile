@@ -3,6 +3,8 @@
 #   make            build/smbx_net.nes, for two consoles and two nesp32s
 #   make verify     check baserom.nes against the hack's SHA-512
 #   make test       the simulation's tests (needs requirements-dev.txt)
+#   make bps        dist/smbx_net.bps and .ips again, the netplay ROM as a
+#                   patch to the hack, which players apply to their own
 #   make clean
 #
 # The game is not here. Whoever builds puts the hack in this directory as
@@ -23,6 +25,11 @@ export NESP32 NESP_BUILD
 NESP := $(NESP_BUILD)/nesp.stamp
 NESP_LIB := $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/gen_link.py
 NET_ROM := $(BUILD)/smbx_net.nes
+# The netplay ROM as a patch to the hack, for players who build nothing:
+# kept in the repository, as it holds none of the game
+# (tools/gen_patch.py refuses one that would).
+DIST := dist
+GEN_PATCH := $(NESP32)/tools/gen_patch.py
 BASEROM ?= baserom.nes
 # Super Mario Bros. - Two Players Hack (Corpse Grinder, 2018), as patched
 # onto the US release: a VRC6 cartridge, 64 KB of PRG and 8 KB of CHR.
@@ -31,7 +38,7 @@ CHECKED := $(BUILD)/baserom.nes
 NET_SOURCES := $(wildcard net/*.inc net/*.asm) $(BUILD)/link.inc $(NESP_LIB) $(NESP)
 NET_INCLUDES := -I net -I $(BUILD) -I $(NESP_BUILD) -I $(NESP32)/nes/lib
 
-.PHONY: all verify test clean FORCE
+.PHONY: all verify test bps clean FORCE
 
 all: $(NET_ROM)
 
@@ -71,6 +78,12 @@ $(NET_ROM): $(BUILD)/smbx_net.o net/smbx_net.cfg
 
 test:
 	$(PYTHON) -m pytest -q tests
+
+# From baserom.nes, once it is known to be the hack: the patch is for it
+# and no other.
+bps: $(CHECKED) $(NET_ROM)
+	mkdir -p $(DIST)
+	$(PYTHON) $(GEN_PATCH) $(CHECKED) $(NET_ROM) $(DIST)/smbx_net.bps --ips $(DIST)/smbx_net.ips
 
 clean:
 	rm -rf $(BUILD)
