@@ -47,6 +47,7 @@ BACKGROUND = 0x08
 VBLANK = 0x80
 RTI = 0x40
 PAD_A, PAD_B, PAD_SELECT, PAD_START = 0x80, 0x40, 0x20, 0x10
+PAD_UP = 0x08
 PORT_IDLE = 0x40                # what the port's unused bits read
 READS_ABS = (0xAD, 0xCC, 0xEC, 0xCD, 0x4D)   # lda, cpy, cpx, cmp, eor: all read on their 4th cycle
 STORES_ABS = (0x8D, 0x8C)       # sta, sty
@@ -425,6 +426,6 @@ class Bench:
         self.machine.run(frames)
         self.machine.pad = 0
 
-    def press_select(self, frames=3):
-        """Select on controller 1: a sweep."""
-        self.press_start(frames, PAD_SELECT)
+    def press_sweep(self, frames=3):
+        """Up on controller 1: a sweep."""
+        self.press_start(frames, PAD_UP)

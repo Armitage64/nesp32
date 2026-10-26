@@ -30,7 +30,7 @@
 ; While the music is stopped the screen is a menu of the tracks, a row
 ; each where the bars go, with the cursor's game and name over it where a
 ; track's are. Up and Down move the cursor, Left and Right a page; A or
-; Start plays its track (JUKE CHOOSE), and B is the cartridge's menu again.
+; Start plays its track (JUKE CHOOSE), and Select is the cartridge's menu again.
 ; The nesp32 says how many tracks there are and their names, a track at a
 ; time (JUKE LIST), in place of a frame's stream request: a row is drawn
 ; when its names come. With the music playing, A or Start plays and
@@ -359,6 +359,12 @@ row_bit: .byte $01, $02, $04, $08, $10, $20, $40, $80
     ldx #0
     stx pad_new
     sta presses
+    and #PAD_SELECT             ; Select: back to the cartridge's menu, from
+    beq @no_quit                ; either view, with a nesp32 or none
+    lda on_cart
+    beq @no_quit
+    jmp quit
+@no_quit:
     lda view
     beq @menu
     bmi @done                   ; no view yet
@@ -381,14 +387,7 @@ row_bit: .byte $01, $02, $04, $08, $10, $20, $40, $80
     beq @done
     jmp link_button
 @menu:
-    lda presses
-    and #PAD_B
-    beq @no_quit
-    lda on_cart
-    beq @no_quit
-    jmp quit
-@no_quit:
-    lda menu_new
+    lda menu_new                ; B: nothing to go back to
     bne @done
     lda menu_count
     beq @done                   ; nothing to choose
@@ -494,16 +493,17 @@ row_bit: .byte $01, $02, $04, $08, $10, $20, $40, $80
     rts
 .endproc
 
-; The foot: on the menu, A chooses, and on the cartridge B is its menu; in
-; the player, A plays and pauses, and B is the menu again but while
-; sampled sound plays, when it cannot be read.
+; The foot: on the menu, A chooses, and on the cartridge Select is its
+; menu; in the player, A plays and pauses, and B is the menu again but
+; while sampled sound plays, when it cannot be read. B never leaves the
+; program, so that B pressed again and again cannot.
 .proc pick_foot
     lda view
     bne @player
-    lda #FOOT_QUIT
+    lda #FOOT_CART
     ldx on_cart
     bne @set
-    lda #FOOT_SELECT
+    lda #FOOT_ALONE
     jmp @set
 @player:
     lda #FOOT_BACK

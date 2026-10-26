@@ -10,13 +10,13 @@ import pytest
 
 import rates
 from rates import BLOCK, FROM_NES, TO_NES
-from thru_sim import PAD_SELECT, PAD_START, VBLANK_CYCLES, Bench, ms
+from thru_sim import PAD_A, PAD_SELECT, PAD_START, PAD_UP, VBLANK_CYCLES, Bench, ms
 
 RAW = p.NESP_SVC_RAW
 ROWS = [name for name, _ in gen_screen.ROWS]
 RX, TX = 0, 1                   # the halves of the screen
 WAITING, PRESS, TESTING, AGAIN = (gen_screen.WAITING, "PRESS START", "TESTING",
-                                  "START : RE-TEST")   # built by itself: no B
+                                  "A : RE-TEST")       # built by itself: no Select
 BLANK = dict.fromkeys(ROWS, "")
 FAILED_AT_5 = "357955 BPS, "    # the rate the console's CPU cannot do
 
@@ -131,7 +131,7 @@ def test_the_hello_names_the_rom_and_asks_for_raw(rom):
 
 def test_nothing_runs_until_it_is_started(rom):
     bench = greet(Bench(rom))
-    bench.machine.pad = 0xFF & ~(PAD_START | PAD_SELECT)    # every button but those two
+    bench.machine.pad = 0xFF & ~(PAD_START | PAD_A | PAD_SELECT | PAD_UP)   # every button but those
     bench.stick.event(p.NESP_EVENT_BUTTON_B)
     bench.stick.event(p.NESP_EVENT_BUTTON_POWER)
     bench.machine.run(120)
@@ -146,6 +146,19 @@ def test_button_a_on_the_nesp32_starts_it_too(rom):
     bench.press_a()
     bench.machine.run_until(lambda: state(bench) == TESTING, 10)
     assert half(bench, TX)["STATUS"] == "WAITING"
+
+
+def test_a_on_the_controller_starts_it_too(rom):
+    bench = greet(Bench(rom))
+    bench.press_start(button=PAD_A)
+    bench.machine.run_until(lambda: state(bench) == TESTING, 10)
+
+
+def test_select_does_nothing_on_no_cartridge(rom):
+    bench = greet(Bench(rom))
+    bench.press_start(button=PAD_SELECT)
+    bench.machine.run(60)
+    assert state(bench) == PRESS and bench.port.rates == []
 
 
 def test_a_press_from_before_the_hello_starts_nothing(rom):
@@ -366,7 +379,7 @@ def sweep_rows(bench):
 
 def sweep(rom, **options):
     bench = greet(Bench(rom, **options))
-    bench.press_select()
+    bench.press_sweep()
     began = bench.machine.now
     bench.machine.run_until(lambda: state(bench) == SWEEPING, 30)
     bench.machine.run_until(lambda: state(bench) == AGAIN, 6000)
@@ -377,7 +390,7 @@ def checked(period, blocks):
     return (BLOCK - (rates.PREAMBLE if rates.tracked_receive(period) else 0)) * blocks
 
 
-def test_select_sweeps_every_rate_to_the_console_from_14_cycles(rom):
+def test_up_sweeps_every_rate_to_the_console_from_14_cycles(rom):
     assert SWEEP[0] == 14 and SWEEP[-1] == 5
     bench, began = sweep(rom, blocks=1)
     assert runs(bench, began) == [("to", period) for period in SWEEP]
@@ -414,7 +427,7 @@ def test_a_sweep_does_not_stop_at_a_rate_that_fails(rom):
 def test_a_sweep_on_a_console_whose_port_reads_otherwise_runs_nothing(rom):
     bench = greet(Bench(rom, blocks=1))
     bench.machine.port_bits = 0x48
-    bench.press_select()
+    bench.press_sweep()
     bench.machine.run_until(lambda: state(bench) == AGAIN, 300)
     assert runs(bench) == []
     assert bench.machine.text(SWEEP_TOP, gen_screen.LEFT).startswith("$4017 READS $48")

@@ -78,7 +78,7 @@ def test_the_rom_says_who_it_is_and_what_it_needs(radio):
     assert machine.stick.app == (b"NPR ", 1)
     assert machine.stick.active(TUNER) and machine.stick.active(p.NESP_SVC_RAW)
     assert machine.stick.hellos == 1
-    assert machine.foot() == FOOT["SELECT"]    # built by itself: B has no menu to go back to
+    assert machine.foot() == FOOT["ALONE"]    # built by itself: Select has no menu to go back to
 
 
 def test_nothing_is_fetched_until_start_is_pressed(radio):
@@ -204,7 +204,7 @@ def test_a_turns_the_station_off_and_brings_the_menu_back(radio, tone):
     assert machine.asked(p.NESP_TUNER_STOP) == 1 and not machine.stick.fetching
     failed = machine.word("link_failed")
     machine.wait(gen_news.ROWS + 30)
-    assert middle(machine) == MENU and machine.foot() == FOOT["SELECT"]
+    assert middle(machine) == MENU and machine.foot() == FOOT["ALONE"]
     assert machine.byte("sounds") == 1 and machine.word("link_failed") == failed
     assert machine.asked(p.NESP_TUNER_PLAY) == 1        # and nothing played it again
 
@@ -334,27 +334,28 @@ def test_it_starts_with_a_menu_of_two_and_the_first_chosen(radio):
     assert middle(machine) == MENU and machine.shown == 0x2000
 
 
-def test_select_moves_between_the_two(radio):
+@pytest.mark.parametrize("button", [PAD_DOWN, PAD_UP])
+def test_up_and_down_move_between_the_two(radio, button):
     machine = radio()
     machine.until(lambda: machine.off, limit=60)
     assert quality(machine) == quality(machine, 0x2800) == HIGH
-    assert gen_screen.QUALITY == ("SELECT : 23kHz", "SELECT : 12kHz + INFO")
-    machine.press(PAD_SELECT)
+    assert gen_screen.QUALITY == ("UP/DOWN : 23kHz", "UP/DOWN : 12kHz + INFO")
+    machine.press(button)
     machine.wait(12)
     assert middle(machine) == MENU and quality(machine) == quality(machine, 0x2800) == NEWS
-    machine.press(PAD_SELECT)
+    machine.press(button)
     machine.wait(12)
     assert middle(machine) == MENU and quality(machine) == HIGH
     assert machine.stick.fetches == 0 and not plays(machine)    # nothing is chosen until Start
 
 
-@pytest.mark.parametrize("button", [PAD_DOWN, PAD_UP])
-def test_up_and_down_do_nothing(radio, button):
+def test_select_does_nothing_on_a_rom_on_no_cartridge(radio):
     machine = radio()
     machine.until(lambda: machine.off, limit=60)
-    machine.press(button)
+    machine.press(PAD_SELECT)
     machine.wait(12)
     assert middle(machine) == MENU and quality(machine) == HIGH
+    assert machine.foot() == FOOT["ALONE"]
 
 
 def test_start_plays_what_the_menu_has_and_the_menu_goes(radio, tone):
@@ -366,14 +367,14 @@ def test_start_plays_what_the_menu_has_and_the_menu_goes(radio, tone):
     assert machine.stick.fetch_url == STATION_URL
     machine.wait(15)
     assert middle(machine) == BLANK and machine.status == "TUNING"
-    machine.press(PAD_SELECT)                   # which does nothing now
+    machine.press(PAD_DOWN)                     # which does nothing now
     machine.wait(15)
     assert middle(machine) == BLANK and quality(machine) == NO_QUALITY
     machine.press(PAD_START)                    # given up: the menu again, as it was
     machine.until(lambda: machine.off, limit=30)
     machine.wait(15)
     assert middle(machine) == MENU and quality(machine) == HIGH
-    machine.press(PAD_SELECT)
+    machine.press(PAD_DOWN)
     machine.press(PAD_A)
     machine.until(lambda: machine.stick.fetches == 2, limit=30)
     assert plays(machine)[-1] == bytes((p.NESP_TUNER_MODE_NEWS,))
@@ -472,7 +473,7 @@ def test_a_long_address_goes_in_pieces_and_the_station_plays_with_its_titles(rad
     machine = radio()
     machine.until(lambda: machine.off, limit=60)
     turn(machine, *[PAD_RIGHT] * 4)
-    machine.press(PAD_SELECT)
+    machine.press(PAD_DOWN)
     machine.wait(12)
     assert middle(machine) == station_middle(STATION["KUSC"]) and quality(machine) == NEWS
     machine.press(PAD_START)
@@ -494,7 +495,7 @@ def test_the_menu_does_not_change_the_station_while_one_is_tuned_in(radio, tone)
 def test_a_station_that_fails_brings_the_menu_back(radio):
     machine = radio()
     machine.until(lambda: machine.off, limit=60)
-    machine.press(PAD_SELECT)
+    machine.press(PAD_DOWN)
     machine.press(PAD_START)
     machine.until(lambda: machine.stick.fetches == 1, limit=30)
     machine.wait(15)
@@ -544,7 +545,7 @@ def news_on_air(machine, tone, title=None, seconds=4.0):
     the sound."""
     machine.until(lambda: machine.off, limit=60)
     count = machine.stick.fetches
-    machine.press(PAD_SELECT)
+    machine.press(PAD_DOWN)
     machine.press(PAD_START)
     machine.until(lambda: machine.stick.fetches == count + 1, limit=30)
     assert machine.stick.fetch_url == STATION_URL and machine.stick.fetch_wants_icy
@@ -806,14 +807,14 @@ def test_b_does_nothing_on_the_menu_of_a_rom_on_no_cartridge(radio):
     machine.until(lambda: machine.off, limit=60)
     machine.press(PAD_B)
     machine.wait(30)
-    assert machine.off and machine.foot() == FOOT["SELECT"]
+    assert machine.off and machine.foot() == FOOT["ALONE"]
     assert machine.byte("area") == 0 and machine.asked(p.NESP_TUNER_PLAY) == 0
 
 
 def test_b_while_tuning_is_the_menu_again(radio, tone):
     machine = radio()
     machine.until(lambda: machine.off, limit=60)
-    machine.press(PAD_SELECT)                   # the second mode
+    machine.press(PAD_DOWN)                     # the second mode
     machine.press(PAD_START)
     machine.until(lambda: machine.status == "TUNING", limit=30)
     machine.until(lambda: machine.foot() == FOOT["BACK"], limit=30)
@@ -822,7 +823,7 @@ def test_b_while_tuning_is_the_menu_again(radio, tone):
     assert machine.asked(p.NESP_TUNER_STOP) == 1 and not machine.stick.fetching
     machine.wait(gen_news.ROWS + 5)
     assert quality(machine) == NEWS
-    assert machine.foot() == FOOT["SELECT"]
+    assert machine.foot() == FOOT["ALONE"]
 
 
 def test_on_the_air_the_foot_says_nothing_of_b(radio, tone):

@@ -32,7 +32,7 @@ usb_screen:
     text  BODY_ROW + 6, LEFT, "THE NESP32 WILL RESTART AND"
     text  BODY_ROW + 7, LEFT, "CONVERT THE FILES INTO THE"
     text  BODY_ROW + 8, LEFT, "STREAMING FORMAT."
-    text  HELP_ROW, LEFT, "B:BACK"
+    text  HELP_ROW, LEFT, "B : BACK"
     .byte 0
 
 ; What the message line says of each state (enum DRIVE).

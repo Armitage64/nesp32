@@ -350,6 +350,9 @@ def test_select_in_bluesky_s_favorites_is_the_menu_again(cart, images):
     c.press(PAD_START)                  # past the splash, to the favorites
     c.run(30)
     assert not c.home
+    c.press(PAD_B)                      # B never leaves a program
+    c.run(30)
+    assert not c.home
     c.press(PAD_SELECT)
     c.strict = True
     c.run(6)
@@ -357,7 +360,7 @@ def test_select_in_bluesky_s_favorites_is_the_menu_again(cart, images):
     assert c.byte("choice") == 0
 
 
-def test_b_in_weathers_form_is_the_menu_again(cart, images):
+def test_select_in_weathers_form_is_the_menu_again_and_b_is_not(cart, images):
     index = next(index for index, image in enumerate(images) if image.program.key == "weather")
     c = cart()
     stick, _ = link(c, Stick)
@@ -366,8 +369,11 @@ def test_b_in_weathers_form_is_the_menu_again(cart, images):
     c.run_until(lambda: stick.hellos, 300)
     c.run(60)                           # the form, all of it
     assert not c.home
-    assert c.line(26) == "A : SUBMIT   B : QUIT"   # on the cartridge, there is a menu
-    c.press(PAD_B)
+    assert c.line(26) == "A : SUBMIT   SELECT : MENU"  # on the cartridge, there is a menu
+    c.press(PAD_B)                      # B never leaves a program
+    c.run(30)
+    assert not c.home
+    c.press(PAD_SELECT)
     c.strict = True
     c.run(6)
     assert at_menu(c)
@@ -418,7 +424,7 @@ def test_the_press_that_chose_a_program_does_not_start_it(cart, images, key, but
     c.run_until(lambda: not waiting(c), 120)
 
 
-def test_b_in_nprs_menu_is_the_menu_again(cart, images):
+def test_select_in_nprs_menu_is_the_menu_again_and_b_is_not(cart, images):
     index = next(index for index, image in enumerate(images) if image.program.key == "npr")
     c = cart()
     stick, _ = link(c, Stick)
@@ -427,15 +433,18 @@ def test_b_in_nprs_menu_is_the_menu_again(cart, images):
     c.run_until(lambda: stick.hellos, 300)
     c.run(30)
     assert not c.home
-    assert c.text(26).strip().endswith("B : QUIT")     # on the cartridge, there is a menu
-    c.press(PAD_B)
+    assert c.text(26).strip().endswith("SELECT : MENU")    # on the cartridge, there is a menu
+    c.press(PAD_B)                      # B never leaves a program
+    c.run(30)
+    assert not c.home
+    c.press(PAD_SELECT)
     c.strict = True
     c.run(6)
     assert at_menu(c)
     assert c.byte("choice") == 0
 
 
-def test_b_in_the_jukeboxs_menu_is_the_menu_again(cart, images):
+def test_select_in_the_jukeboxs_menu_is_the_menu_again_and_b_is_not(cart, images):
     index = next(index for index, image in enumerate(images) if image.program.key == "jukebox")
     c = cart()
     stick, _ = link(c, Stick)
@@ -445,15 +454,18 @@ def test_b_in_the_jukeboxs_menu_is_the_menu_again(cart, images):
     c.run_until(lambda: stick.hellos, 300)
     c.run(40)
     assert not c.home
-    assert c.line(16) == "> First" and c.line(26) == "A : PLAY   B : QUIT"
-    c.press(PAD_B)
+    assert c.line(16) == "> First" and c.line(26) == "A : PLAY   SELECT : MENU"
+    c.press(PAD_B)                      # B never leaves a program
+    c.run(30)
+    assert not c.home
+    c.press(PAD_SELECT)
     c.strict = True
     c.run(6)
     assert at_menu(c)
     assert c.byte("choice") == 0
 
 
-def test_b_in_the_throughput_test_is_the_menu_again(cart, images):
+def test_select_in_the_throughput_test_is_the_menu_again_and_b_is_not(cart, images):
     index = next(index for index, image in enumerate(images)
                  if image.program.key == "throughput")
     c = cart()
@@ -463,7 +475,10 @@ def test_b_in_the_throughput_test_is_the_menu_again(cart, images):
     c.run_until(lambda: stick.hellos, 300)
     c.run_until(lambda: "PRESS START" in c.line(26), 120)   # at the foot
     assert not c.home
-    c.press(PAD_B)
+    c.press(PAD_B)                      # B never leaves a program
+    c.run(30)
+    assert not c.home and "PRESS START" in c.line(26)
+    c.press(PAD_SELECT)
     c.strict = True
     c.run(6)
     assert at_menu(c)
@@ -479,7 +494,63 @@ def test_select_in_nespedias_search_is_the_menu_again(cart, images):
     c.run(60)                           # it says hello only with its first search
     assert not c.home
     help_row = bytes(c.vram[0x2400 + 32 * 28:0x2400 + 32 * 29])     # its search is in nametable 1
-    assert help_row.strip(b"\0 ") == b"START : SEARCH   SELECT : QUIT"   # on the cartridge, a menu
+    assert help_row.strip(b"\0 ") == b"START : SEARCH   SELECT : MENU"   # on the cartridge, a menu
+    c.press(PAD_SELECT)
+    c.strict = True
+    c.run(6)
+    assert at_menu(c)
+    assert c.byte("choice") == 0
+
+
+@pytest.mark.parametrize("with_stick", (True, False), ids=("stick", "no-stick"))
+def test_select_in_setup_is_the_menu_again_and_b_is_not(cart, images, with_stick):
+    index = next(index for index, image in enumerate(images) if image.program.key == "setup")
+    c = cart()
+    if with_stick:
+        stick, _ = link(c, Stick)
+    c.run(4)
+    start(c, index)
+    if with_stick:
+        c.run_until(lambda: stick.hellos, 300)
+    c.run(30)
+    c.press(PAD_B)                      # B never leaves a program
+    c.run(30)
+    assert not c.home
+    c.press(PAD_SELECT)
+    c.strict = True
+    c.run(6)
+    assert at_menu(c)
+    assert c.byte("choice") == 0
+
+
+def program_labels(cart_build, key):
+    """A program's own labels, which the cartridge's console has not: the
+    menu's are the ones it has."""
+    labels = {}
+    path = os.path.join(cart_build, "cart", key, ROMS[key][-1].replace(".nes", ".labels"))
+    with open(path) as handle:
+        for line in handle:
+            _, address, name = line.split()
+            labels[name.lstrip(".")] = int(address, 16)
+    return labels
+
+
+def test_select_in_bluesky_s_form_is_the_menu_again(cart, images, cart_build):
+    index = next(index for index, image in enumerate(images) if image.program.key == "bluesky")
+    labels = program_labels(cart_build, "bluesky")
+    view, fav_load = labels["view"], labels["fav_load"]
+    c = cart()
+    stick, _ = link(c, Stick)
+    c.run(4)
+    start(c, index)
+    c.run_until(lambda: stick.hellos, 300)
+    c.run(10)
+    c.press(PAD_START)                  # past the splash, to the favorites
+    c.run_until(lambda: c.memory[view] == 1 and not c.memory[fav_load], 600)
+    c.press(PAD_UP)                     # round to the last line, the way to the form
+    c.press(PAD_A)
+    c.run(30)
+    assert not c.home and c.memory[view] == 2   # VIEW_FORM
     c.press(PAD_SELECT)
     c.strict = True
     c.run(6)

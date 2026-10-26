@@ -14,12 +14,12 @@ from what the test says each is to send.
 import gen_screen as layout
 import nesp
 import nesp_proto as p
-from console import (PAD_A, PAD_B, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_START, PAD_UP,
-                     VBLANK_CYCLES, Console)
+from console import (PAD_A, PAD_B, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_SELECT, PAD_START,
+                     PAD_UP, VBLANK_CYCLES, Console)
 from wire import link
 
-__all__ = ["Forecast", "PAD_A", "PAD_B", "PAD_DOWN", "PAD_LEFT", "PAD_RIGHT", "PAD_START",
-           "PAD_UP", "KEPT", "NOT_FOUND"]
+__all__ = ["Forecast", "PAD_A", "PAD_B", "PAD_DOWN", "PAD_LEFT", "PAD_RIGHT", "PAD_SELECT",
+           "PAD_START", "PAD_UP", "KEPT", "NOT_FOUND"]
 
 VIEW_FORM, VIEW_REPORT = 0, 1
 NOT_FOUND = object()                # Zippopotam's answer to a zip code there is none of

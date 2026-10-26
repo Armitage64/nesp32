@@ -69,6 +69,30 @@ two games, and a menu that is up at power-on: Up and Down, and A or Start
 to run a program. Reset is the menu again. Each program is built from its
 own directory in `apps/`, with its own Makefile, into `build/cart/`.
 
+### Buttons
+
+Every program on the cartridge works the controller the same way:
+
+| | |
+|---|---|
+| **A** | OK: choose, play, look up, type the key |
+| **B** | back a step, from a deeper screen to the one before; on a keyboard, delete. Never out of the program |
+| **Start** | start, or send what was typed where A and B are for typing |
+| **Select** | the cartridge's menu, from any screen the program reads the controller on. Built by itself, a program has none, and Select does nothing |
+
+B never leaves a program so that pressing it again and again, to get
+out of a screen several steps in, stops at the program's first screen
+instead of throwing away what was on the way there. A program's first
+screen says `SELECT : MENU` at its foot on the cartridge, beside what A
+does, written `A : PLAY`, a space either side of the colon and three
+between one button and the next. Deeper screens say what B does. Setup
+keeps its Quit, under its menu's other lines, and Bluesky its own short
+help, `Sel:menu`, for want of room.
+
+While sampled sound plays (the Jukebox, NESradio) only A can be read,
+since the controller is read on the line the samples come in on: B and
+Select work again once A has stopped or paused it.
+
 It is an MMC1 (mapper 1) with 256 KB of PRG and 128 KB of CHR ROM and no
 memory. Set to 32 KB of PRG and 8 KB of CHR, an MMC1 is an NROM to a
 program that never writes to it, so the six programs that are each an NROM are

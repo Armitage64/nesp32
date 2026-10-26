@@ -67,7 +67,7 @@ lines, they go by as the arrow moves. A nesp32 that has kept none begins with fo
 | **Up**, **Down** | the arrow; from the last line round to the first |
 | **A** | read that account's posts; on the last line, the form |
 | **Start**, twice | take that favorite off |
-| **Select** | back to the cartridge's menu (on the cartridge) |
+| **Select** | back to the cartridge's menu (on the cartridge), from here, the form or a post |
 
 **The form** is for any other handle, typed a letter at a time:
 

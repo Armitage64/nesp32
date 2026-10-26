@@ -44,6 +44,7 @@ PAD_LEFT  = $02
 PAD_DOWN  = $04
 PAD_UP    = $08
 PAD_START = $10
+PAD_SELECT = $20
 PAD_B     = $40
 PAD_A     = $80
 
@@ -156,7 +157,7 @@ foot_place:
 .repeat 4, index
     .byte index * FOOT_WIDTH
 .endrepeat
-.assert FOOT_SELECT = 0 && FOOT_QUIT = 1 && FOOT_PLAIN = 2 && FOOT_BACK = 3, error, "foot_place"
+.assert FOOT_ALONE = 0 && FOOT_CART = 1 && FOOT_PLAIN = 2 && FOOT_BACK = 3, error, "foot_place"
 .endif
 
 .segment "CODE"

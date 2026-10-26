@@ -14,6 +14,7 @@ STATE_SEND, STATE_JOINING, STATE_FAILED, STATE_TEST = 4, 5, 6, 7
 STATE_USB = 8
 MENU_WIFI, MENU_TEST, MENU_USB, MENU_FLIP, MENU_QUIT = 0, 1, 2, 3, 4
 LAYER_KEYS = layout.KEY_ROWS * layout.KEY_COLUMNS
+SET_COL = 0                     # on the space bar's row, the set key (keys.inc)
 
 __all__ = ["Setup", "PAD_A", "PAD_B", "PAD_DOWN", "PAD_LEFT", "PAD_RIGHT", "PAD_SELECT",
            "PAD_START", "PAD_UP"]
@@ -123,15 +124,24 @@ class Setup:
         for char in text:
             if char == " ":
                 self._move_to_row(layout.KEY_ROWS)
+                if self.c.byte("cur_col") == SET_COL:
+                    self.press(PAD_RIGHT)       # from the set key to the space bar
             else:
                 layer, row, column = find_key(char)
                 while self.c.byte("keys_layer") // LAYER_KEYS != layer:
-                    self.press(PAD_SELECT)
+                    self.next_set()
                 self._move_to_row(row)
                 self._move_to_column(column)
             before = self.c.byte("keys_len")
             self.press(PAD_A)
             assert self.c.byte("keys_len") == before + 1, "%r was not typed" % char
+
+    def next_set(self):
+        """The set key, on the space bar's row: the next set of keys."""
+        self._move_to_row(layout.KEY_ROWS)
+        if self.c.byte("cur_col") != SET_COL:
+            self.press(PAD_LEFT)
+        self.press(PAD_A)
 
     def _move_to_row(self, row):
         while self.c.byte("cur_row") != row:

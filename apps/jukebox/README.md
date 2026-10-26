@@ -92,8 +92,8 @@ channel sits on the right by its period.
 The link ROM begins with a menu of the nesp32's tracks, a row each where
 the bars go, and the game and name of the one the cursor is on above it.
 It is the menu whenever the music is stopped, with the cursor on the
-track it was at. The foot of the screen says what A and B do: on the
-menu `A : PLAY`, and on the cartridge `B : QUIT`; with the music
+track it was at. The foot of the screen says what the buttons do: on the
+menu `A : PLAY`, and on the cartridge `SELECT : MENU`; with the music
 playing, a picture each for play and pause, and `B : BACK`.
 
 Controller 1:
@@ -103,7 +103,8 @@ Controller 1:
 | **Up**, **Down** | the track before or after; from the first round to the last | | |
 | **Left**, **Right** | a page of eight up or down | previous or next track, and play it | |
 | **Start** or **A** | play the track the cursor is on, from its start | pause, resume. During sampled sound only **A** is looked at, and pauses | pause, resume |
-| **B** | on nesp32's cartridge, back to its menu; built by itself, nothing | stop, and back to the menu. Not during sampled sound, until **A** has paused it | |
+| **B** | nothing | stop, and back to the menu. Not during sampled sound, until **A** has paused it | |
+| **Select** | on nesp32's cartridge, back to its menu; built by itself, nothing | the same. Not during sampled sound, until **A** has paused it | |
 
 While the music is paused the clock flashes. Sampled sound has no clock:
 its line shows its length alone, and paused, the status line says

@@ -45,7 +45,7 @@ test_screen:
     text  BODY_ROW + 5, LEFT, "THE NESP32'S TIME TO REPLY"
     label BODY_ROW + 6, LEFT, "LAST"
     label BODY_ROW + 7, LEFT, "SLOWEST"
-    text  HELP_ROW, LEFT, "B:BACK"
+    text  HELP_ROW, LEFT, "B : BACK"
     .byte 0
 
 test_rows: .byte 0, 1, 2, 3, 6, 7

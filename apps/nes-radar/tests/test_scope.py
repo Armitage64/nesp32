@@ -4,7 +4,7 @@ when replies are lost, the nesp32 is switched off, or adsb.fi fails."""
 
 import nesp_proto as p
 import pytest
-from scope import PAD_DOWN, PAD_SELECT, PAD_START, PAD_UP, PLACES, plane, reply_frame
+from scope import PAD_A, PAD_B, PAD_DOWN, PAD_SELECT, PAD_START, PAD_UP, PLACES, plane, reply_frame
 
 RADAR = p.NESP_SVC_RADAR
 POLL_FRAMES = p.NESP_RADAR_POLL_MS * 60 // 1000 + 30
@@ -147,14 +147,24 @@ def test_a_nesp32_whose_firmware_has_no_radar(scope):
     s.c.run_until(lambda: s.message == "UPDATE NESP32", 200)
 
 
-def test_select_is_the_editor_again_and_another_airport(scope):
+def test_select_does_nothing_on_the_scope_of_a_rom_on_no_cartridge(scope):
     s = scope()
     s.open("KSBA")
     s.land([plane(0.02, 0.0, flight="SBA")])
     s.c.press(PAD_SELECT, release=10)
+    s.c.run(30)
+    assert s.airport == "KSBA" and s.calls()[0] == "SBA"
+
+
+def test_b_is_the_editor_again_and_a_looks_up_another_airport(scope):
+    s = scope()
+    s.open("KSBA")
+    s.land([plane(0.02, 0.0, flight="SBA")])
+    s.c.press(PAD_B, release=10)
     assert s.message == ""
+    s.c.press(PAD_B)                    # and again does nothing: there is no step back
     s.choose("KLAX")
-    s.c.press(PAD_START)
+    s.c.press(PAD_A)
     s.locate("KLAX")
     s.c.run(30)
     assert s.airport == "KLAX" and s.link == "WAITING" and s.count == 0 and s.calls() == [""] * 8
