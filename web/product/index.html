@@ -24,7 +24,7 @@
     <img src="img/drmario.png" alt="Dr. Mario's network game menu" width="512" height="480">
     <img src="img/jukebox.png" alt="The jukebox playing a track" width="512" height="480">
     <img src="img/weather.png" alt="The weather for a zip code" width="512" height="480">
-    <img src="img/npr-news.png" alt="National Public Radio with a headline" width="512" height="480">
+    <img src="img/npr-news.png" alt="NESradio with what is playing" width="512" height="480">
     <img src="img/radar.png" alt="NES Radar's scope" width="768" height="720">
     <img src="img/bluesky.png" alt="Bluesky's splash, after ConnectedNES" width="512" height="480">
   </div>
@@ -33,11 +33,11 @@
   <ul>
   <li>Provides Internet access, media streaming, and online gaming capabilities to NES software.</li>
 
-  <li>Built using the M5 StickS3, a ~$20 all-in-one IoT development kit that includes a dual core processor, flash storage, audio, WiFi, color LCD screen, battery, USB interface, and buttons<sup>1</sup>.</li>
+  <li>Built using the M5 StickS3, a ~$20 all-in-one IoT development kit that includes a dual core processor, flash storage, audio, Wi-Fi, color LCD screen, battery, USB interface, and buttons<sup>1</sup>.</li>
 
-  <li>A custom hat plugs into the top of the device and connects to controller port 2 of the NES.</li>
+  <li>A custom hat plugs into the GPIO header at the bottom of the device and connects to controller port 2 of the NES.</li>
 
-  <li>Extensible firmware provides an API that any cartridge-based software can interface with. A setup program allows the wifi and USB storage to be configured from the NES itself.</li>
+  <li>Extensible firmware provides an API that any cartridge-based software can interface with. A setup program allows the Wi-Fi and USB storage to be configured from the NES itself.</li>
 
   <li>The NESP32 is an evolution of <a href="https://github.com/k6lcm/nes-radar">NES Radar</a> where the controller port serial interface was originally conceived.</li>
 
@@ -55,12 +55,14 @@
         console's own sound chip.</p></div>
     <div class="card"><h3>NES Radar</h3>
       <p>Live air traffic around any airport, on a radar scope drawn by the console.</p></div>
-    <div class="card"><h3>National Public Radio</h3>
-      <p>NPR's live .mp3 radio stream with optional headline news.</p></div>
+    <div class="card"><h3>NESradio</h3>
+      <p>Live radio from NPR, KEXP, BBC World Service and more on a radio dial, with the song that's playing.</p></div>
     <div class="card"><h3>Weather</h3>
-      <p>Current conditions and a 5-day forecast for your zip code, with pictures.</p></div>
+      <p>Current conditions and a 5-day forecast for your US zip code, with pictures.</p></div>
     <div class="card"><h3>Online Gaming</h3>
       <p>Play Dr. Mario, Tetris, Contra, and TMNT2 online using room codes, no firewall changes required!</p></div>
+    <div class="card"><h3>Bluesky</h3>
+      <p>Read the latest posts from your favorite Bluesky accounts, after ConnectedNES.</p></div>
     <div class="card"><h3>Setup</h3>
       <p>Configure Wi-Fi/USB and test connectivity directly from the console.</p></div>
     <div class="card"><h3>Throughput Test</h3>
@@ -81,7 +83,7 @@
       <li><strong>Plug it in.</strong> Attach the hat to the S3's bottom GPIO header, furthest from the LCD screen, and connect the NESP32 to controller
         port 2.</li>
 
-      <li><strong>Boot it up!</strong> Power up the NESP32 and the NES, then run the Setup utility to join a WiFi network.</li>
+      <li><strong>Boot it up!</strong> Power up the NESP32 and the NES, then run the Setup utility to join a Wi-Fi network.</li>
     </ol>
   </div>
 
