@@ -1,12 +1,13 @@
 # Multiplayer: two consoles, one game
 
-Four of the apps are netplay builds of a two-player game:
+Five of the apps are netplay builds of a two-player game:
 [Contra](../apps/contra), [Dr. Mario](../apps/drmario),
-[Tetris](../apps/tetris) and [TMNT II](../apps/tmnt2). Each is played on two consoles, each console
-with a nesp32 on controller port 2, the nesp32s joined over the network.
-The four work the same way, and this is that way: what the player sees,
-what a tick is, how the two games are kept the same, and what is still
-left to do in all four.
+[Tetris](../apps/tetris), [TMNT II](../apps/tmnt2) and
+[SMBX](../apps/smbx), the Super Mario Bros. hack for two at once. Each is
+played on two consoles, each console with a nesp32 on controller port 2,
+the nesp32s joined over the network. The five work the same way, and this
+is that way: what the player sees, what a tick is, how the two games are
+kept the same, and what is still left to do in all five.
 
 What the nesp32s do between them is the PEER service's, in
 [`PROTOCOL.md`](PROTOCOL.md): its lobby, its exchange of buttons, the
@@ -21,6 +22,7 @@ and from hardware) is in its own docs:
 | Dr. Mario | [apps/drmario/README.md](../apps/drmario/README.md) | [apps/drmario/docs/PROTOCOL.md](../apps/drmario/docs/PROTOCOL.md) |
 | Tetris | [apps/tetris/README.md](../apps/tetris/README.md) | [apps/tetris/docs/PROTOCOL.md](../apps/tetris/docs/PROTOCOL.md) |
 | TMNT II | [apps/tmnt2/README.md](../apps/tmnt2/README.md) | its README, "How the netplay works" |
+| SMBX | [apps/smbx/README.md](../apps/smbx/README.md) | its README, "How the netplay works" |
 
 ## Playing
 
@@ -52,7 +54,7 @@ left.
   Internet, for a nesp32 that has no rooms, and for two networks that
   rooms cannot get through.
 
-All four games' menus have both ways. Contra and TMNT II write the foot
+All five games' menus have both ways. Contra and TMNT II write the foot
 of the screen as `SELECT   BY IP`, their fonts having no dash.
 
 | Game | The title's choice | Its hello |
@@ -61,6 +63,7 @@ of the screen as `SELECT   BY IP`, their fonts having no dash.
 | Dr. Mario | 2 PLAYER GAME | `DRMA` |
 | Tetris | 2 PLAYERS, where the original says PUSH START | `TTRS` |
 | TMNT II | 2 TURTLES | `TMN2` |
+| SMBX | 2 PLAYERS GAME | `SMBX` |
 
 The console that hosted is player 1. When the two nesp32s are connected
 both consoles leave the menu and go straight into a game for two. Each
@@ -236,15 +239,17 @@ answer, or which exchanges failed. Dr. Mario's and Tetris's NMIs change
 the game's state (they draw the playfields, count the frames, step the
 random numbers), so an NMI that finds the main loop still at work does
 nothing at all. All of Contra's game runs inside its NMI, and all of
-TMNT II's, so there a tick is the NMI that runs the game, and a lag is
-the game's own lag frame, left as it was.
+TMNT II's and SMBX's, so there a tick is the NMI that runs the game, and a
+lag is the game's own lag frame, left as it was.
 
 **The exchange is made where the game reads its controllers**, before the
 game's work: after the NMI's writes to the PPU, and before the main loop
 (or, in Contra and TMNT II, the rest of the NMI) does the frame's work.
 TMNT II's is made a little before its read, where the NMI has set up the
 counter for its splits of the screen and before it lets the IRQs in, so
-that no IRQ breaks into the serial routines. So the buttons
+that no IRQ breaks into the serial routines. SMBX's is made at its read,
+with the IRQs held off, and is over before the one split, under the
+status bar, is due. So the buttons
 leave as soon as they are read, and the other console's are asked for at
 the last moment they can be used. That is what lets a delay of one tick
 do. Dr. Mario made its exchange at the end of the handler at first, a
@@ -265,6 +270,12 @@ matters to a game for two. So the two consoles' sound engines are not at
 the same place at the same tick, and nothing of the game can tell. The
 engine's memory is left out of the check below, and out of what the tests
 compare.
+
+SMBX is the exception. Its game reads back whether the music of an event
+is still playing, and at the end of a level waits for it to end, so its
+sound engine runs once a tick, and not in a stall: the music holds back a
+frame in each, and the engine's memory is the game's like the rest (its
+README, "The sound").
 
 ## Starting a session
 
@@ -355,6 +366,7 @@ What the digest covers is each game's own:
 | Dr. Mario | its zero page, less the link's bytes, the sound engine's and the flag the main loop waits on |
 | Tetris | the same as Dr. Mario's, less the session's one byte there too, and both playfields |
 | TMNT II | its zero page, less the link's bytes, the sound engine's, what its IRQs keep and the flag of a frame under way, and its sprites |
+| SMBX | its zero page, less its scratch ($00-$07) and the six bytes it lends the link, and its sprites |
 
 The two nesp32s also tell one build from another, by the name and version
 in its hello, and do not join the two: one might send buttons where the

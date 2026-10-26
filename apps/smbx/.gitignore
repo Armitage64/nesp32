@@ -1,0 +1,13 @@
+# Build output, and the game, which is not ours to keep here
+build/
+*.nes
+*.o
+*.dbg
+*.map
+
+# Python and macOS scratch
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+.venv/
