@@ -8,7 +8,8 @@ flashes a nesp32 from a browser.
     style.css             web/style.css, which both pages use
     nesp32.nes            the cartridge, which the product page links to
     img/                  pictures of the programs, from their docs, and
-                          img/logo.png, the header's logo (nes/lib/logo.py)
+                          img/logo.png and img/logo-dark.png, the header's logo
+                          (nes/lib/logo.py) for a light page and a dark one
     flash/index.html      web/flash/index.html, as it is
     flash/manifest.json   what ESP Web Tools is to write, and where
     flash/s3-*.bin        the StickS3's firmware, from firmware/build-esp32s3
@@ -26,6 +27,7 @@ the cartridge (make cart; make web does that itself).
 import hashlib
 import json
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -40,9 +42,8 @@ sys.path.insert(0, os.path.join(ROOT, "nes", "lib"))
 import logo  # noqa: E402
 
 # The logo's colours, as the screenshots show them: its palette's navy, cyan
-# and white, and the red its 32 is given.
-LOGO_RGB = {"1": (0, 30, 116), "2": (56, 180, 204), "3": (236, 238, 236),
-            "r": (152, 34, 32)}
+# and white. Its 32 is the page's red, the buttons' (--accent in style.css).
+LOGO_RGB = {"1": (0, 30, 116), "2": (56, 180, 204), "3": (236, 238, 236)}
 
 # The product page's pictures: (its name for one, where it is)
 PICTURES = [("cart-menu.png", "docs/cart-menu.png"),
@@ -103,9 +104,20 @@ def page(source, target, style):
         f.write(text.replace('style.css"', 'style.css?v=%s"' % style))
 
 
-def write_logo(path):
-    """The logo as a PNG, a pixel for each of the NES's, the backdrop clear."""
-    rows = b"".join(b"\0" + b"".join(bytes(LOGO_RGB[c] + (255,)) if c in LOGO_RGB else bytes(4)
+def accents():
+    """style.css's --accent: (for a light page, for a dark one), as RGB."""
+    with open(os.path.join(WEB, "style.css")) as f:
+        found = re.findall(r"--accent:\s*#([0-9a-fA-F]{6})", f.read())
+    if len(found) != 2:
+        sys.exit("style.css: expected an --accent for light and one for dark")
+    return [tuple(bytes.fromhex(color)) for color in found]
+
+
+def write_logo(path, red):
+    """The logo as a PNG, a pixel for each of the NES's, the backdrop clear
+    and the 32 in `red`."""
+    colors = dict(LOGO_RGB, r=red)
+    rows = b"".join(b"\0" + b"".join(bytes(colors[c] + (255,)) if c in colors else bytes(4)
                                       for c in line)
                     for line in logo.PICTURE)
 
@@ -152,7 +164,9 @@ def main(out, cart):
     shutil.copyfile(cart, os.path.join(out, "nesp32.nes"))
     for name, path in PICTURES:
         shutil.copyfile(os.path.join(ROOT, path), os.path.join(out, "img", name))
-    write_logo(os.path.join(out, "img", "logo.png"))
+    light, dark = accents()
+    write_logo(os.path.join(out, "img", "logo.png"), light)
+    write_logo(os.path.join(out, "img", "logo-dark.png"), dark)
     print("%s: nesp32 %s, %s" % (os.path.relpath(out), manifest["version"], manifest["date"]))
 
 
