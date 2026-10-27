@@ -25,6 +25,7 @@ with a StickS3 and with a StickC Plus2.
 | Part | State |
 |---|---|
 | Reader ROM, search screen and keyboard | working on hardware; tested on py65 |
+| A Bluetooth keyboard on the search screen (nesp32's KBD) | tested on py65 against nesp32's service; the keyboard's firmware has run on a StickS3, the ROM with it not yet |
 | Link: the ROM on nesp32's library, and nesp32's WIKI service | working on hardware at 85227 baud; tested together over a cycle-exact simulated line |
 | Text: an API reply to 28-column lines | in nesp32, in C; checked there against the Python it was ported from |
 
@@ -54,7 +55,9 @@ make preview                 # build/search.png and build/reader.png
   controller port, so it runs in an emulator (Mesen 2 recommended) and from
   a flash cart. Whatever is searched for, it finds that article.
 - `build/nespedia_link.nes` asks a nesp32 for its articles. It says hello
-  to nesp32's firmware as `WIKI` and asks for that service.
+  to nesp32's firmware as `WIKI` and asks for that service, and for `KBD`,
+  a Bluetooth keyboard's, which it does without on a firmware that has
+  none.
 
 Both are NROM-256 (mapper 0) with vertical mirroring.
 
@@ -73,6 +76,13 @@ Controller 1:
 
 The shift key, ⇧, is on the space bar's row, under Z. On that row, Left
 and Right go from the one to the other.
+
+A Bluetooth keyboard paired with the nesp32 (in nesp32's Setup, on a
+StickS3) types into the field too, as a keyboard does anywhere: letters in
+the case they are typed in, Backspace, Enter to search and Escape to clear
+the field. What the keys on the screen do not have, the keyboard does not
+type either. What is typed while the reader is up is dropped. The link ROM
+only: the standalone one has no nesp32 to pair a keyboard with.
 
 The field holds 30 characters and starts as `Nintendo Entertainment System`.
 The key under the cursor pulses from white through the logo's blues. A page

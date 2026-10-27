@@ -3,7 +3,7 @@
 ; runs in an emulator and on a flash cart.
 ;
 ; Provides what serial_link.inc does: link_init, link_search, link_status,
-; link_line, link_text and the link_nmi_hook macro.
+; link_line, link_keys, link_text and the link_nmi_hook macro.
 ;
 ; Whatever is searched for, the answer is the built-in article, after a
 ; moment of "searching".
@@ -62,6 +62,14 @@ article_desc:
     sta total + 1
     lda #HOST_READY
     clc
+    rts
+.endproc
+
+; There is no Bluetooth keyboard: nothing is ever typed on it.
+link_typed = link_text
+
+.proc link_keys
+    sec
     rts
 .endproc
 

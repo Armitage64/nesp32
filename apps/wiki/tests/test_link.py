@@ -510,3 +510,86 @@ def test_an_article_that_stops_arriving_can_still_be_read(linked):
     assert position(shown[-1]) == 8 * (have - WINDOW_ROWS)
     shown = hold(c, lines, PAD_UP, 100)
     assert set(moves(shown)[5:]) <= {0, -2} and position(shown[-1]) < 8 * (have - WINDOW_ROWS) - 100
+
+
+# --- a Bluetooth keyboard ----------------------------------------------------------
+
+ESCAPE, BACKSPACE, ENTER = (bytes((key,)) for key in (p.NESP_KEY_ESCAPE, p.NESP_KEY_BACKSPACE,
+                                                       p.NESP_KEY_ENTER))
+
+
+def query(console):
+    length = console.byte("query_len")
+    start = console.labels["query"]
+    return bytes(console.memory[start + offset] for offset in range(length))
+
+
+def test_what_is_typed_on_a_bluetooth_keyboard_is_searched_for(linked):
+    c, host = linked(numbered_article(30))
+    c.run(40)
+    assert host.stick.kbd_on and host.stick.hellos == 1    # greeted from the search screen
+    host.stick.kbd_type(ESCAPE + b"Mario Kart")
+    c.run(20)
+    assert query(c) == b"Mario Kart"
+    host.stick.kbd_type(ENTER)
+    run_until(c, STATE_READER)
+    assert host.searches == [b"Mario Kart"] and host.stick.hellos == 1
+
+
+def test_backspace_takes_back_and_what_has_no_key_on_the_screen_is_not_typed(linked):
+    c, host = linked(numbered_article(30))
+    c.run(40)
+    host.stick.kbd_type(ESCAPE + b"link's!?(x" + BACKSPACE + b" AWAKENING")
+    c.run(30)
+    assert query(c) == b"link's AWAKENING"
+    host.stick.kbd_type(b"x" * 20)                  # no more than a search holds
+    c.run(30)
+    assert query(c) == b"link's AWAKENING" + b"x" * 14
+
+
+def test_the_keyboard_on_the_screen_and_the_bluetooth_one_type_into_one_field(linked):
+    c, host = linked(numbered_article(30))
+    c.run(40)
+    host.stick.kbd_type(ESCAPE + b"Sup")
+    c.run(20)
+    tap(c, PAD_A)                                   # the key the cursor starts on: Q
+    host.stick.kbd_type(b"er")
+    c.run(20)
+    assert query(c) == b"SupQer"
+
+
+def test_what_is_typed_while_reading_is_not_searched_for_on_coming_back(linked):
+    lines = numbered_article(30)
+    c, host = linked(lines)
+    open_reader(c)
+    host.stick.kbd_type(b"Metroid" + ENTER)
+    tap(c, PAD_SELECT)                              # back to the search
+    run_until(c, STATE_SEARCH)
+    c.run(40)
+    assert c.byte("state") == STATE_SEARCH and query(c) == DEFAULT
+    assert host.stick.kbd_unread == 0
+    host.stick.kbd_type(ENTER)
+    run_until(c, STATE_READER)
+    assert host.searches == [DEFAULT, DEFAULT]
+
+
+def test_a_stick_without_kbd_is_searched_with_all_the_same(linked):
+    c, host = linked(numbered_article(30))
+    write = host.port.write
+
+    def without_kbd(data):
+        # The hello's reply, as a firmware from before KBD gives it.
+        reply = nesp.parse(data)
+        if reply.svc == p.NESP_SVC_SYS and reply.ok and len(reply.payload) == 7:
+            data = nesp.reply_frame(reply.svc, p.NESP_ST_NO_SERVICE, reply.seq,
+                                    reply.payload[:6] + bytes((1, p.NESP_SVC_KBD)))
+        write(data)
+    host.port.write = without_kbd
+    c.run(40)
+    assert c.byte("greeted") and not c.byte("typing")
+    host.stick.kbd_type(b"never")
+    c.run(30)
+    assert query(c) == DEFAULT and host.stick.kbd_unread == 5
+    tap(c, PAD_START)
+    run_until(c, STATE_READER)
+    assert host.searches == [DEFAULT]

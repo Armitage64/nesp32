@@ -1,8 +1,8 @@
 ; Serial link: an M5Stack Stick on controller port 2 holds the article. The
 ; link ROM's host, in place of fake_link.inc.
 ;
-; Provides link_init, link_search, link_status, link_line, link_text and
-; the link_nmi_hook macro.
+; Provides link_init, link_search, link_status, link_line, link_keys,
+; link_text and the link_nmi_hook macro.
 ;
 ; The link itself is nesp32's (its nes/lib/nesp.inc and docs/PROTOCOL.md):
 ; one firmware on the Stick serves every ROM, and this one asks it for the
@@ -11,12 +11,17 @@
 ; that has not ended by the next vblank is dropped there and reported as
 ; failed, and the caller asks again in a later frame.
 ;
-; The Stick knows this ROM by its hello, which goes out before the first
-; search and again whenever the Stick says it has no such service in use:
-; it was switched off and on, and has forgotten the hello with the article.
+; The Stick knows this ROM by its hello, which goes out from the search
+; screen, before the first search, and again whenever the Stick says it has
+; no such service in use: it was switched off and on, and has forgotten the
+; hello with the article. The hello asks for KBD besides WIKI, so that what
+; is typed on a Bluetooth keyboard paired with the nesp32 comes to the
+; search; a nesp32 without KBD is used all the same, with the keyboard on
+; the screen alone.
 
 NESP_RX_MASK = $3F              ; replies of up to 63 bytes: a line's is 33
 NESP_TX_MAX  = 1 + QUERY_MAX    ; a search: its id and its words
+HELLO_EVERY  = $0F              ; link_keys says hello every 16 frames until answered
 NESP_CRC_TABLE = 1              ; 35 cycles a byte: a line's reply is checked
                                 ; in the frame it arrives in, with room to spare
 .define NESP_APP "WIKI"
@@ -40,12 +45,16 @@ LINE_TEXT    = nesp_reply + 5
 .assert HOST_ERROR = NESP_ARTICLE_ERROR, error, "the ROM's states are WIKI's"
 .assert HOST_MORE = NESP_ARTICLE_MORE, error, "the ROM's states are WIKI's"
 .assert HOST_STATE = NESP_ARTICLE_STATE, error, "the ROM's states are WIKI's"
+.assert KEY_BACKSPACE = NESP_KEY_BACKSPACE, error, "the keyboard's keys are KBD's"
+.assert KEY_ENTER = NESP_KEY_ENTER, error, "the keyboard's keys are KBD's"
+.assert KEY_ESCAPE = NESP_KEY_ESCAPE, error, "the keyboard's keys are KBD's"
 .assert COLUMNS = NESP_WIKI_COLUMNS, error, "a line is as wide as the Stick lays it out"
 .assert QUERY_MAX = NESP_WIKI_QUERY_MAX, error, "a search is as long as the Stick takes"
 
 .segment "ZEROPAGE"
 search_id:  .res 1              ; which search this is: a new one, a new id
 greeted:    .res 1              ; the Stick has answered this ROM's hello
+typing:     .res 1              ; and has KBD: what is typed comes to the search
 
 .segment "RODATA"
 old_stick_text:                 ; COLUMNS wide, as the Stick's own messages are
@@ -80,14 +89,8 @@ old_stick_text:                 ; COLUMNS wide, as the Stick's own messages are
     lda greeted
     bne @search
     ; Hello first. This poll is then over; the next one searches.
-    lda #NESP_SVC_WIKI
-    sta nesp_request + NESP_HELLO_FIXED
-    ldy #1
-    jsr nesp_hello
-    bcs @silent
-    cmp #NESP_ST_OK
-    bne @old
-    inc greeted
+    jsr link_hello
+    bcc @old
 @silent:
     sec
     rts
@@ -142,6 +145,79 @@ old_stick_text:                 ; COLUMNS wide, as the Stick's own messages are
     clc
     rts
 @refused:                       ; the Stick has forgotten the hello: say it again
+    lda #0
+    sta greeted
+    sec
+    rts
+.endproc
+
+; Hello, with WIKI and KBD. Carry set, and greeted, if the Stick answered
+; with both, or with WIKI alone, which leaves typing 0. Carry clear if the
+; Stick is one this ROM cannot use; carry set and nothing changed if it
+; said nothing.
+.proc link_hello
+    lda #NESP_SVC_WIKI
+    sta nesp_request + NESP_HELLO_FIXED
+    lda #NESP_SVC_KBD
+    sta nesp_request + NESP_HELLO_FIXED + 1
+    ldy #2
+    jsr nesp_hello
+    bcs @silent
+    ldx #1
+    cmp #NESP_ST_OK
+    beq @greeted
+    cmp #NESP_ST_NO_SERVICE     ; only KBD missing is a Stick to use
+    bne @old
+    lda nesp_reply + 6
+    cmp #1
+    bne @old
+    lda nesp_reply + 7
+    cmp #NESP_SVC_KBD
+    bne @old
+    ldx #0
+@greeted:
+    stx typing
+    lda #1
+    sta greeted
+@silent:
+    sec
+    rts
+@old:
+    clc
+    rts
+.endproc
+
+; What has been typed on the nesp32's Bluetooth keyboard: carry clear, and
+; A characters of it at link_typed. Carry set if there is nothing to have:
+; no reply, no hello yet (which this says, now and again), or no KBD.
+link_typed = nesp_reply + 1
+
+.proc link_keys
+    lda greeted
+    bne @greeted
+    lda frame_count
+    and #HELLO_EVERY
+    bne @none
+    jsr link_hello              ; an old Stick is for link_status to find out
+@none:
+    sec
+    rts
+@greeted:
+    lda typing
+    beq @none
+    lda #NESP_SVC_KBD
+    ldx #NESP_KBD_KEYS
+    ldy #0
+    jsr nesp_call
+    bcs @none
+    cmp #NESP_ST_OK
+    bne @forgot
+    lda nesp_reply
+    cmp #NESP_KBD_KEYS_MAX + 1
+    bcs @none
+    clc
+    rts
+@forgot:                        ; the Stick was switched off and on
     lda #0
     sta greeted
     sec

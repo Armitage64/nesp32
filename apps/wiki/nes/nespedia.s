@@ -349,6 +349,8 @@ main_wait:
 ; Show the keyboard with status A.
 .proc back_to_search
     jsr set_status
+    lda #1                      ; what was typed while it was not up is dropped
+    sta typed_stale
     lda #STATE_SEARCH
     sta state
     lda #SPRITE_HIDDEN

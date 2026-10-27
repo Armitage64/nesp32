@@ -7,6 +7,11 @@
 ;   Start    search
 ;   Select   on nesp32's cartridge, back to its menu
 ;
+; and on a Bluetooth keyboard paired with the nesp32, through the link
+; (link_keys), typing as it would anywhere: a letter in the case it is
+; typed in, Backspace, Enter to search, and Escape to clear the field. What
+; this keyboard has no key for is not typed.
+;
 ; The keys are KEY_ROWS rows of KEY_COLUMNS, and under them a last row of
 ; two: the shift key, under the first column, and the space bar. On that
 ; row the cursor keeps its column, and the first is the shift key; Left
@@ -25,6 +30,11 @@ DIRTY_ROW    = $04              ; << row, for the rows of letters: 1 to 3
 DIRTY_LETTERS = DIRTY_ROW << 1 | DIRTY_ROW << 2 | DIRTY_ROW << 3
 ROW_TILES = KEY_STEP * (KEY_COLUMNS - 1) + 1
 NO_KEY = $FF
+; The Bluetooth keyboard's keys that are not characters, as KBD sends them
+; (serial_link.inc checks them against nesp32's numbers).
+KEY_BACKSPACE = $08
+KEY_ENTER     = $0A
+KEY_ESCAPE    = $1B
 SHIFT_COL = 0
 PULSE_MASK = $07                ; frames between the pulse's colours, less one
 
@@ -40,6 +50,9 @@ key_row:    .res 1              ; arguments of key_char and draw_key
 key_col:    .res 1
 key_alt:    .res 1
 pulse:      .res 1              ; where the cursor's colour is in its round
+typed_count: .res 1             ; kb_typed's
+typed_at:   .res 1
+typed_stale: .res 1             ; the next of what was typed is from before this screen
 
 .segment "RODATA"
 
@@ -102,6 +115,7 @@ row_first: .byte 0, KEY_COLUMNS, 2 * KEY_COLUMNS, 3 * KEY_COLUMNS
 .endproc
 
 .proc kb_frame
+    jsr kb_typed
     lda pad_new
     and #PAD_UP
     beq @down
@@ -157,19 +171,21 @@ row_first: .byte 0, KEY_COLUMNS, 2 * KEY_COLUMNS, 3 * KEY_COLUMNS
     lda pad_new
     and #PAD_B
     beq @case
-    lda query_len
-    beq @case
-    dec query_len
-    lda kb_dirty
-    ora #DIRTY_FIELD
-    sta kb_dirty
+    jsr delete_char
 @case:                          ; Select, the cartridge's menu, is the main loop's
 @search:
     lda pad_new
     and #PAD_START
     beq @draw
+    jsr search
+@draw:
+    jmp kb_draw
+.endproc
+
+; Search for the field's words, if it has any.
+.proc search
     lda query_len
-    beq @draw
+    beq @done
     jsr link_search
     lda #0
     sta silent
@@ -177,12 +193,91 @@ row_first: .byte 0, KEY_COLUMNS, 2 * KEY_COLUMNS, 3 * KEY_COLUMNS
     jsr set_status
     lda #STATE_LOADING
     sta state
-@draw:
-    jmp kb_draw
+@done:
+    rts
 .endproc
 
-; Add the cursor's key to the search, if there is room. A search does not
-; begin with a space. The shift key changes the letters' case.
+; Take the field's last character back.
+.proc delete_char
+    lda query_len
+    beq @done
+    dec query_len
+    lda kb_dirty
+    ora #DIRTY_FIELD
+    sta kb_dirty
+@done:
+    rts
+.endproc
+
+; What was typed on the Bluetooth keyboard, a character at a time, until
+; a search begins. What comes first after the screen is back from a search
+; was typed while it was not up, and is dropped: an Enter in it would search
+; at once.
+.proc kb_typed
+    jsr link_keys
+    bcs @done
+    ldx typed_stale
+    beq @fresh
+    ldx #0
+    stx typed_stale
+    rts
+@fresh:
+    sta typed_count
+    ldx #0
+@char:
+    cpx typed_count
+    bcs @done
+    lda state
+    cmp #STATE_SEARCH           ; Enter has begun a search: the rest is dropped
+    bne @done
+    lda link_typed,x
+    stx typed_at
+    jsr type_typed
+    ldx typed_at
+    inx
+    bne @char
+@done:
+    rts
+.endproc
+
+; One character from the Bluetooth keyboard, A.
+.proc type_typed
+    cmp #KEY_BACKSPACE
+    beq delete_char
+    cmp #KEY_ENTER
+    beq search
+    cmp #KEY_ESCAPE
+    bne @letter
+    lda #0
+    sta query_len
+    lda kb_dirty
+    ora #DIRTY_FIELD
+    sta kb_dirty
+    rts
+@letter:
+    cmp #' '
+    beq type_char
+    tax
+    and #<~$20                  ; a letter in either case
+    cmp #'A'
+    bcc @other
+    cmp #'Z' + 1
+    bcs @other
+    txa
+    jmp type_char
+@other:                         ; a key of the keyboard on the screen, or none
+    txa
+    ldx #KEY_ROWS * KEY_COLUMNS - 1
+@key:
+    cmp key_chars,x
+    beq type_char
+    dex
+    bpl @key
+    rts
+.endproc
+
+; Add the cursor's key to the search (type_char). The shift key changes
+; the letters' case.
 .proc type_key
     lda cur_row
     cmp #KEY_ROWS
@@ -198,14 +293,20 @@ row_first: .byte 0, KEY_COLUMNS, 2 * KEY_COLUMNS, 3 * KEY_COLUMNS
     sta kb_dirty
     rts
 @key:
-    ldx query_len
-    cpx #QUERY_MAX
-    bcs @done
     lda cur_row
     sta key_row
     lda cur_col
     sta key_col
     jsr key_char
+    ; fall through
+.endproc
+
+; Add character A to the search, if there is room. A search does not
+; begin with a space.
+.proc type_char
+    ldx query_len
+    cpx #QUERY_MAX
+    bcs @done
     cmp #' '
     bne @store
     cpx #0
