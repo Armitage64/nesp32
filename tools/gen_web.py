@@ -42,8 +42,15 @@ sys.path.insert(0, os.path.join(ROOT, "nes", "lib"))
 import logo  # noqa: E402
 
 # The logo's colours, as the screenshots show them: its palette's navy, cyan
-# and white. Its 32 is the page's red, the buttons' (--accent in style.css).
-LOGO_RGB = {"1": (0, 30, 116), "2": (56, 180, 204), "3": (236, 238, 236)}
+# and white, and the NES's red for its 32.
+LOGO_RGB = {"1": (0, 30, 116), "2": (56, 180, 204), "3": (236, 238, 236),
+            "r": (152, 34, 32)}
+# The dark page has it as the NES does. On the light page its 32 is the
+# buttons' red (--accent in style.css), its white, the outline and the port,
+# is black, and the word's blues change places: cyan letters with a navy
+# band.
+LOGO_OUTLINE_LIGHT = (0, 0, 0)
+WORD_TOP = 14                   # the logo's first row of the word, under the Wi-Fi mark
 
 # The product page's pictures: (its name for one, where it is)
 PICTURES = [("cart-menu.png", "docs/cart-menu.png"),
@@ -95,31 +102,43 @@ def build(family, directory, prefix, out):
     return {"chipFamily": family, "parts": parts}
 
 
-def page(source, target, style):
-    """A page, with the stylesheet asked for by a name that changes when
-    it does: a browser that kept the old one does not go on using it."""
+def fingerprint(path):
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()[:8]
+
+
+def page(source, target, versions):
+    """A page, with each of its files in `versions` (name: fingerprint)
+    asked for by a name that changes when the file does: a browser that
+    kept the old one does not go on using it."""
     with open(source) as f:
         text = f.read()
+    for name, version in versions.items():
+        text = text.replace('%s"' % name, '%s?v=%s"' % (name, version))
     with open(target, "w") as f:
-        f.write(text.replace('style.css"', 'style.css?v=%s"' % style))
+        f.write(text)
 
 
-def accents():
-    """style.css's --accent: (for a light page, for a dark one), as RGB."""
+def accent():
+    """style.css's --accent for the light page, as RGB: the first one."""
     with open(os.path.join(WEB, "style.css")) as f:
-        found = re.findall(r"--accent:\s*#([0-9a-fA-F]{6})", f.read())
-    if len(found) != 2:
-        sys.exit("style.css: expected an --accent for light and one for dark")
-    return [tuple(bytes.fromhex(color)) for color in found]
+        found = re.search(r"--accent:\s*#([0-9a-fA-F]{6})", f.read())
+    if not found:
+        sys.exit("style.css: no --accent")
+    return tuple(bytes.fromhex(found.group(1)))
 
 
-def write_logo(path, red):
-    """The logo as a PNG, a pixel for each of the NES's, the backdrop clear
-    and the 32 in `red`."""
+def write_logo(path, red=LOGO_RGB["r"], outline=LOGO_RGB["3"], swap_blues=False):
+    """The logo as a PNG, a pixel for each of the NES's, the backdrop clear,
+    the 32 in `red` and the white in `outline`; with `swap_blues`, the
+    word's navy and cyan change places."""
     colors = dict(LOGO_RGB, r=red)
+    colors["3"] = outline
+    picture = [line.translate(str.maketrans("12", "21")) if swap_blues and row >= WORD_TOP
+               else line for row, line in enumerate(logo.PICTURE)]
     rows = b"".join(b"\0" + b"".join(bytes(colors[c] + (255,)) if c in colors else bytes(4)
                                       for c in line)
-                    for line in logo.PICTURE)
+                    for line in picture)
 
     def chunk(kind, data):
         return (struct.pack(">I", len(data)) + kind + data
@@ -156,17 +175,18 @@ def main(out, cart):
     with open(os.path.join(flash, "manifest.json"), "w") as f:
         json.dump(manifest, f, indent=2)
         f.write("\n")
-    with open(os.path.join(WEB, "style.css"), "rb") as f:
-        style = hashlib.sha256(f.read()).hexdigest()[:8]
-    page(os.path.join(WEB, "flash", "index.html"), os.path.join(flash, "index.html"), style)
-    page(os.path.join(WEB, "product", "index.html"), os.path.join(out, "index.html"), style)
     shutil.copyfile(os.path.join(WEB, "style.css"), os.path.join(out, "style.css"))
     shutil.copyfile(cart, os.path.join(out, "nesp32.nes"))
     for name, path in PICTURES:
         shutil.copyfile(os.path.join(ROOT, path), os.path.join(out, "img", name))
-    light, dark = accents()
-    write_logo(os.path.join(out, "img", "logo.png"), light)
-    write_logo(os.path.join(out, "img", "logo-dark.png"), dark)
+    write_logo(os.path.join(out, "img", "logo.png"), accent(), LOGO_OUTLINE_LIGHT, swap_blues=True)
+    write_logo(os.path.join(out, "img", "logo-dark.png"))
+    # The pages last, since they name the files by what is in them.
+    files = ["style.css", "nesp32.nes"] + ["img/" + name for name in os.listdir(
+        os.path.join(out, "img"))]
+    versions = {name: fingerprint(os.path.join(out, name)) for name in files}
+    page(os.path.join(WEB, "flash", "index.html"), os.path.join(flash, "index.html"), versions)
+    page(os.path.join(WEB, "product", "index.html"), os.path.join(out, "index.html"), versions)
     print("%s: nesp32 %s, %s" % (os.path.relpath(out), manifest["version"], manifest["date"]))
 
 
