@@ -7,7 +7,8 @@ flashes a nesp32 from a browser.
     index.html            web/product/index.html, as it is
     style.css             web/style.css, which both pages use
     nesp32.nes            the cartridge, which the product page links to
-    img/                  pictures of the programs, from their docs
+    img/                  pictures of the programs, from their docs, and
+                          img/logo.png, the header's logo (nes/lib/logo.py)
     flash/index.html      web/flash/index.html, as it is
     flash/manifest.json   what ESP Web Tools is to write, and where
     flash/s3-*.bin        the StickS3's firmware, from firmware/build-esp32s3
@@ -26,12 +27,22 @@ import hashlib
 import json
 import os
 import shutil
+import struct
 import subprocess
 import sys
+import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..")
 WEB = os.path.join(ROOT, "web")
+
+sys.path.insert(0, os.path.join(ROOT, "nes", "lib"))
+import logo  # noqa: E402
+
+# The logo's colours, as the screenshots show them: its palette's navy, cyan
+# and white, and the red its 32 is given.
+LOGO_RGB = {"1": (0, 30, 116), "2": (56, 180, 204), "3": (236, 238, 236),
+            "r": (152, 34, 32)}
 
 # The product page's pictures: (its name for one, where it is)
 PICTURES = [("cart-menu.png", "docs/cart-menu.png"),
@@ -92,6 +103,22 @@ def page(source, target, style):
         f.write(text.replace('style.css"', 'style.css?v=%s"' % style))
 
 
+def write_logo(path):
+    """The logo as a PNG, a pixel for each of the NES's, the backdrop clear."""
+    rows = b"".join(b"\0" + b"".join(bytes(LOGO_RGB[c] + (255,)) if c in LOGO_RGB else bytes(4)
+                                      for c in line)
+                    for line in logo.PICTURE)
+
+    def chunk(kind, data):
+        return (struct.pack(">I", len(data)) + kind + data
+                + struct.pack(">I", zlib.crc32(kind + data)))
+
+    header = struct.pack(">IIBBBBB", len(logo.PICTURE[0]), len(logo.PICTURE), 8, 6, 0, 0, 0)
+    with open(path, "wb") as f:
+        f.write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header)
+                + chunk(b"IDAT", zlib.compress(rows, 9)) + chunk(b"IEND", b""))
+
+
 def main(out, cart):
     if not os.path.exists(cart):
         sys.exit("No cartridge at %s: run make cart first." % os.path.relpath(cart))
@@ -125,6 +152,7 @@ def main(out, cart):
     shutil.copyfile(cart, os.path.join(out, "nesp32.nes"))
     for name, path in PICTURES:
         shutil.copyfile(os.path.join(ROOT, path), os.path.join(out, "img", name))
+    write_logo(os.path.join(out, "img", "logo.png"))
     print("%s: nesp32 %s, %s" % (os.path.relpath(out), manifest["version"], manifest["date"]))
 
 
