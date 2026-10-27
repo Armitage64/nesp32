@@ -27,6 +27,7 @@ nesp32 laid it out, and every write to the screen inside a vblank.
 |---|---|
 | WEATHER on the nesp32: a zip code to a place, the place's weather to rows of tiles | working on a StickC Plus2; tested on a computer, from replies the two sites really sent |
 | The ROM (`build/weather.nes`) | working on hardware, with a StickC Plus2 and on the MiSTer; tested on py65 against that code, over the simulated line |
+| A Bluetooth keyboard on the form (nesp32's KBD) | tested on py65 against nesp32's service; not yet on hardware |
 | The cartridge | on it, the seventh program; starts from its menu on a simulated console, and not yet run there on hardware |
 
 ## Building
@@ -67,6 +68,13 @@ and with the report on the screen:
 | | |
 |---|---|
 | **B** | the form again (`B : BACK`), to enter another zip code |
+
+A Bluetooth keyboard paired with a StickS3 ([Setup](../setup) pairs one)
+types the zip code too: a digit goes in the pulsing place and the next one
+pulses, from the last round to the first; **Enter** asks for its weather,
+**Backspace** goes back a digit, the arrows are the D-pad, and **Esc** is
+B. A digit typed with a report on the screen is the form again, from its
+first digit, so the next zip code can just be typed.
 
 A report is the place's name and state, the temperature now with a word
 or two for the sky, today's high and low, the humidity and the wind; and

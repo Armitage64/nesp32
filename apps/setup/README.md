@@ -50,14 +50,14 @@ cartridge's menu, as reset does, and so does Select from any screen; a
 USB drive is taken back first, as B does. Setup built as a ROM of its own
 has no menu to go back to, and no Quit.
 
-A Bluetooth keyboard is for the programs that take text, NESpedia first.
-Put it in its pairing mode, then choose PAIR DEVICE on the Bluetooth
-screen and the keyboard from the list; there is no code to type on it. The
-nesp32 keeps it, and connects it again whenever a program that uses it is
-running and a key is pressed on it. Only a StickS3 has Bluetooth, and only Bluetooth LE
-keyboards pair: most made in the last few years are, and an older one that
-is Bluetooth Classic alone is not found. Bluetooth is on only while this
-screen or such a program is up.
+A Bluetooth keyboard is for the programs that take text: NESpedia's search
+and Weather's zip code. Put it in its pairing mode, then choose PAIR
+DEVICE on the Bluetooth screen and the keyboard from the list; there is no
+code to type on it. The nesp32 keeps it, and connects it again whenever a
+program that uses it is running and a key is pressed on it. Only a StickS3
+has Bluetooth, and only Bluetooth LE keyboards pair: most made in the last
+few years are, and an older one that is Bluetooth Classic alone is not
+found. Bluetooth is on only while this screen or such a program is up.
 
 The USB drive is how the jukebox's music gets onto a StickS3:
 [nes-jukebox](../jukebox/README.md#music-on-a-nesp32) has what to copy and

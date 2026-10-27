@@ -16,6 +16,12 @@
 ; for that first (LAST), and the form comes up with those digits in it: A
 ; is all it takes.
 ;
+; A Bluetooth keyboard on the nesp32 (its KBD) types a zip code too: a
+; digit is the lit digit's and lights the next, Enter asks for the weather,
+; Escape is B, and Backspace and the arrows move as the D-pad does. A digit
+; typed over a report is the form's first, so that the next zip code can
+; be typed at once.
+;
 ; The digit that Up and Down change pulses, as the key under NESpedia's
 ; cursor does (../wiki/nes/keyboard.inc): its square of the screen has the
 ; cursor's palette, and the font's colour in that palette is changed every
@@ -26,15 +32,18 @@
 ; a frame, the first of these that applies:
 ;
 ;   SYS HELLO       until the nesp32 has answered it, and again whenever it
-;                   says the service is not in use
+;                   says the service is not in use. It asks for KBD too, and
+;                   a nesp32 without it is one to use all the same
 ;   WEATHER LAST    once: the zip code it keeps, if any
 ;   WEATHER ROW     a report is ready that is not on the screen: its next row
 ;   WEATHER ZIP     otherwise, while the report is the view: this zip code,
 ;                   and how it stands. Every frame until a report is on the
 ;                   screen, and about once a second after, in case there is
 ;                   a newer one
+;   KBD KEYS        otherwise, every other frame, if the nesp32 has KBD:
+;                   what has been typed on its keyboard
 ;
-; The form asks nothing.
+; The form asks nothing else.
 ;
 ; The NMI reads the controller and draws what the main loop has staged: the
 ; status line when it has changed, one row of the middle of the screen
@@ -75,7 +84,7 @@ REPEAT_EVERY = 5                ; and frames between repeats
 OUT0_MARK = $01
 
 NESP_RX_MASK = $3F              ; replies of up to 63 bytes: a row, and what it is of
-NESP_TX_MAX  = 8                ; the hello, with its one service
+NESP_TX_MAX  = 9                ; the hello, with its two services
 .define NESP_APP "WTHR"
 NESP_APP_VERSION = 1
 
@@ -117,6 +126,10 @@ presses:      .res 1            ; the main loop's copy of pad_new
 status:       .res 1            ; STATUS_*: what the status line says
 status_dirty: .res 1            ; and it is not on the screen yet
 greeted:      .res 1            ; the nesp32 has answered this ROM's hello
+typing:       .res 1            ; and has KBD: its keyboard's keys are asked for
+key_at:       .res 1            ; ask_keys's: the key of the reply it is on,
+key_count:    .res 1            ; of these
+key_char:     .res 1            ; type_key's: the key
 asked_last:   .res 1            ; and said what zip code it keeps
 link_missed:  .res 1            ; exchanges in a row with no reply, up to MISSED_MAX
 link_failed:  .res 2            ; every exchange with none, for a debugger's watch list
@@ -147,7 +160,8 @@ day_at:       .res 1            ; center_days's: the day it is on
 .include "screen.inc"
 .include "nesp.inc"
 
-.assert NESP_TX_MAX = NESP_HELLO_FIXED + 1, error, "the hello names one service"
+.assert NESP_TX_MAX = NESP_HELLO_FIXED + 2, error, "the hello names two services"
+.assert 1 + NESP_KBD_KEYS_MAX <= NESP_RX_MASK, error, "what is typed must fit a reply"
 .assert NESP_TX_MAX >= 1 + NESP_WEATHER_ZIP_LEN, error, "a zip code must fit a request"
 .assert 4 + NESP_WEATHER_COLUMNS <= NESP_RX_MASK, error, "a row must fit its buffer"
 .assert ROWS = NESP_WEATHER_ROWS && COLUMNS = NESP_WEATHER_COLUMNS, error, "a report is the nesp32's"
@@ -372,15 +386,21 @@ main_wait:
     txa
     ldx asked_last              ; until the nesp32 has said what it keeps there
     beq @done                   ; is neither view to work
+    jmp act
+.endproc
+
+; Buttons A pressed, on either view: from the controller, or a key typed.
+.proc act
     sta presses
     lda view
     beq @form
     lda presses                 ; the report: B is the form
     and #PAD_B
-    beq @done
-    lda #STATUS_NONE
-    jsr set_status
-    jmp show_form
+    bne @back
+@done:
+    rts
+@back:
+    jmp back_to_form
 @form:
     lda presses                 ; B: nothing to go back to, and never out of
     and #PAD_A | PAD_START      ; the program, so that B pressed again and
@@ -428,6 +448,68 @@ main_wait:
     sta zip,x
 @touched:
     jmp form_touch
+.endproc
+
+; One key typed on the nesp32's keyboard, A: a digit, or what a button
+; would do. Anything else is no key of the form's.
+.proc type_key
+    cmp #'0'
+    bcc @control
+    cmp #'9' + 1
+    bcs @done
+    sta key_char
+    lda view
+    beq @digit
+    jsr back_to_form            ; over a report: a new zip code, from its first digit
+    lda #0
+    sta cursor
+@digit:
+    ldx cursor
+    lda key_char
+    sta zip,x
+    inx
+    cpx #NESP_WEATHER_ZIP_LEN
+    bcc @lit
+    ldx #0                      ; after the last, the first: ready for the next zip code
+@lit:
+    stx cursor
+    jmp form_touch
+@control:
+    cmp #NESP_KEY_BACKSPACE
+    bne @find
+    ldx cursor                  ; Backspace stops at the first digit
+    beq @done
+@find:
+    ldx #KEY_BUTTONS - 1
+@key:
+    cmp key_codes,x
+    beq @found
+    dex
+    bpl @key
+@done:
+    rts
+@found:
+    lda key_buttons,x
+    jmp act
+.endproc
+
+.segment "RODATA"
+key_codes:
+    .byte NESP_KEY_ENTER, NESP_KEY_ESCAPE, NESP_KEY_BACKSPACE
+    .byte NESP_KEY_UP, NESP_KEY_DOWN, NESP_KEY_LEFT, NESP_KEY_RIGHT
+key_buttons:
+    .byte PAD_A, PAD_B, PAD_LEFT
+    .byte PAD_UP, PAD_DOWN, PAD_LEFT, PAD_RIGHT
+KEY_BUTTONS = * - key_buttons
+.assert KEY_BUTTONS = key_buttons - key_codes, error, "a button for every key"
+
+.segment "CODE"
+
+; From the report: the form again, saying nothing.
+.proc back_to_form
+    lda #STATUS_NONE
+    jsr set_status
+    jmp show_form
 .endproc
 
 ; The form is the view, and all of it is to be drawn.
@@ -612,7 +694,7 @@ main_wait:
     jmp ask_last
 @asked:
     lda view
-    beq @idle                   ; the form asks nothing
+    beq @keys                   ; the form asks only what is typed
     lda sky
     cmp #NESP_SKY_READY
     bne @zip
@@ -645,9 +727,11 @@ main_wait:
 @settled:
     lda frame_count
     and #POLL_MASK
-    bne @idle
+    bne @keys
 @zip:
     jmp ask_zip
+@keys:
+    jmp ask_keys
 .endproc
 
 ; Hello: this is Weather, and it needs WEATHER. A nesp32 that lacks it, or
@@ -656,13 +740,27 @@ main_wait:
 .proc say_hello
     lda #NESP_SVC_WEATHER
     sta nesp_request + NESP_HELLO_FIXED
-    ldy #1
+    lda #NESP_SVC_KBD
+    sta nesp_request + NESP_HELLO_FIXED + 1
+    ldy #2
     jsr nesp_hello
     bcc @came
     jmp link_silent
 @came:
+    ldx #1
     cmp #NESP_ST_OK
+    beq @greeted
+    cmp #NESP_ST_NO_SERVICE     ; only KBD missing is a nesp32 to use, with no
+    bne @old                    ; keyboard: one from before KBD
+    lda nesp_reply + 6
+    cmp #1
     bne @old
+    lda nesp_reply + 7
+    cmp #NESP_SVC_KBD
+    bne @old
+    ldx #0
+@greeted:
+    stx typing
     lda #1
     sta greeted
     lda view                    ; a nesp32 that was switched off and on has no
@@ -706,6 +804,52 @@ main_wait:
     jsr set_status
     jsr show_form
     jmp link_heard
+.endproc
+
+; What has been typed on the nesp32's keyboard, every other frame, if it
+; has one: each key as the form takes it. A reply after the nesp32 had
+; gone quiet says it is back.
+.proc ask_keys
+    lda typing
+    beq @none
+    lda frame_count
+    lsr a
+    bcc @none
+    lda #NESP_SVC_KBD
+    ldx #NESP_KBD_KEYS
+    ldy #0
+    jsr nesp_call
+    bcc @came
+    jmp link_silent
+@came:
+    cmp #NESP_ST_OK
+    beq @ok
+    jmp link_refused
+@ok:
+    lda status
+    cmp #STATUS_WAITING
+    bne @count
+    lda #STATUS_NONE
+    jsr set_status
+@count:
+    lda nesp_reply
+    cmp #NESP_KBD_KEYS_MAX + 1
+    bcs @heard
+    sta key_count
+    lda #0
+    sta key_at
+@key:
+    ldx key_at
+    cpx key_count
+    bcs @heard
+    lda nesp_reply + 1,x
+    jsr type_key
+    inc key_at
+    bne @key
+@heard:
+    jmp link_heard
+@none:
+    rts
 .endproc
 
 ; This zip code, and how it stands with it: for the status line, and for

@@ -386,9 +386,11 @@ def test_a_report_on_the_screen_is_asked_after_about_once_a_second(sky):
     s = sky(kept=KEPT)
     s.go()
     s.report_is_up()
-    before = len(s.requests())
+    before = len(s.asked(p.NESP_WEATHER_ZIP))
     s.run(640)
-    assert 8 <= len(s.requests()) - before <= 11
+    assert 8 <= len(s.asked(p.NESP_WEATHER_ZIP)) - before <= 11
+    assert not any(service == WEATHER and op != p.NESP_WEATHER_ZIP
+                   for service, op, _ in s.requests()[-300:])      # and nothing else of it
     assert s.rows() == SHOWN
 
 
@@ -417,6 +419,83 @@ def test_a_nesp32_without_the_service_is_told_to_be_updated(sky):
     s.run_until(lambda: s.status == "UPDATE NESP32")
     s.run(60)
     assert s.asked(p.NESP_WEATHER_LAST) == [] and all(row.strip() == "" for row in s.rows())
+
+
+# --- a Bluetooth keyboard on the nesp32 ---------------------------------------------
+
+ENTER, ESCAPE, BACKSPACE = (bytes((key,)) for key in (p.NESP_KEY_ENTER, p.NESP_KEY_ESCAPE,
+                                                      p.NESP_KEY_BACKSPACE))
+LEFT, RIGHT, UP, DOWN = (bytes((key,)) for key in (p.NESP_KEY_LEFT, p.NESP_KEY_RIGHT,
+                                                   p.NESP_KEY_UP, p.NESP_KEY_DOWN))
+
+
+def typed(s, keys):
+    """Keys typed on the nesp32's keyboard, and the ROM has had them."""
+    s.stick.kbd_type(keys)
+    s.run_until(lambda: s.stick.kbd_unread == 0, 60)
+    s.run(4)
+
+
+def test_a_zip_code_typed_on_a_keyboard_is_asked_for_with_enter(sky):
+    s = sky()
+    s.form_is_up()
+    assert s.stick.kbd_on                           # the hello asked for KBD
+    typed(s, b"90a2-1")                             # what is no digit is no key of the form's
+    assert s.form_is_up() == "90210" and s.lit == 4
+    typed(s, BACKSPACE + BACKSPACE + b"21")         # Backspace goes back a digit
+    assert s.form_is_up() == "90210" and s.lit == 4
+    typed(s, b"0")
+    assert s.form_is_up() == "90210" and s.lit == 0     # after the last, the first
+    assert s.asked(p.NESP_WEATHER_ZIP) == []
+    typed(s, ENTER)
+    assert s.report_is_up() == SHOWN
+    assert s.asked(p.NESP_WEATHER_ZIP)[0] == b"\x0190210"
+
+
+def test_backspace_stops_at_the_first_digit_and_the_arrows_are_the_d_pad(sky):
+    s = sky()
+    s.form_is_up()
+    typed(s, BACKSPACE)
+    assert s.form_is_up() == "00000" and s.lit == 0
+    typed(s, LEFT)                                  # the arrows go round, as the D-pad does
+    assert s.form_is_up() == "00000" and s.lit == 4
+    typed(s, UP + UP + RIGHT + DOWN)
+    assert s.form_is_up() == "90002" and s.lit == 0
+
+
+def test_a_digit_typed_over_a_report_begins_the_next_zip_code(sky, where, weather):
+    s = sky(kept=KEPT)
+    s.go()
+    s.report_is_up()
+    typed(s, ENTER + UP)                            # no keys of the report's
+    assert s.view == VIEW_REPORT and s.rows() == SHOWN
+    typed(s, b"1")
+    assert s.form_is_up() == "10210" and s.lit == 1
+    typed(s, b"0001" + ESCAPE)                      # Escape is B: on the form, nothing
+    assert s.form_is_up() == "10001" and s.lit == 0
+    s.press(PAD_A)
+    s.report_is_up()
+    typed(s, ESCAPE)                                # and on the report, the form
+    assert s.form_is_up() == "10001"
+
+
+def test_a_nesp32_without_kbd_is_used_all_the_same(sky):
+    def older(data):
+        reply = nesp.parse(data)
+        if reply.svc == p.NESP_SVC_SYS and reply.ok and len(reply.payload) == 7:
+            return nesp.reply_frame(reply.svc, p.NESP_ST_NO_SERVICE, reply.seq,
+                                    reply.payload[:6] + bytes((1, p.NESP_SVC_KBD)))
+        return data
+
+    s = sky(kept=KEPT, to_console=older)
+    assert s.form_is_up() == "90210" and s.status == ""
+    assert s.c.byte("greeted") and not s.c.byte("typing")
+    s.stick.kbd_type(b"1")
+    s.run(60)
+    assert s.stick.kbd_unread == 1
+    assert not any(service == p.NESP_SVC_KBD for service, _, _ in s.requests())
+    s.press(PAD_A)
+    assert s.report_is_up() == SHOWN
 
 
 def test_it_gets_through_a_line_that_loses_and_damages_replies(sky):
