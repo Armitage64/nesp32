@@ -14,7 +14,7 @@ from console import VBLANK_CYCLES
 from drive import (PAD_A, PAD_B, PAD_DOWN, PAD_SELECT, PAD_START, PAD_UP, STATE_FAILED,
                    STATE_JOINING, STATE_KBD, STATE_KBD_LIST, STATE_KEYS, STATE_LIST, STATE_SCAN,
                    STATE_STATUS, STATE_TEST, STATE_USB, Setup, find_key)
-from drive import KBD_MENU_FORGET, KBD_MENU_PAIR, MENU_FLIP, MENU_KBD, MENU_TEST, MENU_USB
+from drive import KBD_MENU_BACK, KBD_MENU_FORGET, KBD_MENU_PAIR, MENU_FLIP, MENU_KBD, MENU_TEST, MENU_USB
 from nesp import Stick
 from wire import link, ms
 
@@ -760,7 +760,7 @@ def test_the_keyboards_screen_turns_bluetooth_on_and_going_back_turns_it_off(set
     s = setup()
     assert not s.stick.kbd_on
     open_kbd(s)
-    assert s.heading == "BLUETOOTH KEYBOARD"
+    assert s.heading == "PAIR BLUETOOTH KEYBOARD"
     assert s.stick.kbd_on
     assert s.kbd_value("KEYBOARD") == "-" and s.kbd_value("STATUS") == "NONE PAIRED"
     assert s.echo == "_"
@@ -769,14 +769,23 @@ def test_the_keyboards_screen_turns_bluetooth_on_and_going_back_turns_it_off(set
     assert s.kbd_item == KBD_MENU_PAIR
     s.press(PAD_UP)                             # it stops at the first
     assert s.kbd_item == KBD_MENU_PAIR
-    s.press(PAD_DOWN)
-    s.press(PAD_DOWN)                           # and at the last
-    assert s.kbd_item == KBD_MENU_FORGET
+    for _ in range(len(layout.KBD_MENU_ITEMS)):
+        s.press(PAD_DOWN)                       # and at the last
+    assert s.kbd_item == KBD_MENU_BACK
     s.press(PAD_B)
     s.wait_for(STATE_STATUS)
     s.c.run_until(lambda: not s.stick.kbd_on, 60)
     s.settle(80)
     assert s.value("NESP32") == "CONNECTED"
+
+
+def test_back_on_the_menu_is_the_status_screen_and_bluetooth_off(setup):
+    s = setup()
+    open_kbd(s)
+    s.kbd_menu(KBD_MENU_BACK)
+    s.wait_for(STATE_STATUS)
+    s.c.run_until(lambda: not s.stick.kbd_on, 60)
+    assert s.stick.kbd_scans == 0 and s.stick.kbd_forgets == 0
 
 
 def test_the_keyboard_paired_is_shown_with_how_it_stands(setup):

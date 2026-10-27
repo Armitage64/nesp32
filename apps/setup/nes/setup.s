@@ -162,6 +162,24 @@ draw_buf:     .res 32
     .endrepeat
 .endmacro
 
+; A box round the WIDTH characters of a row from LEFT, in the second
+; colour: its top in the row above, its bottom in the row below, and its
+; sides in the columns either side.
+.macro box row
+    .byte >($2000 + 32 * ((row) - 1) + LEFT - 1), <($2000 + 32 * ((row) - 1) + LEFT - 1)
+    .byte WIDTH + 2, TILE_BOX_TL
+    .res WIDTH, TILE_BOX_T
+    .byte TILE_BOX_TR
+    .byte >($2000 + 32 * (row) + LEFT - 1), <($2000 + 32 * (row) + LEFT - 1)
+    .byte 1, TILE_BOX_L
+    .byte >($2000 + 32 * (row) + LEFT + WIDTH), <($2000 + 32 * (row) + LEFT + WIDTH)
+    .byte 1, TILE_BOX_R
+    .byte >($2000 + 32 * ((row) + 1) + LEFT - 1), <($2000 + 32 * ((row) + 1) + LEFT - 1)
+    .byte WIDTH + 2, TILE_BOX_BL
+    .res WIDTH, TILE_BOX_B
+    .byte TILE_BOX_BR
+.endmacro
+
 .macro inc16 value
     inc value
     bne :+

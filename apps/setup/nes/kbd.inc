@@ -1,9 +1,10 @@
 ; The Bluetooth keyboard: pair one with the nesp32, forget it, and try it.
 ;
-;   Up, Down move the arrow: pair a keyboard, or forget the one paired
+;   Up, Down move the arrow: pair a keyboard, forget the one paired, or
+;            back
 ;   A        do it; pairing looks for keyboards in their pairing mode and
 ;            lists them
-;   B        back
+;   B        back too, as on every screen
 ;
 ; and on the list of what was found:
 ;
@@ -33,7 +34,8 @@ ASK_FORGET = 2
 ; The menu, under the line of what is typed (KBD_MENU_ROW).
 KBD_MENU_PAIR   = 0
 KBD_MENU_FORGET = 1
-KBD_MENU_ITEMS  = 2
+KBD_MENU_BACK   = 2
+KBD_MENU_ITEMS  = 3
 
 DIRTY_NAME  = $01               ; kbd_dirty: what is to be drawn
 DIRTY_STATE = $02
@@ -58,15 +60,17 @@ kbd_echo:    .res WIDTH - 1     ; what was typed, and room for the cursor after 
 
 .segment "RODATA"
 kbd_screen:
-    text  HEADING_ROW, LEFT, "BLUETOOTH KEYBOARD"
+    text  HEADING_ROW, LEFT, "PAIR BLUETOOTH KEYBOARD"
     label BODY_ROW, LEFT, "KEYBOARD"
     label BODY_ROW + 1, LEFT, "STATUS"
-    label KBD_ECHO_ROW - 1, LEFT, "TRY IT"
-    text  KBD_MENU_ROW + KBD_MENU_PAIR, MENU_COLUMN, "PAIR A KEYBOARD"
-    text  KBD_MENU_ROW + KBD_MENU_FORGET, MENU_COLUMN, "FORGET THE KEYBOARD"
-    text  KBD_MENU_ROW + 3, LEFT, "PUT THE KEYBOARD IN ITS"
-    text  KBD_MENU_ROW + 4, LEFT, "PAIRING MODE FIRST."
-    text  HELP_ROW, LEFT, "A : CHOOSE   B : BACK"
+    label KBD_ECHO_ROW - 2, LEFT, "TYPE HERE"
+    box   KBD_ECHO_ROW
+    text  KBD_MENU_ROW + KBD_MENU_PAIR, MENU_COLUMN, "PAIR DEVICE"
+    text  KBD_MENU_ROW + KBD_MENU_FORGET, MENU_COLUMN, "FORGET DEVICE"
+    text  KBD_MENU_ROW + KBD_MENU_BACK, MENU_COLUMN, "BACK"
+    text  KBD_MENU_ROW + 4, LEFT, "PUT THE KEYBOARD IN ITS"
+    text  KBD_MENU_ROW + 5, LEFT, "PAIRING MODE FIRST."
+    text  HELP_ROW, LEFT, "A : CHOOSE"
     .byte 0
 
 kbd_list_screen:
@@ -148,10 +152,14 @@ kbd_nothing_text: .byte "NO KEYBOARD IS PAIRED", 0
 .proc kbd_frame
     lda pad_new
     and #PAD_B
+    bne kbd_back
+    jsr kbd_move
+    lda pad_new                 ; Back, on the menu: as B. Before the hello
+    and #PAD_A                  ; is answered too, as B is
     beq @greet
-    lda #0                      ; the status screen's hello, without KBD
-    sta linked
-    jmp open_status
+    lda kbd_item
+    cmp #KBD_MENU_BACK
+    beq kbd_back
 @greet:
     lda kbd_greeted
     bne @greeted
@@ -162,7 +170,7 @@ kbd_nothing_text: .byte "NO KEYBOARD IS PAIRED", 0
     jmp @draw
 @greeted:
     cmp #KBD_OLD
-    beq @draw                   ; only B does anything
+    beq @draw                   ; only B and Back do anything
     jsr kbd_input
     jsr kbd_ask
     lda state                   ; the list, or the status screen if the Stick went
@@ -171,6 +179,13 @@ kbd_nothing_text: .byte "NO KEYBOARD IS PAIRED", 0
     rts
 @draw:
     jmp kbd_draw
+.endproc
+
+; Back to the status screen, whose hello is without KBD: Bluetooth goes off.
+.proc kbd_back
+    lda #0
+    sta linked
+    jmp open_status
 .endproc
 
 ; Hello, with KBD. A nesp32 without it says so, and is used for nothing
@@ -200,7 +215,8 @@ kbd_nothing_text: .byte "NO KEYBOARD IS PAIRED", 0
     rts
 .endproc
 
-.proc kbd_input
+; Up and Down: the arrow, whether or not the nesp32 has answered.
+.proc kbd_move
     lda pad_new
     and #PAD_UP
     beq @down
@@ -211,14 +227,19 @@ kbd_nothing_text: .byte "NO KEYBOARD IS PAIRED", 0
 @down:
     lda pad_new
     and #PAD_DOWN
-    beq @choose
+    beq @done
     ldx kbd_item
     inx
     cpx #KBD_MENU_ITEMS
-    bcs @choose
+    bcs @done
     stx kbd_item
-    jsr kbd_arrow
-@choose:
+    jmp kbd_arrow
+@done:
+    rts
+.endproc
+
+; A, on Pair or Forget.
+.proc kbd_input
     lda pad_new
     and #PAD_A
     beq @done
