@@ -17,7 +17,7 @@ import nesp_proto as p
 import pytest
 from console import FRAME_CYCLES, PAD_A, PAD_B, PAD_DOWN, PAD_SELECT, PAD_START, PAD_UP
 from drive import (STATE_LOADING, STATE_READER, STATE_SEARCH, WINDOW_ROWS, check_reader_frame,
-                   open_reader, position, run_until, tap)
+                   open_reader, position, ready, run_until, tap)
 from wire import link, ms
 
 COLUMNS = p.NESP_WIKI_COLUMNS
@@ -302,7 +302,7 @@ def test_damaged_and_lost_replies_never_reach_the_screen(linked, seed):
     generator = random.Random(seed)
     lines = numbered_article(110)
     c, host = linked(lines, to_console=damage(generator, 0.35))
-    c.run(3)
+    ready(c)
     tap(c, PAD_START)
     run_until(c, STATE_READER, limit=900)
     c.run(2)
@@ -418,7 +418,7 @@ def test_a_stick_with_no_wifi_says_so(linked):
 
 def test_no_stick_at_all_gives_up_after_half_a_minute(link_console):
     c = link_console()
-    c.run(3)
+    ready(c)                                    # NES, once no nesp32 has answered
     tap(c, PAD_START)
     c.run(1700)
     assert c.byte("state") == STATE_LOADING and status(c) == "SEARCHING..."
@@ -430,7 +430,7 @@ def test_no_stick_at_all_gives_up_after_half_a_minute(link_console):
 def test_a_stick_too_busy_to_answer_for_a_while_is_waited_for(linked):
     lines = numbered_article(40)
     c, host = linked(lines, fetch_polls=10)
-    c.run(3)
+    ready(c)
     host.port.deaf = True                       # in a TLS handshake, say
     tap(c, PAD_START)
     c.run(300)
@@ -535,12 +535,12 @@ def query(console):
     return bytes(console.memory[start + offset] for offset in range(length))
 
 
-def test_with_a_keyboard_paired_the_search_begins_empty(linked):
+def test_with_a_keyboard_paired_the_search_is_empty_and_never_shows_nes(linked):
     c, host = paired(linked, numbered_article(30))
-    c.run(5)                                        # the hello at once, then the question
-    assert host.stick.kbd_on and query(c) == b""
-    c.run(10)
-    assert c.text(1, 12, 1, 30).rstrip() == "_"     # and the field shows it
+    for _ in range(60):                             # from power-on, frame by frame
+        c.run(1)
+        assert query(c) == b"" and c.text(1, 12, 1, 30).strip("\0 ") in ("", "_")
+    assert host.stick.kbd_on and c.byte("kbd_asked")
 
 
 def test_with_none_paired_it_begins_with_nes(linked):

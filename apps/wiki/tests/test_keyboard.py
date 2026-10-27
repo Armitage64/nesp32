@@ -107,7 +107,10 @@ def test_power_on_shows_the_default_search(console, build):
     byte, value = gen_screen.key_attribute(1, 0)
     assert shown[960 + byte] == value
     shown[960 + byte] = 0
-    assert bytes(shown) == (build / "screen.bin").read_bytes()
+    # The build's has the field empty, for the link ROM: this one puts
+    # the default in it at once, having no nesp32 and no keyboard.
+    assert bytes(shown) == gen_screen.build_screen(DEFAULT).nametable()
+    assert (build / "screen.bin").read_bytes() == gen_screen.build_screen().nametable()
     assert c.text(1, gen_screen.PROMPT_ROW, 0, 32).rstrip("\x00") == "\x00SEARCH"
     assert c.nametable(0) == bytes(1024)
 

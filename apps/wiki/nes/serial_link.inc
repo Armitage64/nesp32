@@ -22,6 +22,7 @@
 NESP_RX_MASK = $3F              ; replies of up to 63 bytes: a line's is 33
 NESP_TX_MAX  = 1 + QUERY_MAX    ; a search: its id and its words
 HELLO_EVERY  = 15               ; link_keys says hello at once, then every 16th call until answered
+HELLO_MISSES = 2                ; hellos unanswered before the search is DEFAULT_QUERY
 NESP_CRC_TABLE = 1              ; 35 cycles a byte: a line's reply is checked
                                 ; in the frame it arrives in, with room to spare
 .define NESP_APP "WIKI"
@@ -61,6 +62,7 @@ greeted:    .res 1              ; the Stick has answered this ROM's hello
 typing:     .res 1              ; and has KBD: what is typed comes to the search
 kbd_asked:  .res 1              ; and has said whether a keyboard is paired
 hello_wait: .res 1              ; link_keys's calls until its next hello
+hello_missed: .res 1            ; hellos in a row with no answer
 
 .segment "RODATA"
 old_stick_text:                 ; COLUMNS wide, as the Stick's own messages are
@@ -160,7 +162,8 @@ old_stick_text:                 ; COLUMNS wide, as the Stick's own messages are
 ; Hello, with WIKI and KBD. Carry set, and greeted, if the Stick answered
 ; with both, or with WIKI alone, which leaves typing 0. Carry clear if the
 ; Stick is one this ROM cannot use; carry set and nothing changed if it
-; said nothing.
+; said nothing. Whatever says there is no keyboard to type with, a Stick
+; without KBD or none that answers, puts DEFAULT_QUERY in the search.
 .proc link_hello
     lda #NESP_SVC_WIKI
     sta nesp_request + NESP_HELLO_FIXED
@@ -169,7 +172,9 @@ old_stick_text:                 ; COLUMNS wide, as the Stick's own messages are
     ldy #2
     jsr nesp_hello
     bcs @silent
-    ldx #1
+    ldx #0
+    stx hello_missed
+    inx
     cmp #NESP_ST_OK
     beq @greeted
     cmp #NESP_ST_NO_SERVICE     ; only KBD missing is a Stick to use
@@ -185,10 +190,22 @@ old_stick_text:                 ; COLUMNS wide, as the Stick's own messages are
     stx typing
     lda #1
     sta greeted
+    txa
+    bne @done                   ; whether a keyboard is paired is asked next
+    jsr kb_default
+@done:
+    sec
+    rts
 @silent:
+    inc hello_missed
+    lda hello_missed
+    cmp #HELLO_MISSES
+    bcc @done
+    jsr kb_default
     sec
     rts
 @old:
+    jsr kb_default
     clc
     rts
 .endproc
@@ -197,8 +214,8 @@ old_stick_text:                 ; COLUMNS wide, as the Stick's own messages are
 ; A characters of it at link_typed. Carry set if there is nothing to have:
 ; no reply, no hello yet (which this says, at once and then now and
 ; again), or no KBD. The first call after the hello asks instead whether a
-; keyboard is paired, and if one is, the search's field begins empty
-; (kb_paired).
+; keyboard is paired: if one is, the search's field stays empty
+; (kb_paired), and if none is, it is DEFAULT_QUERY (kb_default).
 link_typed = nesp_reply + 1
 
 .proc link_keys
@@ -230,7 +247,11 @@ link_typed = nesp_reply + 1
     bne @forgot
     inc kbd_asked
     lda nesp_reply + 2          ; the length of its name: 0 for none paired
-    beq @none
+    bne @paired
+    jsr kb_default
+    sec
+    rts
+@paired:
     jsr kb_paired
     sec
     rts

@@ -10,9 +10,12 @@
 ; and on a Bluetooth keyboard paired with the nesp32, through the link
 ; (link_keys), typing as it would anywhere: a letter in the case it is
 ; typed in, Backspace, Enter to search, and Escape, on the cartridge, back
-; to its menu. What this keyboard has no key for is not typed. With a
-; keyboard paired the field begins empty, for it (kb_paired); otherwise it
-; begins with DEFAULT_QUERY, for A or Start to search.
+; to its menu. What this keyboard has no key for is not typed.
+;
+; The field begins empty. Once the link knows there is no keyboard to type
+; with, it puts DEFAULT_QUERY in it (kb_default), for Start to search; with
+; one paired it stays empty (kb_paired), so nothing is seen typed and taken
+; back.
 ;
 ; The keys are KEY_ROWS rows of KEY_COLUMNS, and under them a last row of
 ; two: the shift key, under the first column, and the space bar. On that
@@ -61,7 +64,7 @@ pulse:      .res 1              ; where the cursor's colour is in its round
 typed_count: .res 1             ; kb_typed's
 typed_at:   .res 1
 typed_stale: .res 1             ; the next of what was typed is from before this screen
-untouched:  .res 1              ; the field is still DEFAULT_QUERY, as it began
+untouched:  .res 1              ; the field is still as it began, empty
 
 .segment "RODATA"
 
@@ -97,15 +100,9 @@ row_first: .byte 0, KEY_COLUMNS, 2 * KEY_COLUMNS, 3 * KEY_COLUMNS
 
 .segment "CODE"
 
-; The screen in nametable 1 already shows the default search and capitals.
+; The screen in nametable 1 already shows the empty field and capitals.
 .proc kb_init
-    ldx #DEFAULT_LENGTH - 1
-@copy:
-    lda default_query,x
-    sta query,x
-    dex
-    bpl @copy
-    lda #DEFAULT_LENGTH
+    lda #0
     sta query_len
     lda #1
     sta untouched
@@ -255,16 +252,23 @@ row_first: .byte 0, KEY_COLUMNS, 2 * KEY_COLUMNS, 3 * KEY_COLUMNS
     rts
 .endproc
 
-; The nesp32 has a keyboard paired: the field begins empty, if nothing has
-; been done to it yet.
-.proc kb_paired
+; There is no keyboard to type with: the field is DEFAULT_QUERY, if
+; nothing has been done to it yet.
+.proc kb_default
     lda untouched
     beq @done
     lda state
     cmp #STATE_SEARCH
     bne @done
-    lda #0
+    ldx #DEFAULT_LENGTH - 1
+@copy:
+    lda default_query,x
+    sta query,x
+    dex
+    bpl @copy
+    lda #DEFAULT_LENGTH
     sta query_len
+    lda #0
     sta untouched
     lda kb_dirty
     ora #DIRTY_FIELD
@@ -273,12 +277,23 @@ row_first: .byte 0, KEY_COLUMNS, 2 * KEY_COLUMNS, 3 * KEY_COLUMNS
     rts
 .endproc
 
+; The nesp32 has a keyboard paired: the field stays empty, for it.
+.proc kb_paired
+    lda #0
+    sta untouched
+    rts
+.endproc
+
 ; One character from the Bluetooth keyboard, A.
 .proc type_typed
     cmp #KEY_BACKSPACE
-    beq delete_char
+    bne @enter
+    jmp delete_char
+@enter:
     cmp #KEY_ENTER
-    beq search
+    bne @escape
+    jmp search
+@escape:
     cmp #KEY_ESCAPE
     bne @letter
     lda on_cart                 ; Escape: as Select, back to the cartridge's menu

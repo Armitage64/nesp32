@@ -35,7 +35,7 @@ article_desc:
 .endmacro
 
 .proc link_init
-    rts
+    jmp kb_default              ; no nesp32, and no keyboard
 .endproc
 
 ; Search for query (query_len characters).
