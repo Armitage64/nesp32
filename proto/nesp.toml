@@ -112,6 +112,16 @@ STATS = 0x00            # the Stick's counters for this link
 PATTERN = 0x01          # seed (2), count: that many bytes of the pattern
 SINK = 0x02             # seed (2), then bytes: how many differ from the pattern
 
+[services.KBD]
+id = 0x06
+[services.KBD.ops]
+STATE = 0x00            # how the keyboard stands (enum KEYBOARD), and the name of the one paired
+KEYS = 0x01             # what has been typed since the last KEYS
+SCAN = 0x02             # look for keyboards in their pairing mode
+FOUND = 0x03            # one keyboard the scan found, by its place in the list
+PAIR = 0x04             # pair with that one, in place of the one paired
+FORGET = 0x05           # forget the one paired
+
 [services.JUKE]
 id = 0x10
 [services.JUKE.ops]
@@ -332,11 +342,35 @@ BUTTON_A = 1
 BUTTON_B = 2
 BUTTON_POWER = 3
 
+[enums.KEYBOARD]        # KBD: how the Bluetooth keyboard stands
+NONE = 0                # this board cannot have one
+OFF = 1                 # Bluetooth is starting
+UNPAIRED = 2            # on, and no keyboard is paired
+WAITING = 3             # a keyboard is paired, and is not connected: a key wakes it
+CONNECTED = 4           # and is: what is typed comes in KEYS
+SCANNING = 5
+SCANNED = 6             # the scan is over: FOUND has what it found
+PAIRING = 7
+FAILED = 8              # the last pairing did not work
+
+[enums.KEY]             # KBD KEYS: what is not a printable character ($20 to $7E)
+BACKSPACE = 0x08
+TAB = 0x09
+ENTER = 0x0A
+UP = 0x11
+DOWN = 0x12
+LEFT = 0x13
+RIGHT = 0x14
+ESCAPE = 0x1B
+
 [sizes]
 NAME_MAX = 32           # a network's name
 PASSWORD_MAX = 63       # WPA2's longest passphrase
 SCAN_MAX = 20           # networks a scan keeps, strongest first
 EVENT_QUEUE = 8
+KBD_KEYS_MAX = 16       # characters in one KEYS reply
+KBD_FOUND_MAX = 8       # keyboards a scan keeps, strongest first
+KBD_NAME_MAX = 24       # characters of a keyboard's name
 WIKI_COLUMNS = 28       # characters in a line of an article
 WIKI_QUERY_MAX = 30     # characters in a search
 WIKI_EARLY = 28         # lines laid out before an article is offered

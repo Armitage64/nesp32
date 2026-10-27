@@ -37,6 +37,13 @@ typedef struct {
     char name[NESP_NAME_MAX];
 } nesp_network_t;
 
+/* A Bluetooth keyboard: one a scan found, or the one paired. */
+typedef struct {
+    int8_t rssi;                    /* dBm; 0 for the one paired */
+    uint8_t name_len;
+    char name[NESP_KBD_NAME_MAX];
+} nesp_keyboard_t;
+
 /* An address another nesp32 may reach this one at, or the other at. */
 typedef struct {
     uint8_t address[4];
@@ -209,6 +216,28 @@ typedef struct {
      * is no socket that met. */
     bool (*peer_punch)(void *ctx, bool listen, uint32_t session,
                        const nesp_peer_candidate_t *other, uint8_t count);
+    /* All may be NULL: a board with no Bluetooth. A Bluetooth keyboard
+     * (KBD). None of these waits: the scanning, pairing and connecting are
+     * another task's.
+     *
+     * Bluetooth on while a ROM uses a keyboard, and off when none does. On,
+     * the keyboard paired is connected whenever it is heard from, and what
+     * was typed before is dropped. */
+    void (*kbd_enable)(void *ctx, bool on);
+    /* How it stands (NESP_KEYBOARD_*), with the keyboard paired, if any
+     * (name_len 0 if none), and once a scan is over, how many it found. */
+    uint8_t (*kbd_state)(void *ctx, nesp_keyboard_t *paired, uint8_t *found);
+    /* Look for keyboards in their pairing mode. False: it cannot now. */
+    bool (*kbd_scan)(void *ctx);
+    /* One the last scan found, strongest first. False: none there. */
+    bool (*kbd_found)(void *ctx, uint8_t index, nesp_keyboard_t *out);
+    /* Pair with one the last scan found, in place of the one paired.
+     * False: none there, or it cannot now. */
+    bool (*kbd_pair)(void *ctx, uint8_t index);
+    void (*kbd_forget)(void *ctx);
+    /* What has been typed, oldest first: printable ASCII and NESP_KEY_*.
+     * Returns how many, up to max; they are gone from the nesp32 then. */
+    size_t (*kbd_read)(void *ctx, uint8_t *out, size_t max);
 } nesp_hal_t;
 
 /* A stream of bytes over datagrams (arq.c): what a port needs to carry
@@ -310,6 +339,11 @@ typedef struct {
 typedef struct {
     nesp_link_t *link;
 } nesp_diag_t;
+
+/* KBD: a Bluetooth keyboard, for a ROM's text (kbd.c). */
+typedef struct {
+    const nesp_hal_t *hal;
+} nesp_kbd_t;
 
 /* WIKI: an article from Wikipedia, as lines the console asks for by number
  * (wiki.c). */
@@ -793,7 +827,8 @@ typedef struct {
     nesp_tuner_t tuner;
     nesp_weather_t weather;
     nesp_bsky_t bsky;
-    nesp_service_t services[11];
+    nesp_kbd_t kbd;
+    nesp_service_t services[12];
 } nesp_stick_t;
 
 void nesp_stick_init(nesp_stick_t *stick, const nesp_hal_t *hal);
@@ -818,6 +853,7 @@ void nesp_sys_service(nesp_service_t *service, nesp_sys_t *sys, nesp_link_t *lin
                       const nesp_hal_t *hal);
 void nesp_net_service(nesp_service_t *service, nesp_net_t *net, const nesp_hal_t *hal);
 void nesp_diag_service(nesp_service_t *service, nesp_diag_t *diag, nesp_link_t *link);
+void nesp_kbd_service(nesp_service_t *service, nesp_kbd_t *kbd, const nesp_hal_t *hal);
 void nesp_wiki_service(nesp_service_t *service, nesp_wiki_t *wiki, const nesp_hal_t *hal);
 void nesp_raw_service(nesp_service_t *service, nesp_raw_t *raw, nesp_link_t *link,
                       const nesp_hal_t *hal);

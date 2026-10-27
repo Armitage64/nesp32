@@ -18,6 +18,7 @@
 #define HOST_TRACKS_MAX 64
 #define HOST_SHOWN_MAX 96
 #define HOST_CONN_MAX 256
+#define HOST_TYPED_MAX 256
 
 typedef struct {
     nesp_stick_t stick;
@@ -114,6 +115,21 @@ typedef struct {
     bool have_last;
     uint8_t last[4];
     uint32_t keeps;
+    /* The Bluetooth keyboard: the caller says how it stands, what a scan
+     * found and what is typed, and looks at what the nesp32 was asked. */
+    bool kbd_on;
+    uint32_t kbd_enables;           /* times it was turned on */
+    uint32_t kbd_disables;          /* and off */
+    uint8_t kbd_state;              /* NESP_KEYBOARD_* */
+    nesp_keyboard_t kbd_paired;
+    nesp_keyboard_t kbd_found[NESP_KBD_FOUND_MAX];
+    uint8_t kbd_found_count;
+    uint32_t kbd_scans;
+    uint32_t kbd_pairs;
+    uint8_t kbd_pair_index;         /* of the last pairing asked for */
+    uint32_t kbd_forgets;
+    uint8_t kbd_typed[HOST_TYPED_MAX];
+    size_t kbd_typed_len;
 } host_t;
 
 static uint8_t hal_board(void *ctx)
@@ -473,6 +489,81 @@ static bool hal_peer_punch(void *ctx, bool listen, uint32_t session,
     return true;
 }
 
+static void hal_kbd_enable(void *ctx, bool on)
+{
+    host_t *host = ctx;
+    if (on && !host->kbd_on) {
+        host->kbd_typed_len = 0;    /* typed while nothing listened */
+    }
+    host->kbd_on = on;
+    if (on) {
+        host->kbd_enables++;
+    } else {
+        host->kbd_disables++;
+    }
+}
+
+static uint8_t hal_kbd_state(void *ctx, nesp_keyboard_t *paired, uint8_t *found)
+{
+    host_t *host = ctx;
+    *paired = host->kbd_paired;
+    *found = host->kbd_state == NESP_KEYBOARD_SCANNED ? host->kbd_found_count : 0;
+    return host->kbd_state;
+}
+
+static bool hal_kbd_scan(void *ctx)
+{
+    host_t *host = ctx;
+    if (host->kbd_state == NESP_KEYBOARD_PAIRING) {
+        return false;
+    }
+    if (host->kbd_state != NESP_KEYBOARD_SCANNING) {
+        host->kbd_state = NESP_KEYBOARD_SCANNING;
+        host->kbd_scans++;
+    }
+    return true;
+}
+
+static bool hal_kbd_found(void *ctx, uint8_t index, nesp_keyboard_t *out)
+{
+    host_t *host = ctx;
+    if (host->kbd_state != NESP_KEYBOARD_SCANNED || index >= host->kbd_found_count) {
+        return false;
+    }
+    *out = host->kbd_found[index];
+    return true;
+}
+
+static bool hal_kbd_pair(void *ctx, uint8_t index)
+{
+    host_t *host = ctx;
+    if (host->kbd_state != NESP_KEYBOARD_SCANNED || index >= host->kbd_found_count) {
+        return false;
+    }
+    host->kbd_state = NESP_KEYBOARD_PAIRING;
+    host->kbd_pair_index = index;
+    host->kbd_pairs++;
+    return true;
+}
+
+static void hal_kbd_forget(void *ctx)
+{
+    host_t *host = ctx;
+    memset(&host->kbd_paired, 0, sizeof(host->kbd_paired));
+    host->kbd_state = NESP_KEYBOARD_UNPAIRED;
+    host->kbd_forgets++;
+}
+
+static size_t hal_kbd_read(void *ctx, uint8_t *out, size_t max)
+{
+    host_t *host = ctx;
+    size_t count = host->kbd_typed_len < max ? host->kbd_typed_len : max;
+    memcpy(out, host->kbd_typed, count);
+    memmove(host->kbd_typed, host->kbd_typed + count, host->kbd_typed_len - count);
+    host->kbd_typed_len -= count;
+    return count;
+}
+
 static bool hal_airport_last(void *ctx, char *code, int32_t *latitude, int32_t *longitude)
 {
     host_t *host = ctx;
@@ -607,9 +698,17 @@ host_t *host_new(void)
     host->hal.peer_meet = hal_peer_meet;
     host->hal.peer_candidates = hal_peer_candidates;
     host->hal.peer_punch = hal_peer_punch;
+    host->hal.kbd_enable = hal_kbd_enable;
+    host->hal.kbd_state = hal_kbd_state;
+    host->hal.kbd_scan = hal_kbd_scan;
+    host->hal.kbd_found = hal_kbd_found;
+    host->hal.kbd_pair = hal_kbd_pair;
+    host->hal.kbd_forget = hal_kbd_forget;
+    host->hal.kbd_read = hal_kbd_read;
     host->battery = 0xFF;
     host->drive = NESP_DRIVE_OFF;
     host->screen = NESP_SCREEN_FLIPPED;     /* as the firmware is built */
+    host->kbd_state = NESP_KEYBOARD_UNPAIRED;
     nesp_stick_init(&host->stick, &host->hal);
     return host;
 }
@@ -718,6 +817,76 @@ void host_scan_finish(host_t *host, uint8_t state)
 {
     host->scan_state = state;
 }
+
+/* The keyboard, as the caller would have it. */
+
+/* A board with no Bluetooth: KBD's hooks are not there. */
+void host_kbd_absent(host_t *host)
+{
+    host->hal.kbd_enable = NULL;
+    host->hal.kbd_state = NULL;
+    host->hal.kbd_scan = NULL;
+    host->hal.kbd_found = NULL;
+    host->hal.kbd_pair = NULL;
+    host->hal.kbd_forget = NULL;
+    host->hal.kbd_read = NULL;
+}
+
+void host_kbd_set_state(host_t *host, uint8_t state)
+{
+    host->kbd_state = state;
+}
+
+uint8_t host_kbd_state(const host_t *host) { return host->kbd_state; }
+
+bool host_kbd_set_paired(host_t *host, const char *name, uint8_t name_len)
+{
+    if (name_len > NESP_KBD_NAME_MAX) {
+        return false;
+    }
+    memset(&host->kbd_paired, 0, sizeof(host->kbd_paired));
+    host->kbd_paired.name_len = name_len;
+    memcpy(host->kbd_paired.name, name, name_len);
+    return true;
+}
+
+void host_kbd_found_clear(host_t *host)
+{
+    host->kbd_found_count = 0;
+}
+
+bool host_kbd_found_add(host_t *host, const char *name, uint8_t name_len, int8_t rssi)
+{
+    if (host->kbd_found_count == NESP_KBD_FOUND_MAX || name_len > NESP_KBD_NAME_MAX) {
+        return false;
+    }
+    nesp_keyboard_t *keyboard = &host->kbd_found[host->kbd_found_count++];
+    memset(keyboard, 0, sizeof(*keyboard));
+    keyboard->rssi = rssi;
+    keyboard->name_len = name_len;
+    memcpy(keyboard->name, name, name_len);
+    return true;
+}
+
+/* Keys typed on it, after any not yet read. False: no room for them. */
+bool host_kbd_type(host_t *host, const uint8_t *keys, size_t len)
+{
+    if (host->kbd_typed_len + len > HOST_TYPED_MAX) {
+        return false;
+    }
+    memcpy(host->kbd_typed + host->kbd_typed_len, keys, len);
+    host->kbd_typed_len += len;
+    return true;
+}
+
+bool host_kbd_on(const host_t *host) { return host->kbd_on; }
+uint32_t host_kbd_enables(const host_t *host) { return host->kbd_enables; }
+uint32_t host_kbd_disables(const host_t *host) { return host->kbd_disables; }
+uint32_t host_kbd_scans(const host_t *host) { return host->kbd_scans; }
+uint32_t host_kbd_pairs(const host_t *host) { return host->kbd_pairs; }
+uint8_t host_kbd_pair_index(const host_t *host) { return host->kbd_pair_index; }
+uint32_t host_kbd_forgets(const host_t *host) { return host->kbd_forgets; }
+size_t host_kbd_unread(const host_t *host) { return host->kbd_typed_len; }
 
 void host_set_line(host_t *host, void (*rate)(uint8_t), size_t (*write)(const uint8_t *, size_t),
                    bool (*idle)(void))

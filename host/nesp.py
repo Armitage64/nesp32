@@ -58,6 +58,27 @@ def library():
         lib.host_scan_add.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint8,
                                       ctypes.c_int8, ctypes.c_uint8, ctypes.c_uint8]
         lib.host_scan_finish.argtypes = [ctypes.c_void_p, ctypes.c_uint8]
+        for name in ("host_kbd_absent", "host_kbd_found_clear"):
+            getattr(lib, name).argtypes = [ctypes.c_void_p]
+        lib.host_kbd_set_state.argtypes = [ctypes.c_void_p, ctypes.c_uint8]
+        lib.host_kbd_set_paired.restype = ctypes.c_bool
+        lib.host_kbd_set_paired.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint8]
+        lib.host_kbd_found_add.restype = ctypes.c_bool
+        lib.host_kbd_found_add.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint8,
+                                           ctypes.c_int8]
+        lib.host_kbd_type.restype = ctypes.c_bool
+        lib.host_kbd_type.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t]
+        for name in ("host_kbd_state", "host_kbd_pair_index"):
+            getattr(lib, name).restype = ctypes.c_uint8
+            getattr(lib, name).argtypes = [ctypes.c_void_p]
+        lib.host_kbd_on.restype = ctypes.c_bool
+        lib.host_kbd_on.argtypes = [ctypes.c_void_p]
+        for name in ("host_kbd_enables", "host_kbd_disables", "host_kbd_scans", "host_kbd_pairs",
+                     "host_kbd_forgets"):
+            getattr(lib, name).restype = ctypes.c_uint32
+            getattr(lib, name).argtypes = [ctypes.c_void_p]
+        lib.host_kbd_unread.restype = ctypes.c_size_t
+        lib.host_kbd_unread.argtypes = [ctypes.c_void_p]
         for name in ("host_scan_state", "host_wifi_state", "host_app_version"):
             getattr(lib, name).restype = ctypes.c_uint8
             getattr(lib, name).argtypes = [ctypes.c_void_p]
@@ -479,6 +500,74 @@ class Stick:
 
     def scan_finish(self, state=proto.NESP_SCAN_DONE):
         self._lib.host_scan_finish(self._host, state)
+
+    # --- the Bluetooth keyboard ------------------------------------------------------
+
+    def kbd_absent(self):
+        """A board with no Bluetooth."""
+        self._lib.host_kbd_absent(self._host)
+
+    @property
+    def kbd_state(self):
+        """How the keyboard stands (NESP_KEYBOARD_*). A scan or a pairing
+        the console starts stays as it is until this is set."""
+        return self._lib.host_kbd_state(self._host)
+
+    @kbd_state.setter
+    def kbd_state(self, state):
+        self._lib.host_kbd_set_state(self._host, state)
+
+    def kbd_paired(self, name):
+        """The keyboard paired, b"" for none."""
+        if not self._lib.host_kbd_set_paired(self._host, name, len(name)):
+            raise ValueError("a name too long")
+
+    def kbd_found(self, keyboards):
+        """What a scan found: (name, rssi) each. The scan is over when the
+        state is set to SCANNED."""
+        self._lib.host_kbd_found_clear(self._host)
+        for name, rssi in keyboards:
+            if not self._lib.host_kbd_found_add(self._host, name, len(name), rssi):
+                raise ValueError("too many keyboards, or a name too long")
+
+    def kbd_type(self, keys):
+        """Keys typed: characters, and NESP_KEY_* as bytes."""
+        keys = bytes(keys)
+        if not self._lib.host_kbd_type(self._host, keys, len(keys)):
+            raise ValueError("too much typed at once")
+
+    @property
+    def kbd_on(self):
+        return self._lib.host_kbd_on(self._host)
+
+    @property
+    def kbd_enables(self):
+        return self._lib.host_kbd_enables(self._host)
+
+    @property
+    def kbd_disables(self):
+        return self._lib.host_kbd_disables(self._host)
+
+    @property
+    def kbd_scans(self):
+        return self._lib.host_kbd_scans(self._host)
+
+    @property
+    def kbd_pairs(self):
+        return self._lib.host_kbd_pairs(self._host)
+
+    @property
+    def kbd_pair_index(self):
+        return self._lib.host_kbd_pair_index(self._host)
+
+    @property
+    def kbd_forgets(self):
+        return self._lib.host_kbd_forgets(self._host)
+
+    @property
+    def kbd_unread(self):
+        """Keys typed that the nesp32 has not handed on."""
+        return self._lib.host_kbd_unread(self._host)
 
     def add_track(self, data):
         """A file among the nesp32's tracks, after those already there. A
