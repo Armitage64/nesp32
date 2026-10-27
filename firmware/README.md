@@ -12,9 +12,9 @@ radio station played for long runs, and network games between two
 consoles. Each program's README has what was seen with it. What is still
 to do is in [`../docs/TODO.md`](../docs/TODO.md).
 
-With ESP-IDF 5.5.5 the image is about 1.31 MB of the 2 MB slot for a
-StickS3 and 1.20 MB for a StickC Plus2, with no warnings from this
-project's code.
+With ESP-IDF 5.5.5 the image is about 1.59 MB of the 2 MB slot for a
+StickS3, Bluetooth included, and 1.22 MB for a StickC Plus2, with no
+warnings from this project's code.
 
 Each board has its own build directory, since the two have different chips:
 
@@ -26,6 +26,12 @@ idf.py -B build-esp32 -p /dev/cu.usbserial-XXXX flash monitor
 # a StickS3
 idf.py -B build-esp32s3 -D SDKCONFIG=build-esp32s3/sdkconfig -D IDF_TARGET=esp32s3 build
 ```
+
+A StickS3 build directory made before the nesp32 had Bluetooth has an
+`sdkconfig` with it off, which the defaults do not change: the build stops
+and says to delete `build-esp32s3/sdkconfig`, after which it is made
+afresh with Bluetooth on (and with the screen the way up the build's
+defaults have it).
 
 `firmware/deploy.sh` does both for whichever boards are on this computer's
 USB, telling a StickS3 from a StickC Plus2 by the name of its port, and
@@ -49,10 +55,12 @@ by the component manager on the first build (`main/idf_component.yml`).
 | Path | Purpose |
 |---|---|
 | `components/nesp_core` | frames, the CRC, the services' registry, who is asked what. No hardware; also built for the tests |
-| `components/nesp_services` | SYS, NET (Wi-Fi), DIAG, WIKI, RAW, JUKE, PEER, RADAR, TUNER and WEATHER, the text code, the MP3 decoder (`mp3.c`, which is minimp3 from `../third_party`), and `nesp_hal_t`, what they ask of the hardware |
+| `components/nesp_services` | SYS, NET (Wi-Fi), DIAG, KBD, WIKI, RAW, JUKE, PEER, RADAR, TUNER and WEATHER, the text code, the MP3 decoder (`mp3.c`, which is minimp3 from `../third_party`), and `nesp_hal_t`, what they ask of the hardware |
 | `main/link.c` | the UART and the one task that answers the console, on a core of its own; the UART with framing off, for RAW |
 | `main/store.c` | the files: a FAT filing system in the `storage` partition, and the jukebox's tracks in it |
 | `main/usb.c` | a StickS3 as a USB drive of those files, when the setup ROM asks |
+| `main/keyboard.c` | a StickS3's Bluetooth keyboard, under KBD: on while a ROM uses it, pairing, and what is typed ("A Bluetooth keyboard", below) |
+| `components/esp_hid` | ESP-IDF's HID host, with a fix to it from ESP-IDF's master that the keyboard needs ([its README](components/esp_hid/README.md)) |
 | `main/radio.c` | Wi-Fi, its worker task, and the hardware as the services see it |
 | `main/fetch.c` | one HTTPS GET at a time, in a task of its own, handed to a service as it arrives |
 | `main/spike.c` | not part of the firmware: a measurement of decoding a radio station, built with `-D NESP_SPIKE=1` ("The radio", below) |
@@ -195,6 +203,46 @@ isolating one thing:
    gone back.
 4. **The buttons**, the nesp32's and the controller's, during music and
    during a sound.
+
+## A Bluetooth keyboard
+
+A StickS3 can have a Bluetooth keyboard, for the ROMs that take text:
+issue #9, [Setup](../apps/setup) to pair one and
+[NESpedia](../apps/wiki) to type a search on it. Its chip has Bluetooth LE
+and no Classic, so only an LE keyboard pairs; a StickC Plus2's firmware
+has none, and its KBD says so.
+
+Bluetooth is on only while a ROM has KBD in use, and off 2 s after (a
+hello that asks for it again keeps it on). It shares the radio with
+Wi-Fi, and it takes about 75 KB of the chip's own memory while it is on:
+with a keyboard connected the log's report had 67 KB free, where the
+firmware without it had 142 KB. That was measured with Bluetooth on all
+the time, in a spike of `keyboard.c`, on a StickS3 with a Logitech MX
+Keys S:
+
+- the controller-port link was as fast as it has ever been
+  ([nes-throughput](../apps/throughput)): 298296 baud to the console and
+  223722 from it;
+- NESpedia fetched and read several large articles over HTTPS while the
+  keyboard was connected;
+- the keyboard paired with no code to type, connected again after the
+  nesp32 was switched off and on when a key was pressed on it, and every
+  key came through as the character it is, Shift and Caps Lock included.
+
+ESP-IDF 5.5.5's NimBLE HID host (and 6.0.3's) never turned on a
+keyboard's reports, so nothing typed arrived: `components/esp_hid` has
+ESP-IDF master's fix. Its open waits for each step with no end, so
+`keyboard.c` gives the wait for a sleeping keyboard to the main task's
+poll to call off. A keyboard's report is read as its modifiers, an
+unused byte if the report is 8 bytes long (the boot report's layout), and
+the keys down; the MX Keys S's is 7 bytes, with no unused byte. One that
+lays its report out otherwise would type wrong letters or none, and its
+report map would have to be read for where the keys are.
+
+What is typed is logged only at the debug level, as it may be a password.
+The log's report ends with how the keyboard stands: off, unpaired,
+waiting (paired and not connected), connected, scanning, scanned,
+pairing or failed.
 
 ## The radio
 

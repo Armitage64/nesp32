@@ -25,6 +25,13 @@ its own list in its README.
   stage's edges, which the SNAC adapter needs; nothing the console sends
   needs more than 85227 today.
 
+- The Bluetooth keyboard's firmware on hardware, past its spike: pairing
+  from Setup, Bluetooth turned on and off with each ROM (whether every
+  byte of the 75 KB comes back, and over many times), the wait for a
+  sleeping keyboard being called off, and a keyboard other than the MX
+  Keys S, whose report may be laid out otherwise
+  ([the firmware](../firmware/README.md), "A Bluetooth keyboard").
+
 ## Not started
 
 - **Games that differ: find out why, then perhaps mend them.** For later
