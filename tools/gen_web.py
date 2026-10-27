@@ -43,7 +43,9 @@ import logo  # noqa: E402
 
 # The logo's colours, as the screenshots show them: its palette's navy, cyan
 # and white. Its 32 is the page's red, the buttons' (--accent in style.css).
+# On the light page its white, the outline and the port, is black instead.
 LOGO_RGB = {"1": (0, 30, 116), "2": (56, 180, 204), "3": (236, 238, 236)}
+LOGO_OUTLINE_LIGHT = (0, 0, 0)
 
 # The product page's pictures: (its name for one, where it is)
 PICTURES = [("cart-menu.png", "docs/cart-menu.png"),
@@ -113,10 +115,11 @@ def accents():
     return [tuple(bytes.fromhex(color)) for color in found]
 
 
-def write_logo(path, red):
-    """The logo as a PNG, a pixel for each of the NES's, the backdrop clear
-    and the 32 in `red`."""
+def write_logo(path, red, outline=LOGO_RGB["3"]):
+    """The logo as a PNG, a pixel for each of the NES's, the backdrop clear,
+    the 32 in `red` and the white in `outline`."""
     colors = dict(LOGO_RGB, r=red)
+    colors["3"] = outline
     rows = b"".join(b"\0" + b"".join(bytes(colors[c] + (255,)) if c in colors else bytes(4)
                                       for c in line)
                     for line in logo.PICTURE)
@@ -165,7 +168,7 @@ def main(out, cart):
     for name, path in PICTURES:
         shutil.copyfile(os.path.join(ROOT, path), os.path.join(out, "img", name))
     light, dark = accents()
-    write_logo(os.path.join(out, "img", "logo.png"), light)
+    write_logo(os.path.join(out, "img", "logo.png"), light, LOGO_OUTLINE_LIGHT)
     write_logo(os.path.join(out, "img", "logo-dark.png"), dark)
     print("%s: nesp32 %s, %s" % (os.path.relpath(out), manifest["version"], manifest["date"]))
 
