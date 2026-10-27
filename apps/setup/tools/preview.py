@@ -24,8 +24,9 @@ sys.path.insert(0, HERE)
 import gen_screen as layout  # noqa: E402
 import nesp_proto as p  # noqa: E402
 from console import Console  # noqa: E402
-from drive import (MENU_TEST, MENU_USB, PAD_B, PAD_DOWN, PAD_START, STATE_FAILED, STATE_JOINING, STATE_KEYS,  # noqa: E402
-                   STATE_STATUS, STATE_TEST, STATE_USB, Setup)
+from drive import (MENU_KBD, MENU_TEST, MENU_USB, PAD_B, PAD_DOWN, PAD_START, STATE_FAILED,  # noqa: E402
+                   STATE_JOINING, STATE_KBD, STATE_KEYS, STATE_STATUS, STATE_TEST, STATE_USB,
+                   Setup)
 from nesp import Stick  # noqa: E402
 from wire import link  # noqa: E402
 
@@ -99,6 +100,18 @@ def main(argv):
     setup.wait_for_message("THE USB DRIVE IS MOUNTED")
     setup.settle(10)
     save("usb", console)
+
+    setup.press(PAD_B)
+    setup.wait_for(STATE_STATUS)
+    setup.settle(80)
+    stick.kbd_paired(b"MX KEYS S")
+    stick.kbd_state = p.NESP_KEYBOARD_CONNECTED
+    setup.menu(MENU_KBD)
+    setup.wait_for(STATE_KBD)
+    console.run_until(lambda: console.byte("kbd_greeted"), 60)
+    stick.kbd_type(b"Hello from a keyboard!")
+    setup.settle(40)
+    save("keyboard", console)
 
     cart = os.path.join(BUILD, "nesp32.nes")
     if len(argv) > 2 and os.path.exists(cart):

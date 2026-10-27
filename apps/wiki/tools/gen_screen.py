@@ -79,7 +79,7 @@ SHIFT_CHAR = "\x7f"
 STATUS_COLUMN, STATUS_ROW = 2, 24   # COLUMNS wide
 HELP = ((26, "A : TYPE   B : DELETE"), (28, "START : SEARCH"))
 HELP_CART = "START : SEARCH   SELECT : MENU"   # on the cartridge, Select is its menu
-DEFAULT_QUERY = "Nintendo Entertainment System"
+DEFAULT_QUERY = "NES"
 
 THUMB_X = 244                       # the scroll thumb, right of the text
 THUMB_TRAVEL = 8 * WINDOW_ROWS - 8  # pixels from its top place to its lowest
@@ -319,15 +319,17 @@ def box_pixels():
     return pixels
 
 
-def build_screen():
-    """The search screen as it is at power-on."""
+def build_screen(query=""):
+    """The search screen as it is at power-on, with its field empty: the ROM
+    puts DEFAULT_QUERY in it unless a Bluetooth keyboard is paired. The
+    preview shows it with a query."""
     screen = Screen()
     screen.picture(0, LOGO_ROW, logo.pixels(8 * SCREEN_COLUMNS))
     screen.picture(0, TITLE_ROW, title_pixels())
     screen.header()
     screen.text(FIELD_COLUMN, PROMPT_ROW, PROMPT_TEXT)
     screen.picture(0, FIELD_ROW - 1, box_pixels())
-    screen.text(FIELD_COLUMN, FIELD_ROW, field_text(DEFAULT_QUERY))
+    screen.text(FIELD_COLUMN, FIELD_ROW, field_text(query))
     for row, keys in enumerate(KEYS):
         for index, char in enumerate(keys):
             screen.put(key_column(index), KEY_ROW + KEY_STEP * row, ord(char) | ALT)
@@ -580,7 +582,7 @@ def main(argv=None):
     write_if_changed(os.path.join(args.out_dir, "screen.bin"), screen.nametable())
     write_if_changed(os.path.join(args.out_dir, "screen.inc"), include().encode("ascii"))
     if args.preview:
-        write_png(args.preview, render(screen.chr(), screen.nametable()))
+        write_png(args.preview, render(screen.chr(), build_screen(DEFAULT_QUERY).nametable()))
     if args.reader:
         write_png(args.reader, render(screen.chr(), reader_nametable(screen, SAMPLE)))
     return 0

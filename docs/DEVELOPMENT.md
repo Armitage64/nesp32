@@ -87,7 +87,9 @@ screen says `SELECT : MENU` at its foot on the cartridge, beside what A
 does, written `A : PLAY`, a space either side of the colon and three
 between one button and the next. Deeper screens say what B does. Setup
 keeps its Quit, under its menu's other lines, and Bluesky its own short
-help, `Sel:menu`, for want of room.
+help, `Sel:menu`, for want of room. NESpedia's reader is the one screen
+where Select is not the menu: there it is back to the search, and A and B
+page down and up through the article.
 
 While sampled sound plays (the Jukebox, NESradio) only A can be read,
 since the controller is read on the line the samples come in on: B and
@@ -122,7 +124,7 @@ What is still to do on the hardware and the firmware is in
 
 | Part | State |
 |---|---|
-| The protocol ([`PROTOCOL.md`](PROTOCOL.md)) | version 1: frames, short frames, hello, and the services SYS, NET, RAW, PEER, DIAG, JUKE, WIKI, RADAR, TUNER, WEATHER and BSKY |
+| The protocol ([`PROTOCOL.md`](PROTOCOL.md)) | version 1: frames, short frames, hello, and the services SYS, NET, RAW, PEER, DIAG, KBD, JUKE, WIKI, RADAR, TUNER, WEATHER and BSKY |
 | The link and services in C (`firmware/components/`) | done; tested on a computer |
 | The console's library (`nes/lib/`) | done; every read and write timed on py65 |
 | The firmware (`firmware/main/`): UART, Wi-Fi, HTTPS, the screen, the files, the USB drive, the connection to another nesp32 | working on a StickS3 and on a StickC Plus2, with the MiSTer and with a real NES ([its README](../firmware/README.md)) |
@@ -130,6 +132,7 @@ What is still to do on the hardware and the firmware is in
 | A computer in place of a nesp32 (`host/serial_host.py`) | written, not run on a cable |
 | The cartridge (`nes/cart/`): eight programs and a menu, on an MMC1 | working on hardware with the first five, a real NES and the MiSTer, with each board. NESradio, Weather and Bluesky start from the menu on a simulated console; the cartridge with them has not yet run on hardware |
 | [Setup](../apps/setup), SYS, NET, DIAG | working on hardware |
+| A Bluetooth keyboard: KBD, [Setup](../apps/setup)'s screen for it, [NESpedia](../apps/wiki)'s search and reader, and [Weather](../apps/weather)'s zip code | working on hardware: a StickS3 with a Logitech MX Keys S, paired from Setup, typing NESpedia's searches and Weather's zip codes, and paging NESpedia's articles |
 | [NESpedia](../apps/wiki), WIKI | working on hardware |
 | [Jukebox](../apps/jukebox), JUKE and RAW | working on hardware |
 | [Throughput](../apps/throughput), RAW | working on hardware |

@@ -25,6 +25,8 @@ with a StickS3 and with a StickC Plus2.
 | Part | State |
 |---|---|
 | Reader ROM, search screen and keyboard | working on hardware; tested on py65 |
+| A Bluetooth keyboard on the search screen (nesp32's KBD) | working on hardware, a StickS3 with a Logitech MX Keys S; tested on py65 against nesp32's service |
+| A Bluetooth keyboard in the reader, and the search empty with one paired | working on hardware, likewise; tested on py65 against nesp32's service |
 | Link: the ROM on nesp32's library, and nesp32's WIKI service | working on hardware at 85227 baud; tested together over a cycle-exact simulated line |
 | Text: an API reply to 28-column lines | in nesp32, in C; checked there against the Python it was ported from |
 
@@ -54,7 +56,9 @@ make preview                 # build/search.png and build/reader.png
   controller port, so it runs in an emulator (Mesen 2 recommended) and from
   a flash cart. Whatever is searched for, it finds that article.
 - `build/nespedia_link.nes` asks a nesp32 for its articles. It says hello
-  to nesp32's firmware as `WIKI` and asks for that service.
+  to nesp32's firmware as `WIKI` and asks for that service, and for `KBD`,
+  a Bluetooth keyboard's, which it does without on a firmware that has
+  none.
 
 Both are NROM-256 (mapper 0) with vertical mirroring.
 
@@ -67,14 +71,34 @@ Controller 1:
 | Up, Down | move over the keys | scroll by the pixel, while held |
 | Left, Right | move over the keys | a page up, a page down |
 | A | type the key; on ⇧, small letters / capitals | a page down |
-| B | delete; while searching, give up | back to the search screen |
-| Select | on nesp32's cartridge, back to its menu (`SELECT : MENU`) | the same |
+| B | delete; while searching, give up | a page up |
+| Select | on nesp32's cartridge, back to its menu (`SELECT : MENU`) | back to the search screen |
 | Start | search | top of the article |
 
 The shift key, ⇧, is on the space bar's row, under Z. On that row, Left
 and Right go from the one to the other.
 
-The field holds 30 characters and starts as `Nintendo Entertainment System`.
+A Bluetooth keyboard paired with the nesp32 (in nesp32's Setup, on a
+StickS3) works both screens too. The link ROM only: the standalone one has
+no nesp32 to pair a keyboard with.
+
+| Keyboard | Search screen | Reader |
+|---|---|---|
+| Letters, digits, space | typed, in the case they are typed in | |
+| Backspace | delete | |
+| Enter | search | |
+| Up, Down | | a line up, a line down |
+| Page Up, Page Down | | a page up, a page down (as Left and Right) |
+| Left, Right | | the same |
+| Escape | on nesp32's cartridge, back to its menu, as Select | back to the search screen, as Select |
+
+What the keys on the screen do not have, the keyboard does not type
+either, and a key held down repeats. Keys the reader does not take are
+dropped, and so are any still on their way when it goes back to the
+search.
+
+The field holds 30 characters and starts as `NES`, or empty when the
+nesp32 has a keyboard paired, ready to type into.
 The key under the cursor pulses from white through the logo's blues. A page
 glides rather than jumps, and keeps two lines in view. The mark at the
 right edge shows how far the window is through as much of the article as

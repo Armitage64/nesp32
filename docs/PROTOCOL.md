@@ -201,6 +201,7 @@ nothing done on the nesp32.
 | `$03` | RAW | a run of bytes at a rate of its own with framing off: sampled sound, rate trials | done |
 | `$04` | PEER | a lobby and a lockstep relay of buttons for two consoles | done |
 | `$05` | DIAG | the link's counters and test patterns | done |
+| `$06` | KBD | a Bluetooth keyboard: what is typed on it, and pairing one | done |
 | `$10` | JUKE | the jukebox: the playlist as a stream, the buttons, sampled sound | done |
 | `$11` | WIKI | NESpedia: a search, and the article it finds as numbered lines | done |
 | `$12` | RADAR | NES Radar: an airport, and the aircraft round it | done |
@@ -693,6 +694,53 @@ ladder in turn, and RESULT after every one. Its fast receiver waits for
 each start bit, and at a rate that is failing may pass over two bytes for
 one, so the runs it asks for are twice as long as the block it checks;
 its other receiver goes by the clock, and asks for a `LEAD` of 8.
+
+### KBD `$06`: a Bluetooth keyboard
+
+A keyboard for a ROM that takes text, in place of a keyboard on the
+screen or beside it. The nesp32 pairs with one and keeps it over
+power-off, and works out what each key is (a US layout): the console
+hears characters.
+
+| `OP` | Name | Request | Reply |
+|---|---|---|---|
+| `$00` | STATE | | `KEYBOARD`, `FOUND`, `NAME_LEN`, `NAME` of the keyboard paired |
+| `$01` | KEYS | | `COUNT`, then that many characters, oldest first |
+| `$02` | SCAN | | status only; BUSY if it cannot scan now |
+| `$03` | FOUND | `INDEX` | `INDEX`, `SIGNAL`, `NAME_LEN`, `NAME` |
+| `$04` | PAIR | `INDEX` | status only; FAILED if there is no such keyboard |
+| `$05` | FORGET | | status only |
+
+- `KEYBOARD`: 0 this board cannot have one, 1 Bluetooth is starting, 2
+  no keyboard is paired, 3 one is paired and not connected (a key pressed
+  on it wakes it), 4 connected, 5 scanning, 6 the scan is over, 7 pairing,
+  8 the last pairing failed. `FOUND` is how many the scan found, once it
+  is over, and 0 otherwise.
+- A character is printable ASCII, `$20` to `$7E`, or one of the keys that
+  are not: `$08` Backspace, `$09` Tab, `$0A` Enter, `$11` Up, `$12` Down,
+  `$13` Left, `$14` Right, `$15` Page Up, `$16` Page Down, `$1B` Escape. A
+  key held down comes again after half a second, and 25 times a second
+  from then on, as on a computer; Enter and Escape do not. A key pressed
+  with Ctrl, Alt or the Windows or Command key is none.
+- A KEYS reply has up to 16 characters, fewer if `REPLY_MAX` is smaller;
+  more typed come in the next. They are taken off the nesp32 when they
+  are sent, and the same request again gets the same reply again, so a
+  lost reply loses none of them. What was typed while no ROM had KBD in
+  use is dropped.
+- A scan keeps up to 8 keyboards, strongest first; it finds those in
+  their pairing mode. A keyboard's name is up to 24 bytes. `SIGNAL` is in
+  dBm, a signed byte.
+- PAIR forgets the keyboard paired before. A keyboard is paired with no
+  code to type on it: the nesp32 says it has no screen and no keys.
+
+**Bluetooth is on only while a ROM has KBD in use.** A hello that asks for
+KBD turns it on, and one that does not turns it off. It shares the radio
+with Wi-Fi, so a ROM asks for it only where it takes text. The nesp32
+does not turn it off for a hello that asks for KBD again.
+
+Only a StickS3 has KBD, and only Bluetooth LE keyboards: its chip has no
+Bluetooth Classic. A StickC Plus2's firmware has the service, which says
+0.
 
 ### JUKE `$10`: the jukebox
 

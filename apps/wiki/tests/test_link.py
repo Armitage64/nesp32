@@ -15,14 +15,14 @@ import urllib.parse
 import nesp
 import nesp_proto as p
 import pytest
-from console import FRAME_CYCLES, PAD_A, PAD_B, PAD_DOWN, PAD_LEFT, PAD_START, PAD_UP
+from console import FRAME_CYCLES, PAD_A, PAD_B, PAD_DOWN, PAD_SELECT, PAD_START, PAD_UP
 from drive import (STATE_LOADING, STATE_READER, STATE_SEARCH, WINDOW_ROWS, check_reader_frame,
-                   open_reader, position, run_until, tap)
+                   open_reader, position, ready, run_until, tap)
 from wire import link, ms
 
 COLUMNS = p.NESP_WIKI_COLUMNS
 PERIOD = p.NESP_PERIOD
-DEFAULT = b"Nintendo Entertainment System"
+DEFAULT = b"NES"
 STATUS_ROW = 24
 # A line's reply: the frame round a state, a number, a total and the line.
 REPLY_CYCLES = (p.NESP_OVERHEAD + 5 + COLUMNS) * p.NESP_TO_NES_BITS * PERIOD
@@ -208,7 +208,7 @@ def test_pages_glide_at_full_speed(linked):
         c.run(1, pad=PAD_A)
         shown = hold(c, lines, 0, 44)
         assert [step for step in moves(shown) if step] == [4] * 40
-    c.run(1, pad=PAD_LEFT)
+    c.run(1, pad=PAD_B)
     shown = hold(c, lines, 0, 44)
     assert [step for step in moves(shown) if step] == [-4] * 40
 
@@ -302,11 +302,11 @@ def test_damaged_and_lost_replies_never_reach_the_screen(linked, seed):
     generator = random.Random(seed)
     lines = numbered_article(110)
     c, host = linked(lines, to_console=damage(generator, 0.35))
-    c.run(3)
+    ready(c)
     tap(c, PAD_START)
     run_until(c, STATE_READER, limit=900)
     c.run(2)
-    pads = (PAD_DOWN, PAD_DOWN, PAD_UP, PAD_A, PAD_LEFT, 0)
+    pads = (PAD_DOWN, PAD_DOWN, PAD_UP, PAD_A, PAD_B, 0)
     for _ in range(40):
         hold(c, lines, generator.choice(pads), generator.randint(5, 50))
     shown = hold(c, lines, PAD_DOWN, 700)
@@ -378,8 +378,8 @@ def test_a_second_search_fetches_again(linked):
     lines = numbered_article(60)
     c, host = linked(lines)
     open_reader(c)
-    tap(c, PAD_B)                               # back to the search,
-    tap(c, PAD_B)                               # ...Syste
+    tap(c, PAD_SELECT)                          # back to the search,
+    tap(c, PAD_B)                               # ...NE
     tap(c, PAD_START)
     run_until(c, STATE_READER)
     assert host.searches == [DEFAULT, DEFAULT[:-1]]
@@ -418,7 +418,7 @@ def test_a_stick_with_no_wifi_says_so(linked):
 
 def test_no_stick_at_all_gives_up_after_half_a_minute(link_console):
     c = link_console()
-    c.run(3)
+    ready(c)                                    # NES, once no nesp32 has answered
     tap(c, PAD_START)
     c.run(1700)
     assert c.byte("state") == STATE_LOADING and status(c) == "SEARCHING..."
@@ -430,7 +430,7 @@ def test_no_stick_at_all_gives_up_after_half_a_minute(link_console):
 def test_a_stick_too_busy_to_answer_for_a_while_is_waited_for(linked):
     lines = numbered_article(40)
     c, host = linked(lines, fetch_polls=10)
-    c.run(3)
+    ready(c)
     host.port.deaf = True                       # in a TLS handshake, say
     tap(c, PAD_START)
     c.run(300)
@@ -510,3 +510,139 @@ def test_an_article_that_stops_arriving_can_still_be_read(linked):
     assert position(shown[-1]) == 8 * (have - WINDOW_ROWS)
     shown = hold(c, lines, PAD_UP, 100)
     assert set(moves(shown)[5:]) <= {0, -2} and position(shown[-1]) < 8 * (have - WINDOW_ROWS) - 100
+
+
+# --- a Bluetooth keyboard ----------------------------------------------------------
+
+ESCAPE, BACKSPACE, ENTER = (bytes((key,)) for key in (p.NESP_KEY_ESCAPE, p.NESP_KEY_BACKSPACE,
+                                                       p.NESP_KEY_ENTER))
+UP, DOWN, PAGE_UP, PAGE_DOWN = (bytes((key,)) for key in (p.NESP_KEY_UP, p.NESP_KEY_DOWN,
+                                                          p.NESP_KEY_PAGE_UP,
+                                                          p.NESP_KEY_PAGE_DOWN))
+
+
+def paired(linked, lines):
+    """A console on the link ROM, and a nesp32 with a keyboard paired."""
+    c, host = linked(lines)
+    host.stick.kbd_paired(b"MX KEYS S")
+    host.stick.kbd_state = p.NESP_KEYBOARD_CONNECTED
+    return c, host
+
+
+def query(console):
+    length = console.byte("query_len")
+    start = console.labels["query"]
+    return bytes(console.memory[start + offset] for offset in range(length))
+
+
+def test_with_a_keyboard_paired_the_search_is_empty_and_never_shows_nes(linked):
+    c, host = paired(linked, numbered_article(30))
+    for _ in range(60):                             # from power-on, frame by frame
+        c.run(1)
+        assert query(c) == b"" and c.text(1, 12, 1, 30).strip("\0 ") in ("", "_")
+    assert host.stick.kbd_on and c.byte("kbd_asked")
+
+
+def test_with_none_paired_it_begins_with_nes(linked):
+    c, host = linked(numbered_article(30))
+    c.run(40)
+    assert host.stick.kbd_on and query(c) == DEFAULT == b"NES"
+
+
+def test_what_is_typed_on_a_bluetooth_keyboard_is_searched_for(linked):
+    c, host = paired(linked, numbered_article(30))
+    c.run(40)
+    assert host.stick.kbd_on and host.stick.hellos == 1    # greeted from the search screen
+    host.stick.kbd_type(b"Mario Kart")
+    c.run(20)
+    assert query(c) == b"Mario Kart"
+    host.stick.kbd_type(ENTER)
+    run_until(c, STATE_READER)
+    assert host.searches == [b"Mario Kart"] and host.stick.hellos == 1
+
+
+def test_backspace_takes_back_and_what_has_no_key_on_the_screen_is_not_typed(linked):
+    c, host = paired(linked, numbered_article(30))
+    c.run(40)
+    host.stick.kbd_type(b"link's!?(x" + BACKSPACE + b" AWAKENING")
+    c.run(30)
+    assert query(c) == b"link's AWAKENING"
+    host.stick.kbd_type(b"x" * 20)                  # no more than a search holds
+    c.run(30)
+    assert query(c) == b"link's AWAKENING" + b"x" * 14
+
+
+def test_the_keyboard_on_the_screen_and_the_bluetooth_one_type_into_one_field(linked):
+    c, host = paired(linked, numbered_article(30))
+    c.run(40)
+    host.stick.kbd_type(b"Sup")
+    c.run(20)
+    tap(c, PAD_A)                                   # the key the cursor starts on: Q
+    host.stick.kbd_type(b"er")
+    c.run(20)
+    assert query(c) == b"SupQer"
+
+
+def test_what_is_typed_while_reading_is_not_searched_for_on_coming_back(linked):
+    lines = numbered_article(30)
+    c, host = linked(lines)
+    open_reader(c)
+    host.stick.kbd_type(b"Metroid" + ENTER)
+    tap(c, PAD_SELECT)                              # back to the search
+    run_until(c, STATE_SEARCH)
+    c.run(40)
+    assert c.byte("state") == STATE_SEARCH and query(c) == DEFAULT
+    assert host.stick.kbd_unread == 0
+    host.stick.kbd_type(ENTER)
+    run_until(c, STATE_READER)
+    assert host.searches == [DEFAULT, DEFAULT]
+
+
+def test_escape_on_the_search_screen_does_nothing_off_the_cartridge(linked):
+    c, host = linked(numbered_article(30))
+    c.run(40)
+    host.stick.kbd_type(ESCAPE + b"x")
+    c.run(20)
+    assert c.byte("state") == STATE_SEARCH and query(c) == DEFAULT + b"x"
+
+
+def test_the_keyboard_scrolls_and_pages_the_reader_and_escape_leaves_it(linked):
+    lines = numbered_article(60)
+    c, host = paired(linked, lines)
+    c.run(20)
+    host.stick.kbd_type(b"NES" + ENTER)
+    run_until(c, STATE_READER)
+    c.run(2)
+    page = 8 * (WINDOW_ROWS - 2)
+    for keys, place in ((PAGE_DOWN, page), (DOWN + DOWN, page + 16), (UP, page + 8),
+                        (PAGE_UP, 8)):
+        host.stick.kbd_type(keys)
+        shown = hold(c, lines, 0, 80)
+        assert position(shown[-1]) == place, keys
+    assert host.stick.kbd_unread == 0
+    host.stick.kbd_type(ESCAPE + b"x")
+    run_until(c, STATE_SEARCH)
+    c.run(40)
+    assert query(c) == DEFAULT and host.stick.kbd_unread == 0  # what came with it is dropped
+
+
+def test_a_stick_without_kbd_is_searched_with_all_the_same(linked):
+    c, host = linked(numbered_article(30))
+    write = host.port.write
+
+    def without_kbd(data):
+        # The hello's reply, as a firmware from before KBD gives it.
+        reply = nesp.parse(data)
+        if reply.svc == p.NESP_SVC_SYS and reply.ok and len(reply.payload) == 7:
+            data = nesp.reply_frame(reply.svc, p.NESP_ST_NO_SERVICE, reply.seq,
+                                    reply.payload[:6] + bytes((1, p.NESP_SVC_KBD)))
+        write(data)
+    host.port.write = without_kbd
+    c.run(40)
+    assert c.byte("greeted") and not c.byte("typing")
+    host.stick.kbd_type(b"never")
+    c.run(30)
+    assert query(c) == DEFAULT and host.stick.kbd_unread == 5
+    tap(c, PAD_START)
+    run_until(c, STATE_READER)
+    assert host.searches == [DEFAULT]

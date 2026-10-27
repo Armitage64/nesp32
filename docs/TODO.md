@@ -25,6 +25,18 @@ its own list in its README.
   stage's edges, which the SNAC adapter needs; nothing the console sends
   needs more than 85227 today.
 
+- The Bluetooth keyboard, which works on hardware (paired from Setup,
+  typing in NESpedia and Weather): whether every byte of the 75 KB comes
+  back when Bluetooth turns off, over many times; the wait for a sleeping
+  keyboard being called off; and a keyboard other than the MX Keys S,
+  whose report may be laid out otherwise
+  ([the firmware](../firmware/README.md), "A Bluetooth keyboard").
+- The Bluetooth keyboard's 10 s or so to type again once a program that
+  uses it starts: see where the time goes in the log, and whether
+  NimBLE's GATT caching (so that esp_hid need not read the keyboard's
+  services afresh every connection) or keeping Bluetooth on longer
+  between programs shortens it.
+
 ## Not started
 
 - **Games that differ: find out why, then perhaps mend them.** For later

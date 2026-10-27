@@ -10,6 +10,7 @@
 ;   keys.inc      the keyboard a name or a password is typed on
 ;   test.inc      the link test
 ;   usb.inc       the nesp32's files as a USB drive, for music to be copied to
+;   kbd.inc       a Bluetooth keyboard: pairing one, and trying it
 ;
 ; Everything it knows comes over the link (nes/lib/nesp.inc,
 ; docs/PROTOCOL.md), a request at a time, at most one a frame.
@@ -64,6 +65,8 @@ STATE_JOINING = 5
 STATE_FAILED  = 6
 STATE_TEST    = 7
 STATE_USB     = 8
+STATE_KBD     = 9
+STATE_KBD_LIST = 10
 
 MISSES_MAX = 3                  ; requests in a row with no reply: the Stick is gone
 
@@ -159,6 +162,24 @@ draw_buf:     .res 32
     .endrepeat
 .endmacro
 
+; A box round the WIDTH characters of a row from LEFT, in the second
+; colour: its top in the row above, its bottom in the row below, and its
+; sides in the columns either side.
+.macro box row
+    .byte >($2000 + 32 * ((row) - 1) + LEFT - 1), <($2000 + 32 * ((row) - 1) + LEFT - 1)
+    .byte WIDTH + 2, TILE_BOX_TL
+    .res WIDTH, TILE_BOX_T
+    .byte TILE_BOX_TR
+    .byte >($2000 + 32 * (row) + LEFT - 1), <($2000 + 32 * (row) + LEFT - 1)
+    .byte 1, TILE_BOX_L
+    .byte >($2000 + 32 * (row) + LEFT + WIDTH), <($2000 + 32 * (row) + LEFT + WIDTH)
+    .byte 1, TILE_BOX_R
+    .byte >($2000 + 32 * ((row) + 1) + LEFT - 1), <($2000 + 32 * ((row) + 1) + LEFT - 1)
+    .byte WIDTH + 2, TILE_BOX_BL
+    .res WIDTH, TILE_BOX_B
+    .byte TILE_BOX_BR
+.endmacro
+
 .macro inc16 value
     inc value
     bne :+
@@ -172,16 +193,17 @@ draw_buf:     .res 32
 .include "keys.inc"
 .include "test.inc"
 .include "usb.inc"
+.include "kbd.inc"
 
 .segment "RODATA"
 screens_lo:
     .lobytes status_frame - 1, scan_frame - 1, list_frame - 1, keys_frame - 1
     .lobytes send_frame - 1, joining_frame - 1, failed_frame - 1, test_frame - 1
-    .lobytes usb_frame - 1
+    .lobytes usb_frame - 1, kbd_frame - 1, kbd_list_frame - 1
 screens_hi:
     .hibytes status_frame - 1, scan_frame - 1, list_frame - 1, keys_frame - 1
     .hibytes send_frame - 1, joining_frame - 1, failed_frame - 1, test_frame - 1
-    .hibytes usb_frame - 1
+    .hibytes usb_frame - 1, kbd_frame - 1, kbd_list_frame - 1
 
 empty_text:    .byte 0
 no_answer_text: .byte "NO ANSWER FROM THE NESP32", 0
@@ -224,6 +246,9 @@ no_answer_text: .byte "NO ANSWER FROM THE NESP32", 0
     bit PPUSTATUS
     bpl @vblank2
 
+    lda #$FF                    ; every button begins down, so that one held from
+    sta pad_seen                ; before, as the cartridge's menu's A or Start is,
+                                ; counts only once it has been let go
     jsr ppu_init                ; rendering is off; the first NMI turns it on
     lda #PPUMASK_ON
     sta mask

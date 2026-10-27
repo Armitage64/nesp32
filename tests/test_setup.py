@@ -12,9 +12,9 @@ import nesp_proto as p
 import pytest
 from console import VBLANK_CYCLES
 from drive import (PAD_A, PAD_B, PAD_DOWN, PAD_SELECT, PAD_START, PAD_UP, STATE_FAILED,
-                   STATE_JOINING, STATE_KEYS, STATE_LIST, STATE_SCAN, STATE_STATUS, STATE_TEST,
-                   STATE_USB, Setup, find_key)
-from drive import MENU_FLIP, MENU_TEST, MENU_USB
+                   STATE_JOINING, STATE_KBD, STATE_KBD_LIST, STATE_KEYS, STATE_LIST, STATE_SCAN,
+                   STATE_STATUS, STATE_TEST, STATE_USB, Setup, find_key)
+from drive import KBD_MENU_BACK, KBD_MENU_FORGET, KBD_MENU_PAIR, MENU_FLIP, MENU_KBD, MENU_TEST, MENU_USB
 from nesp import Stick
 from wire import link, ms
 
@@ -216,7 +216,7 @@ def test_start_looks_again_and_b_goes_back(setup):
     s.press(PAD_B)
     s.wait_for(STATE_STATUS)
     # and the arrow is the status screen's own, at the top of its menu
-    assert s.heading == "STATUS" and s.c.sprite()[1] == 8 * (layout.BODY_ROW + 9)
+    assert s.heading == "STATUS" and s.c.sprite()[1] == 8 * layout.MENU_ROW
 
 
 def test_a_scan_the_stick_never_finishes_is_given_up(setup):
@@ -612,10 +612,10 @@ def test_the_link_test_tells_wrong_from_missing(setup):
 
 def test_the_status_screens_menu_is_worked_with_an_arrow(setup):
     s = setup()
-    row = layout.BODY_ROW + 9
+    row = layout.MENU_ROW
     # Built by itself, it is on no cartridge, and has no menu to quit to.
-    assert [s.c.text(row + item, layout.LEFT + 2, 16).rstrip() for item in range(5)] \
-        == ["WI-FI SETUP", "TEST INTERFACE", "ENABLE USB DRIVE", "FLIP LCD", ""]
+    assert [s.c.text(row + item, layout.LEFT + 2, 18).rstrip() for item in range(6)] \
+        == list(layout.MENU_ITEMS) + [""]
 
     def arrow():
         x, y, tile = s.c.sprite()
@@ -625,11 +625,11 @@ def test_the_status_screens_menu_is_worked_with_an_arrow(setup):
     assert arrow() == 0
     s.press(PAD_UP)
     assert arrow() == 0                         # it stops at the ends
-    for expected in (1, 2, 3, 3):
+    for expected in (1, 2, 3, 4, 4):
         s.press(PAD_DOWN)
         assert arrow() == expected
-    s.press(PAD_UP)
-    s.press(PAD_UP)
+    for _ in range(3):
+        s.press(PAD_UP)
     assert arrow() == 1
     s.press(PAD_B)
     s.press(PAD_SELECT)
@@ -732,6 +732,174 @@ def test_a_board_that_cannot_be_a_drive_says_so(setup):
     s.press(PAD_B)
     s.wait_for(STATE_STATUS)
     assert s.stick.drive_stops == 0
+
+
+# --- the Bluetooth keyboard ---------------------------------------------------------
+
+KEYBOARDS = [(b"MX KEYS S", -50), (b"K380", -72)]
+
+
+def open_kbd(s):
+    """From the status screen: the keyboard's screen, past its hello."""
+    s.menu(MENU_KBD)
+    s.wait_for(STATE_KBD)
+    s.c.run_until(lambda: s.c.byte("kbd_greeted"), 60)
+    s.settle()
+
+
+def kbd_scan(s, keyboards=KEYBOARDS):
+    """Pair a keyboard, on the keyboard's screen, and the nesp32 finds these."""
+    s.kbd_menu(KBD_MENU_PAIR)
+    s.c.run_until(lambda: s.stick.kbd_scans, 60)
+    assert s.message == "LOOKING FOR KEYBOARDS..."
+    s.stick.kbd_found(keyboards)
+    s.stick.kbd_state = p.NESP_KEYBOARD_SCANNED
+
+
+def test_the_keyboards_screen_turns_bluetooth_on_and_going_back_turns_it_off(setup):
+    s = setup()
+    assert not s.stick.kbd_on
+    open_kbd(s)
+    assert s.heading == "PAIR BLUETOOTH KEYBOARD"
+    assert s.stick.kbd_on
+    assert s.kbd_value("KEYBOARD") == "-" and s.kbd_value("STATUS") == "NONE PAIRED"
+    assert s.echo == "_"
+    assert [s.c.text(layout.KBD_MENU_ROW + item, layout.LEFT + 2, 20).rstrip()
+            for item in range(len(layout.KBD_MENU_ITEMS))] == list(layout.KBD_MENU_ITEMS)
+    assert s.kbd_item == KBD_MENU_PAIR
+    s.press(PAD_UP)                             # it stops at the first
+    assert s.kbd_item == KBD_MENU_PAIR
+    for _ in range(len(layout.KBD_MENU_ITEMS)):
+        s.press(PAD_DOWN)                       # and at the last
+    assert s.kbd_item == KBD_MENU_BACK
+    s.press(PAD_B)
+    s.wait_for(STATE_STATUS)
+    s.c.run_until(lambda: not s.stick.kbd_on, 60)
+    s.settle(80)
+    assert s.value("NESP32") == "CONNECTED"
+
+
+def test_back_on_the_menu_is_the_status_screen_and_bluetooth_off(setup):
+    s = setup()
+    open_kbd(s)
+    s.kbd_menu(KBD_MENU_BACK)
+    s.wait_for(STATE_STATUS)
+    s.c.run_until(lambda: not s.stick.kbd_on, 60)
+    assert s.stick.kbd_scans == 0 and s.stick.kbd_forgets == 0
+
+
+def test_the_keyboard_paired_is_shown_with_how_it_stands(setup):
+    s = setup()
+    s.stick.kbd_paired(b"MX KEYS S")
+    s.stick.kbd_state = p.NESP_KEYBOARD_WAITING
+    open_kbd(s)
+    assert s.kbd_value("KEYBOARD") == "MX KEYS S"
+    assert s.kbd_value("STATUS") == "PRESS A KEY ON IT"
+    s.stick.kbd_state = p.NESP_KEYBOARD_CONNECTED
+    s.c.run_until(lambda: s.kbd_value("STATUS") == "CONNECTED", 60)
+
+
+def test_what_is_typed_on_it_is_shown_and_can_be_taken_back(setup):
+    s = setup()
+    open_kbd(s)
+    s.stick.kbd_type(b"Hello, NES!")
+    s.c.run_until(lambda: s.echo == "Hello, NES!_", 30)
+    s.stick.kbd_type(bytes((p.NESP_KEY_BACKSPACE, p.NESP_KEY_LEFT)) + b"?")
+    s.c.run_until(lambda: s.echo == "Hello, NES?_", 30)
+    s.stick.kbd_type(bytes((p.NESP_KEY_ENTER,)))
+    s.c.run_until(lambda: s.echo == "_", 30)
+    typed = PRINTABLE[:layout.WIDTH + 10].encode()
+    for start in range(0, len(typed), p.NESP_KBD_KEYS_MAX):
+        s.stick.kbd_type(typed[start:start + p.NESP_KBD_KEYS_MAX])
+        s.c.run_until(lambda: s.stick.kbd_unread == 0, 30)
+    s.settle(10)
+    assert s.echo == typed[-(layout.WIDTH - 1):].decode() + "_"     # the line moves left
+    s.stick.kbd_type(bytes((p.NESP_KEY_ESCAPE,)))
+    s.c.run_until(lambda: s.echo == "_", 30)
+
+
+def test_a_keyboard_found_is_chosen_from_a_list_and_paired(setup):
+    s = setup()
+    open_kbd(s)
+    kbd_scan(s)
+    s.wait_for(STATE_KBD_LIST)
+    s.settle()
+    assert s.heading == "CHOOSE A KEYBOARD"
+    assert s.listed()[:3] == [("MX KEYS S", False, 4), ("K380", False, 2), ("", False, 0)]
+    s.press(PAD_DOWN)
+    s.press(PAD_DOWN)                           # it stops at the last
+    assert s.arrow_line == 1
+    s.press(PAD_A)
+    s.wait_for(STATE_KBD)
+    assert (s.stick.kbd_pairs, s.stick.kbd_pair_index) == (1, 1)
+    s.wait_for_message("PAIRING...")
+    s.c.run_until(lambda: s.kbd_value("STATUS") == "PAIRING...", 60)
+    s.stick.kbd_paired(b"K380")
+    s.stick.kbd_state = p.NESP_KEYBOARD_CONNECTED
+    s.wait_for_message("THE KEYBOARD IS PAIRED")
+    assert s.kbd_value("KEYBOARD") == "K380" and s.kbd_value("STATUS") == "CONNECTED"
+
+
+def test_a_pairing_that_fails_says_so(setup):
+    s = setup()
+    open_kbd(s)
+    kbd_scan(s)
+    s.wait_for(STATE_KBD_LIST)
+    s.press(PAD_A)
+    s.wait_for(STATE_KBD)
+    s.c.run_until(lambda: s.stick.kbd_state == p.NESP_KEYBOARD_PAIRING, 60)
+    s.stick.kbd_state = p.NESP_KEYBOARD_FAILED
+    s.wait_for_message("THE PAIRING FAILED")
+    assert s.kbd_value("STATUS") == "PAIRING FAILED"
+
+
+def test_b_on_the_list_pairs_none_and_none_found_says_so(setup):
+    s = setup()
+    open_kbd(s)
+    kbd_scan(s)
+    s.wait_for(STATE_KBD_LIST)
+    s.press(PAD_B)
+    s.wait_for(STATE_KBD)
+    assert s.stick.kbd_pairs == 0
+    s.stick.kbd_state = p.NESP_KEYBOARD_UNPAIRED
+    kbd_scan(s, [])
+    s.wait_for_message("NO KEYBOARD FOUND")
+    assert s.state == STATE_KBD
+
+
+def test_the_keyboard_paired_is_forgotten_from_the_menu(setup):
+    s = setup()
+    s.stick.kbd_paired(b"MX KEYS S")
+    s.stick.kbd_state = p.NESP_KEYBOARD_CONNECTED
+    open_kbd(s)
+    s.kbd_menu(KBD_MENU_FORGET)
+    s.wait_for_message("THE KEYBOARD IS FORGOTTEN")
+    assert s.stick.kbd_forgets == 1
+    s.c.run_until(lambda: s.kbd_value("KEYBOARD") == "-"
+                  and s.kbd_value("STATUS") == "NONE PAIRED", 60)
+    assert s.state == STATE_KBD
+
+
+def test_forgetting_with_none_paired_says_so(setup):
+    s = setup()
+    open_kbd(s)
+    s.kbd_menu(KBD_MENU_FORGET)
+    s.wait_for_message("NO KEYBOARD IS PAIRED")
+    s.c.run(40)
+    assert s.stick.kbd_forgets == 0
+
+
+def test_a_board_with_no_bluetooth_says_so(setup):
+    s = setup()
+    s.stick.kbd_absent()
+    open_kbd(s)
+    s.c.run_until(lambda: s.kbd_value("STATUS") == "NO BLUETOOTH", 60)
+    s.kbd_menu(KBD_MENU_PAIR)
+    s.wait_for_message("THIS BOARD HAS NO BLUETOOTH")
+    s.kbd_menu(KBD_MENU_FORGET)
+    s.c.run(40)
+    assert s.message == "THIS BOARD HAS NO BLUETOOTH"
+    assert s.state == STATE_KBD and s.stick.kbd_scans == 0 and s.stick.kbd_forgets == 0
 
 
 def test_the_nmi_is_over_well_inside_the_vblank(setup):

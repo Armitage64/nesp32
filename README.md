@@ -27,6 +27,8 @@ the ESP32 microcontroller.
 - Extensible firmware provides an API that any cartridge-based software can interface with. A setup program allows the wifi and USB storage 
 to be configured from the NES itself. 
 
+- Bluetooth (BLE) keyboard support for programs with text entry.
+
 - The NESP32 grew out of [NES Radar](https://github.com/k6lcm/nes-radar) and [connectedNES](https://github.com/hxlnt/connectedNES), projects that first explored the use of the NES controller port as a data link.
 
 - NTSC-only for now. PAL support is planned.

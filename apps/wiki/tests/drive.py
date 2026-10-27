@@ -27,9 +27,19 @@ def run_until(console, state, limit=600):
                          % (console.byte("state"), limit, state))
 
 
+def ready(console, limit=120):
+    """From power-on: until the search's field has its default, which the
+    link ROM puts there once it knows there is no keyboard to type with."""
+    for _ in range(limit):
+        if console.byte("query_len"):
+            return
+        console.run(1)
+    raise AssertionError("the field is still empty after %d frames" % limit)
+
+
 def open_reader(console):
     """From power-on: search for the default, and wait for the reader."""
-    console.run(3)
+    ready(console)
     tap(console, PAD_START)
     run_until(console, STATE_READER)
     console.run(2)              # a frame of the reader has been shown in full

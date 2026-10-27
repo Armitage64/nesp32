@@ -301,6 +301,9 @@ page_word:  .byte " PAGE "
     bne @alone
     inc on_cart
 @alone:
+    lda #$FF                    ; every button begins down, so that one held from
+    sta pad_prev                ; before, as the cartridge's menu's A or Start is,
+                                ; counts only once it has been let go
 
 @vblank2:
     bit PPUSTATUS

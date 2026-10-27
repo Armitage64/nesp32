@@ -28,6 +28,7 @@
 #include "board.h"
 #include "conn.h"
 #include "fetch.h"
+#include "keyboard.h"
 #include "link.h"
 #include "radio.h"
 #ifdef NESP_SPIKE
@@ -269,6 +270,7 @@ extern "C" void app_main(void)
     store_start(converting);
     link_start(radio_hal());
     radio_start();
+    keyboard_start();
     ESP_LOGI(TAG, "nesp32 %s on a %s", NESP_FIRMWARE_TEXT, BOARD_NAME);
 
     uint32_t screen_at = 0;
@@ -278,6 +280,7 @@ extern "C" void app_main(void)
     for (;;) {
         M5.update();
         usb_poll();
+        keyboard_poll();
 #ifdef NESP_SPIKE
         spike_poll();
 #endif
@@ -314,14 +317,15 @@ extern "C" void app_main(void)
             link_stats_t stats;
             link_stats(&stats);
             ESP_LOGI(TAG, "%lu requests, %lu again, %lu noise; reply %lu us, slowest %lu; "
-                     "stack left: link %lu, fetch %lu, conn %lu; free: %u internal, %u PSRAM",
+                     "stack left: link %lu, fetch %lu, conn %lu; free: %u internal, %u PSRAM; "
+                     "keyboard %s",
                      (unsigned long)stats.requests, (unsigned long)stats.repeats,
                      (unsigned long)stats.noise, (unsigned long)stats.turnaround_us,
                      (unsigned long)stats.turnaround_max_us,
                      (unsigned long)link_stack_left(), (unsigned long)fetch_stack_left(),
                      (unsigned long)conn_stack_left(),
                      (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
-                     (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+                     (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM), keyboard_said());
         }
         if (now - watch_at >= WATCH_MS) {
             // And for whoever is watching: the station's figures, from

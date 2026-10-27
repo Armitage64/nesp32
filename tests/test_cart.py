@@ -12,6 +12,7 @@ import os
 
 import gen_cart as cart_layout
 import gen_screen as layout
+import nesp_proto
 import pytest
 from console import (BANK_SIZE, CHR_SIZE, INES_HEADER, PAD_A, PAD_B, PAD_DOWN, PAD_SELECT,
                      PAD_START, PAD_UP, PPUCTRL_NMI)
@@ -244,9 +245,9 @@ def test_setups_quit_is_the_menu_again(cart, images, with_stick):
     if with_stick:
         c.run_until(lambda: stick.hellos, 300)
     c.run(30)
-    row = layout.BODY_ROW + 9 + 4               # the status screen's menu, its last
+    row = layout.MENU_ROW + len(layout.MENU_ITEMS)  # the status screen's menu, its last
     assert c.text(row, layout.LEFT + 2, 4) == "QUIT"    # on the cartridge, there is one
-    for _ in range(4):
+    for _ in range(len(layout.MENU_ITEMS)):
         c.press(PAD_DOWN)
     c.press(PAD_A)
     c.strict = True
@@ -380,6 +381,21 @@ def test_select_in_weathers_form_is_the_menu_again_and_b_is_not(cart, images):
     assert c.byte("choice") == 0
 
 
+def test_escape_in_weathers_form_is_the_menu_again(cart, images):
+    index = next(index for index, image in enumerate(images) if image.program.key == "weather")
+    c = cart()
+    stick, _ = link(c, Stick)
+    c.run(4)
+    start(c, index)
+    c.run_until(lambda: stick.kbd_on, 300)
+    c.run(60)                           # the form, all of it
+    assert not c.home
+    stick.kbd_type(bytes((nesp_proto.NESP_KEY_ESCAPE,)))
+    c.strict = True
+    c.run_until(lambda: at_menu(c), 30)
+    assert c.byte("choice") == 0
+
+
 def test_the_jukebox_waits_for_a_start_of_its_own(cart, images):
     index = next(index for index, image in enumerate(images) if image.program.key == "jukebox")
     c = cart()
@@ -500,6 +516,62 @@ def test_select_in_nespedias_search_is_the_menu_again(cart, images):
     c.run(6)
     assert at_menu(c)
     assert c.byte("choice") == 0
+
+
+def test_select_in_nespedias_reader_is_the_search_again(cart, images, cart_build):
+    index = next(index for index, image in enumerate(images) if image.program.key == "wiki")
+    state = program_labels(cart_build, "wiki")["state"]
+    c = cart()
+    stick, _ = link(c, Stick)
+    stick.set_wifi(nesp_proto.NESP_WIFI_JOINED, address=(10, 0, 0, 2))
+    c.run(4)
+    start(c, index)
+    c.run_until(lambda: stick.kbd_on, 300)
+    c.run(10)
+    c.press(PAD_START)                  # NES: the search
+    c.run_until(lambda: stick.fetching, 120)
+    stick.fetch_body(b'{"batchcomplete":true,"query":{"pages":[{"pageid":1,"ns":0,'
+                     b'"title":"NES","index":1,"extract":"One line."}]}}')
+    stick.fetch_done()
+    c.run_until(lambda: c.memory[state] == 3, 300)  # STATE_READER
+    c.press(PAD_SELECT)
+    c.run(10)
+    assert not c.home and c.memory[state] == 0      # STATE_SEARCH, not the menu
+
+
+def test_escape_in_nespedias_search_is_the_menu_again(cart, images):
+    index = next(index for index, image in enumerate(images) if image.program.key == "wiki")
+    c = cart()
+    stick, _ = link(c, Stick)
+    c.run(4)
+    start(c, index)
+    c.run_until(lambda: stick.kbd_on, 300)
+    c.run(10)
+    assert not c.home
+    stick.kbd_type(bytes((nesp_proto.NESP_KEY_ESCAPE,)))
+    c.strict = True
+    c.run_until(lambda: at_menu(c), 30)
+    assert c.byte("choice") == 0
+
+
+def test_the_a_that_chose_nespedia_types_nothing(cart, images, cart_build):
+    index = next(index for index, image in enumerate(images) if image.program.key == "wiki")
+    labels = program_labels(cart_build, "wiki")
+    query, query_len = labels["query"], labels["query_len"]
+
+    def typed(held):
+        c = cart()
+        link(c, Stick)
+        c.run(4)
+        choose(c, index)
+        c.run(2, pad=PAD_A)             # A chooses it, and is held, or let go at once
+        c.strict = False
+        c.run(90, pad=PAD_A if held else 0)
+        c.run(30, pad=0)
+        assert not c.home
+        return bytes(c.memory[query:query + c.memory[query_len]])
+
+    assert typed(True) == typed(False)  # no key under the cursor typed
 
 
 @pytest.mark.parametrize("with_stick", (True, False), ids=("stick", "no-stick"))

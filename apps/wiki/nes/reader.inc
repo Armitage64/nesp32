@@ -5,7 +5,12 @@
 ;   Right or A       a page down, gliding at GLIDE_STEPS pixels a frame
 ;   Left or B        a page up
 ;   Start            back to the top of the article
-;   Select           back to the search screen
+;   Select           back to the search screen (not the cartridge's menu)
+;
+; and on a Bluetooth keyboard paired with the nesp32 (reader_keys), asked
+; for on the frames no line is: Up and Down a line, gliding, Page Up and
+; Left a page up, Page Down and Right a page down, and Escape back to the
+; search screen, as Select.
 ;
 ; Nametable 0 is a ring of RING_ROWS lines: line n of the article is in row
 ; n mod RING_ROWS, and the ring holds lines lo to hi - 1. The window shows
@@ -58,6 +63,7 @@ want:      .res 2               ; the line being fetched
 want_row:  .res 1
 thumb_top: .res 2               ; `top` when the thumb was last placed
 steps:     .res 1
+link_free: .res 1               ; reader_fetch used no exchange this frame
 product:   .res 3
 factor:    .res 1
 
@@ -128,8 +134,8 @@ factor:    .res 1
     beq @select
     jmp lost_article
 @select:
-    lda pad_new                 ; B: back a step, to the search screen
-    and #PAD_B
+    lda pad_new                 ; Select: back to the search screen
+    and #PAD_SELECT
     beq @start
     lda #STATUS_NONE
     jmp back_to_search
@@ -152,7 +158,7 @@ factor:    .res 1
     beq @glide
 @page_up:
     lda pad_new
-    and #PAD_LEFT
+    and #PAD_B | PAD_LEFT
     beq @move
     lda #1
 @glide:
@@ -211,7 +217,84 @@ factor:    .res 1
 
 @fetch:
     jsr reader_fetch
-    jmp thumb_update
+    jsr thumb_update
+    jmp reader_keys
+.endproc
+
+; What was typed on the Bluetooth keyboard, on a frame the link was not
+; used for a line: every other one of those.
+.proc reader_keys
+    lda link_free
+    beq @done
+    lda frame_count
+    lsr a
+    bcc @done
+    jsr link_keys
+    bcs @done
+    sta typed_count
+    ldx #0
+@key:
+    cpx typed_count
+    bcs @done
+    lda state
+    cmp #STATE_READER           ; Escape has left: the rest is dropped
+    bne @done
+    lda link_typed,x
+    stx typed_at
+    jsr read_key
+    ldx typed_at
+    inx
+    bne @key
+@done:
+    rts
+.endproc
+
+; One key from the Bluetooth keyboard, A, as the reader takes it. A line
+; up or down adds to a glide that way, and a page sets one, as the D-pad's
+; Left and Right do.
+.proc read_key
+    cmp #KEY_ESCAPE
+    bne @line
+    lda #STATUS_NONE
+    jmp back_to_search
+@line:
+    ldx #1
+    cmp #KEY_UP
+    beq @more
+    dex
+    cmp #KEY_DOWN
+    beq @more
+    cmp #KEY_PAGE_DOWN
+    beq @page
+    cmp #KEY_RIGHT
+    beq @page
+    inx
+    cmp #KEY_PAGE_UP
+    beq @page
+    cmp #KEY_LEFT
+    beq @page
+    rts
+@more:
+    lda glide                   ; a glide the other way is over
+    beq @set
+    cpx glide_up
+    bne @set
+    lda glide
+    clc
+    adc #8
+    bcc @glide
+    rts                         ; as far as a glide goes
+@set:
+    lda #8
+@glide:
+    stx glide_up
+    sta glide
+    rts
+@page:
+    stx glide_up
+    lda #PAGE_PIXELS
+    sta glide
+    rts
 .endproc
 
 ; Move the window a pixel down the article. A = STEP_*, and the flags are
@@ -303,8 +386,10 @@ factor:    .res 1
 ; off in turn. Lines lo and hi stay at least BEHIND + 1 rows from the
 ; window, so the row a line is fetched into is never one in view.
 .proc reader_fetch
+    lda #0
+    sta link_free
     lda draw_len                ; the staging buffer is taken
-    bne @idle
+    bne @free
     lda going_up
     bne @upward
     lda #WINDOW_ROWS + 1 + AHEAD
@@ -321,16 +406,20 @@ factor:    .res 1
     ; then for the line after its last: the answer says how long it has
     ; become, which is what lets the window go on past what was its end.
     lda more
-    beq @idle
+    beq @free
     lda frame_count
     and #GROWTH_POLL
-    bne @idle
+    bne @free
     lda total
     sta want
     lda total + 1
     sta want + 1
     jsr link_line               ; for the length; the line is not used
 @idle:
+    clc
+    rts
+@free:                          ; the link is the keyboard's this frame
+    inc link_free
     clc
     rts
 @upward:

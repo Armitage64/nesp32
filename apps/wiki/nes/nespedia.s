@@ -201,6 +201,9 @@ status_buf:   .res COLUMNS      ; a message from the host
     bne @alone
     inc on_cart
 @alone:
+    lda #$FF                    ; every button begins down, so that one held from
+    sta pad_seen                ; before, as the cartridge's menu's A or Start is,
+                                ; counts only once it has been let go
     jsr ppu_init                ; rendering is off; the first NMI turns it on
     jsr oam_init
     jsr kb_init
@@ -232,9 +235,12 @@ main_wait:
 @input:
     jsr read_input
     lda pad_new                 ; Select: back to the cartridge's menu, from
-    and #PAD_SELECT             ; every screen. B is only ever back a step,
-    beq @dispatch               ; and never out of the program, so that B
-    lda on_cart                 ; pressed again and again cannot leave it
+    and #PAD_SELECT             ; every screen but the reader, where it is
+    beq @dispatch               ; back to the search (reader_frame)
+    lda state
+    cmp #STATE_READER
+    beq @dispatch
+    lda on_cart
     beq @dispatch
     jmp quit
 @dispatch:
@@ -349,6 +355,8 @@ main_wait:
 ; Show the keyboard with status A.
 .proc back_to_search
     jsr set_status
+    lda #1                      ; what was typed while it was not up is dropped
+    sta typed_stale
     lda #STATE_SEARCH
     sta state
     lda #SPRITE_HIDDEN

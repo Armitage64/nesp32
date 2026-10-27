@@ -11,8 +11,9 @@ from console import (PAD_A, PAD_B, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_SELECT, PA
 
 STATE_STATUS, STATE_SCAN, STATE_LIST, STATE_KEYS = 0, 1, 2, 3
 STATE_SEND, STATE_JOINING, STATE_FAILED, STATE_TEST = 4, 5, 6, 7
-STATE_USB = 8
-MENU_WIFI, MENU_TEST, MENU_USB, MENU_FLIP, MENU_QUIT = 0, 1, 2, 3, 4
+STATE_USB, STATE_KBD, STATE_KBD_LIST = 8, 9, 10
+MENU_WIFI, MENU_TEST, MENU_USB, MENU_KBD, MENU_FLIP, MENU_QUIT = 0, 1, 2, 3, 4, 5
+KBD_MENU_PAIR, KBD_MENU_FORGET, KBD_MENU_BACK = 0, 1, 2
 LAYER_KEYS = layout.KEY_ROWS * layout.KEY_COLUMNS
 SET_COL = 0                     # on the space bar's row, the set key (keys.inc)
 
@@ -60,6 +61,30 @@ class Setup:
 
     def values(self):
         return {label: self.value(label) for label in layout.STATUS_LABELS}
+
+    def kbd_value(self, label):
+        """The keyboard screen's value for a label."""
+        row = layout.BODY_ROW + layout.KBD_LABELS.index(label)
+        assert self.c.text(row, layout.LEFT, len(label)) == label
+        return self.c.text(row, layout.VALUE_COLUMN, layout.VALUE_WIDTH).strip()
+
+    @property
+    def kbd_item(self):
+        """Which of the keyboard screen's menu items the arrow is at."""
+        x, y, tile = self.c.sprite()
+        assert x == 8 * layout.LEFT and self.tile_names()[tile] == "ARROW"
+        return (y - 8 * layout.KBD_MENU_ROW) // 8
+
+    def kbd_menu(self, item):
+        """On the keyboard's screen: its menu's item, by its place (KBD_MENU_*)."""
+        while self.kbd_item != item:
+            self.press(PAD_DOWN if self.kbd_item < item else PAD_UP)
+        self.press(PAD_A)
+
+    @property
+    def echo(self):
+        """The keyboard screen's line of what was typed, with its cursor."""
+        return self.c.text(layout.KBD_ECHO_ROW, layout.LEFT, layout.WIDTH).rstrip()
 
     def listed(self):
         """The list's lines as (name, locked, bars), bars 0 for a line that

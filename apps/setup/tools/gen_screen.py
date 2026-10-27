@@ -51,7 +51,7 @@ LEFT = 2                            # the first column anything is written in
 WIDTH = 28                          # and how many there are: the safe part of a television
 HEADING_ROW = 9                     # what this screen is
 BODY_ROW = 11                       # its first line
-MESSAGE_ROW = 25                    # one line for what is going on
+MESSAGE_ROW = 26                    # one line for what is going on
 HELP_ROW = 27                       # which buttons do what
 
 # The status screen: a label and a value on every line.
@@ -59,6 +59,19 @@ VALUE_COLUMN = 12
 STATUS_LABELS = ("NESP32", "FIRMWARE", "BOARD", "WI-FI", "NETWORK", "ADDRESS", "SIGNAL",
                  "BATTERY")
 VALUE_WIDTH = LEFT + WIDTH - VALUE_COLUMN
+# Its menu, a line under the lines; on the cartridge Quit is after them.
+MENU_ROW = BODY_ROW + len(STATUS_LABELS) + 1
+MENU_ITEMS = ("WI-FI SETUP", "TEST INTERFACE", "ENABLE USB DRIVE", "BLUETOOTH", "FLIP LCD")
+if MENU_ROW + len(MENU_ITEMS) + 1 > MESSAGE_ROW:
+    raise ValueError("the menu, with Quit, runs into the message line")
+
+# The Bluetooth keyboard's screen: the keyboard paired and how it stands, as
+# the status screen's lines are, a line in a box that shows what is typed on
+# it, and a menu under that.
+KBD_LABELS = ("KEYBOARD", "STATUS")
+KBD_ECHO_ROW = BODY_ROW + len(KBD_LABELS) + 3     # its label two rows up, the box between
+KBD_MENU_ROW = KBD_ECHO_ROW + 3
+KBD_MENU_ITEMS = ("PAIR DEVICE", "FORGET DEVICE", "BACK")
 
 # The list of networks.
 LIST_ROW = 11
@@ -170,6 +183,35 @@ PICTURES = {
     "UNDER": ("#######.", "#######.", "........", "........", "........", "........",
               "........", "........"),
 }
+
+
+# A box round a line of text, one pixel thick, as NESpedia's search box: its
+# sides in the columns either side of the line, its top and bottom in the
+# rows above and below.
+BOX_X_LEFT, BOX_X_RIGHT = 5, 2          # pixels into the side columns
+BOX_Y_TOP, BOX_Y_BOTTOM = 4, 2          # pixels into the rows above and below
+
+
+def box_pictures():
+    """The box's tiles: corners, edges and sides."""
+    def tile(lit):
+        return tuple("".join("#" if (x, y) in lit else "." for x in range(8)) for y in range(8))
+    top = {(x, BOX_Y_TOP) for x in range(8)}
+    bottom = {(x, BOX_Y_BOTTOM) for x in range(8)}
+    left = {(BOX_X_LEFT, y) for y in range(8)}
+    right = {(BOX_X_RIGHT, y) for y in range(8)}
+    return {
+        "BOX_TL": tile({p for p in top | left if p[0] >= BOX_X_LEFT and p[1] >= BOX_Y_TOP}),
+        "BOX_T": tile(top),
+        "BOX_TR": tile({p for p in top | right if p[0] <= BOX_X_RIGHT and p[1] >= BOX_Y_TOP}),
+        "BOX_L": tile(left),
+        "BOX_R": tile(right),
+        "BOX_BL": tile({p for p in bottom | left
+                        if p[0] >= BOX_X_LEFT and p[1] <= BOX_Y_BOTTOM}),
+        "BOX_B": tile(bottom),
+        "BOX_BR": tile({p for p in bottom | right
+                        if p[0] <= BOX_X_RIGHT and p[1] <= BOX_Y_BOTTOM}),
+    }
 
 
 def bars_picture(level):
@@ -300,6 +342,8 @@ def build_screen(title=TITLE_TEXT):
     screen.picture(0, TITLE_ROW, font_text(title, 8 * SCREEN_COLUMNS, TITLE_COLOR))
     for name, rows in PICTURES.items():
         screen.named[name] = screen.add(tile_bytes(picture_tile(rows)))
+    for name, rows in box_pictures().items():
+        screen.named[name] = screen.add(tile_bytes(picture_tile(rows, 1)))
     for level in range(1, 5):
         screen.named["BARS%d" % level] = screen.add(tile_bytes(picture_tile(bars_picture(level))))
     return screen
@@ -353,6 +397,9 @@ def include(screen):
     constant("HELP_ROW", HELP_ROW)
     constant("VALUE_COLUMN", VALUE_COLUMN)
     constant("VALUE_WIDTH", VALUE_WIDTH)
+    constant("MENU_ROW", MENU_ROW)
+    constant("KBD_ECHO_ROW", KBD_ECHO_ROW)
+    constant("KBD_MENU_ROW", KBD_MENU_ROW)
     constant("LIST_ROW", LIST_ROW)
     constant("LIST_ROWS", LIST_ROWS, "networks in view")
     constant("LIST_COLUMN", LIST_COLUMN)
