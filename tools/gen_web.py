@@ -97,13 +97,21 @@ def build(family, directory, prefix, out):
     return {"chipFamily": family, "parts": parts}
 
 
-def page(source, target, style):
-    """A page, with the stylesheet asked for by a name that changes when
-    it does: a browser that kept the old one does not go on using it."""
+def fingerprint(path):
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()[:8]
+
+
+def page(source, target, versions):
+    """A page, with each of its files in `versions` (name: fingerprint)
+    asked for by a name that changes when the file does: a browser that
+    kept the old one does not go on using it."""
     with open(source) as f:
         text = f.read()
+    for name, version in versions.items():
+        text = text.replace('%s"' % name, '%s?v=%s"' % (name, version))
     with open(target, "w") as f:
-        f.write(text.replace('style.css"', 'style.css?v=%s"' % style))
+        f.write(text)
 
 
 def accents():
@@ -159,10 +167,6 @@ def main(out, cart):
     with open(os.path.join(flash, "manifest.json"), "w") as f:
         json.dump(manifest, f, indent=2)
         f.write("\n")
-    with open(os.path.join(WEB, "style.css"), "rb") as f:
-        style = hashlib.sha256(f.read()).hexdigest()[:8]
-    page(os.path.join(WEB, "flash", "index.html"), os.path.join(flash, "index.html"), style)
-    page(os.path.join(WEB, "product", "index.html"), os.path.join(out, "index.html"), style)
     shutil.copyfile(os.path.join(WEB, "style.css"), os.path.join(out, "style.css"))
     shutil.copyfile(cart, os.path.join(out, "nesp32.nes"))
     for name, path in PICTURES:
@@ -170,6 +174,12 @@ def main(out, cart):
     light, dark = accents()
     write_logo(os.path.join(out, "img", "logo.png"), light, LOGO_OUTLINE_LIGHT)
     write_logo(os.path.join(out, "img", "logo-dark.png"), dark)
+    # The pages last, since they name the files by what is in them.
+    files = ["style.css", "nesp32.nes"] + ["img/" + name for name in os.listdir(
+        os.path.join(out, "img"))]
+    versions = {name: fingerprint(os.path.join(out, name)) for name in files}
+    page(os.path.join(WEB, "flash", "index.html"), os.path.join(flash, "index.html"), versions)
+    page(os.path.join(WEB, "product", "index.html"), os.path.join(out, "index.html"), versions)
     print("%s: nesp32 %s, %s" % (os.path.relpath(out), manifest["version"], manifest["date"]))
 
 
