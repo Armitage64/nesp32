@@ -231,8 +231,14 @@ Keys S:
   key came through as the character it is, Shift and Caps Lock included.
 
 The firmware itself, with Bluetooth on only for KBD, has since run on the
-same StickS3: the keyboard paired from Setup's screen and typed
-NESpedia's searches.
+same StickS3: the keyboard paired from Setup's screen, typed NESpedia's
+searches and Weather's zip codes, and paged through NESpedia's articles.
+A keyboard that has gone to sleep, or one met with Bluetooth just turned
+on, takes some seconds to type again (about 10 with the MX Keys S): the
+key that wakes it is lost, and esp_hid reads its services afresh on every
+connection. Going from one keyboard program to another by the
+cartridge's menu keeps it connected, since the menu says nothing to the
+nesp32.
 
 ESP-IDF 5.5.5's NimBLE HID host (and 6.0.3's) never turned on a
 keyboard's reports, so nothing typed arrived: `components/esp_hid` has
@@ -243,6 +249,13 @@ unused byte if the report is 8 bytes long (the boot report's layout), and
 the keys down; the MX Keys S's is 7 bytes, with no unused byte. One that
 lays its report out otherwise would type wrong letters or none, and its
 report map would have to be read for where the keys are.
+
+A key held down is typed again after 500 ms and every 40 ms from then
+on, as a computer does it, since a keyboard says only which keys are down
+(an esp_timer, `REPEAT_DELAY_MS` and `REPEAT_EVERY_MS`). Only the last key
+to go down repeats, and Enter and Escape never do. Besides printable
+ASCII, KBD sends Backspace, Tab, Enter, Escape, the arrows, and Page Up
+and Page Down.
 
 What is typed is logged only at the debug level, as it may be a password.
 The log's report ends with how the keyboard stands: off, unpaired,

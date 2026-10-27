@@ -26,7 +26,7 @@ with a StickS3 and with a StickC Plus2.
 |---|---|
 | Reader ROM, search screen and keyboard | working on hardware; tested on py65 |
 | A Bluetooth keyboard on the search screen (nesp32's KBD) | working on hardware, a StickS3 with a Logitech MX Keys S; tested on py65 against nesp32's service |
-| A Bluetooth keyboard in the reader, and the search empty with one paired | tested on py65 against nesp32's service; not yet on hardware |
+| A Bluetooth keyboard in the reader, and the search empty with one paired | working on hardware, likewise; tested on py65 against nesp32's service |
 | Link: the ROM on nesp32's library, and nesp32's WIKI service | working on hardware at 85227 baud; tested together over a cycle-exact simulated line |
 | Text: an API reply to 28-column lines | in nesp32, in C; checked there against the Python it was ported from |
 

@@ -27,7 +27,7 @@ nesp32 laid it out, and every write to the screen inside a vblank.
 |---|---|
 | WEATHER on the nesp32: a zip code to a place, the place's weather to rows of tiles | working on a StickC Plus2; tested on a computer, from replies the two sites really sent |
 | The ROM (`build/weather.nes`) | working on hardware, with a StickC Plus2 and on the MiSTer; tested on py65 against that code, over the simulated line |
-| A Bluetooth keyboard on the form (nesp32's KBD) | tested on py65 against nesp32's service; not yet on hardware |
+| A Bluetooth keyboard on the form (nesp32's KBD) | working on hardware, a StickS3 with a Logitech MX Keys S; tested on py65 against nesp32's service |
 | The cartridge | on it, the seventh program; starts from its menu on a simulated console, and not yet run there on hardware |
 
 ## Building
