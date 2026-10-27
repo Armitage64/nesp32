@@ -23,25 +23,25 @@ import struct
 import sys
 import zlib
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "..", "..", "nes", "lib"))
+import logo  # noqa: E402
+
 SCREEN_COLUMNS = 32
 SCREEN_ROWS = 30
 NAMETABLE = 0x2000
 
 # --- layout, in tiles ---------------------------------------------------------
 
-# The header, which the throughput test's ROM has too (../throughput/) and
-# nesp32's setup ROM has to the pixel: the name, what this ROM is, and the
-# credit line.
-LOGO_ROW = 2
-LOGO_TEXT = "NESP32"                # letters 2 x 2 tiles, centered
-SUBTITLE_ROW, SUBTITLE_ROWS = 4, 2  # right under the logo, in the 5 x 7 font
-SUBTITLE_TOP = 4                    # pixels down those rows that its letters start
+# The header, which NESradio's, the weather's and the throughput test's
+# ROMs have too, and nesp32's setup ROM has to the pixel: nesp32's logo
+# (nes/lib/logo.py), and what this ROM is under it.
+LOGO_ROW, LOGO_ROWS = logo.ROW, logo.ROWS
+SUBTITLE_ROW, SUBTITLE_ROWS = logo.TITLE_ROW, 1     # under the logo, in the 5 x 7 font
+SUBTITLE_TOP = 1                    # pixels down that row that its letters start
 SUBTITLE = "JUKEBOX"
-CREDIT_ROW = 6
-CREDIT_TEXT = "RETRO BITS (2026)"   # in the small font, under that
-CREDIT_COLUMN, CREDIT_TILES = 11, 10  # the tiles it is drawn across
-LOGO_LAST_ROW = 7                   # the logo's palette covers rows 0 to here
-LOGO_BLUE = 2                       # that palette's middle blue: the subtitle's and the credit's
+LOGO_LAST_ROW = 7                   # the logo's palettes cover rows 0 to here
+LOGO_CYAN = logo.CYAN               # the logo palette's cyan: the subtitle's
 GAME_COLUMN, GAME_ROW = 2, 9        # the game the track came from
 TITLE_COLUMN, TITLE_ROW = 2, 11    # the track's name
 TITLE_MAX = 28                      # jbs.TITLE_MAX: the widest name
@@ -99,10 +99,10 @@ BACKDROP = 0x0F
 PALETTES = (
     (0x2A, 0x00, 0x30),     # 0: text; green bars
     (0x28, 0x00, 0x30),     # 1: yellow bars
-    (0x16, 0x00, 0x30),     # 2: red bars
-    (0x12, 0x21, 0x31),     # 3: the logo: three blues, dark to pale
+    (0x16, 0x00, 0x30),     # 2: red bars, and the logo's red 32
+    logo.PALETTE,           # 3: the rest of the logo: navy, cyan, white
 )
-PALETTE_TEXT, PALETTE_LOGO = 0, 3
+PALETTE_TEXT, PALETTE_RED, PALETTE_LOGO = 0, 2, 3
 BAR_BAND_PALETTES = (2, 1, 0, 0)    # per two rows of tiles, top band first
 
 # A 5 x 7 font, one row per byte, bit 4 leftmost.
@@ -152,26 +152,13 @@ def glyph(char):
     return [[(row >> (4 - x)) & 1 for x in range(5)] for row in rows]
 
 
-# A 3 x 5 font for the credit line, one row per digit, bit 2 leftmost. Only
-# the characters that line uses.
+# A 3 x 5 font, one row per digit, bit 2 leftmost, which the weather's
+# credit line starts from. The characters of the old header's credit line.
 SMALL_FONT = {
     " ": "00000", "R": "65655", "E": "74647", "T": "72222", "O": "75557",
     "B": "65656", "I": "72227", "S": "34216", "(": "12221", ")": "42224",
     "2": "61247", "0": "75557", "6": "34757",
 }
-
-
-def small_text(text, width, color):
-    """Text in the small font, centered in a strip `width` pixels wide and
-    one tile high."""
-    pixels = [[0] * width for _ in range(8)]
-    left = (width - (4 * len(text) - 1)) // 2
-    for index, char in enumerate(text):
-        for y, row in enumerate(SMALL_FONT[char]):
-            for x in range(3):
-                if int(row) >> (2 - x) & 1:
-                    pixels[1 + y][left + 4 * index + x] = color
-    return pixels
 
 
 def font_text(text, width, color):
@@ -310,6 +297,12 @@ class Screen:
                 value = self.attributes[index] & ~(3 << shift)
                 self.attributes[index] = value | (palette << shift)
 
+    def palette_at(self, row, column, palette):
+        """Give the 2 x 2 tiles a tile is in a palette."""
+        index = (row // 4) * 8 + column // 4
+        shift = ((row // 2) % 2) * 4 + ((column // 2) % 2) * 2
+        self.attributes[index] = self.attributes[index] & ~(3 << shift) | (palette << shift)
+
     def chr(self):
         data = bytearray(0x2000)
         for index, tile in self.tiles.items():
@@ -320,17 +313,17 @@ class Screen:
         return bytes(self.names) + bytes(self.attributes)
 
 
-def header(screen, subtitle):
-    """Put the header on a screen: the name in the big letters, what the
-    ROM is under it, and the credit line, in the logo's palette."""
-    column = (SCREEN_COLUMNS - 2 * len(LOGO_TEXT)) // 2
-    for index, char in enumerate(LOGO_TEXT):
-        if char != " ":
-            screen.picture(column + 2 * index, LOGO_ROW, big_letter(char))
-    screen.picture(0, SUBTITLE_ROW, font_text(subtitle, 8 * SCREEN_COLUMNS, LOGO_BLUE))
-    screen.picture(CREDIT_COLUMN, CREDIT_ROW,
-                   small_text(CREDIT_TEXT, 8 * CREDIT_TILES, LOGO_BLUE))
+def header(screen, subtitle, red_palette=PALETTE_RED):
+    """Put the header on a screen: the logo, and what the ROM is under it,
+    in the logo's palette and, for the logo's 32, `red_palette`: one whose
+    colour 1 is the red and colour 3 white."""
+    screen.picture(0, LOGO_ROW, logo.pixels(8 * SCREEN_COLUMNS))
+    screen.picture(0, SUBTITLE_ROW, font_text(subtitle, 8 * SCREEN_COLUMNS, LOGO_CYAN))
     screen.palette_rows(0, LOGO_LAST_ROW, PALETTE_LOGO)
+    for row in range(0, LOGO_LAST_ROW + 1, 2):
+        for column in range(0, SCREEN_COLUMNS, 2):
+            if logo.is_red(row, column):
+                screen.palette_at(row, column, red_palette)
 
 
 def build_screens():
@@ -497,7 +490,8 @@ def ui_include(screen):
 # The few NES colors the screen uses, as RGB.
 NES_RGB = {
     0x0F: (0, 0, 0), 0x00: (84, 84, 84), 0x10: (152, 150, 152), 0x30: (236, 238, 236),
-    0x16: (152, 34, 32), 0x28: (196, 180, 28), 0x2A: (76, 208, 32),
+    0x16: (152, 34, 32), 0x28: (196, 180, 28), 0x2A: (76, 208, 32), 0x01: (0, 30, 116),
+    0x2C: (56, 180, 204),
     0x12: (48, 50, 236), 0x21: (76, 154, 236), 0x31: (168, 204, 236),
 }
 

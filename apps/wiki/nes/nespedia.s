@@ -470,7 +470,7 @@ main_wait:
     jmp CART_STUB
 .endproc
 
-; Sprite 0 on its pixel of the credit line, and every other sprite below
+; Sprite 0 on its pixel of the name, and every other sprite below
 ; the screen.
 .proc oam_init
     ldx #0

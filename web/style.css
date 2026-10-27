@@ -17,7 +17,9 @@ body {
 main { max-width: 640px; margin: 0 auto; padding: 48px 16px 64px; }
 main.wide { max-width: 880px; }
 h1 { font: 700 40px/1.1 ui-monospace, "SF Mono", Menlo, monospace; margin: 0 0 8px; }
-h1 span { color: var(--accent); }
+/* The header's logo, four times its NES size. */
+h1 img.logo { display: block; width: 360px; max-width: 100%; height: auto;
+              margin-bottom: 16px; image-rendering: pixelated; }
 h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .08em;
      color: var(--dim); margin: 40px 0 8px; }
 h3 { font-size: 17px; margin: 0 0 4px; }

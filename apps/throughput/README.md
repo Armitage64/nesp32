@@ -149,16 +149,15 @@ A nesp32 that is plugged in late, or switched off and on between tests, is
 found again by itself. One that loses its power in the middle of a block
 to the NES leaves the console waiting for the rest of it: press Reset.
 
-The console's screen has the jukebox's header, the name in its big letters
-over what this is and the credit line, then the nesp32-to-NES test and
+The console's screen has the jukebox's header, nesp32's logo over what
+this is, then the nesp32-to-NES test and
 under it the NES-to-nesp32 test. Each half shows the trial that is
 running. This is a test on a simulated line with slow edges, partway
 through the second direction:
 
 ```text
-          N E S P 3 2
+         ((( NESP32 )))
          THROUGHPUT TEST
-        RETRO BITS (2026)
 
   TESTING
 

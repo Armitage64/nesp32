@@ -6,8 +6,8 @@ and the texts it puts on it.
     tools/gen_screen.py build --preview screen.png
 
 The tiles are the jukebox's (../jukebox/tools/gen_ui.py): its 5 x 7 font with
-each character at its ASCII code, and its header, the name in the big
-letters over the credit line, with what this ROM is between the two. The
+each character at its ASCII code, and its header, nesp32's logo with what
+this ROM is under it. The
 font has capitals only, and a report from the nesp32 is in capitals, so the
 tiles of the small letters are free: they are the pictures of the weather,
 eight of them, four tiles each, where the nesp32's rows expect them
@@ -15,8 +15,7 @@ eight of them, four tiles each, where the nesp32's rows expect them
 
 Under the header are a status line, and the middle of the screen, which is
 the form a zip code is entered in or the report, row for row as the nesp32
-lays it out. Under that, whose weather it is, in the small font of the
-header's credit line, and a foot that says what the buttons do. screen.bin
+lays it out. Under that, whose weather it is, in a 3 x 5 font, and a foot that says what the buttons do. screen.bin
 is the nametable with the header and that credit on it; screen.inc tells
 the ROM where the rest goes and holds what the ROM itself writes there.
 
@@ -61,6 +60,7 @@ CREDIT_ROW = 24
 CREDIT = "WEATHER DATA: OPEN-METEO.COM"     # in the small font
 CREDIT_TILES = 14                   # the tiles it is drawn across
 CREDIT_COLUMN = (gen_ui.SCREEN_COLUMNS - CREDIT_TILES) // 2
+CREDIT_COLOR = 2                    # the sky's light blue
 FOOT_ROW = gen_ui.HELP_ROW
 FOOT_FORM = "A : SUBMIT"
 FOOT_FORM_CART = "A : SUBMIT   SELECT : MENU"     # on the cartridge, Select is its menu again
@@ -93,10 +93,12 @@ BOX_LEFT, BOX_RIGHT = 3, 8 * (BOX_LAST - BOX_FIRST) + 4     # x of its sides, fr
 BOX_TOP, BOX_BOTTOM = 4, 8 * 2 + 2                          # y, from the row above the digits
 
 # The palettes: the font is colour 3, white, and a picture has yellow and
-# a light blue besides, which is also the box's and the small font's.
+# a light blue besides, which is also the box's and the small font's. The
+# header's logo has its own, and red for its 32.
 BACKDROP = gen_ui.BACKDROP
 PALETTE_SKY = (0x28, 0x21, 0x30)
-PALETTES = (PALETTE_SKY, PALETTE_SKY, PALETTE_SKY, gen_ui.PALETTES[gen_ui.PALETTE_LOGO])
+PALETTES = (PALETTE_SKY, PALETTE_SKY, gen_ui.PALETTES[gen_ui.PALETTE_RED],
+            gen_ui.PALETTES[gen_ui.PALETTE_LOGO])
 PALETTE_TEXT, PALETTE_CURSOR = 0, 1
 # The form's digit that Up and Down change is shown by giving its 2 x 2
 # tiles PALETTE_CURSOR, whose colour 3 (the font's) the ROM steps through
@@ -106,7 +108,7 @@ PULSE = (0x30, 0x31, 0x21, 0x12, 0x21, 0x31)
 PULSE_ADDRESS = 0x3F00 + 4 * PALETTE_CURSOR + 3
 ATTRIBUTES = gen_ui.NAMETABLE + 0x3C0
 
-# The small font's letters that the header's credit line has no use for.
+# The small font's letters that gen_ui's has not.
 SMALL_FONT = dict(gen_ui.SMALL_FONT)
 SMALL_FONT.update({"W": "55575", "A": "25755", "H": "55755", "D": "65556", ":": "02020",
                    "P": "65644", "N": "65555", "M": "57555", "-": "00700", ".": "00002",
@@ -348,7 +350,7 @@ def build_screen():
     screen.tiles[DEGREE] = gen_ui.tile_bytes(pixels(DEGREE_TILE))
     gen_ui.header(screen, SUBTITLE)
     screen.picture(CREDIT_COLUMN, CREDIT_ROW,
-                   small_text(CREDIT, 8 * CREDIT_TILES, gen_ui.LOGO_BLUE))
+                   small_text(CREDIT, 8 * CREDIT_TILES, CREDIT_COLOR))
     # The box's tiles, which the ROM paints with the form: drawn where the
     # form has them, to be given numbers, and taken off again.
     column, row = BODY_COLUMN + BOX_FIRST, BODY_ROW + FORM_DIGITS_ROW - 1

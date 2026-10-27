@@ -7,17 +7,17 @@
     screen.bin    nametable 1: the header and the search screen
     screen.inc    layout constants for nes/*.s
 
-The header is nes-jukebox's (tools/gen_ui.py there): the name in letters of
-2 x 2 tiles, three blues with a shadow, and a credit line under it in a
-3 x 5 font. The 5 x 7 font is the jukebox's too, with small letters added,
-since this screen is for reading.
+The header is the jukebox's (apps/jukebox/tools/gen_ui.py): nesp32's logo
+(nes/lib/logo.py) and the program's name under it in the 5 x 7 font. That
+font is the jukebox's too, with small letters added, since this screen is
+for reading.
 
 Tiles:
 
     $00          blank
     $01          one pixel: sprite 0, which marks where the header ends
     $02          the scroll thumb
-    $03-$1F, $80-$9F   the header's letters and credit line
+    $03-$1F, $80-$9F   the header's logo and name, and the search box
     $20-$7F      the font at its ASCII codes, in colour 3 (white), and at
                  $7F the shift key's arrow
     $A0-$FF      the font again in colour 1 (blue): a character with bit 7
@@ -25,7 +25,7 @@ Tiles:
 
 The reader shows the header from nametable 1 and the article from nametable
 0 under it, changing the scroll where sprite 0 is hit (nes/split.inc).
-Sprite 0 is one pixel in the credit line's own colour, on top of one of its
+Sprite 0 is one pixel in the name's own colour, on top of one of its
 pixels, so it cannot be seen. SPLIT_DELAY is worked out here from where
 that pixel is.
 """
@@ -38,7 +38,9 @@ import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.join(HERE, "..", "..", "..", "nes", "lib"))
 
+import logo  # noqa: E402
 from stick import COLUMNS, QUERY_MAX  # noqa: E402
 
 SCREEN_COLUMNS = 32
@@ -46,12 +48,11 @@ SCREEN_ROWS = 30
 
 # --- layout, in tiles ---------------------------------------------------------
 
-LOGO_ROW = 3
-LOGO_TEXT = "NESpedia"              # letters 2 x 2 tiles, centered
-CREDIT_ROW = 6
-CREDIT_TEXT = "RETRO BITS (2026)"   # in the small font, under the logo
-CREDIT_COLUMN, CREDIT_TILES = 11, 10
-HEADER_ROWS = 8                     # rows 0 to 7; the logo's palette covers them
+LOGO_ROW, LOGO_ROWS = logo.ROW, logo.ROWS
+TITLE_ROW = logo.TITLE_ROW          # under the logo, in the 5 x 7 font, centered
+TITLE_TEXT = "NESPEDIA"
+TITLE_TOP = 1                       # pixels down that row that its letters start
+HEADER_ROWS = 8                     # rows 0 to 7; the logo's palettes cover them
 
 TEXT_COLUMN = 2                     # the article: COLUMNS wide from here
 WINDOW_ROWS = SCREEN_ROWS - HEADER_ROWS     # 22 lines of it show under the header
@@ -95,18 +96,18 @@ BACKDROP = 0x0F
 PALETTES = (
     (0x21, 0x10, 0x30),     # 0: text white, headings and keys blue
     (0x30, 0x10, 0x30),     # 1: the key under the cursor; its colour 1 pulses
-    (0x21, 0x10, 0x30),
-    (0x12, 0x21, 0x31),     # 3: the logo: three blues, dark to pale
+    (0x16, 0x00, 0x30),     # 2: the logo's 32, red and white
+    logo.PALETTE,           # 3: the rest of the logo, and the name
 )
-PALETTE_TEXT, PALETTE_CURSOR, PALETTE_LOGO = 0, 1, 3
+PALETTE_TEXT, PALETTE_CURSOR, PALETTE_RED, PALETTE_LOGO = 0, 1, 2, 3
 # The cursor's key is shown by giving its 2 x 2 tiles PALETTE_CURSOR, whose
-# colour 1 (the keys' colour) the ROM steps through these, white to the
-# logo's blues and back. Every key has such a square to itself.
+# colour 1 (the keys' colour) the ROM steps through these, white to
+# blues and back. Every key has such a square to itself.
 PULSE = (0x30, 0x31, 0x21, 0x12, 0x21, 0x31)
 PULSE_ADDRESS = 0x3F00 + 4 * PALETTE_CURSOR + 1
 ATTRIBUTES = 0x27C0                 # nametable 1's
-SPRITE_PALETTE = (0x21, 0x10, 0x30)     # colour 1 is the credit line's blue
-CREDIT_COLOR = 2                    # of the logo's palette: its middle blue
+TITLE_COLOR = logo.CYAN             # of the logo's palette
+SPRITE_PALETTE = (logo.PALETTE[TITLE_COLOR - 1], 0x10, 0x30)    # colour 1 is the name's
 
 # A 5 x 7 font, one row per byte, bit 4 leftmost.
 FONT = {
@@ -167,28 +168,6 @@ def glyph(char):
     return [[(row >> (4 - x)) & 1 for x in range(5)] for row in rows]
 
 
-# A 3 x 5 font for the credit line, one row per digit, bit 2 leftmost. Only
-# the characters that line uses.
-SMALL_FONT = {
-    " ": "00000", "R": "65655", "E": "74647", "T": "72222", "O": "75557",
-    "B": "65656", "I": "72227", "S": "34216", "(": "12221", ")": "42224",
-    "2": "61247", "0": "75557", "6": "34757",
-}
-
-
-def small_text(text, width, color):
-    """Text in the small font, centered in a strip `width` pixels wide and
-    one tile high."""
-    pixels = [[0] * width for _ in range(8)]
-    left = (width - (4 * len(text) - 1)) // 2
-    for index, char in enumerate(text):
-        for y, row in enumerate(SMALL_FONT[char]):
-            for x in range(3):
-                if int(row) >> (2 - x) & 1:
-                    pixels[1 + y][left + 4 * index + x] = color
-    return pixels
-
-
 def empty_tile():
     return [[0] * 8 for _ in range(8)]
 
@@ -214,25 +193,6 @@ def thumb_tile():
         for x in range(2, 6):
             tile[y][x] = 3 if 0 < y < 7 else 2
     return tile
-
-
-def big_letter(char):
-    """A letter at twice the size, 16 x 16 pixels: pale blue over a deeper
-    one, with a dark blue shadow below and to the right."""
-    pixels = [[0] * 16 for _ in range(16)]
-    lit = set()
-    for y, row in enumerate(glyph(char)):
-        for x, on in enumerate(row):
-            if on:
-                for dy in (0, 1):
-                    for dx in (0, 1):
-                        lit.add((3 + 2 * x + dx, 1 + 2 * y + dy))
-    for x, y in lit:
-        if (x + 1, y + 1) not in lit and x + 1 < 16 and y + 1 < 16:
-            pixels[y + 1][x + 1] = 1
-    for x, y in lit:
-        pixels[y][x] = 3 if y < 8 else 2
-    return pixels
 
 
 def cut_tiles(pixels):
@@ -300,6 +260,20 @@ class Screen:
                 value = self.attributes[index] & ~(3 << shift)
                 self.attributes[index] = value | (palette << shift)
 
+    def palette_at(self, row, column, palette):
+        """Give the 2 x 2 tiles a tile is in a palette."""
+        index, shift = attribute_cell(column, row)
+        self.attributes[index] = self.attributes[index] & ~(3 << shift) | (palette << shift)
+
+    def header(self):
+        """Give the header its palettes: the logo's, and the red one for
+        its 32."""
+        self.palette_rows(0, HEADER_ROWS - 1, PALETTE_LOGO)
+        for row in range(0, HEADER_ROWS, 2):
+            for column in range(0, SCREEN_COLUMNS, 2):
+                if logo.is_red(row, column):
+                    self.palette_at(row, column, PALETTE_RED)
+
     def chr(self):
         data = bytearray(0x2000)
         for index, tile in self.tiles.items():
@@ -310,8 +284,17 @@ class Screen:
         return bytes(self.names) + bytes(self.attributes)
 
 
-def credit_pixels():
-    return small_text(CREDIT_TEXT, 8 * CREDIT_TILES, CREDIT_COLOR)
+def title_pixels():
+    """The name in the 5 x 7 font, centered to the pixel in a strip the
+    screen's width and one tile high."""
+    pixels = [[0] * (8 * SCREEN_COLUMNS) for _ in range(8)]
+    left = (8 * SCREEN_COLUMNS - (8 * len(TITLE_TEXT) - 3)) // 2
+    for index, char in enumerate(TITLE_TEXT):
+        for y, row in enumerate(glyph(char)):
+            for x, on in enumerate(row):
+                if on:
+                    pixels[TITLE_TOP + y][left + 8 * index + x] = TITLE_COLOR
+    return pixels
 
 
 def key_column(index):
@@ -339,11 +322,9 @@ def box_pixels():
 def build_screen():
     """The search screen as it is at power-on."""
     screen = Screen()
-    column = (SCREEN_COLUMNS - 2 * len(LOGO_TEXT)) // 2
-    for index, char in enumerate(LOGO_TEXT):
-        screen.picture(column + 2 * index, LOGO_ROW, big_letter(char))
-    screen.picture(CREDIT_COLUMN, CREDIT_ROW, credit_pixels())
-    screen.palette_rows(0, HEADER_ROWS - 1, PALETTE_LOGO)
+    screen.picture(0, LOGO_ROW, logo.pixels(8 * SCREEN_COLUMNS))
+    screen.picture(0, TITLE_ROW, title_pixels())
+    screen.header()
     screen.text(FIELD_COLUMN, PROMPT_ROW, PROMPT_TEXT)
     screen.picture(0, FIELD_ROW - 1, box_pixels())
     screen.text(FIELD_COLUMN, FIELD_ROW, field_text(DEFAULT_QUERY))
@@ -368,12 +349,12 @@ SPLIT_FIXED = 34                    # split.inc: cycles from the look to the las
 
 
 def sprite0_position():
-    """(x, y) of the pixel sprite 0 covers: the leftmost pixel of the credit
-    line's lowest row."""
-    pixels = credit_pixels()
+    """(x, y) of the pixel sprite 0 covers: the leftmost pixel of the
+    name's lowest row."""
+    pixels = title_pixels()
     y = max(row for row in range(8) if any(pixels[row]))
     x = min(column for column in range(len(pixels[y])) if pixels[y][column])
-    return 8 * CREDIT_COLUMN + x, 8 * CREDIT_ROW + y
+    return x, 8 * TITLE_ROW + y
 
 
 def split_delay():
@@ -513,6 +494,7 @@ def include():
 NES_RGB = {
     0x0F: (0, 0, 0), 0x00: (84, 84, 84), 0x10: (152, 150, 152), 0x30: (236, 238, 236),
     0x12: (48, 50, 236), 0x21: (76, 154, 236), 0x31: (168, 204, 236),
+    0x01: (0, 30, 116), 0x2C: (56, 180, 204), 0x16: (152, 34, 32),
 }
 
 
@@ -539,7 +521,7 @@ def reader_nametable(screen, lines):
     other = Screen()
     other.tiles = screen.tiles
     other.names[:HEADER_ROWS * SCREEN_COLUMNS] = screen.names[:HEADER_ROWS * SCREEN_COLUMNS]
-    other.palette_rows(0, HEADER_ROWS - 1, PALETTE_LOGO)
+    other.header()
     for row, line in enumerate(lines[:WINDOW_ROWS]):
         text, heading = line if isinstance(line, tuple) else (line, False)
         other.text(TEXT_COLUMN, HEADER_ROWS + row, text, heading)

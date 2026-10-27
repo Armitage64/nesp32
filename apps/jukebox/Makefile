@@ -43,7 +43,7 @@ $(BUILD)/song.inc: $(BUILD)/song.bin
 # depend on each of them, not on one that stands for all.
 UI := $(BUILD)/ui_data.inc $(BUILD)/chr.bin $(BUILD)/screen.bin $(BUILD)/screen_standalone.bin
 
-$(BUILD)/ui.stamp: tools/gen_ui.py | $(BUILD)
+$(BUILD)/ui.stamp: tools/gen_ui.py $(NESP32)/nes/lib/logo.py | $(BUILD)
 	$(PYTHON) tools/gen_ui.py $(BUILD)
 	touch $@
 

@@ -103,10 +103,10 @@ class Program:
 # In the menu's order.
 PROGRAMS = (
     Program("jukebox", "Jukebox", 4, 2),
+    Program("weather", "Weather", 12, 8),
+    Program("npr", "NESradio", 10, 7),
     Program("wiki", "NESpedia", 2, 1),
     Program("radar", "NES Radar", 8, 5, pages=2, mapper=MAPPER_MMC1),
-    Program("npr", "NESradio", 10, 7),
-    Program("weather", "Weather", 12, 8),
     Program("bluesky", "Bluesky", 14, 9, banks=1),
     Program("throughput", "Throughput Test", 6, 3),
     Program("setup", "Setup", 0, 0),
@@ -182,12 +182,9 @@ def build_screen():
 
 
 def attributes():
-    """The logo's palette over the header's rows, the text's under them."""
-    if layout.HEADER_ROWS % 4:
-        raise ValueError("the header must end where a row of attributes does")
-    rows = layout.HEADER_ROWS // 4
-    logo = layout.PALETTE_LOGO * 0x55
-    return bytes([logo] * (8 * rows) + [0] * (64 - 8 * rows))
+    """The logo's palettes over the header's rows, the text's under them."""
+    header = layout.header_attributes()
+    return header + bytes(64 - len(header))
 
 
 def arrow(index=0):

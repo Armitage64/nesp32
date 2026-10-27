@@ -6,8 +6,8 @@ the status line's texts, and its stations.
     tools/gen_screen.py build --preview screen.png
 
 The tiles are the jukebox's (../jukebox/tools/gen_ui.py): its 5 x 7 font with
-each character at its ASCII code, its palettes, and its header, the name in
-the big letters over the credit line, with what this ROM is between the two.
+each character at its ASCII code, its palettes, and its header, nesp32's logo
+with what this ROM is under it.
 The font has capitals only.
 
 Under the header are a status line that the ROM writes; a radio's dial, an
@@ -141,11 +141,13 @@ NEEDLE_BOTTOM = 8 * (DIAL_ROW + 3) + 1
 NEEDLE_NONE = 0xFF                  # the ROM's needle_x for a station with no frequency
 DIAL_COLOR, NEEDLE_COLOR = 2, 1     # in palette 1, and the sprites' 0
 
-# Palettes: the jukebox's text and logo, the dial's and the big letters'
-# (red, orange and cream), and the hint's grey; and the needle's red.
-PALETTES = (gen_ui.PALETTES[gen_ui.PALETTE_TEXT], (0x16, 0x27, 0x38), (0x00, 0x00, 0x10),
+# Palettes: the text's, which is the jukebox's red bars' for the logo's red
+# 32 (the text is colour 3, white); the dial's and the big letters' (red,
+# orange and cream); the hint's grey; and the jukebox's logo's. And the
+# needle's red.
+PALETTES = (gen_ui.PALETTES[gen_ui.PALETTE_RED], (0x16, 0x27, 0x38), (0x00, 0x00, 0x10),
             gen_ui.PALETTES[gen_ui.PALETTE_LOGO])
-PALETTE_DIAL, PALETTE_HINT = 1, 2
+PALETTE_TEXT, PALETTE_DIAL, PALETTE_HINT = 0, 1, 2
 SPRITE_PALETTES = ((0x16, 0x16, 0x16), (0x16, 0x16, 0x16), (0x16, 0x16, 0x16),
                    (0x16, 0x16, 0x16))
 # For the preview: the colors the jukebox's has not.
@@ -255,7 +257,7 @@ def big_rows(screen, letters):
 def build_screen():
     screen = gen_ui.Screen()
     screen.names[:] = b" " * len(screen.names)  # the ROM writes text over text
-    gen_ui.header(screen, SUBTITLE)
+    gen_ui.header(screen, SUBTITLE, red_palette=PALETTE_TEXT)
     screen.icons = gen_ui.icon_tiles(screen, FOOT_COLUMN, gen_ui.HELP_ROW)
     draw_dial(screen)
     screen.lowercase = {char: add_tile(screen, lowercase_tile(char)) for char in LOWERCASE}

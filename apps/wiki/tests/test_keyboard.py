@@ -112,18 +112,24 @@ def test_power_on_shows_the_default_search(console, build):
     assert c.nametable(0) == bytes(1024)
 
 
-def test_the_logo_and_the_credit_are_the_headers(console):
+def test_the_logo_and_the_name_are_the_header(console):
     c = console()
     c.run(3)
     header = c.nametable(1)[:32 * gen_screen.HEADER_ROWS]
     rows = [header[32 * row:32 * row + 32] for row in range(gen_screen.HEADER_ROWS)]
     used = [row for row, tiles in enumerate(rows) if any(tiles)]
-    assert used == [gen_screen.LOGO_ROW, gen_screen.LOGO_ROW + 1, gen_screen.CREDIT_ROW]
-    logo = rows[gen_screen.LOGO_ROW]
-    assert logo[:8] == bytes(8) and logo[24:] == bytes(8) and all(logo[8:24])    # 8 letters, centered
-    # The header's rows take the logo's palette; the rest take the text's.
+    logo_rows = list(range(gen_screen.LOGO_ROW, gen_screen.LOGO_ROW + gen_screen.LOGO_ROWS))
+    assert used == logo_rows + [gen_screen.TITLE_ROW]
+    assert sum(map(bool, rows[gen_screen.LOGO_ROW + 2])) >= 11     # the port and the word
+    name = rows[gen_screen.TITLE_ROW]
+    assert name[:12] == bytes(12) and name[20:] == bytes(12) and all(name[12:20])    # centered
+    # The header's rows take the logo's palettes; the rest take the text's.
+    screen = gen_screen.Screen()
+    screen.header()
     attributes = c.nametable(1)[960:]
-    assert attributes[:16] == bytes([0xFF] * 16) and attributes[16:] == bytes(48)
+    assert attributes[:16] == screen.attributes[:16] and attributes[16:] == bytes(48)
+    assert {a >> s & 3 for a in attributes[:16] for s in (0, 2, 4, 6)} == {
+        gen_screen.PALETTE_RED, gen_screen.PALETTE_LOGO}
 
 
 def test_the_cursors_key_pulses_through_white_and_the_blues(console):

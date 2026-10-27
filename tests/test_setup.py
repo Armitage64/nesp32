@@ -58,20 +58,24 @@ def test_the_header_is_the_name_and_what_this_is(console):
     header = layout.build_screen()
     count = 32 * layout.HEADER_ROWS
     assert bytes(c.vram[0x2000:0x2000 + count]) == bytes(header.names[:count])
-    # What this is, right under the name: a picture, set to the pixel, in
-    # the credit line's blue and not the text's white.
-    assert layout.TITLE_TEXT == "SETUP" and layout.TITLE_ROW == layout.LOGO_ROW + 2
-    title = [header.tiles[tile] for row in range(layout.TITLE_ROW, layout.CREDIT_ROW)
-             for tile in header.names[32 * row:32 * row + 32]]
+    # The logo's two palettes over the header, the text's under it.
+    attributes = layout.header_attributes()
+    assert bytes(c.vram[0x23C0:0x2400]) == attributes + bytes(64 - len(attributes))
+    assert {layout.palette_of(row, 0) for row in range(layout.HEADER_ROWS)} == {
+        layout.PALETTE_LOGO}
+    assert layout.palette_of(layout.LOGO_ROW, 31) == layout.PALETTE_RED
+    # What this is, under the name: a picture, set to the pixel, in the
+    # logo's cyan and not the text's white.
+    assert layout.TITLE_TEXT == "SETUP"
+    assert layout.TITLE_ROW == layout.LOGO_ROW + layout.LOGO_ROWS + 1
+    title = [header.tiles[tile] for tile in header.names[32 * layout.TITLE_ROW:][:32]]
     assert any(any(tile) for tile in title) and not any(any(tile[:8]) for tile in title)
-    assert layout.CREDIT_ROW == layout.TITLE_ROW + layout.TITLE_ROWS
-    # The credit line is a picture, in a font smaller than a tile.
-    credit = c.text(layout.CREDIT_ROW, layout.CREDIT_COLUMN, layout.CREDIT_TILES)
-    assert credit.count("^") >= 8 and c.line(layout.CREDIT_ROW) == credit.strip()
-    # The name is 2 x 2 tiles a letter, of tiles that are not characters.
-    column = (32 - 2 * len(layout.LOGO_TEXT)) // 2
-    for row in (layout.LOGO_ROW, layout.LOGO_ROW + 1):
-        assert c.text(row, column, 2 * len(layout.LOGO_TEXT)).count("^") >= len(layout.LOGO_TEXT)
+    assert {layout.palette_of(layout.TITLE_ROW, column) for column in range(32)} == {
+        layout.PALETTE_LOGO}
+    # The logo is a picture, of tiles that are not characters.
+    for row in range(layout.LOGO_ROW, layout.LOGO_ROW + layout.LOGO_ROWS):
+        assert c.text(row, 0, 32).strip(" ^") == "" and "^" in c.text(row, 0, 32)
+    assert c.text(layout.LOGO_ROW + 2, 0, 32).count("^") >= 11     # the port and the word
 
 
 def test_a_stick_is_greeted_and_shown(setup):

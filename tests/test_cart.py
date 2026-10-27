@@ -136,8 +136,8 @@ def test_power_on_is_the_menu(cart):
     c.run(4)
     assert at_menu(c)
     assert c.mapper[:2] == [0x0E, 2 * cart_layout.MENU_PAGE]
-    for index, name in enumerate(("Jukebox", "NESpedia", "NES Radar",
-                                  "NESradio", "Weather", "Bluesky",
+    for index, name in enumerate(("Jukebox", "Weather", "NESradio",
+                                  "NESpedia", "NES Radar", "Bluesky",
                                   "Throughput Test", "Setup")):
         assert c.line(cart_layout.LIST_ROW + cart_layout.LIST_STEP * index) == name
     assert c.line(layout.HELP_ROW) == ""         # A is the button: no help says so
@@ -148,7 +148,7 @@ def test_power_on_is_the_menu(cart):
 def test_the_header_says_main_menu(cart):
     c = cart()
     c.run(4)
-    title = layout.cut_tiles(layout.font_text("MAIN MENU", 256, layout.CREDIT_COLOR))
+    title = layout.cut_tiles(layout.font_text("MAIN MENU", 256, layout.TITLE_COLOR))
     for dy, tiles in enumerate(title):
         for column, tile in enumerate(tiles):
             number = c.tiles(layout.TITLE_ROW + dy, column, 1)[0]

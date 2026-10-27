@@ -133,8 +133,9 @@ def test_the_screen_is_the_one_the_generator_laid_out(rom, link_rom):
         assert got == expected
         machine.run(30)                             # the link ROM's foot is its own to write
         assert help_text in machine.screen_text(0, gen_ui.HELP_ROW, 32)
-        credit = machine.nametable()[32 * gen_ui.CREDIT_ROW:32 * gen_ui.CREDIT_ROW + 32]
-        assert sum(tile >= gen_ui.TILE_LOGO for tile in credit) >= 8   # the small print
+        logo = [sum(tile >= gen_ui.TILE_LOGO for tile in machine.nametable()[32 * row:][:32])
+                for row in range(gen_ui.LOGO_ROW, gen_ui.LOGO_ROW + gen_ui.LOGO_ROWS)]
+        assert all(logo) and logo[2] >= 11         # the picture: the port and the word
         palette = bytes(machine.vram[0x3F00:0x3F10])
         assert palette[0] == gen_ui.BACKDROP
         assert [tuple(palette[4 * n + 1:4 * n + 4]) for n in range(4)] == list(gen_ui.PALETTES)

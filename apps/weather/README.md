@@ -108,8 +108,7 @@ screen the nesp32 puts them.
 - The weather: [Open-Meteo](https://open-meteo.com)
   (`api.open-meteo.com/v1/forecast`), whose data is under
   [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); both views
-  say `WEATHER DATA: OPEN-METEO.COM`, in the small font of the header's
-  credit line. **Its free service is for
+  say `WEATHER DATA: OPEN-METEO.COM`, in a 3 x 5 font of its own. **Its free service is for
   non-commercial use**, up to 10000 requests a day; a nesp32 makes one
   when a zip code is chosen and one every 15 minutes while its report is
   on a screen.
