@@ -153,7 +153,7 @@ def glyph(char):
 
 
 # A 3 x 5 font, one row per digit, bit 2 leftmost, which the weather's
-# credit line starts from. The characters of the one that was the header's.
+# credit line starts from. The characters of the old header's credit line.
 SMALL_FONT = {
     " ": "00000", "R": "65655", "E": "74647", "T": "72222", "O": "75557",
     "B": "65656", "I": "72227", "S": "34216", "(": "12221", ")": "42224",

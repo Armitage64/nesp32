@@ -6,8 +6,8 @@ and the texts it puts on it.
     tools/gen_screen.py build --preview screen.png
 
 The tiles are the jukebox's (../jukebox/tools/gen_ui.py): its 5 x 7 font with
-each character at its ASCII code, and its header, the name in the big
-letters over the credit line, with what this ROM is between the two. The
+each character at its ASCII code, and its header, nesp32's logo with what
+this ROM is under it. The
 font has capitals only, and a report from the nesp32 is in capitals, so the
 tiles of the small letters are free: they are the pictures of the weather,
 eight of them, four tiles each, where the nesp32's rows expect them
@@ -15,8 +15,7 @@ eight of them, four tiles each, where the nesp32's rows expect them
 
 Under the header are a status line, and the middle of the screen, which is
 the form a zip code is entered in or the report, row for row as the nesp32
-lays it out. Under that, whose weather it is, in the small font of the
-header's credit line, and a foot that says what the buttons do. screen.bin
+lays it out. Under that, whose weather it is, in a 3 x 5 font, and a foot that says what the buttons do. screen.bin
 is the nametable with the header and that credit on it; screen.inc tells
 the ROM where the rest goes and holds what the ROM itself writes there.
 

@@ -6,8 +6,8 @@ the status line's texts, and its stations.
     tools/gen_screen.py build --preview screen.png
 
 The tiles are the jukebox's (../jukebox/tools/gen_ui.py): its 5 x 7 font with
-each character at its ASCII code, its palettes, and its header, the name in
-the big letters over the credit line, with what this ROM is between the two.
+each character at its ASCII code, its palettes, and its header, nesp32's logo
+with what this ROM is under it.
 The font has capitals only.
 
 Under the header are a status line that the ROM writes; a radio's dial, an
