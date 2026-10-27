@@ -26,9 +26,12 @@
  * nesp32's other settings.
  *
  * Keys are kept, as characters, until KBD takes them: printable ASCII with
- * Shift and Caps Lock (a US layout), and NESP_KEY_*. A key held down is one
- * key: there is no repeat. What is typed goes to the log only at the debug
- * level, as it may be a password.
+ * Shift and Caps Lock (a US layout), and NESP_KEY_*. A key held down is
+ * typed again after REPEAT_DELAY_MS, and every REPEAT_EVERY_MS from then
+ * on, as a computer does: the keyboard says only which keys are down. The
+ * last key to go down is the one repeated, and Enter and Escape never are,
+ * since each is an order to a ROM. What is typed goes to the log only at
+ * the debug level, as it may be a password.
  */
 #include "keyboard.h"
 
@@ -63,6 +66,8 @@
 #define TASK_STACK 6144             /* opening a keyboard reads its services in this task */
 #define HID_STACK 4096
 #define TASK_PRIORITY 2
+#define REPEAT_DELAY_MS 500
+#define REPEAT_EVERY_MS 40
 
 /* HID's usages (the USB HID usage tables, the keyboard page). */
 #define USAGE_A 0x04
@@ -125,6 +130,8 @@ static uint8_t held_first;
 static uint8_t held_count;
 static bool opening;                /* run() waits for a connection */
 static bool cancelled;              /* keyboard_poll has called this wait off */
+static uint8_t repeating;           /* the usage of the key held down that repeats, or 0 */
+static uint8_t repeat_modifiers;    /* and the modifiers down with it now */
 
 /* The keyboard's task's own. */
 static TaskHandle_t task;
@@ -135,6 +142,7 @@ static seen_t heard[NESP_KBD_FOUND_MAX];
 static uint8_t heard_count;
 static uint8_t down[6];             /* the keys of the last report */
 static bool caps;
+static esp_timer_handle_t repeater; /* the next repeat */
 
 void ble_store_config_init(void);
 
@@ -176,11 +184,56 @@ static void pressed(uint8_t usage, uint8_t modifiers)
     keep((uint8_t)(shift ? SHIFTED[usage - USAGE_A] : plain));
 }
 
+/* Whether a key held down is typed again: one that types something, and
+ * is not Enter or Escape. */
+static bool repeats(uint8_t usage, uint8_t modifiers)
+{
+    if ((modifiers & CHORD) != 0) {
+        return false;
+    }
+    if (usage >= USAGE_RIGHT && usage <= USAGE_UP) {
+        return true;
+    }
+    if (usage < USAGE_A || usage > USAGE_SLASH) {
+        return false;
+    }
+    char plain = PLAIN[usage - USAGE_A];
+    return plain != '\n' && plain != '\x1b';
+}
+
+/* The key held down is typed again, if it still is, and again after
+ * REPEAT_EVERY_MS. In esp_timer's task. */
+static void repeat(void *arg)
+{
+    (void)arg;
+    portENTER_CRITICAL(&lock);
+    uint8_t usage = repeating;
+    uint8_t modifiers = repeat_modifiers;
+    portEXIT_CRITICAL(&lock);
+    if (usage != 0) {
+        pressed(usage, modifiers);
+        esp_timer_start_once(repeater, (uint64_t)REPEAT_EVERY_MS * 1000);
+    }
+}
+
+/* This key is the one that repeats now, or none (0). */
+static void repeat_from(uint8_t usage, uint8_t modifiers)
+{
+    esp_timer_stop(repeater);       /* an error if it was not waiting, which is nothing */
+    portENTER_CRITICAL(&lock);
+    repeating = usage;
+    repeat_modifiers = modifiers;
+    portEXIT_CRITICAL(&lock);
+    if (usage != 0) {
+        esp_timer_start_once(repeater, (uint64_t)REPEAT_DELAY_MS * 1000);
+    }
+}
+
 /* A keyboard's input report: its modifiers, and the keys down. The boot
  * report has a byte that is nothing between the two, and is 8 bytes; a
  * report of the keyboard's own may leave the byte out (an MX Keys S's is
  * 7). A key is typed when it is in a report and was not in the one
- * before. */
+ * before, and the last of those that repeats is the key that does. */
 static void report(const uint8_t *data, size_t length)
 {
     size_t first = length >= 8 ? 2 : 1;
@@ -195,13 +248,30 @@ static void report(const uint8_t *data, size_t length)
             return;
         }
     }
+    uint8_t newest = 0;
     for (size_t at = 0; at < count; at++) {
         if (keys[at] != 0 && memchr(down, keys[at], sizeof(down)) == NULL) {
             pressed(keys[at], modifiers);
+            newest = keys[at];
         }
     }
     memset(down, 0, sizeof(down));
     memcpy(down, keys, count);
+
+    portENTER_CRITICAL(&lock);
+    uint8_t held_down = repeating;
+    portEXIT_CRITICAL(&lock);
+    if (newest != 0) {
+        repeat_from(repeats(newest, modifiers) ? newest : 0, modifiers);
+    } else if (held_down != 0 && memchr(keys, held_down, count) == NULL) {
+        repeat_from(0, 0);          /* let go of */
+    } else if (held_down != 0 && !repeats(held_down, modifiers)) {
+        repeat_from(0, 0);          /* Ctrl or the like went down with it */
+    } else {
+        portENTER_CRITICAL(&lock);
+        repeat_modifiers = modifiers;   /* Shift, say, let go of or pressed */
+        portEXIT_CRITICAL(&lock);
+    }
 }
 
 /* --- Bluetooth's events ---------------------------------------------------------- */
@@ -215,6 +285,7 @@ static void hid_event(void *arg, esp_event_base_t base, int32_t id, void *data)
     case ESP_HIDH_OPEN_EVENT:
         if (param->open.status == ESP_OK) {
             memset(down, 0, sizeof(down));
+            repeat_from(0, 0);
             xEventGroupSetBits(happened, OPENED);
         }
         break;
@@ -225,6 +296,7 @@ static void hid_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         break;
     case ESP_HIDH_CLOSE_EVENT:
         ESP_LOGI(TAG, "disconnected (reason %d)", param->close.reason);
+        repeat_from(0, 0);
         xEventGroupSetBits(happened, CLOSED);
         break;
     default:
@@ -409,6 +481,7 @@ static void disconnect(void)
 static void stop(void)
 {
     disconnect();
+    repeat_from(0, 0);
     ble_gap_event_listener_unregister(&listener);
     esp_hidh_deinit();
     nimble_port_stop();
@@ -583,6 +656,8 @@ static void run(void *arg)
 void keyboard_start(void)
 {
     happened = xEventGroupCreate();
+    esp_timer_create_args_t repeat_timer = {.callback = repeat, .name = "key repeat"};
+    ESP_ERROR_CHECK(esp_timer_create(&repeat_timer, &repeater));
     nesp_keyboard_t kept;
     kept_name(&kept);
     portENTER_CRITICAL(&lock);
