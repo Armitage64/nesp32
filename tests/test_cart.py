@@ -136,8 +136,8 @@ def test_power_on_is_the_menu(cart):
     c.run(4)
     assert at_menu(c)
     assert c.mapper[:2] == [0x0E, 2 * cart_layout.MENU_PAGE]
-    for index, name in enumerate(("Jukebox", "NESpedia", "NES Radar",
-                                  "NESradio", "Weather", "Bluesky",
+    for index, name in enumerate(("Jukebox", "Weather", "NESradio",
+                                  "NESpedia", "NES Radar", "Bluesky",
                                   "Throughput Test", "Setup")):
         assert c.line(cart_layout.LIST_ROW + cart_layout.LIST_STEP * index) == name
     assert c.line(layout.HELP_ROW) == ""         # A is the button: no help says so
