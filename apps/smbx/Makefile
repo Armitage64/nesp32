@@ -3,6 +3,9 @@
 #   make            build/smbx_net.nes, for two consoles and two nesp32s
 #   make verify     check baserom.nes against the hack's SHA-512
 #   make test       the simulation's tests (needs requirements-dev.txt)
+#   make hud        build/smbx_net_hud.nes, the same with a readout of the
+#                   session's input delay, stalls and lag frames, for
+#                   testing on hardware
 #   make bps        dist/smbx_net.bps and .ips again, the netplay ROM as a
 #                   patch to the hack, which players apply to their own
 #   make clean
@@ -25,6 +28,7 @@ export NESP32 NESP_BUILD
 NESP := $(NESP_BUILD)/nesp.stamp
 NESP_LIB := $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/gen_link.py
 NET_ROM := $(BUILD)/smbx_net.nes
+HUD_ROM := $(BUILD)/smbx_net_hud.nes
 # The netplay ROM as a patch to the hack, for players who build nothing:
 # kept in the repository, as it holds none of the game
 # (tools/gen_patch.py refuses one that would).
@@ -38,9 +42,11 @@ CHECKED := $(BUILD)/baserom.nes
 NET_SOURCES := $(wildcard net/*.inc net/*.asm) $(BUILD)/link.inc $(NESP_LIB) $(NESP)
 NET_INCLUDES := -I net -I $(BUILD) -I $(NESP_BUILD) -I $(NESP32)/nes/lib
 
-.PHONY: all verify test bps clean FORCE
+.PHONY: all verify test bps hud clean FORCE
 
-all: $(NET_ROM)
+all: $(NET_ROM) $(HUD_ROM)
+
+hud: $(HUD_ROM)
 
 $(BUILD):
 	mkdir -p $@
@@ -75,6 +81,12 @@ $(BUILD)/smbx_net.o: $(NET_SOURCES) $(CHECKED)
 $(NET_ROM): $(BUILD)/smbx_net.o net/smbx_net.cfg
 	ld65 -C net/smbx_net.cfg --dbgfile $(BUILD)/smbx_net.dbg -m $(BUILD)/smbx_net.map \
 		-o $@ $(BUILD)/smbx_net.o
+
+$(BUILD)/smbx_net_hud.o: $(NET_SOURCES) $(CHECKED)
+	ca65 --cpu 6502 -D NET_HUD --debug-info --bin-include-dir $(BUILD) $(NET_INCLUDES) -o $@ net/rom.asm
+
+$(HUD_ROM): $(BUILD)/smbx_net_hud.o net/smbx_net.cfg
+	ld65 -C net/smbx_net.cfg --dbgfile $(BUILD)/smbx_net_hud.dbg -o $@ $(BUILD)/smbx_net_hud.o
 
 test:
 	$(PYTHON) -m pytest -q tests

@@ -9,6 +9,14 @@ net_nmi:
     pha
     lda net_menu
     bne @menu
+.ifdef NET_HUD
+    lda net_mode                ; every NMI of a session, lags too
+    beq :+
+    inc net_hud_nmis
+    bne :+
+    inc net_hud_nmis+1
+:
+.endif
     pla
     jmp GAME_NMI
 

@@ -29,6 +29,7 @@ make            # build/smbx_net.nes
 make verify     # baserom.nes is the hack this is for
 make test       # the simulation's tests (needs requirements-dev.txt)
 make bps        # dist/'s patches again, for players ("The patch", below)
+make hud        # build/smbx_net_hud.nes, with a readout of the lag ("The HUD build")
 ```
 
 Needs cc65 (`ca65`, `ld65`), Python 3, and a C compiler: the tests run the
@@ -191,6 +192,30 @@ than 26680, which the exchange's 3100 make overrun: the game
 stands still a frame for them in a session, on both consoles. In 1-1 the
 busiest frame was 20312, and none overruns. The hack's own frames that
 overrun on one console do so in a session too.
+
+## The HUD build
+
+`make hud` builds `smbx_net_hud.nes`, the netplay ROM with a readout of a
+session's lag on the line above the status bar, for testing on hardware:
+
+```text
+D2 S001F L0003
+```
+
+- **D**, the input delay this console keeps, in ticks: how long a press
+  takes to reach the game. The nesp32 picks it from the network's time.
+- **S**, the NMIs that stalled for the other console's buttons: frames the
+  picture stood still for the network.
+- **L**, the game's own frames that overran: frames it stood still for
+  the CPU, the exchange's time included.
+
+S and L are hexadecimal, since the game's font has A to F after 9, and
+count from the session's beginning; L begins at a few, from the screen of
+lives and the level's first drawing, which run long in the hack too. It is
+drawn in each NMI of a session but a lag's, in the vblank before the
+exchange, which it makes some 300 cycles later; none of it is the game's
+memory, and the game under it is the same (`tests/test_hud.py`). The
+release ROM and `dist/` have none of it (`NET_HUD`).
 
 ## The simulation
 

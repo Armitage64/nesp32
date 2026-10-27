@@ -111,6 +111,13 @@ NET_RAM_END     = nesp_tx + NESP_TX_MAX + 7
 .assert net_lent + LENT_ZP <= nesp_seq, error
 net_drawn       = NET_RAM + $F0 ; 3: the scratch the NMI's last drawing left (net_nmi_draw)
 .assert NET_RAM_END <= net_drawn, error
+; The HUD build's counts since the session began (NET_HUD, net/net.asm),
+; each two bytes, the low first: NMIs, ticks, and NMIs that stalled.
+net_hud_nmis    = NET_RAM + $F3
+net_hud_ticks   = NET_RAM + $F5
+net_hud_stalls  = NET_RAM + $F7
+net_hud_temp    = NET_RAM + $F9 ; 2
+.assert net_hud_temp + 2 <= MENU_RAM, error
 
 ; The menu's memory, from here on (net/menu.inc).
 MENU_RAM        = NET_RAM + $100

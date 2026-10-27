@@ -134,6 +134,13 @@ net_reset:
     sta net_late
     sta net_tune
     sta net_silent
+.ifdef NET_HUD
+    ldx #net_hud_temp - net_hud_nmis - 1
+:
+    sta net_hud_nmis,x
+    dex
+    bpl :-
+.endif
     lda #$01
     sta net_mode                ; last, when the rest is in place
 
@@ -172,6 +179,9 @@ net_drop:
 net_frame:
     php
     sei
+.ifdef NET_HUD
+    jsr net_hud
+.endif
     jsr net_session
     plp
     rts
@@ -252,6 +262,12 @@ net_session:
     lda net_remote,x
     sta net_pads,y
     inc net_tick
+.ifdef NET_HUD
+    inc net_hud_ticks
+    bne :+
+    inc net_hud_ticks+1
+:
+.endif
     lda #$00
     sta net_silent
     sta net_stalled
@@ -268,6 +284,12 @@ net_late_stall:
     inc net_late
 
 net_stall:
+.ifdef NET_HUD
+    inc net_hud_stalls
+    bne :+
+    inc net_hud_stalls+1
+:
+.endif
     lda #$01
     sta net_stalled
     inc net_silent
@@ -531,5 +553,100 @@ net_unsent:
     sec
     sbc net_acked
     rts
+
+.ifdef NET_HUD
+; The HUD build's readout, on the line above the status bar's (row 1 of
+; the first nametable, which nothing of the game's draws on), for seeing on
+; hardware what a session's lag is:
+;
+;   D2 S001F L0003
+;
+; D the input delay, in ticks; S the NMIs that stalled for the other
+; console's buttons; L the game's own frames that overran (its lag
+; frames). The counts are hexadecimal, since the game's font has A to F
+; right after 9, and run from the session's beginning. Drawn in every NMI
+; of a session but a lag's, while the vblank lasts: before the exchange,
+; some 300 cycles that the exchange then begins later by. None of it is
+; the game's memory.
+HUD_ADDRESS     = $2000 + 1 * 32 + 2
+PPUCTRL_DOWN    = $04
+PPUCTRL_NAMETABLE_X = $01
+TILE_D          = $0D
+TILE_S          = $1C
+TILE_L          = $15
+TILE_SPACE      = $24
+
+net_hud:
+    ; Across, not down: the game's drawing may have left PPUCTRL stepping
+    ; by 32 for a column. As the NMI set it at its start otherwise: the
+    ; game's copy, on the first nametable, which the status bar is drawn
+    ; from.
+    lda PPU_CTRL_RAM_COPY
+    and #<~(PPUCTRL_DOWN | PPUCTRL_NAMETABLE_X)
+    sta PPU_CTRL
+    lda PPU_STATUS
+    lda #>HUD_ADDRESS
+    sta PPU_ADDR
+    lda #<HUD_ADDRESS
+    sta PPU_ADDR
+    lda #TILE_D
+    sta PPU_DATA
+    lda net_delay
+    sta PPU_DATA
+    lda #TILE_SPACE
+    sta PPU_DATA
+    lda #TILE_S
+    sta PPU_DATA
+    lda net_hud_stalls+1
+    jsr net_hud_hex
+    lda net_hud_stalls
+    jsr net_hud_hex
+    lda #TILE_SPACE
+    sta PPU_DATA
+    lda #TILE_L
+    sta PPU_DATA
+    ; The lags: the NMIs, less this one, less the ticks and the stalls.
+    lda net_hud_nmis
+    sec
+    sbc #$01
+    sta net_hud_temp
+    lda net_hud_nmis+1
+    sbc #$00
+    sta net_hud_temp+1
+    lda net_hud_temp
+    sec
+    sbc net_hud_ticks
+    sta net_hud_temp
+    lda net_hud_temp+1
+    sbc net_hud_ticks+1
+    sta net_hud_temp+1
+    lda net_hud_temp
+    sec
+    sbc net_hud_stalls
+    sta net_hud_temp
+    lda net_hud_temp+1
+    sbc net_hud_stalls+1
+    jsr net_hud_hex
+    lda net_hud_temp
+    jsr net_hud_hex
+    ; The PPU's address at 0 again, where the game's NMI left it.
+    lda #$00
+    sta PPU_ADDR
+    sta PPU_ADDR
+    rts
+
+; A as two hexadecimal digits: the font's tiles 0 to F are $00 to $0F.
+net_hud_hex:
+    pha
+    lsr
+    lsr
+    lsr
+    lsr
+    sta PPU_DATA
+    pla
+    and #$0F
+    sta PPU_DATA
+    rts
+.endif
 
 .include "menu.inc"

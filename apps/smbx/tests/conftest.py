@@ -63,3 +63,13 @@ def net_console(build):
     def make(**kwargs):
         return Console(str(build / "smbx_net.nes"), str(build / "smbx_net.dbg"), **kwargs)
     return make
+
+
+@pytest.fixture
+def hud_console(build):
+    """Make a Console on the netplay ROM with the HUD's readout."""
+    from console import Console
+
+    def make(**kwargs):
+        return Console(str(build / "smbx_net_hud.nes"), str(build / "smbx_net_hud.dbg"), **kwargs)
+    return make
