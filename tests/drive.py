@@ -11,8 +11,8 @@ from console import (PAD_A, PAD_B, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_SELECT, PA
 
 STATE_STATUS, STATE_SCAN, STATE_LIST, STATE_KEYS = 0, 1, 2, 3
 STATE_SEND, STATE_JOINING, STATE_FAILED, STATE_TEST = 4, 5, 6, 7
-STATE_USB = 8
-MENU_WIFI, MENU_TEST, MENU_USB, MENU_FLIP, MENU_QUIT = 0, 1, 2, 3, 4
+STATE_USB, STATE_KBD, STATE_KBD_LIST = 8, 9, 10
+MENU_WIFI, MENU_TEST, MENU_USB, MENU_KBD, MENU_FLIP, MENU_QUIT = 0, 1, 2, 3, 4, 5
 LAYER_KEYS = layout.KEY_ROWS * layout.KEY_COLUMNS
 SET_COL = 0                     # on the space bar's row, the set key (keys.inc)
 
@@ -60,6 +60,17 @@ class Setup:
 
     def values(self):
         return {label: self.value(label) for label in layout.STATUS_LABELS}
+
+    def kbd_value(self, label):
+        """The keyboard screen's value for a label."""
+        row = layout.BODY_ROW + layout.KBD_LABELS.index(label)
+        assert self.c.text(row, layout.LEFT, len(label)) == label
+        return self.c.text(row, layout.VALUE_COLUMN, layout.VALUE_WIDTH).strip()
+
+    @property
+    def echo(self):
+        """The keyboard screen's line of what was typed, with its cursor."""
+        return self.c.text(layout.KBD_ECHO_ROW, layout.LEFT, layout.WIDTH).rstrip()
 
     def listed(self):
         """The list's lines as (name, locked, bars), bars 0 for a line that

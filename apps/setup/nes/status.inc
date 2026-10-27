@@ -3,9 +3,9 @@
 ;
 ;   Up, Down    move the arrow among what can be done from here
 ;   A           do it: set up Wi-Fi, test the link, lend the nesp32's
-;               files to a computer as a USB drive, turn the nesp32's
-;               screen the other way up, or, on the cartridge, go back to
-;               its menu
+;               files to a computer as a USB drive, pair a Bluetooth
+;               keyboard, turn the nesp32's screen the other way up, or, on
+;               the cartridge, go back to its menu
 ;
 ; Every few frames it does one step of a round: say hello if the Stick has
 ; not been heard from, ask for something, and write the line that shows it.
@@ -25,11 +25,12 @@ LINE_ADDRESS  = 5
 LINE_SIGNAL   = 6
 LINE_BATTERY  = 7
 
-; The menu, under the lines.
-MENU_ROW    = BODY_ROW + 9
+; The menu, under the lines (MENU_ROW).
 MENU_COLUMN = LEFT + 2          ; after the arrow
-MENU_FLIP   = 3
-MENU_QUIT   = 4                 ; the last, and only on the cartridge
+MENU_USB    = 2
+MENU_KBD    = 3
+MENU_FLIP   = 4
+MENU_QUIT   = 5                 ; the last, and only on the cartridge
 
 ; The cartridge's reset stub (nes/cart/gen_cart.py) is at the same place in
 ; every program's bank: an `inc` of itself, which resets the mapper and puts
@@ -64,7 +65,8 @@ status_screen:
     label BODY_ROW + LINE_BATTERY, LEFT, "BATTERY"
     text  MENU_ROW, MENU_COLUMN, "WI-FI SETUP"
     text  MENU_ROW + 1, MENU_COLUMN, "TEST INTERFACE"
-    text  MENU_ROW + 2, MENU_COLUMN, "ENABLE USB DRIVE"
+    text  MENU_ROW + MENU_USB, MENU_COLUMN, "ENABLE USB DRIVE"
+    text  MENU_ROW + MENU_KBD, MENU_COLUMN, "BLUETOOTH KEYBOARD"
     text  MENU_ROW + MENU_FLIP, MENU_COLUMN, "FLIP LCD"
     text  HELP_ROW, LEFT, "A : CHOOSE"
     .byte 0
@@ -203,15 +205,19 @@ wifi_failed:   .byte "COULD NOT JOIN", 0
     beq @done
     cpx #MENU_FLIP
     beq @flip
+    cpx #MENU_KBD
+    beq @kbd
+    cpx #MENU_USB
+    beq @usb
     txa
     beq @wifi
-    dex
-    beq @test
-    jmp open_usb
+    jmp open_test
 @wifi:
     jmp open_scan
-@test:
-    jmp open_test
+@usb:
+    jmp open_usb
+@kbd:
+    jmp open_kbd
 @flip:
     lda flipping                ; a press while one is under way is not another
     bne @done

@@ -59,6 +59,17 @@ VALUE_COLUMN = 12
 STATUS_LABELS = ("NESP32", "FIRMWARE", "BOARD", "WI-FI", "NETWORK", "ADDRESS", "SIGNAL",
                  "BATTERY")
 VALUE_WIDTH = LEFT + WIDTH - VALUE_COLUMN
+# Its menu, under the lines; on the cartridge Quit is after them.
+MENU_ROW = BODY_ROW + len(STATUS_LABELS)
+MENU_ITEMS = ("WI-FI SETUP", "TEST INTERFACE", "ENABLE USB DRIVE", "BLUETOOTH KEYBOARD",
+              "FLIP LCD")
+if MENU_ROW + len(MENU_ITEMS) + 1 > MESSAGE_ROW:
+    raise ValueError("the menu, with Quit, runs into the message line")
+
+# The Bluetooth keyboard's screen: the keyboard paired and how it stands, as
+# the status screen's lines are, and a line that shows what is typed on it.
+KBD_LABELS = ("KEYBOARD", "STATUS")
+KBD_ECHO_ROW = BODY_ROW + len(KBD_LABELS) + 2
 
 # The list of networks.
 LIST_ROW = 11
@@ -353,6 +364,8 @@ def include(screen):
     constant("HELP_ROW", HELP_ROW)
     constant("VALUE_COLUMN", VALUE_COLUMN)
     constant("VALUE_WIDTH", VALUE_WIDTH)
+    constant("MENU_ROW", MENU_ROW)
+    constant("KBD_ECHO_ROW", KBD_ECHO_ROW)
     constant("LIST_ROW", LIST_ROW)
     constant("LIST_ROWS", LIST_ROWS, "networks in view")
     constant("LIST_COLUMN", LIST_COLUMN)

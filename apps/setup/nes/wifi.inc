@@ -289,18 +289,8 @@ failed_help:    .byte "A : TRY AGAIN   B : BACK", 0
     lda #TILE_LOCK
     sta draw_buf + LIST_NAME + 1
 @bars:
-    lda nesp_reply + 1          ; dBm, a negative number
-    ldx #TILE_BARS4
-    cmp #256 - 55
-    bcs @strength
-    ldx #TILE_BARS3
-    cmp #256 - 67
-    bcs @strength
-    ldx #TILE_BARS2
-    cmp #256 - 78
-    bcs @strength
-    ldx #TILE_BARS1
-@strength:
+    lda nesp_reply + 1
+    jsr signal_bars
     stx draw_buf + LIST_NAME + 3
     ldx #LIST_WIDTH
     bne @stage
@@ -321,6 +311,23 @@ failed_help:    .byte "A : TRY AGAIN   B : BACK", 0
     jsr stage_pad
     inc list_fill
 @wait:
+    rts
+.endproc
+
+; X = the tile of bars for a signal of A dBm, a negative number. The
+; keyboards' list has them too (kbd.inc).
+.proc signal_bars
+    ldx #TILE_BARS4
+    cmp #256 - 55
+    bcs @strength
+    ldx #TILE_BARS3
+    cmp #256 - 67
+    bcs @strength
+    ldx #TILE_BARS2
+    cmp #256 - 78
+    bcs @strength
+    ldx #TILE_BARS1
+@strength:
     rts
 .endproc
 

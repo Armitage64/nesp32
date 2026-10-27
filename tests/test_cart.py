@@ -244,9 +244,9 @@ def test_setups_quit_is_the_menu_again(cart, images, with_stick):
     if with_stick:
         c.run_until(lambda: stick.hellos, 300)
     c.run(30)
-    row = layout.BODY_ROW + 9 + 4               # the status screen's menu, its last
+    row = layout.MENU_ROW + len(layout.MENU_ITEMS)  # the status screen's menu, its last
     assert c.text(row, layout.LEFT + 2, 4) == "QUIT"    # on the cartridge, there is one
-    for _ in range(4):
+    for _ in range(len(layout.MENU_ITEMS)):
         c.press(PAD_DOWN)
     c.press(PAD_A)
     c.strict = True
