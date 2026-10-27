@@ -201,7 +201,8 @@ Stick -> NES, 8N2   $A5, STATE, LINE_LO, LINE_HI, TOTAL_LO, TOTAL_HI,
 - **`keyboard.inc`**: the field and the key grid on nametable 1, and what
   is typed on a Bluetooth keyboard paired with the nesp32, which the link
   build asks nesp32's KBD for every other frame on the search screen
-  (`link_keys`; issue #9 in nesp32).
+  (`link_keys`; issue #9 in nesp32), and in the reader on every other
+  frame that fetches no line (`reader_keys`).
 - **`tools/gen_screen.py`**: tiles, the search screen's nametable, the
   layout's constants and preview PNGs. Tiles `$20-$7F` are the font in
   white; `$A0-$FF` the same in the logo's blue, for headings and for the

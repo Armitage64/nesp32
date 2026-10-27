@@ -718,10 +718,10 @@ hears characters.
   is over, and 0 otherwise.
 - A character is printable ASCII, `$20` to `$7E`, or one of the keys that
   are not: `$08` Backspace, `$09` Tab, `$0A` Enter, `$11` Up, `$12` Down,
-  `$13` Left, `$14` Right, `$1B` Escape. A key held down comes again
-  after half a second, and 25 times a second from then on, as on a
-  computer; Enter and Escape do not. A key pressed with Ctrl, Alt or the
-  Windows or Command key is none.
+  `$13` Left, `$14` Right, `$15` Page Up, `$16` Page Down, `$1B` Escape. A
+  key held down comes again after half a second, and 25 times a second
+  from then on, as on a computer; Enter and Escape do not. A key pressed
+  with Ctrl, Alt or the Windows or Command key is none.
 - A KEYS reply has up to 16 characters, fewer if `REPLY_MAX` is smaller;
   more typed come in the next. They are taken off the nesp32 when they
   are sent, and the same request again gets the same reply again, so a

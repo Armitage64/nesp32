@@ -21,7 +21,7 @@
 
 NESP_RX_MASK = $3F              ; replies of up to 63 bytes: a line's is 33
 NESP_TX_MAX  = 1 + QUERY_MAX    ; a search: its id and its words
-HELLO_EVERY  = $0F              ; link_keys says hello every 16 frames until answered
+HELLO_EVERY  = 15               ; link_keys says hello at once, then every 16th call until answered
 NESP_CRC_TABLE = 1              ; 35 cycles a byte: a line's reply is checked
                                 ; in the frame it arrives in, with room to spare
 .define NESP_APP "WIKI"
@@ -48,6 +48,10 @@ LINE_TEXT    = nesp_reply + 5
 .assert KEY_BACKSPACE = NESP_KEY_BACKSPACE, error, "the keyboard's keys are KBD's"
 .assert KEY_ENTER = NESP_KEY_ENTER, error, "the keyboard's keys are KBD's"
 .assert KEY_ESCAPE = NESP_KEY_ESCAPE, error, "the keyboard's keys are KBD's"
+.assert KEY_UP = NESP_KEY_UP && KEY_DOWN = NESP_KEY_DOWN, error, "the keyboard's keys are KBD's"
+.assert KEY_LEFT = NESP_KEY_LEFT && KEY_RIGHT = NESP_KEY_RIGHT, error, "the keyboard's keys are KBD's"
+.assert KEY_PAGE_UP = NESP_KEY_PAGE_UP, error, "the keyboard's keys are KBD's"
+.assert KEY_PAGE_DOWN = NESP_KEY_PAGE_DOWN, error, "the keyboard's keys are KBD's"
 .assert COLUMNS = NESP_WIKI_COLUMNS, error, "a line is as wide as the Stick lays it out"
 .assert QUERY_MAX = NESP_WIKI_QUERY_MAX, error, "a search is as long as the Stick takes"
 
@@ -55,6 +59,8 @@ LINE_TEXT    = nesp_reply + 5
 search_id:  .res 1              ; which search this is: a new one, a new id
 greeted:    .res 1              ; the Stick has answered this ROM's hello
 typing:     .res 1              ; and has KBD: what is typed comes to the search
+kbd_asked:  .res 1              ; and has said whether a keyboard is paired
+hello_wait: .res 1              ; link_keys's calls until its next hello
 
 .segment "RODATA"
 old_stick_text:                 ; COLUMNS wide, as the Stick's own messages are
@@ -189,22 +195,46 @@ old_stick_text:                 ; COLUMNS wide, as the Stick's own messages are
 
 ; What has been typed on the nesp32's Bluetooth keyboard: carry clear, and
 ; A characters of it at link_typed. Carry set if there is nothing to have:
-; no reply, no hello yet (which this says, now and again), or no KBD.
+; no reply, no hello yet (which this says, at once and then now and
+; again), or no KBD. The first call after the hello asks instead whether a
+; keyboard is paired, and if one is, the search's field begins empty
+; (kb_paired).
 link_typed = nesp_reply + 1
 
 .proc link_keys
     lda greeted
     bne @greeted
-    lda frame_count
-    and #HELLO_EVERY
-    bne @none
-    jsr link_hello              ; an old Stick is for link_status to find out
+    lda hello_wait
+    beq @hello
+    dec hello_wait
 @none:
+    sec
+    rts
+@hello:
+    lda #HELLO_EVERY
+    sta hello_wait
+    jsr link_hello              ; an old Stick is for link_status to find out
     sec
     rts
 @greeted:
     lda typing
     beq @none
+    lda kbd_asked               ; first, once: is a keyboard paired?
+    bne @keys
+    lda #NESP_SVC_KBD
+    ldx #NESP_KBD_STATE
+    ldy #0
+    jsr nesp_call
+    bcs @none
+    cmp #NESP_ST_OK
+    bne @forgot
+    inc kbd_asked
+    lda nesp_reply + 2          ; the length of its name: 0 for none paired
+    beq @none
+    jsr kb_paired
+    sec
+    rts
+@keys:
     lda #NESP_SVC_KBD
     ldx #NESP_KBD_KEYS
     ldy #0

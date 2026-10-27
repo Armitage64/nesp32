@@ -12,6 +12,7 @@ import os
 
 import gen_cart as cart_layout
 import gen_screen as layout
+import nesp_proto
 import pytest
 from console import (BANK_SIZE, CHR_SIZE, INES_HEADER, PAD_A, PAD_B, PAD_DOWN, PAD_SELECT,
                      PAD_START, PAD_UP, PPUCTRL_NMI)
@@ -499,6 +500,21 @@ def test_select_in_nespedias_search_is_the_menu_again(cart, images):
     c.strict = True
     c.run(6)
     assert at_menu(c)
+    assert c.byte("choice") == 0
+
+
+def test_escape_in_nespedias_search_is_the_menu_again(cart, images):
+    index = next(index for index, image in enumerate(images) if image.program.key == "wiki")
+    c = cart()
+    stick, _ = link(c, Stick)
+    c.run(4)
+    start(c, index)
+    c.run_until(lambda: stick.kbd_on, 300)
+    c.run(10)
+    assert not c.home
+    stick.kbd_type(bytes((nesp_proto.NESP_KEY_ESCAPE,)))
+    c.strict = True
+    c.run_until(lambda: at_menu(c), 30)
     assert c.byte("choice") == 0
 
 

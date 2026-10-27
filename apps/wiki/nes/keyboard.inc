@@ -9,8 +9,10 @@
 ;
 ; and on a Bluetooth keyboard paired with the nesp32, through the link
 ; (link_keys), typing as it would anywhere: a letter in the case it is
-; typed in, Backspace, Enter to search, and Escape to clear the field. What
-; this keyboard has no key for is not typed.
+; typed in, Backspace, Enter to search, and Escape, on the cartridge, back
+; to its menu. What this keyboard has no key for is not typed. With a
+; keyboard paired the field begins empty, for it (kb_paired); otherwise it
+; begins with DEFAULT_QUERY, for A or Start to search.
 ;
 ; The keys are KEY_ROWS rows of KEY_COLUMNS, and under them a last row of
 ; two: the shift key, under the first column, and the space bar. On that
@@ -34,6 +36,12 @@ NO_KEY = $FF
 ; (serial_link.inc checks them against nesp32's numbers).
 KEY_BACKSPACE = $08
 KEY_ENTER     = $0A
+KEY_UP        = $11
+KEY_DOWN      = $12
+KEY_LEFT      = $13
+KEY_RIGHT     = $14
+KEY_PAGE_UP   = $15
+KEY_PAGE_DOWN = $16
 KEY_ESCAPE    = $1B
 SHIFT_COL = 0
 PULSE_MASK = $07                ; frames between the pulse's colours, less one
@@ -53,6 +61,7 @@ pulse:      .res 1              ; where the cursor's colour is in its round
 typed_count: .res 1             ; kb_typed's
 typed_at:   .res 1
 typed_stale: .res 1             ; the next of what was typed is from before this screen
+untouched:  .res 1              ; the field is still DEFAULT_QUERY, as it began
 
 .segment "RODATA"
 
@@ -98,6 +107,8 @@ row_first: .byte 0, KEY_COLUMNS, 2 * KEY_COLUMNS, 3 * KEY_COLUMNS
     bpl @copy
     lda #DEFAULT_LENGTH
     sta query_len
+    lda #1
+    sta untouched
     lda #1                      ; on the Q
     sta cur_row
     lda #NO_KEY
@@ -184,6 +195,8 @@ row_first: .byte 0, KEY_COLUMNS, 2 * KEY_COLUMNS, 3 * KEY_COLUMNS
 
 ; Search for the field's words, if it has any.
 .proc search
+    lda #0
+    sta untouched
     lda query_len
     beq @done
     jsr link_search
@@ -199,6 +212,8 @@ row_first: .byte 0, KEY_COLUMNS, 2 * KEY_COLUMNS, 3 * KEY_COLUMNS
 
 ; Take the field's last character back.
 .proc delete_char
+    lda #0
+    sta untouched
     lda query_len
     beq @done
     dec query_len
@@ -240,6 +255,24 @@ row_first: .byte 0, KEY_COLUMNS, 2 * KEY_COLUMNS, 3 * KEY_COLUMNS
     rts
 .endproc
 
+; The nesp32 has a keyboard paired: the field begins empty, if nothing has
+; been done to it yet.
+.proc kb_paired
+    lda untouched
+    beq @done
+    lda state
+    cmp #STATE_SEARCH
+    bne @done
+    lda #0
+    sta query_len
+    sta untouched
+    lda kb_dirty
+    ora #DIRTY_FIELD
+    sta kb_dirty
+@done:
+    rts
+.endproc
+
 ; One character from the Bluetooth keyboard, A.
 .proc type_typed
     cmp #KEY_BACKSPACE
@@ -248,11 +281,10 @@ row_first: .byte 0, KEY_COLUMNS, 2 * KEY_COLUMNS, 3 * KEY_COLUMNS
     beq search
     cmp #KEY_ESCAPE
     bne @letter
-    lda #0
-    sta query_len
-    lda kb_dirty
-    ora #DIRTY_FIELD
-    sta kb_dirty
+    lda on_cart                 ; Escape: as Select, back to the cartridge's menu
+    beq @done
+    jmp quit
+@done:
     rts
 @letter:
     cmp #' '
@@ -314,6 +346,8 @@ row_first: .byte 0, KEY_COLUMNS, 2 * KEY_COLUMNS, 3 * KEY_COLUMNS
 @store:
     sta query,x
     inc query_len
+    ldx #0
+    stx untouched
     lda kb_dirty
     ora #DIRTY_FIELD
     sta kb_dirty

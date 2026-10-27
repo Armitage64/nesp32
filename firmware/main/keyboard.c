@@ -73,6 +73,8 @@
 #define USAGE_A 0x04
 #define USAGE_SLASH 0x38            /* the last with a character */
 #define USAGE_CAPS_LOCK 0x39
+#define USAGE_PAGE_UP 0x4B
+#define USAGE_PAGE_DOWN 0x4E
 #define USAGE_RIGHT 0x4F
 #define USAGE_UP 0x52
 #define USAGE_ROLLOVER 0x01         /* too many keys down: the report means nothing */
@@ -173,6 +175,10 @@ static void pressed(uint8_t usage, uint8_t modifiers)
         keep(ARROWS[usage - USAGE_RIGHT]);
         return;
     }
+    if (usage == USAGE_PAGE_UP || usage == USAGE_PAGE_DOWN) {
+        keep(usage == USAGE_PAGE_UP ? NESP_KEY_PAGE_UP : NESP_KEY_PAGE_DOWN);
+        return;
+    }
     if (usage < USAGE_A || usage > USAGE_SLASH) {
         return;
     }
@@ -191,7 +197,8 @@ static bool repeats(uint8_t usage, uint8_t modifiers)
     if ((modifiers & CHORD) != 0) {
         return false;
     }
-    if (usage >= USAGE_RIGHT && usage <= USAGE_UP) {
+    if ((usage >= USAGE_RIGHT && usage <= USAGE_UP) || usage == USAGE_PAGE_UP
+        || usage == USAGE_PAGE_DOWN) {
         return true;
     }
     if (usage < USAGE_A || usage > USAGE_SLASH) {

@@ -26,6 +26,7 @@ with a StickS3 and with a StickC Plus2.
 |---|---|
 | Reader ROM, search screen and keyboard | working on hardware; tested on py65 |
 | A Bluetooth keyboard on the search screen (nesp32's KBD) | working on hardware, a StickS3 with a Logitech MX Keys S; tested on py65 against nesp32's service |
+| A Bluetooth keyboard in the reader, and the search empty with one paired | tested on py65 against nesp32's service; not yet on hardware |
 | Link: the ROM on nesp32's library, and nesp32's WIKI service | working on hardware at 85227 baud; tested together over a cycle-exact simulated line |
 | Text: an API reply to 28-column lines | in nesp32, in C; checked there against the Python it was ported from |
 
@@ -78,13 +79,26 @@ The shift key, ⇧, is on the space bar's row, under Z. On that row, Left
 and Right go from the one to the other.
 
 A Bluetooth keyboard paired with the nesp32 (in nesp32's Setup, on a
-StickS3) types into the field too, as a keyboard does anywhere: letters in
-the case they are typed in, Backspace, Enter to search and Escape to clear
-the field. What the keys on the screen do not have, the keyboard does not
-type either. What is typed while the reader is up is dropped. The link ROM
-only: the standalone one has no nesp32 to pair a keyboard with.
+StickS3) works both screens too. The link ROM only: the standalone one has
+no nesp32 to pair a keyboard with.
 
-The field holds 30 characters and starts as `Nintendo Entertainment System`.
+| Keyboard | Search screen | Reader |
+|---|---|---|
+| Letters, digits, space | typed, in the case they are typed in | |
+| Backspace | delete | |
+| Enter | search | |
+| Up, Down | | a line up, a line down |
+| Page Up, Page Down | | a page up, a page down (as Left and Right) |
+| Left, Right | | the same |
+| Escape | on nesp32's cartridge, back to its menu, as Select | back to the search screen, as B |
+
+What the keys on the screen do not have, the keyboard does not type
+either, and a key held down repeats. Keys the reader does not take are
+dropped, and so are any still on their way when it goes back to the
+search.
+
+The field holds 30 characters and starts as `NES`, or empty when the
+nesp32 has a keyboard paired, ready to type into.
 The key under the cursor pulses from white through the logo's blues. A page
 glides rather than jumps, and keeps two lines in view. The mark at the
 right edge shows how far the window is through as much of the article as

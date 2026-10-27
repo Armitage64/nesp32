@@ -99,8 +99,8 @@ def test_power_on_shows_the_default_search(console, build):
     c = console()
     c.run(10)
     assert c.byte("state") == STATE_SEARCH
-    assert query(c) == DEFAULT == "Nintendo Entertainment System"
-    assert field(c) == DEFAULT + "_"
+    assert query(c) == DEFAULT == "NES"
+    assert field(c) == (DEFAULT + "_").ljust(30)
     assert lit_keys(c) == [(1, 0)]          # the cursor starts on Q
     # But for that key's palette, the screen is the one the build laid out.
     shown = bytearray(c.nametable(1))
@@ -151,20 +151,20 @@ def test_the_cursors_key_pulses_through_white_and_the_blues(console):
     # Typing goes on through it.
     type_text(c, "1")
     settle(c)
-    assert query(c) == DEFAULT + "1" and field(c) == DEFAULT + "1"
+    assert query(c) == DEFAULT + "1" and field(c) == (DEFAULT + "1_").ljust(30)
 
 
 def test_delete_and_type(console):
     c = console()
     c.run(3)
-    for _ in range(7):
+    for _ in range(2):
         tap(c, PAD_B)
     settle(c)
-    assert query(c) == "Nintendo Entertainment" and field(c) == "Nintendo Entertainment_".ljust(30)
-    type_text(c, " Sys")
+    assert query(c) == "N" and field(c) == "N_".ljust(30)
+    type_text(c, "intendo Ent")
     settle(c)
-    assert query(c) == "Nintendo Entertainment Sys"
-    assert field(c) == "Nintendo Entertainment Sys_".ljust(30)
+    assert query(c) == "Nintendo Ent"
+    assert field(c) == "Nintendo Ent_".ljust(30)
 
 
 def test_every_key_types_its_character(console):
@@ -285,10 +285,12 @@ def test_a_held_direction_repeats(console):
 def test_the_field_holds_thirty_characters(console):
     c = console()
     c.run(3)
-    type_text(c, "12")
+    type_text(c, " Entertainment System 1234")  # 29 characters
+    type_text(c, "56")
     settle(c)
-    assert query(c) == DEFAULT.replace(" ", " ") + "1"
-    assert field(c) == DEFAULT + "1" and len(query(c)) == 30    # full: no cursor
+    full = DEFAULT + " Entertainment System 12345"
+    assert query(c) == full
+    assert field(c) == full and len(query(c)) == 30     # full: no cursor
 
 
 def test_a_search_cannot_start_with_a_space_or_be_empty(console):

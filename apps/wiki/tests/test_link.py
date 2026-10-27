@@ -22,7 +22,7 @@ from wire import link, ms
 
 COLUMNS = p.NESP_WIKI_COLUMNS
 PERIOD = p.NESP_PERIOD
-DEFAULT = b"Nintendo Entertainment System"
+DEFAULT = b"NES"
 STATUS_ROW = 24
 # A line's reply: the frame round a state, a number, a total and the line.
 REPLY_CYCLES = (p.NESP_OVERHEAD + 5 + COLUMNS) * p.NESP_TO_NES_BITS * PERIOD
@@ -516,6 +516,17 @@ def test_an_article_that_stops_arriving_can_still_be_read(linked):
 
 ESCAPE, BACKSPACE, ENTER = (bytes((key,)) for key in (p.NESP_KEY_ESCAPE, p.NESP_KEY_BACKSPACE,
                                                        p.NESP_KEY_ENTER))
+UP, DOWN, PAGE_UP, PAGE_DOWN = (bytes((key,)) for key in (p.NESP_KEY_UP, p.NESP_KEY_DOWN,
+                                                          p.NESP_KEY_PAGE_UP,
+                                                          p.NESP_KEY_PAGE_DOWN))
+
+
+def paired(linked, lines):
+    """A console on the link ROM, and a nesp32 with a keyboard paired."""
+    c, host = linked(lines)
+    host.stick.kbd_paired(b"MX KEYS S")
+    host.stick.kbd_state = p.NESP_KEYBOARD_CONNECTED
+    return c, host
 
 
 def query(console):
@@ -524,11 +535,25 @@ def query(console):
     return bytes(console.memory[start + offset] for offset in range(length))
 
 
-def test_what_is_typed_on_a_bluetooth_keyboard_is_searched_for(linked):
+def test_with_a_keyboard_paired_the_search_begins_empty(linked):
+    c, host = paired(linked, numbered_article(30))
+    c.run(5)                                        # the hello at once, then the question
+    assert host.stick.kbd_on and query(c) == b""
+    c.run(10)
+    assert c.text(1, 12, 1, 30).rstrip() == "_"     # and the field shows it
+
+
+def test_with_none_paired_it_begins_with_nes(linked):
     c, host = linked(numbered_article(30))
     c.run(40)
+    assert host.stick.kbd_on and query(c) == DEFAULT == b"NES"
+
+
+def test_what_is_typed_on_a_bluetooth_keyboard_is_searched_for(linked):
+    c, host = paired(linked, numbered_article(30))
+    c.run(40)
     assert host.stick.kbd_on and host.stick.hellos == 1    # greeted from the search screen
-    host.stick.kbd_type(ESCAPE + b"Mario Kart")
+    host.stick.kbd_type(b"Mario Kart")
     c.run(20)
     assert query(c) == b"Mario Kart"
     host.stick.kbd_type(ENTER)
@@ -537,9 +562,9 @@ def test_what_is_typed_on_a_bluetooth_keyboard_is_searched_for(linked):
 
 
 def test_backspace_takes_back_and_what_has_no_key_on_the_screen_is_not_typed(linked):
-    c, host = linked(numbered_article(30))
+    c, host = paired(linked, numbered_article(30))
     c.run(40)
-    host.stick.kbd_type(ESCAPE + b"link's!?(x" + BACKSPACE + b" AWAKENING")
+    host.stick.kbd_type(b"link's!?(x" + BACKSPACE + b" AWAKENING")
     c.run(30)
     assert query(c) == b"link's AWAKENING"
     host.stick.kbd_type(b"x" * 20)                  # no more than a search holds
@@ -548,9 +573,9 @@ def test_backspace_takes_back_and_what_has_no_key_on_the_screen_is_not_typed(lin
 
 
 def test_the_keyboard_on_the_screen_and_the_bluetooth_one_type_into_one_field(linked):
-    c, host = linked(numbered_article(30))
+    c, host = paired(linked, numbered_article(30))
     c.run(40)
-    host.stick.kbd_type(ESCAPE + b"Sup")
+    host.stick.kbd_type(b"Sup")
     c.run(20)
     tap(c, PAD_A)                                   # the key the cursor starts on: Q
     host.stick.kbd_type(b"er")
@@ -571,6 +596,34 @@ def test_what_is_typed_while_reading_is_not_searched_for_on_coming_back(linked):
     host.stick.kbd_type(ENTER)
     run_until(c, STATE_READER)
     assert host.searches == [DEFAULT, DEFAULT]
+
+
+def test_escape_on_the_search_screen_does_nothing_off_the_cartridge(linked):
+    c, host = linked(numbered_article(30))
+    c.run(40)
+    host.stick.kbd_type(ESCAPE + b"x")
+    c.run(20)
+    assert c.byte("state") == STATE_SEARCH and query(c) == DEFAULT + b"x"
+
+
+def test_the_keyboard_scrolls_and_pages_the_reader_and_escape_leaves_it(linked):
+    lines = numbered_article(60)
+    c, host = paired(linked, lines)
+    c.run(20)
+    host.stick.kbd_type(b"NES" + ENTER)
+    run_until(c, STATE_READER)
+    c.run(2)
+    page = 8 * (WINDOW_ROWS - 2)
+    for keys, place in ((PAGE_DOWN, page), (DOWN + DOWN, page + 16), (UP, page + 8),
+                        (PAGE_UP, 8)):
+        host.stick.kbd_type(keys)
+        shown = hold(c, lines, 0, 80)
+        assert position(shown[-1]) == place, keys
+    assert host.stick.kbd_unread == 0
+    host.stick.kbd_type(ESCAPE + b"x")
+    run_until(c, STATE_SEARCH)
+    c.run(40)
+    assert query(c) == DEFAULT and host.stick.kbd_unread == 0  # what came with it is dropped
 
 
 def test_a_stick_without_kbd_is_searched_with_all_the_same(linked):

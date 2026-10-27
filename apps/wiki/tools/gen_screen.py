@@ -79,7 +79,7 @@ SHIFT_CHAR = "\x7f"
 STATUS_COLUMN, STATUS_ROW = 2, 24   # COLUMNS wide
 HELP = ((26, "A : TYPE   B : DELETE"), (28, "START : SEARCH"))
 HELP_CART = "START : SEARCH   SELECT : MENU"   # on the cartridge, Select is its menu
-DEFAULT_QUERY = "Nintendo Entertainment System"
+DEFAULT_QUERY = "NES"
 
 THUMB_X = 244                       # the scroll thumb, right of the text
 THUMB_TRAVEL = 8 * WINDOW_ROWS - 8  # pixels from its top place to its lowest
