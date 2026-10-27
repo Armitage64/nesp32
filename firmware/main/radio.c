@@ -34,6 +34,7 @@
 #include "conn.h"
 #include "esp_heap_caps.h"
 #include "fetch.h"
+#include "keyboard.h"
 #include "link.h"
 #include "store.h"
 #include "usb.h"
@@ -770,6 +771,15 @@ const nesp_hal_t *radio_hal(void)
     hal.peer_meet = conn_meet;
     hal.peer_candidates = conn_candidates;
     hal.peer_punch = conn_punch;
+    if (keyboard_built()) {
+        hal.kbd_enable = keyboard_enable;
+        hal.kbd_state = keyboard_state;
+        hal.kbd_scan = keyboard_scan;
+        hal.kbd_found = keyboard_found;
+        hal.kbd_pair = keyboard_pair;
+        hal.kbd_forget = keyboard_forget;
+        hal.kbd_read = keyboard_read;
+    }
     return &hal;
 }
 
