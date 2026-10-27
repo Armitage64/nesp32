@@ -1,7 +1,10 @@
 # NESP32
 
 An inexpensive, DIY wireless network interface for the Nintendo Entertainment System (NES) based on
-the ESP32 microcontroller. 
+the ESP32 microcontroller. It plugs into controller port 2 of a stock NES, with no changes inside the
+console, and gives NES software Internet access: online two-player games that join by a 4-character
+room code with no port forwarding, music and radio streamed through the NES's own sound chip, and
+apps such as Wikipedia, weather and Bluesky.
 
 <p float="left">
   <img src="apps/setup/docs/status.png" width="24%" alt="The status screen" />
@@ -17,8 +20,6 @@ the ESP32 microcontroller.
 </p>
 
 ## About
-
-- Provides Internet access, media streaming, and online gaming capabilities to NES software.
 
 - Built using the M5 StickS3, a ~$20 all-in-one IoT development kit that includes a dual core processor, flash storage, audio, WiFi, color LCD screen, battery, USB interface, and buttons. The M5 StickC-Plus2 is also fully supported.
 
