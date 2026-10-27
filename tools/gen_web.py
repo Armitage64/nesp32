@@ -45,10 +45,10 @@ import logo  # noqa: E402
 # and white, and the NES's red for its 32.
 LOGO_RGB = {"1": (0, 30, 116), "2": (56, 180, 204), "3": (236, 238, 236),
             "r": (152, 34, 32)}
-# On the light page its 32 is the buttons' red (--accent in style.css) and
-# its white, the outline and the port, is black. On the dark page the word's
-# blues change places, navy letters with a cyan band, and the rest is as on
-# the NES.
+# The dark page has it as the NES does. On the light page its 32 is the
+# buttons' red (--accent in style.css), its white, the outline and the port,
+# is black, and the word's blues change places: cyan letters with a navy
+# band.
 LOGO_OUTLINE_LIGHT = (0, 0, 0)
 WORD_TOP = 14                   # the logo's first row of the word, under the Wi-Fi mark
 
@@ -179,8 +179,8 @@ def main(out, cart):
     shutil.copyfile(cart, os.path.join(out, "nesp32.nes"))
     for name, path in PICTURES:
         shutil.copyfile(os.path.join(ROOT, path), os.path.join(out, "img", name))
-    write_logo(os.path.join(out, "img", "logo.png"), accent(), LOGO_OUTLINE_LIGHT)
-    write_logo(os.path.join(out, "img", "logo-dark.png"), swap_blues=True)
+    write_logo(os.path.join(out, "img", "logo.png"), accent(), LOGO_OUTLINE_LIGHT, swap_blues=True)
+    write_logo(os.path.join(out, "img", "logo-dark.png"))
     # The pages last, since they name the files by what is in them.
     files = ["style.css", "nesp32.nes"] + ["img/" + name for name in os.listdir(
         os.path.join(out, "img"))]
