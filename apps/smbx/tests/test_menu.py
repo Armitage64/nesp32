@@ -7,7 +7,7 @@ the cursor is the title's mushroom, a tile beside the line picked."""
 import nesp
 import nesp_proto as p
 
-from drive import MODE_GAME, MODE_TITLE, PAD_A, PAD_B, PAD_DOWN, PAD_LEFT, PAD_RIGHT
+from drive import KEEP_LIVES, MODE_GAME, MODE_TITLE, PAD_A, PAD_B, PAD_DOWN, PAD_LEFT, PAD_RIGHT
 from drive import PAD_SELECT, PAD_START, PAD_UP, moves, screen_row, screen_text
 from netplay import APP, Table
 from test_lockstep import to_game
@@ -367,7 +367,9 @@ def test_a_host_by_room_shows_its_code_and_back(net_console):
 
 
 def test_host_and_join_by_code_start_one_game(net_console):
-    table = Table(net_console, delay=ms(5))
+    """And both players are in it, Luigi too, with nothing topping their
+    lives up: as on hardware, through the menu."""
+    table = Table(net_console, delay=ms(5), immortal=False)
     table.boot()
     code = host_room(table, 0)
     join_room(table, 1, code)
@@ -379,6 +381,9 @@ def test_host_and_join_by_code_start_one_game(net_console):
         assert console.byte("net_role") == side
     table.begun()
     to_game(table)
+    for console in table.consoles:
+        lives = console.labels["LIVES"]
+        assert (console.ram[lives], console.ram[lives + 1]) == (KEEP_LIVES, KEEP_LIVES)
     table.play(200, moves(seed=5))
     assert table.same_game() > 200
     # A code is not an address: nothing is kept for next time.

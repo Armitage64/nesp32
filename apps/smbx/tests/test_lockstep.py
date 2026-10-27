@@ -9,7 +9,7 @@ import random
 
 import pytest
 
-from drive import MODE_TITLE, PAD_A, PAD_B, PAD_RIGHT, moves, playing
+from drive import KEEP_LIVES, MODE_TITLE, PAD_A, PAD_B, PAD_RIGHT, moves, playing
 from netplay import Table
 from wire import ms
 
@@ -68,6 +68,19 @@ def test_both_players_buttons_reach_both_games(net_console):
         assert table.same_game() > first + 150
         return table.traces[0][first + 150]
     assert final(4) != final(5)
+
+
+def test_a_session_begins_with_both_players_in_the_game(net_console):
+    """Mario and Luigi both have their lives when the level begins, on both
+    consoles: the title gives player 2 none unless 2 PLAYERS GAME was
+    chosen before its first frame, and Luigi was never seen (as on
+    hardware, before net_reset chose it). Nothing tops the lives up here."""
+    table = Table(net_console, immortal=False)
+    table.start()
+    to_game(table)
+    for console in table.consoles:
+        lives = console.labels["LIVES"]
+        assert (console.ram[lives], console.ram[lives + 1]) == (KEEP_LIVES, KEEP_LIVES)
 
 
 def test_each_player_is_their_own_console(net_console):

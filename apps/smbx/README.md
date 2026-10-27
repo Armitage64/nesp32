@@ -45,7 +45,7 @@ for, and a patcher refuses any other: the hack is a 73744-byte file, CRC32
 is the same for a patcher that takes only IPS, which checks nothing: it
 has to be applied to that file.
 
-The patches hold none of the game: 4959 bytes in 51 places, all of them
+The patches hold none of the game: 4963 bytes in 50 places, all of them
 the netplay's. They are its header, its code in bank 1 (all $FF in the
 hack) and in the fixed bank's unused bytes (all 0 in the hack), and the
 five instructions that call it, each in place of one of the same length.
@@ -224,7 +224,7 @@ make test
 | `OPER_MODE` ($E2) | 0 the title, 1 a game, then 3 and 2 at its end; the task after it |
 | `PAD_HELD` ($E0), `PAD_PRESSED` ($06F6) | each two bytes, player 1's and player 2's |
 | `TWO_PLAYERS` ($076F) | the title's choice |
-| `LIVES` ($075B) | the two players', shared; $FF is the game over |
+| `LIVES` ($075A) | Mario's lives and Luigi's, each one less than shown; $FF is none |
 | `SPLIT_WANTED` ($0722) | 0 where the NMI sets the scroll itself |
 | $F0-$FF, $07B0-$07CA | the sound engine's, with the game's orders to it at $FA-$FF |
 

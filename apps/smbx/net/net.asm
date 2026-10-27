@@ -102,9 +102,13 @@ net_reset:
     lda #$00
     sta net_boot
     ; Straight into a game for two, past the title: the players have said
-    ; what they want, in the menu (net_title_pad).
+    ; what they want, in the menu (net_title_pad). 2 PLAYERS GAME is chosen
+    ; here, before the title's first frame: the title gives player 2 lives
+    ; by the choice before it looks at what was pressed, and with 1 PLAYER
+    ; GAME gives none, and Luigi is never seen.
     lda #$01
     sta net_go
+    sta TWO_PLAYERS
     lda net_boot+1
     sta net_role
     lda net_boot+2

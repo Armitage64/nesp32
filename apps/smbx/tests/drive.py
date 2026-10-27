@@ -14,8 +14,8 @@ TASK_PLAYING = 3                # the level under way; 1 its screen of lives
 # From power-on the title is up in a few frames; a session starts there.
 TITLE_FRAMES = 100
 BOOT_TICKS = TITLE_FRAMES
-LIVES = "LIVES"                 # the two players' lives, shared
-KEEP_LIVES = 2                  # what the tests keep them at
+LIVES = "LIVES"                 # Mario's lives, and Luigi's after
+KEEP_LIVES = 2                  # what the tests keep them at, and what a game begins with
 
 MOVES = (PAD_RIGHT, PAD_RIGHT | PAD_B, PAD_RIGHT | PAD_A, PAD_RIGHT | PAD_B | PAD_A,
          PAD_LEFT, PAD_LEFT | PAD_A, PAD_A, PAD_B, PAD_DOWN, 0)
@@ -24,7 +24,8 @@ MOVES = (PAD_RIGHT, PAD_RIGHT | PAD_B, PAD_RIGHT | PAD_A, PAD_RIGHT | PAD_B | PA
 def keep_alive(console):
     """Both players kept in lives, so that a long run is not a game over."""
     if console.byte("OPER_MODE") == MODE_GAME:
-        console.ram[console.labels[LIVES]] = KEEP_LIVES
+        lives = console.labels[LIVES]
+        console.ram[lives] = console.ram[lives + 1] = KEEP_LIVES
 
 
 def moves(seed, hold=8):
