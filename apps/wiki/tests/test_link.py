@@ -563,7 +563,7 @@ def test_what_is_typed_while_reading_is_not_searched_for_on_coming_back(linked):
     c, host = linked(lines)
     open_reader(c)
     host.stick.kbd_type(b"Metroid" + ENTER)
-    tap(c, PAD_SELECT)                              # back to the search
+    tap(c, PAD_B)                                   # back to the search
     run_until(c, STATE_SEARCH)
     c.run(40)
     assert c.byte("state") == STATE_SEARCH and query(c) == DEFAULT
