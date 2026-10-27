@@ -182,12 +182,9 @@ def build_screen():
 
 
 def attributes():
-    """The logo's palette over the header's rows, the text's under them."""
-    if layout.HEADER_ROWS % 4:
-        raise ValueError("the header must end where a row of attributes does")
-    rows = layout.HEADER_ROWS // 4
-    logo = layout.PALETTE_LOGO * 0x55
-    return bytes([logo] * (8 * rows) + [0] * (64 - 8 * rows))
+    """The logo's palettes over the header's rows, the text's under them."""
+    header = layout.header_attributes()
+    return header + bytes(64 - len(header))
 
 
 def arrow(index=0):

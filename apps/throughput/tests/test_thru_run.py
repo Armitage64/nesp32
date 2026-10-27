@@ -103,25 +103,19 @@ def test_the_header_is_the_jukeboxs(rom):
         return [screen.tiles[screen.names[32 * (row + y) + column + x]]
                 for y in range(rows) for x in range(columns)]
 
-    # "ES" is in both names, and the credit line is the same one.
-    def letters(text, at):
-        """The column of a big letter in a name set in the middle of a row."""
-        return (gen_ui.SCREEN_COLUMNS - 2 * len(text)) // 2 + 2 * at
-
-    assert (pixels(ours, letters(gen_screen.LOGO_TEXT, gen_screen.LOGO_TEXT.index("ES")),
-                   gen_screen.LOGO_ROW, 4, 2)
-            == pixels(theirs, letters(gen_ui.LOGO_TEXT, gen_ui.LOGO_TEXT.index("ES")),
-                      gen_ui.LOGO_ROW, 4, 2))
-    assert (pixels(ours, gen_ui.CREDIT_COLUMN, gen_screen.CREDIT_ROW, gen_ui.CREDIT_TILES, 1)
-            == pixels(theirs, gen_ui.CREDIT_COLUMN, gen_ui.CREDIT_ROW, gen_ui.CREDIT_TILES, 1))
-    # What the ROM is for, under the name, in the credit line's blue: color 2.
+    # The logo is the same, to the pixel and in the same palettes.
+    rows = range(gen_screen.LOGO_ROW, gen_screen.LOGO_ROW + gen_screen.LOGO_ROWS)
+    assert (pixels(ours, 0, rows[0], 32, len(rows)) == pixels(theirs, 0, rows[0], 32, len(rows)))
+    assert any(any(tile) for tile in pixels(ours, 0, rows[0], 32, len(rows)))
+    header = 8 * ((gen_screen.LOGO_LAST_ROW + 1) // 4)
+    assert ours.attributes[:header] == theirs.attributes[:header]
+    # What the ROM is for, under the logo, in its cyan: color 2.
     subtitle = pixels(ours, 0, gen_screen.SUBTITLE_ROW, 32, gen_screen.SUBTITLE_ROWS)
     assert not any(any(tile[:8]) for tile in subtitle) and any(any(tile) for tile in subtitle)
-    assert gen_screen.SUBTITLE_ROW == gen_screen.LOGO_ROW + 2
+    assert gen_screen.SUBTITLE_ROW > rows[-1]
     for row in range(gen_screen.LOGO_LAST_ROW + 1):
         attribute = ours.attributes[(row // 4) * 8] >> ((row // 2) % 2) * 4
         assert attribute & 3 == gen_ui.PALETTE_LOGO
-
 
 def test_the_hello_names_the_rom_and_asks_for_raw(rom):
     bench = greet(Bench(rom))

@@ -46,7 +46,7 @@ $(BUILD)/link.inc: $(NESP_LIB) $(NESP)
 # each of them, and on a stamp for the three.
 SCREEN := $(BUILD)/chr.bin $(BUILD)/header.bin $(BUILD)/screen.inc
 
-$(BUILD)/screen.stamp: tools/gen_screen.py $(NESP) | $(BUILD)
+$(BUILD)/screen.stamp: tools/gen_screen.py $(NESP32)/nes/lib/logo.py $(NESP) | $(BUILD)
 	$(PYTHON) tools/gen_screen.py $(BUILD)
 	touch $@
 

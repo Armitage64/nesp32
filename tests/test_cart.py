@@ -148,7 +148,7 @@ def test_power_on_is_the_menu(cart):
 def test_the_header_says_main_menu(cart):
     c = cart()
     c.run(4)
-    title = layout.cut_tiles(layout.font_text("MAIN MENU", 256, layout.CREDIT_COLOR))
+    title = layout.cut_tiles(layout.font_text("MAIN MENU", 256, layout.TITLE_COLOR))
     for dy, tiles in enumerate(title):
         for column, tile in enumerate(tiles):
             number = c.tiles(layout.TITLE_ROW + dy, column, 1)[0]

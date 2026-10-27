@@ -7,11 +7,11 @@
     header.bin    the top HEADER_ROWS rows of the screen, which never change
     screen.inc    layout constants and tables for nes/*.s
 
-The header is the throughput test's (tools/gen_screen.py in
-nes-throughput), to the pixel but for the word under the name: the name in
-letters of 2 x 2 tiles, three blues with a shadow; what this ROM is, in the
-5 x 7 font and the credit line's blue; and the credit line in a 3 x 5 font.
-The 5 x 7 font is nes-jukebox's, with nes-wiki's small letters.
+The header is nesp32's logo (nes/lib/logo.py), and under it what this ROM
+is, in the 5 x 7 font and the logo's cyan. The logo takes two palettes, its
+own and the red one for its 32, which the header's attributes
+(header_attributes) split between the P and the 3. The 5 x 7 font is
+nes-jukebox's, with nes-wiki's small letters.
 
 Tiles:
 
@@ -31,21 +31,21 @@ import struct
 import sys
 import zlib
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "..", "..", "nes", "lib"))
+import logo  # noqa: E402
+
 SCREEN_COLUMNS = 32
 SCREEN_ROWS = 30
 
 # --- layout, in tiles ---------------------------------------------------------
 
-LOGO_ROW = 2
-LOGO_TEXT = "NESP32"                # letters 2 x 2 tiles, centered
-TITLE_ROW, TITLE_ROWS = 4, 2        # right under the name, in the 5 x 7 font
-TITLE_TOP = 4                       # pixels down those rows that its letters start
+LOGO_ROW, LOGO_ROWS = logo.ROW, logo.ROWS
+TITLE_ROW, TITLE_ROWS = logo.TITLE_ROW, 1   # under the logo, in the 5 x 7 font
+TITLE_TOP = 1                       # pixels down those rows that its letters start
 TITLE_TEXT = "SETUP"
-CREDIT_ROW = 6                      # under that, as on the other ROMs
-CREDIT_TEXT = "RETRO BITS (2026)"   # in the small font
-CREDIT_COLUMN, CREDIT_TILES = 11, 10
-CREDIT_COLOR = 2                    # of the logo's palette: its middle blue
-HEADER_ROWS = 8                     # rows 0 to 7; the logo's palette covers them
+TITLE_COLOR = 2                     # of the logo's palette: its cyan
+HEADER_ROWS = 8                     # rows 0 to 7; the logo's palettes cover them
 
 LEFT = 2                            # the first column anything is written in
 WIDTH = 28                          # and how many there are: the safe part of a television
@@ -100,11 +100,14 @@ BACKDROP = 0x0F
 PALETTES = (
     (0x21, 0x10, 0x30),     # 0: text white, labels and keys blue
     (0x21, 0x10, 0x30),
-    (0x21, 0x10, 0x30),
-    (0x12, 0x21, 0x31),     # 3: the logo: three blues, dark to pale
+    (0x16, 0x00, 0x30),     # 2: the logo's 32: red, and white
+    logo.PALETTE,           # 3: the rest of the logo: navy, cyan, white
 )
+PALETTE_RED = 2
 PALETTE_LOGO = 3
 SPRITE_PALETTE = (0x21, 0x10, 0x30)     # colour 3, white: the cursors
+
+
 
 # A 5 x 7 font, one row per byte, bit 4 leftmost.
 FONT = {
@@ -178,26 +181,6 @@ def bars_picture(level):
     return tuple("".join(row) for row in rows)
 
 
-# A 3 x 5 font for the credit line, one row per digit, bit 2 leftmost. Only
-# the characters that line uses. nes-jukebox's (tools/gen_ui.py there).
-SMALL_FONT = {
-    " ": "00000", "R": "65655", "E": "74647", "T": "72222", "O": "75557",
-    "B": "65656", "I": "72227", "S": "34216", "(": "12221", ")": "42224",
-    "2": "61247", "0": "75557", "6": "34757",
-}
-
-
-def small_text(text, width, color):
-    """Text in the small font, centered in a strip `width` pixels wide and
-    one tile high."""
-    pixels = [[0] * width for _ in range(8)]
-    left = (width - (4 * len(text) - 1)) // 2
-    for index, char in enumerate(text):
-        for y, row in enumerate(SMALL_FONT[char]):
-            for x in range(3):
-                if int(row) >> (2 - x) & 1:
-                    pixels[1 + y][left + 4 * index + x] = color
-    return pixels
 
 
 def font_text(text, width, color):
@@ -313,17 +296,37 @@ def build_screen(title=TITLE_TEXT):
     """The tiles and the header, with a word under the name: this ROM's, or
     the cartridge menu's (nes/cart/gen_cart.py)."""
     screen = Screen()
-    column = (SCREEN_COLUMNS - 2 * len(LOGO_TEXT)) // 2
-    for index, char in enumerate(LOGO_TEXT):
-        screen.picture(column + 2 * index, LOGO_ROW, big_letter(char))
-    screen.picture(0, TITLE_ROW, font_text(title, 8 * SCREEN_COLUMNS, CREDIT_COLOR))
-    screen.picture(CREDIT_COLUMN, CREDIT_ROW,
-                   small_text(CREDIT_TEXT, 8 * CREDIT_TILES, CREDIT_COLOR))
+    screen.picture(0, LOGO_ROW, logo.pixels(8 * SCREEN_COLUMNS))
+    screen.picture(0, TITLE_ROW, font_text(title, 8 * SCREEN_COLUMNS, TITLE_COLOR))
     for name, rows in PICTURES.items():
         screen.named[name] = screen.add(tile_bytes(picture_tile(rows)))
     for level in range(1, 5):
         screen.named["BARS%d" % level] = screen.add(tile_bytes(picture_tile(bars_picture(level))))
     return screen
+
+
+def header_attributes():
+    """The header's attribute bytes: the logo's palette, and the red one
+    where the logo's 32 is."""
+    if HEADER_ROWS % 4:
+        raise ValueError("the header must end where a row of attributes does")
+    data = bytearray()
+    for top in range(0, HEADER_ROWS, 4):
+        for left in range(0, SCREEN_COLUMNS, 4):
+            byte = 0
+            for quarter, (dy, dx) in enumerate(((0, 0), (0, 2), (2, 0), (2, 2))):
+                red = logo.is_red(top + dy, left + dx)
+                byte |= (PALETTE_RED if red else PALETTE_LOGO) << (2 * quarter)
+            data.append(byte)
+    return bytes(data)
+
+
+def palette_of(row, column):
+    """The palette a tile of the screen is drawn in."""
+    if row >= HEADER_ROWS:
+        return 0
+    byte = header_attributes()[8 * (row // 4) + column // 4]
+    return byte >> (2 * (2 * (row % 4 // 2) + column % 4 // 2)) & 3
 
 
 def address(row, column):
@@ -384,6 +387,11 @@ def include(screen):
     lines += ["", "palette_data:"]
     for palette in PALETTES + (SPRITE_PALETTE,) * 4:
         lines.append("    .byte " + ", ".join("$%02X" % color for color in (BACKDROP,) + palette))
+    lines += ["", "; The header's attributes; the rest are 0."]
+    lines.append("header_attributes:")
+    attributes = header_attributes()
+    for start in range(0, len(attributes), 8):
+        lines.append("    .byte " + ", ".join("$%02X" % byte for byte in attributes[start:start + 8]))
     return "\n".join(lines) + "\n"
 
 
@@ -392,7 +400,7 @@ def include(screen):
 # The few NES colors the screen uses, as RGB.
 NES_RGB = {
     0x0F: (0, 0, 0), 0x00: (84, 84, 84), 0x10: (152, 150, 152), 0x30: (236, 238, 236),
-    0x12: (48, 50, 236), 0x21: (76, 154, 236), 0x31: (168, 204, 236),
+    0x01: (0, 30, 116), 0x16: (152, 34, 32), 0x21: (76, 154, 236), 0x2C: (56, 180, 204),
 }
 
 
@@ -401,9 +409,9 @@ def render(chr_data, names, header_rows=HEADER_ROWS, sprites=()):
     sprites are (x, y, tile), drawn in the sprite palette."""
     rows = [[None] * (8 * SCREEN_COLUMNS) for _ in range(8 * SCREEN_ROWS)]
     for row in range(SCREEN_ROWS):
-        palette = PALETTES[PALETTE_LOGO if row < header_rows else 0]
-        colors = (BACKDROP,) + tuple(palette)
         for column in range(SCREEN_COLUMNS):
+            colors = (BACKDROP,) + tuple(PALETTES[palette_of(row, column)
+                                                   if row < header_rows else 0])
             planes = chr_data[names[row * SCREEN_COLUMNS + column] * 16:][:16]
             for y in range(8):
                 for x in range(8):

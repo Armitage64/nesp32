@@ -141,7 +141,7 @@ $(RADAR_ROM): FORCE $(PROTO) $(HOST_LIB) nes/cart/gen_cart.py
 # gen_cart.py rewrites only the files whose contents changed.
 CART_TABLES := $(CART_BUILD)/chr.bin $(CART_BUILD)/screen.bin $(CART_BUILD)/menu.inc
 
-$(CART_BUILD)/tables.stamp: nes/cart/gen_cart.py $(SETUP)/tools/gen_screen.py $(CART_ROMS) $(ROM)
+$(CART_BUILD)/tables.stamp: nes/cart/gen_cart.py $(SETUP)/tools/gen_screen.py nes/lib/logo.py $(CART_ROMS) $(ROM)
 	$(PYTHON) nes/cart/gen_cart.py tables $(CART_BUILD) $(CART_ARGS)
 	touch $@
 

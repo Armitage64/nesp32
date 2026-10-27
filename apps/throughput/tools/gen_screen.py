@@ -6,9 +6,9 @@ where on that screen the ROM writes.
     tools/gen_screen.py build --preview screen.png
 
 The tiles are the jukebox's (../jukebox/tools/gen_ui.py): its 5 x 7 font with each
-character at its ASCII code, its palettes, and its header, the name in the
-big letters over the credit line, with what this ROM is between the two in
-the credit line's blue. The font has capitals only.
+character at its ASCII code, its palettes, and its header, nesp32's logo
+with what this ROM is under it in the logo's cyan. The font has capitals
+only.
 
 Under the header is a half of the screen for each direction: its title,
 and a row for each of ROWS; and at the foot, where the other programs say
@@ -27,10 +27,9 @@ sys.path.insert(0, os.path.join(HERE, "..", "..", "jukebox", "tools"))
 import gen_ui  # noqa: E402
 
 # The header is the jukebox's but for the word under the name.
-LOGO_ROW, LOGO_TEXT = gen_ui.LOGO_ROW, gen_ui.LOGO_TEXT
+LOGO_ROW, LOGO_ROWS = gen_ui.LOGO_ROW, gen_ui.LOGO_ROWS
 SUBTITLE_ROW, SUBTITLE_ROWS = gen_ui.SUBTITLE_ROW, gen_ui.SUBTITLE_ROWS
 SUBTITLE = "THROUGHPUT TEST"
-CREDIT_ROW = gen_ui.CREDIT_ROW
 LOGO_LAST_ROW = gen_ui.LOGO_LAST_ROW
 
 # Text is 28 columns wide from LEFT. A direction has a title row and, under

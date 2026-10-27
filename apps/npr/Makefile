@@ -51,7 +51,7 @@ $(BUILD)/news.inc: tools/gen_news.py $(JUKEBOX)/tools/gen_pcm.py $(JUKEBOX)/tool
 # gen_screen.py rewrites only the files whose contents changed.
 SCREEN := $(BUILD)/chr.bin $(BUILD)/screen.bin $(BUILD)/palette.bin $(BUILD)/screen.inc
 
-$(BUILD)/screen.stamp: tools/gen_screen.py $(JUKEBOX)/tools/gen_ui.py | $(BUILD)
+$(BUILD)/screen.stamp: tools/gen_screen.py $(JUKEBOX)/tools/gen_ui.py $(NESP32)/nes/lib/logo.py | $(BUILD)
 	$(PYTHON) tools/gen_screen.py $(BUILD)
 	touch $@
 

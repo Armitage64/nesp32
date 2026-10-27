@@ -41,7 +41,7 @@ $(NESP): FORCE | $(BUILD)
 
 FORCE:
 
-$(BUILD)/screen.stamp: tools/gen_screen.py tools/stick.py $(NESP) | $(BUILD)
+$(BUILD)/screen.stamp: tools/gen_screen.py tools/stick.py $(NESP) $(NESP32)/nes/lib/logo.py | $(BUILD)
 	$(PYTHON) tools/gen_screen.py $(BUILD)
 	touch $@
 

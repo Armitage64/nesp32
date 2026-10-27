@@ -593,10 +593,10 @@ tens_hi: .hibytes 10000, 1000, 100, 10, 1
     sta PPUADDR
     ldx #0
 @attribute:
-    lda #$FF                    ; the logo's palette, for the top 8 rows
-    cpx #16
-    bcc @put
     lda #$00
+    cpx #16
+    bcs @put
+    lda header_attributes,x     ; the logo's palettes, for the top 8 rows
 @put:
     sta PPUDATA
     inx

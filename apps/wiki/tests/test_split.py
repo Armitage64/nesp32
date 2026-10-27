@@ -48,16 +48,16 @@ def test_stepping_the_waits_lands_where_skipping_them_does(console):
             assert slow.split_dot == fast.split_dot
 
 
-def test_sprite_0_sits_on_a_pixel_of_the_credit_line(console, build):
+def test_sprite_0_sits_on_a_pixel_of_the_name(console, build):
     c = console()
     c.run(3)
     x, y = gen_screen.sprite0_position()
     assert c.oam[0:4] == bytes((y - 1, gen_screen.TILE_SPRITE0, 0, x))
-    assert c.background_pixel(HEADER_SCROLL, x, y) == gen_screen.CREDIT_COLOR
+    assert c.background_pixel(HEADER_SCROLL, x, y) == gen_screen.TITLE_COLOR
     assert y < 8 * gen_screen.HEADER_ROWS - 4      # lines to spare for the delay
-    # Its colour is the credit line's, so it does not show.
+    # Its colour is the name's, so it does not show.
     assert gen_screen.SPRITE_PALETTE[0] == gen_screen.PALETTES[gen_screen.PALETTE_LOGO][
-        gen_screen.CREDIT_COLOR - 1]
+        gen_screen.TITLE_COLOR - 1]
     assert c.vram[0x3F11] == c.vram[0x3F0E]         # sprite colour 1, logo colour 2
 
 
