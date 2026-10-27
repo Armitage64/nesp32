@@ -502,6 +502,26 @@ def test_select_in_nespedias_search_is_the_menu_again(cart, images):
     assert c.byte("choice") == 0
 
 
+def test_the_a_that_chose_nespedia_types_nothing(cart, images, cart_build):
+    index = next(index for index, image in enumerate(images) if image.program.key == "wiki")
+    labels = program_labels(cart_build, "wiki")
+    query, query_len = labels["query"], labels["query_len"]
+
+    def typed(held):
+        c = cart()
+        link(c, Stick)
+        c.run(4)
+        choose(c, index)
+        c.run(2, pad=PAD_A)             # A chooses it, and is held, or let go at once
+        c.strict = False
+        c.run(90, pad=PAD_A if held else 0)
+        c.run(30, pad=0)
+        assert not c.home
+        return bytes(c.memory[query:query + c.memory[query_len]])
+
+    assert typed(True) == typed(False)  # no key under the cursor typed
+
+
 @pytest.mark.parametrize("with_stick", (True, False), ids=("stick", "no-stick"))
 def test_select_in_setup_is_the_menu_again_and_b_is_not(cart, images, with_stick):
     index = next(index for index, image in enumerate(images) if image.program.key == "setup")

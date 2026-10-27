@@ -248,6 +248,9 @@ digit_column:
     bne @alone
     inc on_cart
 @alone:
+    lda #$FF                    ; every button begins down, so that one held from
+    sta pad_prev                ; before, as the cartridge's menu's A or Start is,
+                                ; counts only once it has been let go
     jsr screen_init             ; rendering is off; the first NMI turns it on
     ldx #NESP_WEATHER_ZIP_LEN - 1
 @zip:

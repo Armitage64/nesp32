@@ -246,6 +246,9 @@ no_answer_text: .byte "NO ANSWER FROM THE NESP32", 0
     bit PPUSTATUS
     bpl @vblank2
 
+    lda #$FF                    ; every button begins down, so that one held from
+    sta pad_seen                ; before, as the cartridge's menu's A or Start is,
+                                ; counts only once it has been let go
     jsr ppu_init                ; rendering is off; the first NMI turns it on
     lda #PPUMASK_ON
     sta mask
