@@ -381,6 +381,21 @@ def test_select_in_weathers_form_is_the_menu_again_and_b_is_not(cart, images):
     assert c.byte("choice") == 0
 
 
+def test_escape_in_weathers_form_is_the_menu_again(cart, images):
+    index = next(index for index, image in enumerate(images) if image.program.key == "weather")
+    c = cart()
+    stick, _ = link(c, Stick)
+    c.run(4)
+    start(c, index)
+    c.run_until(lambda: stick.kbd_on, 300)
+    c.run(60)                           # the form, all of it
+    assert not c.home
+    stick.kbd_type(bytes((nesp_proto.NESP_KEY_ESCAPE,)))
+    c.strict = True
+    c.run_until(lambda: at_menu(c), 30)
+    assert c.byte("choice") == 0
+
+
 def test_the_jukebox_waits_for_a_start_of_its_own(cart, images):
     index = next(index for index, image in enumerate(images) if image.program.key == "jukebox")
     c = cart()

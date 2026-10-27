@@ -471,7 +471,7 @@ def test_a_digit_typed_over_a_report_begins_the_next_zip_code(sky, where, weathe
     assert s.view == VIEW_REPORT and s.rows() == SHOWN
     typed(s, b"1")
     assert s.form_is_up() == "10210" and s.lit == 1
-    typed(s, b"0001" + ESCAPE)                      # Escape is B: on the form, nothing
+    typed(s, b"0001" + ESCAPE)                      # Escape on the form is Select: off the cartridge, nothing
     assert s.form_is_up() == "10001" and s.lit == 0
     s.press(PAD_A)
     s.report_is_up()

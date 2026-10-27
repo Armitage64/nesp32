@@ -73,7 +73,8 @@ A Bluetooth keyboard paired with a StickS3 ([Setup](../setup) pairs one)
 types the zip code too: a digit goes in the pulsing place and the next one
 pulses, from the last round to the first; **Enter** asks for its weather,
 **Backspace** goes back a digit, the arrows are the D-pad, and **Esc** is
-B. A digit typed with a report on the screen is the form again, from its
+B on a report (the form again) and Select on the form (on the cartridge,
+its menu). A digit typed with a report on the screen is the form again, from its
 first digit, so the next zip code can just be typed.
 
 A report is the place's name and state, the temperature now with a word

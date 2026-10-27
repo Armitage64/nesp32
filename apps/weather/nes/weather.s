@@ -18,7 +18,8 @@
 ;
 ; A Bluetooth keyboard on the nesp32 (its KBD) types a zip code too: a
 ; digit is the lit digit's and lights the next, Enter asks for the weather,
-; Escape is B, and Backspace and the arrows move as the D-pad does. A digit
+; Escape is B on the report and Select on the form (the cartridge's menu),
+; and Backspace and the arrows move as the D-pad does. A digit
 ; typed over a report is the form's first, so that the next zip code can
 ; be typed at once.
 ;
@@ -478,6 +479,14 @@ main_wait:
     stx cursor
     jmp form_touch
 @control:
+    cmp #NESP_KEY_ESCAPE
+    bne @backspace
+    ldx view                    ; on the form, Escape is Select: the menu
+    bne @find
+    ldx on_cart
+    beq @done
+    jmp quit
+@backspace:
     cmp #NESP_KEY_BACKSPACE
     bne @find
     ldx cursor                  ; Backspace stops at the first digit
