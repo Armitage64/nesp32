@@ -39,6 +39,8 @@ to be configured from the NES itself.
 
 - [Purchase the M5 StickS3](https://amzn.to/3TVUV0y)*
 
+- [Order Hat from PCBWay](https://www.pcbway.com/project/shareproject/NESP32_Hat_for_M5_StickS3_d23db4e5.html)
+
 - [Hardware Requirements and Gerber Files](hardware/)
 
 - [Online Firmware Installer](https://nesp32.retrobits.tv/flash/)
