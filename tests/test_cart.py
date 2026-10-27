@@ -503,6 +503,27 @@ def test_select_in_nespedias_search_is_the_menu_again(cart, images):
     assert c.byte("choice") == 0
 
 
+def test_select_in_nespedias_reader_is_the_search_again(cart, images, cart_build):
+    index = next(index for index, image in enumerate(images) if image.program.key == "wiki")
+    state = program_labels(cart_build, "wiki")["state"]
+    c = cart()
+    stick, _ = link(c, Stick)
+    stick.set_wifi(nesp_proto.NESP_WIFI_JOINED, address=(10, 0, 0, 2))
+    c.run(4)
+    start(c, index)
+    c.run_until(lambda: stick.kbd_on, 300)
+    c.run(10)
+    c.press(PAD_START)                  # NES: the search
+    c.run_until(lambda: stick.fetching, 120)
+    stick.fetch_body(b'{"batchcomplete":true,"query":{"pages":[{"pageid":1,"ns":0,'
+                     b'"title":"NES","index":1,"extract":"One line."}]}}')
+    stick.fetch_done()
+    c.run_until(lambda: c.memory[state] == 3, 300)  # STATE_READER
+    c.press(PAD_SELECT)
+    c.run(10)
+    assert not c.home and c.memory[state] == 0      # STATE_SEARCH, not the menu
+
+
 def test_escape_in_nespedias_search_is_the_menu_again(cart, images):
     index = next(index for index, image in enumerate(images) if image.program.key == "wiki")
     c = cart()

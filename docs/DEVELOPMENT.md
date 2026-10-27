@@ -87,7 +87,9 @@ screen says `SELECT : MENU` at its foot on the cartridge, beside what A
 does, written `A : PLAY`, a space either side of the colon and three
 between one button and the next. Deeper screens say what B does. Setup
 keeps its Quit, under its menu's other lines, and Bluesky its own short
-help, `Sel:menu`, for want of room.
+help, `Sel:menu`, for want of room. NESpedia's reader is the one screen
+where Select is not the menu: there it is back to the search, and A and B
+page down and up through the article.
 
 While sampled sound plays (the Jukebox, NESradio) only A can be read,
 since the controller is read on the line the samples come in on: B and

@@ -15,7 +15,7 @@ import urllib.parse
 import nesp
 import nesp_proto as p
 import pytest
-from console import FRAME_CYCLES, PAD_A, PAD_B, PAD_DOWN, PAD_LEFT, PAD_START, PAD_UP
+from console import FRAME_CYCLES, PAD_A, PAD_B, PAD_DOWN, PAD_SELECT, PAD_START, PAD_UP
 from drive import (STATE_LOADING, STATE_READER, STATE_SEARCH, WINDOW_ROWS, check_reader_frame,
                    open_reader, position, run_until, tap)
 from wire import link, ms
@@ -208,7 +208,7 @@ def test_pages_glide_at_full_speed(linked):
         c.run(1, pad=PAD_A)
         shown = hold(c, lines, 0, 44)
         assert [step for step in moves(shown) if step] == [4] * 40
-    c.run(1, pad=PAD_LEFT)
+    c.run(1, pad=PAD_B)
     shown = hold(c, lines, 0, 44)
     assert [step for step in moves(shown) if step] == [-4] * 40
 
@@ -306,7 +306,7 @@ def test_damaged_and_lost_replies_never_reach_the_screen(linked, seed):
     tap(c, PAD_START)
     run_until(c, STATE_READER, limit=900)
     c.run(2)
-    pads = (PAD_DOWN, PAD_DOWN, PAD_UP, PAD_A, PAD_LEFT, 0)
+    pads = (PAD_DOWN, PAD_DOWN, PAD_UP, PAD_A, PAD_B, 0)
     for _ in range(40):
         hold(c, lines, generator.choice(pads), generator.randint(5, 50))
     shown = hold(c, lines, PAD_DOWN, 700)
@@ -378,8 +378,8 @@ def test_a_second_search_fetches_again(linked):
     lines = numbered_article(60)
     c, host = linked(lines)
     open_reader(c)
-    tap(c, PAD_B)                               # back to the search,
-    tap(c, PAD_B)                               # ...Syste
+    tap(c, PAD_SELECT)                          # back to the search,
+    tap(c, PAD_B)                               # ...NE
     tap(c, PAD_START)
     run_until(c, STATE_READER)
     assert host.searches == [DEFAULT, DEFAULT[:-1]]
@@ -588,7 +588,7 @@ def test_what_is_typed_while_reading_is_not_searched_for_on_coming_back(linked):
     c, host = linked(lines)
     open_reader(c)
     host.stick.kbd_type(b"Metroid" + ENTER)
-    tap(c, PAD_B)                                   # back to the search
+    tap(c, PAD_SELECT)                              # back to the search
     run_until(c, STATE_SEARCH)
     c.run(40)
     assert c.byte("state") == STATE_SEARCH and query(c) == DEFAULT

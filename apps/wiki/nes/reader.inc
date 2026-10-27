@@ -3,15 +3,14 @@
 ;
 ;   Up, Down         scroll, SCROLL_STEPS pixels a frame while held
 ;   Right or A       a page down, gliding at GLIDE_STEPS pixels a frame
-;   Left             a page up
+;   Left or B        a page up
 ;   Start            back to the top of the article
-;   B                back to the search screen
-;   Select           on nesp32's cartridge, back to its menu
+;   Select           back to the search screen (not the cartridge's menu)
 ;
 ; and on a Bluetooth keyboard paired with the nesp32 (reader_keys), asked
 ; for on the frames no line is: Up and Down a line, gliding, Page Up and
 ; Left a page up, Page Down and Right a page down, and Escape back to the
-; search screen.
+; search screen, as Select.
 ;
 ; Nametable 0 is a ring of RING_ROWS lines: line n of the article is in row
 ; n mod RING_ROWS, and the ring holds lines lo to hi - 1. The window shows
@@ -135,8 +134,8 @@ factor:    .res 1
     beq @select
     jmp lost_article
 @select:
-    lda pad_new                 ; B: back a step, to the search screen
-    and #PAD_B
+    lda pad_new                 ; Select: back to the search screen
+    and #PAD_SELECT
     beq @start
     lda #STATUS_NONE
     jmp back_to_search
@@ -159,7 +158,7 @@ factor:    .res 1
     beq @glide
 @page_up:
     lda pad_new
-    and #PAD_LEFT
+    and #PAD_B | PAD_LEFT
     beq @move
     lda #1
 @glide:

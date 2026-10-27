@@ -235,9 +235,12 @@ main_wait:
 @input:
     jsr read_input
     lda pad_new                 ; Select: back to the cartridge's menu, from
-    and #PAD_SELECT             ; every screen. B is only ever back a step,
-    beq @dispatch               ; and never out of the program, so that B
-    lda on_cart                 ; pressed again and again cannot leave it
+    and #PAD_SELECT             ; every screen but the reader, where it is
+    beq @dispatch               ; back to the search (reader_frame)
+    lda state
+    cmp #STATE_READER
+    beq @dispatch
+    lda on_cart
     beq @dispatch
     jmp quit
 @dispatch:
