@@ -67,9 +67,12 @@ if MENU_ROW + len(MENU_ITEMS) + 1 > MESSAGE_ROW:
     raise ValueError("the menu, with Quit, runs into the message line")
 
 # The Bluetooth keyboard's screen: the keyboard paired and how it stands, as
-# the status screen's lines are, and a line that shows what is typed on it.
+# the status screen's lines are, a line that shows what is typed on it, and
+# a menu under that.
 KBD_LABELS = ("KEYBOARD", "STATUS")
 KBD_ECHO_ROW = BODY_ROW + len(KBD_LABELS) + 2
+KBD_MENU_ROW = KBD_ECHO_ROW + 2
+KBD_MENU_ITEMS = ("PAIR A KEYBOARD", "FORGET THE KEYBOARD")
 
 # The list of networks.
 LIST_ROW = 11
@@ -366,6 +369,7 @@ def include(screen):
     constant("VALUE_WIDTH", VALUE_WIDTH)
     constant("MENU_ROW", MENU_ROW)
     constant("KBD_ECHO_ROW", KBD_ECHO_ROW)
+    constant("KBD_MENU_ROW", KBD_MENU_ROW)
     constant("LIST_ROW", LIST_ROW)
     constant("LIST_ROWS", LIST_ROWS, "networks in view")
     constant("LIST_COLUMN", LIST_COLUMN)

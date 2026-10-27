@@ -1,7 +1,8 @@
 ; The Bluetooth keyboard: pair one with the nesp32, forget it, and try it.
 ;
-;   A        look for keyboards in their pairing mode, and list them
-;   Select   forget the keyboard paired
+;   Up, Down move the arrow: pair a keyboard, or forget the one paired
+;   A        do it; pairing looks for keyboards in their pairing mode and
+;            lists them
 ;   B        back
 ;
 ; and on the list of what was found:
@@ -29,6 +30,11 @@ KBD_OLD     = 2                 ; and the nesp32 has no KBD
 ASK_SCAN   = 1                  ; kbd_asking: an order to send
 ASK_FORGET = 2
 
+; The menu, under the line of what is typed (KBD_MENU_ROW).
+KBD_MENU_PAIR   = 0
+KBD_MENU_FORGET = 1
+KBD_MENU_ITEMS  = 2
+
 DIRTY_NAME  = $01               ; kbd_dirty: what is to be drawn
 DIRTY_STATE = $02
 DIRTY_ECHO  = $04
@@ -42,6 +48,7 @@ kbd_looking: .res 1             ; a scan was asked for: the list comes when it i
 kbd_pairing: .res 1             ; a pairing was asked for: its end is said
 kbd_count:   .res 1             ; keyboards the scan found
 kbd_cur:     .res 1             ; the one the arrow is at
+kbd_item:    .res 1             ; the menu's item the arrow is at
 kbd_fill:    .res 1             ; the next line of the list to draw
 kbd_picking: .res 1             ; A was pressed on the list: PAIR goes out
 kbd_name_len: .res 1
@@ -55,15 +62,16 @@ kbd_screen:
     label BODY_ROW, LEFT, "KEYBOARD"
     label BODY_ROW + 1, LEFT, "STATUS"
     label KBD_ECHO_ROW - 1, LEFT, "TRY IT"
-    text  KBD_ECHO_ROW + 3, LEFT, "TO PAIR ONE, PUT IT IN ITS"
-    text  KBD_ECHO_ROW + 4, LEFT, "PAIRING MODE AND PRESS A."
-    text  HELP_ROW, LEFT, "A:PAIR  SELECT:FORGET"
-    text  HELP_ROW + 1, LEFT, "B:BACK"
+    text  KBD_MENU_ROW + KBD_MENU_PAIR, MENU_COLUMN, "PAIR A KEYBOARD"
+    text  KBD_MENU_ROW + KBD_MENU_FORGET, MENU_COLUMN, "FORGET THE KEYBOARD"
+    text  KBD_MENU_ROW + 3, LEFT, "PUT THE KEYBOARD IN ITS"
+    text  KBD_MENU_ROW + 4, LEFT, "PAIRING MODE FIRST."
+    text  HELP_ROW, LEFT, "A : CHOOSE   B : BACK"
     .byte 0
 
 kbd_list_screen:
     text  HEADING_ROW, LEFT, "CHOOSE A KEYBOARD"
-    text  HELP_ROW, LEFT, "A:PAIR  B:BACK"
+    text  HELP_ROW, LEFT, "A : PAIR   B : BACK"
     .byte 0
 
 ; How the keyboard stands, by the state (enum KEYBOARD).
@@ -92,6 +100,7 @@ kbd_none_found:   .byte "NO KEYBOARD FOUND", 0
 kbd_paired_text:  .byte "THE KEYBOARD IS PAIRED", 0
 kbd_refused_text: .byte "THE PAIRING FAILED", 0
 kbd_forgot_text:  .byte "THE KEYBOARD IS FORGOTTEN", 0
+kbd_nothing_text: .byte "NO KEYBOARD IS PAIRED", 0
 
 .segment "CODE"
 
@@ -102,6 +111,7 @@ kbd_forgot_text:  .byte "THE KEYBOARD IS FORGOTTEN", 0
     sta kbd_name_len
     sta kbd_looking
     sta kbd_pairing
+    sta kbd_item
     ; fall through
 .endproc
 
@@ -118,7 +128,21 @@ kbd_forgot_text:  .byte "THE KEYBOARD IS FORGOTTEN", 0
     sta kbd_asking
     lda #STATE_KBD
     sta state
-    rts
+    ; fall through
+.endproc
+
+; The arrow, at the menu's item.
+.proc kbd_arrow
+    lda kbd_item
+    asl a
+    asl a
+    asl a
+    clc
+    adc #8 * KBD_MENU_ROW
+    tay
+    ldx #LIST_ARROW_X
+    lda #TILE_ARROW
+    jmp cursor_at
 .endproc
 
 .proc kbd_frame
@@ -178,27 +202,48 @@ kbd_forgot_text:  .byte "THE KEYBOARD IS FORGOTTEN", 0
 
 .proc kbd_input
     lda pad_new
+    and #PAD_UP
+    beq @down
+    lda kbd_item
+    beq @down
+    dec kbd_item
+    jsr kbd_arrow
+@down:
+    lda pad_new
+    and #PAD_DOWN
+    beq @choose
+    ldx kbd_item
+    inx
+    cpx #KBD_MENU_ITEMS
+    bcs @choose
+    stx kbd_item
+    jsr kbd_arrow
+@choose:
+    lda pad_new
     and #PAD_A
-    beq @forget
+    beq @done
     lda kbd_state
     cmp #NESP_KEYBOARD_NONE
-    bne @scan
-    say kbd_no_bt_text
-    jmp @forget
-@scan:
+    beq @no_bt
+    lda kbd_item
+    cmp #KBD_MENU_FORGET
+    beq @forget
     lda #ASK_SCAN
     sta kbd_asking
     say kbd_looking_text
+@done:
+    rts
+@no_bt:
+    say kbd_no_bt_text
+    rts
 @forget:
-    lda pad_new
-    and #PAD_SELECT
-    beq @done
-    lda kbd_state
-    cmp #NESP_KEYBOARD_NONE
-    beq @done
+    lda kbd_name_len
+    beq @nothing
     lda #ASK_FORGET
     sta kbd_asking
-@done:
+    rts
+@nothing:
+    say kbd_nothing_text
     rts
 .endproc
 

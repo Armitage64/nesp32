@@ -14,7 +14,7 @@ from console import VBLANK_CYCLES
 from drive import (PAD_A, PAD_B, PAD_DOWN, PAD_SELECT, PAD_START, PAD_UP, STATE_FAILED,
                    STATE_JOINING, STATE_KBD, STATE_KBD_LIST, STATE_KEYS, STATE_LIST, STATE_SCAN,
                    STATE_STATUS, STATE_TEST, STATE_USB, Setup, find_key)
-from drive import MENU_FLIP, MENU_KBD, MENU_TEST, MENU_USB
+from drive import KBD_MENU_FORGET, KBD_MENU_PAIR, MENU_FLIP, MENU_KBD, MENU_TEST, MENU_USB
 from nesp import Stick
 from wire import link, ms
 
@@ -748,8 +748,8 @@ def open_kbd(s):
 
 
 def kbd_scan(s, keyboards=KEYBOARDS):
-    """A on the keyboard's screen, and the nesp32 finds these."""
-    s.press(PAD_A)
+    """Pair a keyboard, on the keyboard's screen, and the nesp32 finds these."""
+    s.kbd_menu(KBD_MENU_PAIR)
     s.c.run_until(lambda: s.stick.kbd_scans, 60)
     assert s.message == "LOOKING FOR KEYBOARDS..."
     s.stick.kbd_found(keyboards)
@@ -764,6 +764,14 @@ def test_the_keyboards_screen_turns_bluetooth_on_and_going_back_turns_it_off(set
     assert s.stick.kbd_on
     assert s.kbd_value("KEYBOARD") == "-" and s.kbd_value("STATUS") == "NONE PAIRED"
     assert s.echo == "_"
+    assert [s.c.text(layout.KBD_MENU_ROW + item, layout.LEFT + 2, 20).rstrip()
+            for item in range(len(layout.KBD_MENU_ITEMS))] == list(layout.KBD_MENU_ITEMS)
+    assert s.kbd_item == KBD_MENU_PAIR
+    s.press(PAD_UP)                             # it stops at the first
+    assert s.kbd_item == KBD_MENU_PAIR
+    s.press(PAD_DOWN)
+    s.press(PAD_DOWN)                           # and at the last
+    assert s.kbd_item == KBD_MENU_FORGET
     s.press(PAD_B)
     s.wait_for(STATE_STATUS)
     s.c.run_until(lambda: not s.stick.kbd_on, 60)
@@ -850,16 +858,26 @@ def test_b_on_the_list_pairs_none_and_none_found_says_so(setup):
     assert s.state == STATE_KBD
 
 
-def test_select_forgets_the_keyboard_paired(setup):
+def test_the_keyboard_paired_is_forgotten_from_the_menu(setup):
     s = setup()
     s.stick.kbd_paired(b"MX KEYS S")
     s.stick.kbd_state = p.NESP_KEYBOARD_CONNECTED
     open_kbd(s)
-    s.press(PAD_SELECT)
+    s.kbd_menu(KBD_MENU_FORGET)
     s.wait_for_message("THE KEYBOARD IS FORGOTTEN")
     assert s.stick.kbd_forgets == 1
     s.c.run_until(lambda: s.kbd_value("KEYBOARD") == "-"
                   and s.kbd_value("STATUS") == "NONE PAIRED", 60)
+    assert s.state == STATE_KBD
+
+
+def test_forgetting_with_none_paired_says_so(setup):
+    s = setup()
+    open_kbd(s)
+    s.kbd_menu(KBD_MENU_FORGET)
+    s.wait_for_message("NO KEYBOARD IS PAIRED")
+    s.c.run(40)
+    assert s.stick.kbd_forgets == 0
 
 
 def test_a_board_with_no_bluetooth_says_so(setup):
@@ -867,10 +885,11 @@ def test_a_board_with_no_bluetooth_says_so(setup):
     s.stick.kbd_absent()
     open_kbd(s)
     s.c.run_until(lambda: s.kbd_value("STATUS") == "NO BLUETOOTH", 60)
-    s.press(PAD_A)
+    s.kbd_menu(KBD_MENU_PAIR)
     s.wait_for_message("THIS BOARD HAS NO BLUETOOTH")
-    s.press(PAD_SELECT)
+    s.kbd_menu(KBD_MENU_FORGET)
     s.c.run(40)
+    assert s.message == "THIS BOARD HAS NO BLUETOOTH"
     assert s.state == STATE_KBD and s.stick.kbd_scans == 0 and s.stick.kbd_forgets == 0
 
 

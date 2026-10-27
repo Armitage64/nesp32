@@ -37,7 +37,7 @@ computer, and music copied to it.
 | Keyboard, for a password (or the name of a network that hides it) | D-pad. A: type; on the set key, left of the space bar, `abc`, `ABC` or `#+=`. B: delete. Start: join |
 | Link test: a checked request every frame, and the nesp32's time to reply | B: back |
 | USB drive: a StickS3's files lent to a computer, for music to be copied to | B: back, and the nesp32 restarts |
-| Bluetooth keyboard: the keyboard paired, how it stands, and a line that shows what is typed on it | A: look for keyboards. Select: forget the one paired. B: back |
+| Bluetooth keyboard: the keyboard paired, how it stands, and a line that shows what is typed on it | Up, Down. A: choose: pair a keyboard (look for them, and list them) or forget the one paired. B: back |
 | Keyboards found, strongest first | Up, Down. A: pair. B: back |
 
 Every printable character can be typed, and a password may be the full 63.
@@ -51,10 +51,10 @@ USB drive is taken back first, as B does. Setup built as a ROM of its own
 has no menu to go back to, and no Quit.
 
 A Bluetooth keyboard is for the programs that take text, NESpedia first.
-Put it in its pairing mode, then press A on the keyboard screen and choose
-it from the list; there is no code to type on it. The nesp32 keeps it, and
-connects it again whenever a program that uses it is running and a key is
-pressed on it. Only a StickS3 has Bluetooth, and only Bluetooth LE
+Put it in its pairing mode, then choose PAIR A KEYBOARD on the keyboard
+screen and the keyboard from the list; there is no code to type on it. The
+nesp32 keeps it, and connects it again whenever a program that uses it is
+running and a key is pressed on it. Only a StickS3 has Bluetooth, and only Bluetooth LE
 keyboards pair: most made in the last few years are, and an older one that
 is Bluetooth Classic alone is not found. Bluetooth is on only while this
 screen or such a program is up.
