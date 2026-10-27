@@ -229,6 +229,10 @@ Keys S:
   nesp32 was switched off and on when a key was pressed on it, and every
   key came through as the character it is, Shift and Caps Lock included.
 
+The firmware itself, with Bluetooth on only for KBD, has since run on the
+same StickS3: the keyboard paired from Setup's screen and typed
+NESpedia's searches.
+
 ESP-IDF 5.5.5's NimBLE HID host (and 6.0.3's) never turned on a
 keyboard's reports, so nothing typed arrived: `components/esp_hid` has
 ESP-IDF master's fix. Its open waits for each step with no end, so

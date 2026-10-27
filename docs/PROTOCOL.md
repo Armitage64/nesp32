@@ -201,7 +201,7 @@ nothing done on the nesp32.
 | `$03` | RAW | a run of bytes at a rate of its own with framing off: sampled sound, rate trials | done |
 | `$04` | PEER | a lobby and a lockstep relay of buttons for two consoles | done |
 | `$05` | DIAG | the link's counters and test patterns | done |
-| `$06` | KBD | a Bluetooth keyboard: what is typed on it, and pairing one | in progress |
+| `$06` | KBD | a Bluetooth keyboard: what is typed on it, and pairing one | done |
 | `$10` | JUKE | the jukebox: the playlist as a stream, the buttons, sampled sound | done |
 | `$11` | WIKI | NESpedia: a search, and the article it finds as numbered lines | done |
 | `$12` | RADAR | NES Radar: an airport, and the aircraft round it | done |

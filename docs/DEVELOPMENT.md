@@ -130,7 +130,7 @@ What is still to do on the hardware and the firmware is in
 | A computer in place of a nesp32 (`host/serial_host.py`) | written, not run on a cable |
 | The cartridge (`nes/cart/`): eight programs and a menu, on an MMC1 | working on hardware with the first five, a real NES and the MiSTer, with each board. NESradio, Weather and Bluesky start from the menu on a simulated console; the cartridge with them has not yet run on hardware |
 | [Setup](../apps/setup), SYS, NET, DIAG | working on hardware |
-| A Bluetooth keyboard: KBD, [Setup](../apps/setup)'s screen for it, and [NESpedia](../apps/wiki)'s search | the keyboard on a StickS3 in a spike of the firmware; the service and the two ROMs on a simulated console against the firmware's code, not yet on hardware |
+| A Bluetooth keyboard: KBD, [Setup](../apps/setup)'s screen for it, and [NESpedia](../apps/wiki)'s search | working on hardware: a StickS3 with a Logitech MX Keys S, paired from Setup and typing NESpedia's search |
 | [NESpedia](../apps/wiki), WIKI | working on hardware |
 | [Jukebox](../apps/jukebox), JUKE and RAW | working on hardware |
 | [Throughput](../apps/throughput), RAW | working on hardware |
