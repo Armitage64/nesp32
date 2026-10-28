@@ -241,8 +241,8 @@ wifi_failed:   .byte "COULD NOT JOIN", 0
 
 ; Back to the cartridge's menu, as reset would go: through its stub, with
 ; the NMI off first, since the stub's `inc` puts the menu's bank, and its
-; NMI, under this. The menu says nothing to the nesp32; the next program's
-; hello is what tells it this one has gone.
+; NMI, under this. The menu says hello to the nesp32 (KBD alone), and the
+; next program's hello is what tells it which one runs.
 .proc quit
     lda #0
     sta PPUCTRL
@@ -316,7 +316,9 @@ FLIP_TURN = 2
     jmp put_text
 .endproc
 
-; Say hello, if the Stick has not answered one. This ROM needs NET and DIAG.
+; Say hello, if the Stick has not answered one. This ROM needs NET and DIAG,
+; and asks for KBD too, which this screen takes no keys from, so that the
+; keyboard stays connected from one program on the cartridge to the next.
 .proc step_hello
     lda linked
     bne @found
@@ -324,12 +326,29 @@ FLIP_TURN = 2
     sta nesp_request + NESP_HELLO_FIXED
     lda #NESP_SVC_DIAG
     sta nesp_request + NESP_HELLO_FIXED + 1
-    ldy #2
+    lda #NESP_SVC_KBD
+    sta nesp_request + NESP_HELLO_FIXED + 2
+    ldy #3
     jsr nesp_hello
     bcs @missing
     sta hello_status
     cmp #NESP_ST_OK
+    beq @greeted
+    cmp #NESP_ST_NO_SERVICE     ; only KBD missing is a Stick to use
     bne @old
+    lda nesp_reply + 6
+    cmp #1
+    bne @old
+    lda nesp_reply + 7
+    cmp #NESP_SVC_KBD
+    bne @old
+@greeted:
+    ldx #0                      ; the badge's: the hello had KBD
+    lda hello_status
+    bne @kbd
+    inx
+@kbd:
+    stx badge_ok
     lda #1
     sta linked
     lda #0

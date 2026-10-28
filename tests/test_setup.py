@@ -6,6 +6,7 @@ the controller.
 import random
 import string
 
+import badge as badge_art
 import gen_screen as layout
 import nesp
 import nesp_proto as p
@@ -756,9 +757,9 @@ def kbd_scan(s, keyboards=KEYBOARDS):
     s.stick.kbd_state = p.NESP_KEYBOARD_SCANNED
 
 
-def test_the_keyboards_screen_turns_bluetooth_on_and_going_back_turns_it_off(setup):
+def test_bluetooth_is_on_from_the_status_screen_and_stays_on_going_back(setup):
     s = setup()
-    assert not s.stick.kbd_on
+    s.c.run_until(lambda: s.stick.kbd_on, 60)  # the status screen's hello asks for KBD
     open_kbd(s)
     assert s.heading == "PAIR BLUETOOTH KEYBOARD"
     assert s.stick.kbd_on
@@ -774,17 +775,17 @@ def test_the_keyboards_screen_turns_bluetooth_on_and_going_back_turns_it_off(set
     assert s.kbd_item == KBD_MENU_BACK
     s.press(PAD_B)
     s.wait_for(STATE_STATUS)
-    s.c.run_until(lambda: not s.stick.kbd_on, 60)
     s.settle(80)
-    assert s.value("NESP32") == "CONNECTED"
+    assert s.value("NESP32") == "CONNECTED" and s.stick.kbd_on
 
 
-def test_back_on_the_menu_is_the_status_screen_and_bluetooth_off(setup):
+def test_back_on_the_menu_is_the_status_screen_with_bluetooth_still_on(setup):
     s = setup()
     open_kbd(s)
     s.kbd_menu(KBD_MENU_BACK)
     s.wait_for(STATE_STATUS)
-    s.c.run_until(lambda: not s.stick.kbd_on, 60)
+    s.settle(80)
+    assert s.stick.kbd_on
     assert s.stick.kbd_scans == 0 and s.stick.kbd_forgets == 0
 
 
@@ -835,6 +836,9 @@ def test_a_keyboard_found_is_chosen_from_a_list_and_paired(setup):
     s.wait_for_message("PAIRING...")
     s.c.run_until(lambda: s.kbd_value("STATUS") == "PAIRING...", 60)
     s.stick.kbd_paired(b"K380")
+    s.stick.kbd_state = p.NESP_KEYBOARD_WAITING   # paired, and being connected to again
+    s.c.run(60)
+    assert s.kbd_value("KEYBOARD") == "K380" and s.kbd_value("STATUS") == "PAIRING..."
     s.stick.kbd_state = p.NESP_KEYBOARD_CONNECTED
     s.wait_for_message("THE KEYBOARD IS PAIRED")
     assert s.kbd_value("KEYBOARD") == "K380" and s.kbd_value("STATUS") == "CONNECTED"
@@ -923,3 +927,46 @@ def test_one_controller_read_a_frame_reaches_the_stick_as_one_byte_of_noise(setu
     noise, frames = s.stick.noise, len(s.c.frames)
     s.settle(100)
     assert s.stick.noise - noise == len(s.c.frames) - frames
+
+
+def test_the_keyboards_arrows_enter_and_escape_are_the_d_pad_a_and_b(setup):
+    """Down three times and Enter, on the status screen: the keyboard's
+    screen, as the controller's Down and A. Escape there is B: back."""
+    s = setup()
+    s.c.run_until(lambda: s.stick.kbd_on, 60)
+    s.settle(80)
+    down = bytes((p.NESP_KEY_DOWN,))
+    s.stick.kbd_type(down * MENU_KBD + bytes((p.NESP_KEY_ENTER,)))
+    s.wait_for(STATE_KBD)
+    s.c.run_until(lambda: s.c.byte("kbd_greeted"), 60)
+    s.settle()
+    s.stick.kbd_type(bytes((p.NESP_KEY_ESCAPE,)))
+    s.wait_for(STATE_STATUS)
+    assert s.stick.kbd_unread == 0
+
+
+def badge(s):
+    """The Bluetooth keyboard's badge: its colour, or None while hidden."""
+    shown = [s.c.oam[4 * sprite] < 0xEF for sprite in range(1, 5)]
+    assert len(set(shown)) == 1         # all four, or none
+    return s.c.vram[0x3F15] if shown[0] else None
+
+
+def test_the_badge_is_on_every_screen_as_on_the_cartridges_menu(setup):
+    s = setup()
+    s.c.run_until(lambda: s.stick.kbd_on, 60)
+    s.settle(40)
+    assert badge(s) is None                         # none paired
+    s.stick.kbd_paired(b"MX KEYS S")
+    s.stick.kbd_state = p.NESP_KEYBOARD_CONNECTED
+    s.c.run(40)
+    assert badge(s) == badge_art.COLORS["BLUE"]     # the status screen
+    open_kbd(s)
+    s.stick.kbd_state = p.NESP_KEYBOARD_FAILED
+    s.c.run(40)
+    assert badge(s) == badge_art.COLORS["YELLOW"]   # the keyboard's
+    s.press(PAD_B)
+    s.wait_for(STATE_STATUS)
+    s.stick.kbd_state = p.NESP_KEYBOARD_CONNECTED
+    s.c.run(40)
+    assert badge(s) == badge_art.COLORS["BLUE"]

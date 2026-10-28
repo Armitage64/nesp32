@@ -45,6 +45,8 @@ KEY_LEFT      = $13
 KEY_RIGHT     = $14
 KEY_PAGE_UP   = $15
 KEY_PAGE_DOWN = $16
+KEY_START     = $17             ; Ctrl and Enter
+KEY_SELECT    = $18             ; Ctrl and Escape
 KEY_ESCAPE    = $1B
 SHIFT_COL = 0
 PULSE_MASK = $07                ; frames between the pulse's colours, less one
@@ -286,21 +288,23 @@ row_first: .byte 0, KEY_COLUMNS, 2 * KEY_COLUMNS, 3 * KEY_COLUMNS
 
 ; One character from the Bluetooth keyboard, A.
 .proc type_typed
-    cmp #KEY_BACKSPACE
+    cmp #KEY_BACKSPACE          ; Backspace, and Escape, which is B
+    beq @delete
+    cmp #KEY_ESCAPE
     bne @enter
+@delete:
     jmp delete_char
 @enter:
-    cmp #KEY_ENTER
-    bne @escape
+    cmp #KEY_ENTER              ; Enter searches, here, where A types, as
+    beq @search                 ; Ctrl and Enter, which is Start, does
+    cmp #KEY_START
+    bne @control
+@search:
     jmp search
-@escape:
-    cmp #KEY_ESCAPE
-    bne @letter
-    lda on_cart                 ; Escape: as Select, back to the cartridge's menu
-    beq @done
-    jmp quit
-@done:
-    rts
+@control:
+    cmp #' '                    ; the arrows and Select: buttons, a frame on,
+    bcs @letter                 ; which for them is no matter
+    jmp link_key_queue
 @letter:
     cmp #' '
     beq type_char

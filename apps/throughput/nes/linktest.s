@@ -92,7 +92,7 @@ SETTLE_LOOP = 1286              ; cycles of one pass of settle's outer loop
 
 ; What this ROM asks of the link.
 NESP_RX_MASK = $1F              ; replies of up to 31 bytes
-NESP_TX_MAX  = 8                ; the hello, with its one service
+NESP_TX_MAX  = 9                ; the hello, with its two services
 .define NESP_APP "THRU"
 NESP_APP_VERSION = 1
 
@@ -140,17 +140,21 @@ skip:         .res 1            ; bytes at the start of a block that are not the
 vector:       .res 2            ; the block routine to call
 rx_ptr:       .res 2            ; where the tracking receiver stores
 on_cart:      .res 1            ; this is on nesp32's cartridge, which has a menu
+keys_ok:      .res 1            ; the hello had KBD: what is typed is asked for
+key_at:       .res 1            ; the next key of a KEYS reply
+pressed:      .res 1            ; what the wait goes by: controller 1 or a key
 
 .segment "BSS"
 draw_buf:     .res DRAW_MAX     ; fields: address (high, low), width, tiles
 
+NESP_KEY_PAD = 1                ; the Bluetooth keyboard's keys as the controller's buttons
 .include "nesp.inc"
 .include "screen.inc"
 .include "rates.inc"
 
 SETTLE_LOOPS = (NESP_RAW_SETTLE_MS * (NESP_CPU_HZ / 1000) + SETTLE_LOOP - 1) / SETTLE_LOOP
 .assert SETTLE_LOOPS < 256, error, "settle counts in X"
-.assert NESP_TX_MAX = NESP_HELLO_FIXED + 1, error, "the hello names one service"
+.assert NESP_TX_MAX = NESP_HELLO_FIXED + 2, error, "the hello names two services"
 .assert TX_FIRST < TX_COUNT, error, "TX_FIRST is a rate of the ladder from the console"
 
 SWEEP_FIRST = RX_COUNT - SWEEP_RATES
@@ -306,13 +310,29 @@ of_text:       .byte " OF ", 0
     say waiting_text
 @hello:
     jsr next_frame
-    lda #NESP_SVC_RAW
-    sta nesp_request + NESP_HELLO_FIXED
-    ldy #1
+    lda #NESP_SVC_RAW           ; and KBD, for the keys that stand for the
+    sta nesp_request + NESP_HELLO_FIXED ; controller's buttons, and so that the
+    lda #NESP_SVC_KBD           ; keyboard stays connected from one program
+    sta nesp_request + NESP_HELLO_FIXED + 1 ; on the cartridge to the next
+    ldy #2
     jsr nesp_hello
     bcs @hello
+    ldx #1
     cmp #NESP_ST_OK
-    beq @greeted
+    beq @keys
+    cmp #NESP_ST_NO_SERVICE     ; only KBD missing is a nesp32 to use
+    bne @update
+    lda nesp_reply + 6
+    cmp #1
+    bne @update
+    lda nesp_reply + 7
+    cmp #NESP_SVC_KBD
+    bne @update
+    dex
+@keys:
+    stx keys_ok
+    jmp @greeted
+@update:
     say update_text             ; it has no RAW, or speaks another protocol
     jmp @hello
 
@@ -340,8 +360,13 @@ of_text:       .byte " OF ", 0
     ; Wait to be started: Start or A on controller 1, or button A on the
     ; nesp32. On the cartridge, Select is its menu; B, which is only ever
     ; back a step, has none to go back to here. A request a frame keeps
-    ; watch on the nesp32 meanwhile.
+    ; watch on the nesp32 meanwhile, and every other one asks what is typed
+    ; on the Bluetooth keyboard, whose keys stand for the buttons
+    ; (nesp_key_queue): a key is a press, never one held from before.
 @idle:
+    jsr nesp_key_next
+    and #PAD_START | PAD_A | PAD_SELECT | PAD_UP
+    bne @pressed
     lda pad
     and #PAD_START | PAD_A | PAD_SELECT | PAD_UP
     bne @down
@@ -349,21 +374,30 @@ of_text:       .byte " OF ", 0
     sta start_up
     bne @watch
 @down:
-    lda start_up
+    ldx start_up
     beq @watch
-    lda pad
+@pressed:
+    sta pressed
     and #PAD_SELECT
     beq @start
     lda on_cart
     beq @watch
     jmp quit
 @start:
-    lda pad
+    lda pressed
     and #PAD_UP
     beq @go
     jsr sweep
     jmp @ran
 @watch:
+    lda keys_ok
+    beq @result
+    lda frame_count
+    lsr a
+    bcc @result
+    jsr ask_keys
+    jmp @idle
+@result:
     lda #NESP_SVC_RAW
     ldx #NESP_RAW_RESULT
     ldy #0
@@ -389,8 +423,8 @@ of_text:       .byte " OF ", 0
 
 ; Back to the cartridge's menu, as reset would go: through its stub, with
 ; the NMI off first, since the stub's `inc` puts the menu's bank, and its
-; NMI, under this. The menu says nothing to the nesp32; the next program's
-; hello is what tells it this one has gone.
+; NMI, under this. The menu says hello to the nesp32 (KBD alone), and the
+; next program's hello is what tells it which one runs.
 .proc quit
     lda #0
     sta PPUCTRL
@@ -419,6 +453,27 @@ main_wait:
 ; nothing twice for that (nesp_again). Returns with the reply in
 ; nesp_reply. If none comes, or one that is not OK, the test is over: see
 ; start.
+; What has been typed on the Bluetooth keyboard, kept as presses
+; (nesp_key_queue).
+.proc ask_keys
+    lda #NESP_SVC_KBD
+    ldx #NESP_KBD_KEYS
+    ldy #0
+    jsr ask
+    lda #0
+    sta key_at
+@key:
+    ldx key_at
+    cpx nesp_reply
+    bcs @done
+    lda nesp_reply + 1,x
+    jsr nesp_key_queue
+    inc key_at
+    bne @key
+@done:
+    rts
+.endproc
+
 .proc ask
     pha
     jsr next_frame

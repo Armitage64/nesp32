@@ -79,8 +79,10 @@ NESP_CRC_TABLE = 1
 .endif
 .define NESP_APP "SETP"
 NESP_APP_VERSION = 1
+NESP_KEY_PAD = 1                ; the Bluetooth keyboard's keys as the controller's buttons
 
 oam = $0200                     ; sprites, copied to the PPU every NMI
+BADGE_OAM = oam + 4             ; the Bluetooth keyboard's badge, after the cursor
 SPRITE_HIDDEN = $F0
 
 .segment "HEADER"
@@ -118,6 +120,7 @@ width:        .res 1
 
 .segment "BSS"
 draw_buf:     .res 32
+key_at:       .res 1            ; the next of the keys a KEYS reply has
 
 ; --- macros --------------------------------------------------------------------
 
@@ -188,6 +191,7 @@ draw_buf:     .res 32
 .endmacro
 
 .include "nesp.inc"
+.include "badge.inc"
 .include "status.inc"
 .include "wifi.inc"
 .include "keys.inc"
@@ -250,6 +254,7 @@ no_answer_text: .byte "NO ANSWER FROM THE NESP32", 0
     sta pad_seen                ; before, as the cartridge's menu's A or Start is,
                                 ; counts only once it has been let go
     jsr ppu_init                ; rendering is off; the first NMI turns it on
+    jsr badge_init
     lda #PPUMASK_ON
     sta mask
     jsr open_status             ; which turns the NMI on
@@ -270,6 +275,8 @@ main_wait:
     beq main_wait
     sta served_frame
     jsr read_input
+    jsr poll_keys
+    jsr show_badge
     lda pad_new                 ; Select: back to the cartridge's menu, from
     and #PAD_SELECT             ; every screen. B is only ever back a step,
     beq @screen                 ; and never out of the program, so that B
@@ -291,9 +298,18 @@ main_wait:
     rts
 .endproc
 
-; pad_new = the buttons that went down since the last frame, and any
-; direction that has been held long enough to repeat.
+; pad_new = the buttons that went down since the last frame, any direction
+; that has been held long enough to repeat, and a key typed on the
+; Bluetooth keyboard that stands for buttons (nesp_key_next).
 .proc read_input
+    jsr read_pad
+    jsr nesp_key_next
+    ora pad_new
+    sta pad_new
+    rts
+.endproc
+
+.proc read_pad
     lda pad
     tax
     eor pad_seen
@@ -362,6 +378,90 @@ main_wait:
     sec
     rts
 .endproc
+
+; The Bluetooth keyboard's badge (badge.inc), on every screen: the Stick
+; has stopped answering if it is no longer linked for want of replies.
+.proc show_badge
+    ldx #0
+    lda linked
+    bne @answering
+    lda misses
+    cmp #MISSES_MAX
+    bcc @answering
+    inx
+@answering:
+    txa
+    jmp badge_show
+.endproc
+
+; How the keyboard stands, for the badge: KBD STATE's reply.
+.proc badge_heard
+    lda nesp_reply
+    sta badge_state
+    lda nesp_reply + 2          ; the paired one's name: none, none paired
+    sta badge_paired
+    rts
+.endproc
+
+; What is typed on the Bluetooth keyboard, every other frame, as the
+; controller's buttons (nesp_key_queue), and every sixteenth how it stands,
+; for the badge: on the screens whose link is not busy with something
+; else, and with a Stick whose hello had KBD. The keyboard's own screen
+; asks for both itself (kbd_ask).
+.proc poll_keys
+    lda linked
+    beq @done
+    lda hello_status
+    cmp #NESP_ST_OK
+    bne @done
+    lda frame_count
+    lsr a
+    bcc @done
+    ldx state
+    lda key_screens,x
+    beq @done
+    lda frame_count
+    and #STATE_EVERY << 1
+    bne @keys
+    lda #NESP_SVC_KBD
+    ldx #NESP_KBD_STATE
+    ldy #0
+    jsr call
+    bcs @done
+    lda nesp_status
+    bne @done
+    jmp badge_heard
+@keys:
+    lda #NESP_SVC_KBD
+    ldx #NESP_KBD_KEYS
+    ldy #0
+    jsr call
+    bcs @done
+    lda nesp_status
+    bne @done
+    lda #0
+    sta key_at
+@key:
+    ldx key_at
+    cpx nesp_reply
+    bcs @done
+    lda nesp_reply + 1,x
+    jsr nesp_key_queue
+    inc key_at
+    bne @key
+@done:
+    rts
+.endproc
+
+STATE_EVERY = $07                ; of poll_keys's frames: every sixteenth
+
+.segment "RODATA"
+; By state: 1 where poll_keys asks for keys. Not while a scan, a join or a
+; test has the link, nor while the files are a USB drive.
+key_screens:
+    .byte 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1
+.assert * - key_screens = STATE_KBD_LIST + 1, error, "a screen's keys for every state"
+.segment "CODE"
 
 ; The last request again, byte for byte.
 .proc call_again
@@ -647,6 +747,7 @@ tens_hi: .hibytes 10000, 1000, 100, 10, 1
     sta OAMADDR
     lda #>oam
     sta OAMDMA
+    badge_nmi
     lda draw_len
     beq @scroll
     bit PPUSTATUS               ; reset the PPU's address latch

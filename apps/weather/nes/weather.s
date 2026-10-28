@@ -159,6 +159,7 @@ on_cart:      .res 1            ; this is on nesp32's cartridge, which has a men
 day_at:       .res 1            ; center_days's: the day it is on
 
 .include "screen.inc"
+NESP_KEY_PAD = 1                ; nesp_key_pad
 .include "nesp.inc"
 
 .assert NESP_TX_MAX = NESP_HELLO_FIXED + 2, error, "the hello names two services"
@@ -375,12 +376,17 @@ main_wait:
 .proc buttons
     lda pad_new
     bne @some
-@done:
     rts
 @some:
     ldx #0
     stx pad_new
+    ; fall through
+.endproc
+
+; Buttons A pressed, from the controller or a key typed (nesp_key_pad).
+.proc press
     tax
+    beq @done
     and #PAD_SELECT             ; Select: back to the cartridge's menu, from
     beq @no_quit                ; either view, with a nesp32 or none
     lda on_cart
@@ -391,6 +397,8 @@ main_wait:
     ldx asked_last              ; until the nesp32 has said what it keeps there
     beq @done                   ; is neither view to work
     jmp act
+@done:
+    rts
 .endproc
 
 ; Buttons A pressed, on either view: from the controller, or a key typed.
@@ -454,8 +462,9 @@ main_wait:
     jmp form_touch
 .endproc
 
-; One key typed on the nesp32's keyboard, A: a digit, or what a button
-; would do. Anything else is no key of the form's.
+; One key typed on the nesp32's keyboard, A: a digit, Backspace, or a
+; button of the controller's (nesp_key_pad), as from the controller.
+; Anything else is no key of the form's.
 .proc type_key
     cmp #'0'
     bcc @control
@@ -479,43 +488,18 @@ main_wait:
     stx cursor
     jmp form_touch
 @control:
-    cmp #NESP_KEY_ESCAPE
-    bne @backspace
-    ldx view                    ; on the form, Escape is Select: the menu
-    bne @find
-    ldx on_cart
-    beq @done
-    jmp quit
-@backspace:
     cmp #NESP_KEY_BACKSPACE
-    bne @find
-    ldx cursor                  ; Backspace stops at the first digit
+    bne @button
+    ldx cursor                  ; Backspace is Left, and stops at the first digit
     beq @done
-@find:
-    ldx #KEY_BUTTONS - 1
-@key:
-    cmp key_codes,x
-    beq @found
-    dex
-    bpl @key
+    lda #PAD_LEFT
+    jmp act
+@button:
+    jsr nesp_key_pad
+    jmp press
 @done:
     rts
-@found:
-    lda key_buttons,x
-    jmp act
 .endproc
-
-.segment "RODATA"
-key_codes:
-    .byte NESP_KEY_ENTER, NESP_KEY_ESCAPE, NESP_KEY_BACKSPACE
-    .byte NESP_KEY_UP, NESP_KEY_DOWN, NESP_KEY_LEFT, NESP_KEY_RIGHT
-key_buttons:
-    .byte PAD_A, PAD_B, PAD_LEFT
-    .byte PAD_UP, PAD_DOWN, PAD_LEFT, PAD_RIGHT
-KEY_BUTTONS = * - key_buttons
-.assert KEY_BUTTONS = key_buttons - key_codes, error, "a button for every key"
-
-.segment "CODE"
 
 ; From the report: the form again, saying nothing.
 .proc back_to_form
@@ -619,8 +603,8 @@ KEY_BUTTONS = * - key_buttons
 
 ; Back to the cartridge's menu, as reset would go: through its stub, with
 ; the NMI off first, since the stub's `inc` puts the menu's bank, and its
-; NMI, under this. The menu says nothing to the nesp32; the next program's
-; hello is what tells it this one has gone.
+; NMI, under this. The menu says hello to the nesp32 (KBD alone), and the
+; next program's hello is what tells it which one runs.
 .proc quit
     lda #0
     sta PPUCTRL

@@ -1053,6 +1053,30 @@ esp_hidh_gattc_event_handler(struct ble_gap_event *event, void *arg)
             return 0;
         }
 
+    case BLE_GAP_EVENT_L2CAP_UPDATE_REQ: {
+        /* nesp32: a keyboard asks for a short connection interval, which is
+         * airtime Wi-Fi does without on the same radio. It has one no shorter
+         * than NimBLE's initial 30 to 50 ms, and the supervision timeout that
+         * the latency it asked for then needs. */
+        struct ble_gap_upd_params *params = event->conn_update_req.self_params;
+        if (params->itvl_min < BLE_GAP_INITIAL_CONN_ITVL_MIN) {
+            params->itvl_min = BLE_GAP_INITIAL_CONN_ITVL_MIN;
+        }
+        if (params->itvl_max < BLE_GAP_INITIAL_CONN_ITVL_MAX) {
+            params->itvl_max = BLE_GAP_INITIAL_CONN_ITVL_MAX;
+        }
+        /* More than (1 + latency) intervals, twice over, in 10 ms units. */
+        uint32_t least = ((uint32_t)(1 + params->latency) * params->itvl_max * 125 * 2) / 1000 + 1;
+        if (params->supervision_timeout < least) {
+            params->supervision_timeout = least > 3200 ? 3200 : (uint16_t)least;
+        }
+        ESP_LOGI(TAG, "connection update asked: %u to %u ms, latency %u",
+                 event->conn_update_req.peer_params->itvl_min * 5 / 4,
+                 event->conn_update_req.peer_params->itvl_max * 5 / 4,
+                 event->conn_update_req.peer_params->latency);
+        return 0;
+    }
+
     case BLE_GAP_EVENT_MTU:
         MODLOG_DFLT(INFO, "mtu update event; conn_handle=%d cid=%d mtu=%d\n",
                     event->mtu.conn_handle,
@@ -1259,8 +1283,22 @@ esp_hidh_dev_t *esp_ble_hidh_dev_open(uint8_t *bda, uint8_t address_type)
     memcpy(addr.val, bda, sizeof(addr.val));
     addr.type = address_type;
 
+    /* nesp32: Wi-Fi shares the radio, and NimBLE's own parameters (NULL)
+     * listen for the device all the time while it is asleep: 10% of the
+     * time here. */
+    struct ble_gap_conn_params conn_params = {
+        .scan_itvl = BLE_GAP_SCAN_ITVL_MS(200),
+        .scan_window = BLE_GAP_SCAN_WIN_MS(20),
+        .itvl_min = BLE_GAP_INITIAL_CONN_ITVL_MIN,
+        .itvl_max = BLE_GAP_INITIAL_CONN_ITVL_MAX,
+        .latency = BLE_GAP_INITIAL_CONN_LATENCY,
+        .supervision_timeout = BLE_GAP_INITIAL_SUPERVISION_TIMEOUT,
+        .min_ce_len = BLE_GAP_INITIAL_CONN_MIN_CE_LEN,
+        .max_ce_len = BLE_GAP_INITIAL_CONN_MAX_CE_LEN,
+    };
+
     LOCK_OPS();
-    ret = ble_gap_connect(own_addr_type, &addr, 30000, NULL, esp_hidh_gattc_event_handler, dev);
+    ret = ble_gap_connect(own_addr_type, &addr, 30000, &conn_params, esp_hidh_gattc_event_handler, dev);
     if (ret) {
         esp_hidh_dev_free_inner(dev);
         ESP_LOGE(TAG, "esp_ble_gattc_open failed: %d", ret);

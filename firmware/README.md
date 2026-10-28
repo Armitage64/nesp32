@@ -214,7 +214,8 @@ and no Classic, so only an LE keyboard pairs; a StickC Plus2's firmware
 has none, and its KBD says so.
 
 Bluetooth is on only while a ROM has KBD in use, and off 2 s after (a
-hello that asks for it again keeps it on). It shares the radio with
+hello that asks for it again keeps it on), and with no keyboard paired it
+is not on at all until Setup looks for one. It shares the radio with
 Wi-Fi, and it takes about 75 KB of the chip's own memory while it is on:
 with a keyboard connected the log's report had 67 KB free, where the
 firmware without it had 142 KB. That was measured with Bluetooth on all
@@ -236,9 +237,9 @@ searches and Weather's zip codes, and paged through NESpedia's articles.
 A keyboard that has gone to sleep, or one met with Bluetooth just turned
 on, takes some seconds to type again (about 10 with the MX Keys S): the
 key that wakes it is lost, and esp_hid reads its services afresh on every
-connection. Going from one keyboard program to another by the
-cartridge's menu keeps it connected, since the menu says nothing to the
-nesp32.
+connection. Going from one program on the cartridge to another by its
+menu keeps it connected, since the menu's hello asks for KBD and every
+program on it but NESradio does, whether or not it takes keys.
 
 ESP-IDF 5.5.5's NimBLE HID host (and 6.0.3's) never turned on a
 keyboard's reports, so nothing typed arrived: `components/esp_hid` has
@@ -255,7 +256,8 @@ on, as a computer does it, since a keyboard says only which keys are down
 (an esp_timer, `REPEAT_DELAY_MS` and `REPEAT_EVERY_MS`). Only the last key
 to go down repeats, and Enter and Escape never do. Besides printable
 ASCII, KBD sends Backspace, Tab, Enter, Escape, the arrows, and Page Up
-and Page Down.
+and Page Down, and Ctrl with Enter or Escape as Start and Select, which
+the cartridge's programs take as the controller's.
 
 What is typed is logged only at the debug level, as it may be a password.
 The log's report ends with how the keyboard stands: off, unpaired,

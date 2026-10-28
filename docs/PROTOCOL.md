@@ -711,17 +711,19 @@ hears characters.
 | `$04` | PAIR | `INDEX` | status only; FAILED if there is no such keyboard |
 | `$05` | FORGET | | status only |
 
-- `KEYBOARD`: 0 this board cannot have one, 1 Bluetooth is starting, 2
-  no keyboard is paired, 3 one is paired and not connected (a key pressed
+- `KEYBOARD`: 0 this board cannot have one, 1 Bluetooth is starting (or
+  off, with one paired), 2 no keyboard is paired, 3 one is paired and not connected (a key pressed
   on it wakes it), 4 connected, 5 scanning, 6 the scan is over, 7 pairing,
   8 the last pairing failed. `FOUND` is how many the scan found, once it
   is over, and 0 otherwise.
 - A character is printable ASCII, `$20` to `$7E`, or one of the keys that
   are not: `$08` Backspace, `$09` Tab, `$0A` Enter, `$11` Up, `$12` Down,
-  `$13` Left, `$14` Right, `$15` Page Up, `$16` Page Down, `$1B` Escape. A
-  key held down comes again after half a second, and 25 times a second
-  from then on, as on a computer; Enter and Escape do not. A key pressed
-  with Ctrl, Alt or the Windows or Command key is none.
+  `$13` Left, `$14` Right, `$15` Page Up, `$16` Page Down, `$17` Start
+  (Ctrl and Enter), `$18` Select (Ctrl and Escape), `$1B` Escape. A key
+  held down comes again after half a second, and 25 times a second from
+  then on, as on a computer; Enter and Escape do not, nor Start and
+  Select. Any other key pressed with Ctrl, Alt or the Windows or Command
+  key is none.
 - A KEYS reply has up to 16 characters, fewer if `REPLY_MAX` is smaller;
   more typed come in the next. They are taken off the nesp32 when they
   are sent, and the same request again gets the same reply again, so a
@@ -733,10 +735,31 @@ hears characters.
 - PAIR forgets the keyboard paired before. A keyboard is paired with no
   code to type on it: the nesp32 says it has no screen and no keys.
 
-**Bluetooth is on only while a ROM has KBD in use.** A hello that asks for
-KBD turns it on, and one that does not turns it off. It shares the radio
-with Wi-Fi, so a ROM asks for it only where it takes text. The nesp32
-does not turn it off for a hello that asks for KBD again.
+**Bluetooth is on only while a ROM has KBD in use**, and a keyboard is
+paired or one is being looked for. A hello that asks for KBD turns it on,
+and one that does not turns it off. With none paired it stays off, and
+its memory free, until a SCAN, which answers BUSY while it starts: a ROM
+asks again, and has its scan a second or so later. It stays on from then
+until KBD is let go of, and from the pairing on there is one paired. It shares the radio
+with Wi-Fi. The nesp32 does not turn it off for a hello that asks for
+KBD again, so every program on nesp32's cartridge but NESradio asks for
+it, whether or not it takes keys, and so does the cartridge's menu, as
+`MENU` with KBD alone: the keyboard then stays connected from one to the
+next. A program that streams, or a game for two, leaves it out.
+
+The badge at the top right of the menu and of every screen of Setup
+(`nes/lib/badge.inc`) says how the keyboard stands, from KBD STATE: none with no keyboard paired; grey for one paired and not
+connected; flashing blue while it is connecting, for ten seconds of the
+nesp32 waiting for it (then grey: a key wakes it); blue while it is
+connected; yellow when the last pairing failed, or the nesp32 stopped
+answering with a keyboard paired.
+
+**The keyboard as the controller.** Every program on nesp32's cartridge
+that asks for KBD takes its keys as controller 1's buttons as well: the
+arrows are the D-pad, Enter A, Escape B, Ctrl and Enter Start, and Ctrl
+and Escape Select (`nes/lib/nesp.inc`'s `nesp_key_pad`). Where a screen
+takes text, a key that is the text's own stays so: Enter in NESpedia's
+search searches, Backspace deletes, and letters and digits are typed.
 
 Only a StickS3 has KBD, and only Bluetooth LE keyboards: its chip has no
 Bluetooth Classic. A StickC Plus2's firmware has the service, which says

@@ -752,3 +752,18 @@ def test_b_on_the_menu_does_nothing_on_no_cartridge(menu):
     machine.run(20)
     assert machine.byte("view") == 0 and button_requests(machine) == []
     assert list_rows(machine) == names(0, 3, 0) + [""] * 5
+
+
+def test_the_bluetooth_keyboard_is_the_controller_on_the_menu_and_the_player(link_rom, demo):
+    """Down and Enter on the menu, as Down and A: the second track. Then,
+    playing, Escape is B, which stops it."""
+    machine = link_machine(link_rom, demo, begin=False)
+    menu_is_up(machine)
+    machine.stick.kbd_type(bytes((p.NESP_KEY_DOWN, p.NESP_KEY_ENTER)))
+    machine.run_until_played(60)
+    assert machine.stick.kbd_unread == 0
+    assert machine.stick.juke_index == 1 and choose_requests(machine) == [1]
+    machine.run(120)                                # the ring fills
+    machine.stick.kbd_type(bytes((p.NESP_KEY_ESCAPE,)))
+    machine.run(60)
+    assert machine.stick.kbd_unread == 0 and p.NESP_PRESS_STOP in button_requests(machine)

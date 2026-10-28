@@ -62,9 +62,10 @@ def test_the_rom_says_who_it_is_and_what_it_needs(linked):
     service, op, payload = machine.requests()[0]
     assert (service, op) == (p.NESP_SVC_SYS, p.NESP_SYS_HELLO)
     assert payload == bytes((p.NESP_PROTOCOL,)) + b"JUKE" + bytes(
-        (2, 63, p.NESP_SVC_JUKE, p.NESP_SVC_RAW))
+        (2, 63, p.NESP_SVC_JUKE, p.NESP_SVC_RAW, p.NESP_SVC_KBD))
     assert machine.stick.app == (b"JUKE", 2)
     assert machine.stick.active(p.NESP_SVC_JUKE) and machine.stick.active(p.NESP_SVC_RAW)
+    assert machine.stick.active(p.NESP_SVC_KBD)     # a keyboard stays connected for the next ROM
     assert machine.stick.hellos == 1
 
 
@@ -349,6 +350,21 @@ def test_firmware_older_than_the_rom_is_told_apart_from_none(linked):
     machine.run(30)
     assert machine.byte("greeted") == 0
     assert machine.byte("link_state") == machine_constant("LINK_OLD")
+
+
+def test_a_nesp32_without_kbd_is_used_all_the_same(link_rom):
+    """The hello asks for KBD only to keep a keyboard connected for the
+    next program; firmware without it plays the music all the same."""
+    def older(reply):
+        answer = nesp.parse(reply)
+        if answer.svc == p.NESP_SVC_SYS and answer.ok and len(answer.payload) == 7:
+            return nesp.reply_frame(p.NESP_SVC_SYS, p.NESP_ST_NO_SERVICE, answer.seq,
+                                    answer.payload[:6] + bytes((1, p.NESP_SVC_KBD)))
+        return reply
+    machine = LinkConsole(*link_rom, to_console=older)
+    machine.run(30)
+    assert machine.byte("greeted") == 1
+    assert machine.byte("link_state") == machine_constant("LINK_EMPTY")
 
 
 def machine_constant(name):

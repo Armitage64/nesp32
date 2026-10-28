@@ -237,7 +237,7 @@ factor:    .res 1
     cpx typed_count
     bcs @done
     lda state
-    cmp #STATE_READER           ; Escape has left: the rest is dropped
+    cmp #STATE_READER           ; a key has left it: the rest is dropped
     bne @done
     lda link_typed,x
     stx typed_at
@@ -251,13 +251,9 @@ factor:    .res 1
 
 ; One key from the Bluetooth keyboard, A, as the reader takes it. A line
 ; up or down adds to a glide that way, and a page sets one, as the D-pad's
-; Left and Right do.
+; Left and Right do. The others are buttons (link_key_queue): Enter is A,
+; Escape B, Ctrl and Escape Select, back to the search.
 .proc read_key
-    cmp #KEY_ESCAPE
-    bne @line
-    lda #STATUS_NONE
-    jmp back_to_search
-@line:
     ldx #1
     cmp #KEY_UP
     beq @more
@@ -273,7 +269,7 @@ factor:    .res 1
     beq @page
     cmp #KEY_LEFT
     beq @page
-    rts
+    jmp link_key_queue
 @more:
     lda glide                   ; a glide the other way is over
     beq @set

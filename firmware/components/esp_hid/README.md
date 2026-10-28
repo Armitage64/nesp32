@@ -12,5 +12,13 @@ report map is never read, none of its reports is recorded, and none of
 their notifications is turned on. The keyboard connects and pairs, and
 nothing it types arrives (`firmware/main/keyboard.c`).
 
+`src/nimble_hidh.c` has two changes of nesp32's own too, each marked
+"nesp32:", since Wi-Fi shares the radio with Bluetooth. A connection is
+looked for 10% of the time (20 ms in every 200), where NimBLE's own
+parameters look all the time, for as long as a keyboard is asleep; and a
+keyboard that asks for a connection interval shorter than 30 to 50 ms has
+that, which is airtime Wi-Fi does without. A key is then at most some 50 ms
+later, and waking a keyboard may take a fraction of a second more.
+
 Delete this directory once the ESP-IDF the firmware is built with has the
-fix.
+fix, keeping those two.

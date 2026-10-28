@@ -86,11 +86,13 @@ no nesp32 to pair a keyboard with.
 |---|---|---|
 | Letters, digits, space | typed, in the case they are typed in | |
 | Backspace | delete | |
-| Enter | search | |
-| Up, Down | | a line up, a line down |
+| Enter | search | a page down, as A |
+| Up, Down | the keys on the screen, as the D-pad | a line up, a line down |
 | Page Up, Page Down | | a page up, a page down (as Left and Right) |
-| Left, Right | | the same |
-| Escape | on nesp32's cartridge, back to its menu, as Select | back to the search screen, as Select |
+| Left, Right | the keys on the screen, as the D-pad | the same |
+| Escape | delete, as B | a page up, as B |
+| Ctrl and Enter | search, as Start | back to the top, as Start |
+| Ctrl and Escape | on nesp32's cartridge, back to its menu, as Select | back to the search screen, as Select |
 
 What the keys on the screen do not have, the keyboard does not type
 either, and a key held down repeats. Keys the reader does not take are

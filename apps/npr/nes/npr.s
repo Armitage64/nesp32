@@ -480,9 +480,9 @@ main_wait:
 
 ; Back to the cartridge's menu, as reset would go: through its stub, with
 ; the NMI off first, since the stub's `inc` puts the menu's bank, and its
-; NMI, under this. The menu says nothing to the nesp32; the next program's
-; hello is what tells it this one has gone, and turns off a station that
-; was left tuning or paused.
+; NMI, under this. The menu's hello to the nesp32 (KBD alone) is what tells
+; it this one has gone, and turns off a station that was left tuning or
+; paused.
 .proc quit
     lda #0
     sta PPUCTRL

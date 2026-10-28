@@ -12,8 +12,13 @@
 ; and the program is entered where its own reset vector pointed. (NES
 ; Radar, which has two pages of tiles, then asks the mapper for each itself.)
 ;
-; The menu says nothing to the nesp32. Each program begins with its own
-; hello, which is what tells the nesp32 what to run.
+; The menu's own hello asks the nesp32 for KBD alone, the Bluetooth keyboard:
+; its keys are the controller's buttons here as in every program on the
+; cartridge (nesp_key_pad), and the badge at the top right says how it
+; stands. Asking for KBD keeps a keyboard connected from a program, through
+; the menu, to the next. Each program begins with its own hello, which is
+; what tells the nesp32 what to run. The badge is nes/lib/badge.inc's, as
+; the setup ROM's is.
 
 PPUCTRL   = $2000
 PPUMASK   = $2001
@@ -42,6 +47,7 @@ MMC1_PRG     = $E000
 MENU_CONTROL = $0E              ; the last bank at $C000, 8 KB of CHR, vertical mirroring
 
 PAD_A      = $80
+PAD_SELECT = $20
 PAD_START  = $10
 PAD_UP     = $08
 PAD_DOWN   = $04
@@ -51,6 +57,19 @@ REPEAT_EVERY = 5                ; and frames between repeats
 
 oam = $0200                     ; sprites, copied to the PPU every NMI
 SPRITE_HIDDEN = $F0
+BADGE_OAM = oam + 4             ; the badge's four, after the arrow
+
+; The link (nesp32's nes/lib/nesp.inc).
+NESP_RX_MASK = $1F              ; KBD STATE's reply is 27 bytes at the most
+NESP_TX_MAX  = 8                ; the hello, with its one service
+NESP_CRC_TABLE = 1
+NESP_KEY_PAD = 1
+JOY2 = $4017
+.define NESP_APP "MENU"
+NESP_APP_VERSION = 1
+HELLO_EVERY = $07               ; frames between hellos until one is answered, less one
+STATE_EVERY = $0F               ; and between asking how the keyboard stands
+MISSES_MAX = 8                  ; exchanges in a row with no reply: the nesp32 is gone
 
 .include "menu.inc"
 
@@ -68,6 +87,9 @@ go_control:   .res 1
 go_chr:       .res 1
 go_prg:       .res 1
 go_addr:      .res 2
+greeted:      .res 1            ; the nesp32 has answered the hello (badge_ok: with KBD)
+misses:       .res 1            ; exchanges in a row with no reply
+key_at:       .res 1            ; the next key of a KEYS reply
 
 ; A register of the mapper = A, from this bank: for a write that leaves it
 ; at $C000.
@@ -84,6 +106,9 @@ screen_data:
     .incbin "screen.bin"
 
 .segment "CODE"
+
+.include "nesp.inc"
+.include "badge.inc"
 
 .proc reset
     sei
@@ -129,6 +154,8 @@ screen_data:
 
     jsr ppu_init
     jsr place_arrow
+    jsr badge_init
+    jsr show_badge
     lda #PPUCTRL_ON             ; the first NMI turns the picture on
     sta PPUCTRL
     ; fall through
@@ -143,7 +170,9 @@ main_wait:
     cmp served_frame
     beq main_wait
     sta served_frame
+    jsr link_frame              ; first, right after the NMI
     jsr read_input
+    jsr show_badge
     lda pad_new
     and #PAD_A | PAD_START
     bne launch
@@ -226,9 +255,18 @@ launch_ram:   .res LAUNCH_SIZE
 
 .segment "CODE"
 
-; pad_new = the buttons that went down since the last frame, and Up or Down
-; if it has been held long enough to repeat.
+; pad_new = the buttons that went down since the last frame, Up or Down if
+; it has been held long enough to repeat, and a key typed on the Bluetooth
+; keyboard that stands for buttons (nesp_key_next).
 .proc read_input
+    jsr read_pad
+    jsr nesp_key_next
+    ora pad_new
+    sta pad_new
+    rts
+.endproc
+
+.proc read_pad
     lda pad
     tax
     eor pad_seen
@@ -278,6 +316,136 @@ launch_ram:   .res LAUNCH_SIZE
     rts
 .endproc
 
+; --- the link ---------------------------------------------------------------------
+
+; The frame's exchange, if it has one: the hello until it is answered, every
+; eighth frame; then, with KBD, how the keyboard stands every sixteenth and
+; what is typed every other.
+.proc link_frame
+    lda greeted
+    bne @greeted
+    lda frame_count
+    and #HELLO_EVERY
+    bne @done
+    jmp say_hello
+@greeted:
+    lda badge_ok
+    beq @done
+    lda frame_count
+    and #STATE_EVERY
+    beq ask_state
+    lda frame_count
+    lsr a
+    bcs ask_keys
+@done:
+    rts
+.endproc
+
+; Hello: this is the menu, and it asks for KBD. A nesp32 without it, or
+; that speaks another protocol, is greeted all the same: there is just no
+; keyboard to ask about.
+.proc say_hello
+    lda #NESP_SVC_KBD
+    sta nesp_request + NESP_HELLO_FIXED
+    ldy #1
+    jsr nesp_hello
+    bcs missed
+    ldx #0
+    stx misses
+    cmp #NESP_ST_OK
+    bne @without
+    inx
+@without:
+    stx badge_ok
+    lda #1
+    sta greeted
+    rts
+.endproc
+
+; No reply. After MISSES_MAX in a row the nesp32 is taken to be gone, and
+; the hello is said again until it is back.
+.proc missed
+    lda misses
+    cmp #MISSES_MAX
+    bcs @gone
+    inc misses
+    rts
+@gone:
+    lda #0
+    sta greeted
+    rts
+.endproc
+
+; A reply came to an exchange after the hello: carry clear if it is OK.
+; With any other status the nesp32 was switched off and on, or no longer has
+; KBD in use, and the hello is said again.
+.proc replied
+    bcs @none
+    ldx #0
+    stx misses
+    cmp #NESP_ST_OK
+    bne @refused
+    clc
+    rts
+@refused:
+    stx greeted
+@none:
+    jsr missed
+    sec
+    rts
+.endproc
+
+.proc ask_state
+    lda #NESP_SVC_KBD
+    ldx #NESP_KBD_STATE
+    ldy #0
+    jsr nesp_call
+    jsr replied
+    bcs @done
+    lda nesp_reply
+    sta badge_state
+    lda nesp_reply + 2          ; the paired one's name: none, none paired
+    sta badge_paired
+@done:
+    rts
+.endproc
+
+; What has been typed, kept as presses of the buttons (nesp_key_queue).
+.proc ask_keys
+    lda #NESP_SVC_KBD
+    ldx #NESP_KBD_KEYS
+    ldy #0
+    jsr nesp_call
+    jsr replied
+    bcs @done
+    lda #0
+    sta key_at
+@key:
+    ldx key_at
+    cpx nesp_reply
+    bcs @done
+    lda nesp_reply + 1,x
+    jsr nesp_key_queue
+    inc key_at
+    bne @key
+@done:
+    rts
+.endproc
+
+; --- the badge --------------------------------------------------------------------
+
+; The badge as the keyboard stands, and whether the nesp32 still answers.
+.proc show_badge
+    ldx #0
+    lda misses
+    cmp #MISSES_MAX
+    bcc @answering
+    inx
+@answering:
+    txa
+    jmp badge_show
+.endproc
+
 ; Palettes, and the screen with its attributes. Rendering is off.
 .proc ppu_init
     lda #>PALETTE
@@ -321,10 +489,15 @@ launch_ram:   .res LAUNCH_SIZE
 
 .proc nmi
     pha
+    txa
+    pha
+    tya
+    pha
     lda #0
     sta OAMADDR
     lda #>oam
     sta OAMDMA
+    badge_nmi
     bit PPUSTATUS
     lda #PPUCTRL_ON
     sta PPUCTRL
@@ -348,6 +521,11 @@ launch_ram:   .res LAUNCH_SIZE
     sta JOY1
 
     inc frame_count
+    nesp_nmi_hook               ; an exchange cut off here gives up
+    pla
+    tay
+    pla
+    tax
     pla
     rti
 .endproc

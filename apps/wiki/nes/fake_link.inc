@@ -3,7 +3,8 @@
 ; runs in an emulator and on a flash cart.
 ;
 ; Provides what serial_link.inc does: link_init, link_search, link_status,
-; link_line, link_keys, link_text and the link_nmi_hook macro.
+; link_line, link_keys, link_key_queue, link_key_next, link_text and the
+; link_nmi_hook macro.
 ;
 ; Whatever is searched for, the answer is the built-in article, after a
 ; moment of "searching".
@@ -70,6 +71,16 @@ link_typed = link_text
 
 .proc link_keys
     sec
+    rts
+.endproc
+
+; Nor kept as the controller's buttons.
+.proc link_key_queue
+    rts
+.endproc
+
+.proc link_key_next
+    lda #0
     rts
 .endproc
 

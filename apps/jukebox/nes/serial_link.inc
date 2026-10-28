@@ -59,16 +59,17 @@
 OUT0_MARK = $01
 
 NESP_RX_MASK = $3F              ; replies of up to 63 bytes
-NESP_TX_MAX  = 9                ; the hello, with its two services
+NESP_TX_MAX  = 10               ; the hello, with its three services
 NESP_CRC_TABLE = 1              ; 35 cycles a byte: a reply is checked and in the
                                 ; ring well inside the frame it arrived in
 .define NESP_APP "JUKE"
 NESP_APP_VERSION = 2
 
+NESP_KEY_PAD = 1                ; the Bluetooth keyboard's keys as the controller's buttons
 .include "nesp.inc"
 .include "pcm_rates.inc"
 
-.assert NESP_TX_MAX = NESP_HELLO_FIXED + 2, error, "the hello names two services"
+.assert NESP_TX_MAX = NESP_HELLO_FIXED + 3, error, "the hello names three services"
 
 ; JUKE STREAM's reply (nesp32's docs/PROTOCOL.md): the state of the music,
 ; the epoch its bytes belong to, and the bytes.
@@ -124,6 +125,10 @@ list_left:   .res 1             ; ask_list's and show_name's: characters still t
 list_line:   .res 1             ; the line they go on,
 list_from:   .res 1             ; and where they come from in the reply
 on_cart:     .res 1             ; this is on nesp32's cartridge, which has a menu
+keys_ok:     .res 1             ; the hello had KBD: what is typed is asked for
+key_at:      .res 1             ; ask_keys's: the next key of its reply
+KEYS_EVERY = $07                ; every eighth frame, in place of the stream,
+KEYS_ROOM = 2 * CREDIT_MAX      ; while the ring has less room than this
 
 VIEW_MENU   = 0
 VIEW_PLAYER = 1
@@ -224,6 +229,10 @@ row_bit: .byte $01, $02, $04, $08, $10, $20, $40, $80
     jsr nesp_call
     jmp button_answer
 @no_button:
+    jsr keys_due
+    bcc @sound
+    jmp ask_keys
+@sound:
     lda sound_wanted
     beq @music
     lda paused                  ; held: the stream's reply says when it is not
@@ -249,19 +258,35 @@ row_bit: .byte $01, $02, $04, $08, $10, $20, $40, $80
 
 ; Hello: this is the jukebox, and it needs JUKE and RAW. A nesp32 that
 ; lacks either, or speaks another protocol, has older firmware than this
-; ROM, and the screen says so.
+; ROM, and the screen says so. It asks for KBD too, though it takes no
+; keys, so that the keyboard stays connected from one program on the
+; cartridge to the next; a nesp32 without KBD is one to use.
 .proc say_hello
     lda #NESP_SVC_JUKE
     sta nesp_request + NESP_HELLO_FIXED
     lda #NESP_SVC_RAW
     sta nesp_request + NESP_HELLO_FIXED + 1
-    ldy #2
+    lda #NESP_SVC_KBD
+    sta nesp_request + NESP_HELLO_FIXED + 2
+    ldy #3
     jsr nesp_hello
     bcc @came
     jmp link_silent
 @came:
+    ldx #1
     cmp #NESP_ST_OK
+    beq @greeted
+    cmp #NESP_ST_NO_SERVICE     ; only KBD missing is a nesp32 to use
     bne @old
+    lda nesp_reply + 6
+    cmp #1
+    bne @old
+    lda nesp_reply + 7
+    cmp #NESP_SVC_KBD
+    bne @old
+    dex
+@greeted:
+    stx keys_ok
     lda #1
     sta greeted
     sta link_fresh              ; whatever the ring holds, the nesp32 knows nothing of it
@@ -351,13 +376,14 @@ row_bit: .byte $01, $02, $04, $08, $10, $20, $40, $80
 
 ; What the buttons that went down since the last frame ask for.
 .proc take_buttons
-    lda pad_new
+    jsr nesp_key_next           ; and a key typed that stands for buttons
+    ldx #0
+    ora pad_new
+    stx pad_new
     bne @some
 @done:
     rts
 @some:
-    ldx #0
-    stx pad_new
     sta presses
     and #PAD_SELECT             ; Select: back to the cartridge's menu, from
     beq @no_quit                ; either view, with a nesp32 or none
@@ -775,14 +801,68 @@ row_bit: .byte $01, $02, $04, $08, $10, $20, $40, $80
 
 ; Back to the cartridge's menu, as reset would go: through its stub, with
 ; the NMI off first, since the stub's `inc` puts the menu's bank, and its
-; NMI, under this. The menu says nothing to the nesp32; the next program's
-; hello is what tells it this one has gone.
+; NMI, under this. The menu says hello to the nesp32 (KBD alone), and the
+; next program's hello is what tells it which one runs.
 .proc quit
     lda #0
     sta PPUCTRL
     sta PPUMASK
     sta APU_STATUS
     jmp CART_STUB
+.endproc
+
+; Carry set if this frame's exchange is to ask what has been typed: every
+; eighth frame, with a nesp32 that has KBD, and only where the stream can
+; spare it, on the menu or with the ring nearly full. The ring's room is
+; asked first, as the stream's request asks it.
+.proc keys_due
+    lda keys_ok
+    beq @no
+    lda frame_count
+    and #KEYS_EVERY
+    bne @no
+    lda view
+    beq @yes
+    jsr ring_free
+    lda free + 1
+    bne @no
+    lda free
+    cmp #KEYS_ROOM
+    bcs @no
+@yes:
+    sec
+    rts
+@no:
+    clc
+    rts
+.endproc
+
+; What has been typed on the Bluetooth keyboard: the keys that stand for
+; the controller's buttons, kept for take_buttons (nesp_key_queue).
+.proc ask_keys
+    lda #NESP_SVC_KBD
+    ldx #NESP_KBD_KEYS
+    ldy #0
+    jsr nesp_call
+    bcc @came
+    jmp link_silent
+@came:
+    cmp #NESP_ST_OK
+    beq @ok
+    jmp link_refused
+@ok:
+    lda #0
+    sta key_at
+@key:
+    ldx key_at
+    cpx nesp_reply
+    bcs @heard
+    lda nesp_reply + 1,x
+    jsr nesp_key_queue
+    inc key_at
+    bne @key
+@heard:
+    jmp link_heard
 .endproc
 
 ; A reply came. The next exchange waits for the next NMI: sent from here,

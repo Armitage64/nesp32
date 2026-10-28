@@ -142,6 +142,13 @@ def test_button_a_on_the_nesp32_starts_it_too(rom):
     assert half(bench, TX)["STATUS"] == "WAITING"
 
 
+def test_enter_on_the_bluetooth_keyboard_is_a_and_starts_it(rom):
+    bench = greet(Bench(rom))
+    bench.stick.kbd_type(bytes((p.NESP_KEY_ENTER,)))
+    bench.machine.run_until(lambda: state(bench) == TESTING, 20)
+    assert bench.stick.kbd_unread == 0
+
+
 def test_a_on_the_controller_starts_it_too(rom):
     bench = greet(Bench(rom))
     bench.press_start(button=PAD_A)
