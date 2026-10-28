@@ -3,14 +3,16 @@
 ;
 ;   Up, Down         scroll, SCROLL_STEPS pixels a frame while held
 ;   Right or A       a page down, gliding at GLIDE_STEPS pixels a frame
-;   Left or B        a page up
+;   Left             a page up
+;   B                back to the search screen
 ;   Start            back to the top of the article
-;   Select           back to the search screen (not the cartridge's menu)
+;   Select           on nesp32's cartridge, back to its menu (the main
+;                    loop's); built by itself, back to the search screen
 ;
 ; and on a Bluetooth keyboard paired with the nesp32 (reader_keys), asked
 ; for on the frames no line is: Up and Down a line, gliding, Page Up and
-; Left a page up, Page Down and Right a page down, and Escape back to the
-; search screen, as Select.
+; Left a page up, Page Down and Right a page down, Escape back to the
+; search screen, as B, and Ctrl and Escape as Select.
 ;
 ; Nametable 0 is a ring of RING_ROWS lines: line n of the article is in row
 ; n mod RING_ROWS, and the ring holds lines lo to hi - 1. The window shows
@@ -134,8 +136,8 @@ factor:    .res 1
     beq @select
     jmp lost_article
 @select:
-    lda pad_new                 ; Select: back to the search screen
-    and #PAD_SELECT
+    lda pad_new                 ; B, and Select built by itself: back to the
+    and #PAD_B | PAD_SELECT     ; search screen
     beq @start
     lda #STATUS_NONE
     jmp back_to_search
@@ -158,7 +160,7 @@ factor:    .res 1
     beq @glide
 @page_up:
     lda pad_new
-    and #PAD_B | PAD_LEFT
+    and #PAD_LEFT
     beq @move
     lda #1
 @glide:
@@ -252,7 +254,7 @@ factor:    .res 1
 ; One key from the Bluetooth keyboard, A, as the reader takes it. A line
 ; up or down adds to a glide that way, and a page sets one, as the D-pad's
 ; Left and Right do. The others are buttons (link_key_queue): Enter is A,
-; Escape B, Ctrl and Escape Select, back to the search.
+; Escape B, back to the search, and Ctrl and Escape Select.
 .proc read_key
     ldx #1
     cmp #KEY_UP

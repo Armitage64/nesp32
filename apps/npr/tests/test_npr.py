@@ -74,9 +74,11 @@ def test_the_rom_says_who_it_is_and_what_it_needs(radio):
     machine.until(lambda: machine.off, limit=60)
     service, op, payload = machine.requests()[0]
     assert (service, op) == (p.NESP_SVC_SYS, p.NESP_SYS_HELLO)
-    assert payload == bytes((p.NESP_PROTOCOL,)) + b"NPR " + bytes((1, 31, TUNER, p.NESP_SVC_RAW))
+    assert payload == bytes((p.NESP_PROTOCOL,)) + b"NPR " + bytes(
+        (1, 31, TUNER, p.NESP_SVC_RAW, p.NESP_SVC_KBD))
     assert machine.stick.app == (b"NPR ", 1)
     assert machine.stick.active(TUNER) and machine.stick.active(p.NESP_SVC_RAW)
+    assert machine.stick.active(p.NESP_SVC_KBD)     # a keyboard stays connected for the next ROM
     assert machine.stick.hellos == 1
     assert machine.foot() == FOOT["ALONE"]    # built by itself: Select has no menu to go back to
 
@@ -86,7 +88,7 @@ def test_nothing_is_fetched_until_start_is_pressed(radio):
     machine.wait(120)
     assert machine.off
     assert machine.stick.fetches == 0 and not machine.level_log
-    assert machine.asked(p.NESP_TUNER_STATE) > 100      # it asks every frame
+    assert machine.asked(p.NESP_TUNER_STATE) > 80       # three frames in four; KEYS the fourth
     assert machine.word("link_failed") == 0
 
 
@@ -287,6 +289,75 @@ def test_a_console_that_is_reset_in_a_sound_is_heard_and_greeted_again(radio, to
     machine.until(lambda: machine.stick.hellos == 2, limit=60)
     machine.until(lambda: machine.off, limit=30)
     assert not machine.stick.fetching and machine.port.period == p.NESP_PERIOD
+
+
+# --- the Bluetooth keyboard --------------------------------------------------------------
+
+KEY = {name: bytes((getattr(p, "NESP_KEY_" + name),))
+       for name in ("ENTER", "ESCAPE", "START", "SELECT", "UP", "DOWN", "LEFT", "RIGHT")}
+
+
+def test_the_keyboard_is_the_controller_until_the_station_plays(radio, tone):
+    machine = radio()
+    machine.until(lambda: machine.off, limit=60)
+    machine.stick.kbd_type(KEY["RIGHT"] + KEY["RIGHT"] + KEY["LEFT"])  # Right, Right, Left
+    machine.wait(30)
+    assert machine.byte("station") == 1 and machine.stick.kbd_unread == 0
+    machine.stick.kbd_type(KEY["DOWN"])                 # the other quality
+    machine.wait(20)
+    assert machine.byte("mode") == p.NESP_TUNER_MODE_NEWS
+    machine.stick.kbd_type(KEY["UP"])
+    machine.wait(20)
+    assert machine.byte("mode") == p.NESP_TUNER_MODE_HIGH
+    machine.stick.kbd_type(KEY["LEFT"] + KEY["ENTER"])  # Enter is A: tune in
+    machine.until(lambda: machine.status == "TUNING", limit=40)
+    assert machine.byte("station") == 0 and machine.stick.fetches == 1
+    machine.stick.kbd_type(KEY["ESCAPE"])               # and Escape B, back
+    machine.until(lambda: machine.off, limit=40)
+    assert not machine.stick.fetching
+    machine.stick.kbd_type(KEY["START"])                # Ctrl and Enter is Start
+    machine.until(lambda: machine.stick.fetches == 2, limit=40)
+
+
+def test_what_is_typed_while_the_station_plays_is_dropped(radio, tone):
+    """In the sound nothing is asked of the nesp32: the keyboard cannot end
+    it, and what was typed in it, more than a reply holds, does nothing
+    once it is over."""
+    machine = on_air(radio(), tone)
+    machine.advance(ms(300))
+    machine.stick.kbd_type(KEY["ENTER"] + KEY["ESCAPE"] + KEY["RIGHT"] * 20)
+    machine.advance(ms(300))
+    assert machine.deaf                                 # still playing
+    machine.press(PAD_A)
+    machine.until(lambda: machine.off, limit=60)
+    machine.wait(40)
+    assert machine.stick.kbd_unread == 0
+    assert machine.off and machine.stick.fetches == 1 and machine.byte("station") == 0
+    machine.stick.kbd_type(KEY["RIGHT"])                # and what is typed after it is taken
+    machine.wait(20)
+    assert machine.byte("station") == 1
+
+
+def test_a_nesp32_without_kbd_is_used_all_the_same(radio, tone):
+    def older(reply):
+        answer = nesp.parse(reply)
+        if answer.svc == p.NESP_SVC_SYS and answer.ok and len(answer.payload) == 7:
+            return nesp.reply_frame(p.NESP_SVC_SYS, p.NESP_ST_NO_SERVICE, answer.seq,
+                                    answer.payload[:6] + bytes((1, p.NESP_SVC_KBD)))
+        return reply
+    machine = radio(to_console=older)
+    machine.until(lambda: machine.off, limit=60)
+    assert machine.byte("greeted") == 1 and machine.byte("keys_ok") == 0
+    machine.press(PAD_START)
+    machine.until(lambda: machine.stick.fetches == 1, limit=30)
+
+
+def test_ctrl_and_escape_is_select(radio):
+    machine = radio()
+    machine.until(lambda: machine.off, limit=60)
+    machine.stick.kbd_type(KEY["SELECT"])
+    machine.wait(20)
+    assert machine.byte("quitting") == 1                # built by itself, nothing comes of it
 
 
 # --- the menu ----------------------------------------------------------------------------

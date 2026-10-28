@@ -742,10 +742,11 @@ its memory free, until a SCAN, which answers BUSY while it starts: a ROM
 asks again, and has its scan a second or so later. It stays on from then
 until KBD is let go of, and from the pairing on there is one paired. It shares the radio
 with Wi-Fi. The nesp32 does not turn it off for a hello that asks for
-KBD again, so every program on nesp32's cartridge but NESradio asks for
-it, whether or not it takes keys, and so does the cartridge's menu, as
-`MENU` with KBD alone: the keyboard then stays connected from one to the
-next. A program that streams, or a game for two, leaves it out.
+KBD again, so every program on nesp32's cartridge asks for it, whether or
+not it takes keys, and so does the cartridge's menu, as `MENU` with KBD
+alone: the keyboard then stays connected from one to the next. In a sound
+(RAW) the console asks nothing, so the jukebox and NESradio take keys only
+outside one. A game for two leaves KBD out.
 
 The badge at the top right of the menu and of every screen of Setup
 (`nes/lib/badge.inc`) says how the keyboard stands, from KBD STATE: none with no keyboard paired; grey for one paired and not

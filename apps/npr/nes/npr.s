@@ -21,7 +21,9 @@
 ;   TUNER STOP      or something is, or B was, with a station tuning or
 ;                   paused. Sent again until it is answered
 ;   TUNER SOUND     the station is ready, the screen says so, and A is up
-;   TUNER STATE     otherwise: how it stands, for the status line
+;   KBD KEYS        otherwise, every fourth frame: what is typed on the
+;                   Bluetooth keyboard
+;   TUNER STATE     or else: how it stands, for the status line
 ;
 ; There are two modes, and a line over the foot of the screen to choose
 ; between them for as long as no station is tuned in: the station at 23244
@@ -41,6 +43,12 @@
 ; ever back a step, from a station tuning or paused to the menu, and never
 ; out of the program, so that B pressed again and again cannot leave it.
 ; The next program's hello turns off whatever station was left.
+;
+; A Bluetooth keyboard paired with the nesp32 is the controller too, until
+; the sound begins (nesp.inc's nesp_key_pad): the arrows are the D-pad,
+; Enter A, Escape B, Ctrl and Enter Start, Ctrl and Escape Select. In the
+; sound nothing is asked of the nesp32, so only the controller's A ends it;
+; what was typed meanwhile is dropped (keys_stale).
 ;
 ; The foot of the screen says what A, B and Select do, and changes with
 ; them: B and Select are read only with the NMI on, so a station's foot
@@ -124,6 +132,7 @@ AREA_BLANK = 1                  ; and nothing, a station's
 TUNER_UNKNOWN = $FF             ; tuner: the nesp32 has not said how it stands
 PRESS_TRIES = 30                ; frames a press is sent for before it is given up
 MISSED_MAX = 8                  ; exchanges in a row with no reply: the nesp32 is not there
+KEYS_EVERY = $03                ; what is typed, every fourth frame
 
 .segment "HEADER"
     .byte "NES", $1A
@@ -164,6 +173,9 @@ area:         .res 1            ; what the middle of the screen is to show: AREA
 area_row:     .res 1            ; lines of it that are on the screen: NEWS_ROWS is all
 backed:       .res 1            ; B went down: the main loop's to act on
 quitting:     .res 1            ; Select went down: likewise
+keys_ok:      .res 1            ; the hello had KBD: what is typed is asked for
+key_at:       .res 1            ; ask_keys's: the next key of its reply
+keys_stale:   .res 1            ; a sound has been: what was typed in it is dropped
 foot:         .res 1            ; FOOT_*: what the foot says,
 foot_at:      .res 1            ; where its text is in foot_text,
 foot_dirty:   .res 1            ; and that it is not on the screen yet
@@ -175,11 +187,13 @@ url_piece:    .res 1            ; and how many are on their way
 needle_dirty: .res 1            ; the needle has moved, and OAM is not the screen's yet
 
 .include "screen.inc"
+NESP_KEY_PAD = 1                ; the Bluetooth keyboard's keys as the controller's buttons
 .include "nesp.inc"
 .include "pcm_rates.inc"
 .include "news.inc"
 
-.assert NESP_TX_MAX >= NESP_HELLO_FIXED + 2, error, "the hello names two services"
+.assert NESP_TX_MAX >= NESP_HELLO_FIXED + 3, error, "the hello names three services"
+.assert NESP_KBD_KEYS_MAX + 1 <= NESP_RX_MASK, error, "a reply of KEYS holds all it may"
 .assert STATUS_WIDTH = NESP_TUNER_TEXT_MAX, error, "why_buf holds what the nesp32 may say"
 .assert NESP_TUNER_TEXT_MAX + 1 <= NESP_RX_MASK, error, "a reply must fit its buffer"
 .assert NESP_TUNER_NEWS_RATE = NEWS_RATE, error, "news_stream is at the headlines' rate"
@@ -497,6 +511,10 @@ main_wait:
 ; new frame at once; one that ended inside its frame, good or not, leaves
 ; the next for the next NMI.
 .proc link_service
+    jsr nesp_key_next           ; a key typed that stands for buttons, as they
+    beq @no_key
+    jsr take_buttons
+@no_key:
     lda quitting                ; Select: back to the cartridge's menu, with a
     beq @no_quit                ; nesp32 or none
     lda on_cart
@@ -596,6 +614,13 @@ main_wait:
     bne @state
     jmp ask_sound
 @state:
+    lda keys_ok                 ; every fourth frame, what is typed
+    beq @tuner
+    lda frame_count
+    and #KEYS_EVERY
+    bne @tuner
+    jmp ask_keys
+@tuner:
     lda #NESP_SVC_TUNER
     ldx #NESP_TUNER_STATE
     ldy #0
@@ -615,19 +640,36 @@ main_wait:
 
 ; Hello: this is NPR, and it needs TUNER and RAW. A nesp32 that lacks
 ; either, or speaks another protocol, has older firmware than this ROM, and
-; the screen says so.
+; the screen says so. It asks for KBD too, for the keys that stand for the
+; controller's buttons, and so that the keyboard stays connected from one
+; program on the cartridge to the next; a nesp32 without KBD is one to use,
+; with the controller alone.
 .proc say_hello
     lda #NESP_SVC_TUNER
     sta nesp_request + NESP_HELLO_FIXED
     lda #NESP_SVC_RAW
     sta nesp_request + NESP_HELLO_FIXED + 1
-    ldy #2
+    lda #NESP_SVC_KBD
+    sta nesp_request + NESP_HELLO_FIXED + 2
+    ldy #3
     jsr nesp_hello
     bcc @came
     jmp link_silent
 @came:
+    ldx #1
     cmp #NESP_ST_OK
+    beq @greeted
+    cmp #NESP_ST_NO_SERVICE     ; only KBD missing is a nesp32 to use
     bne @old
+    lda nesp_reply + 6
+    cmp #1
+    bne @old
+    lda nesp_reply + 7
+    cmp #NESP_SVC_KBD
+    bne @old
+    dex
+@greeted:
+    stx keys_ok
     lda #1
     sta greeted
     lda #0
@@ -667,6 +709,44 @@ main_wait:
     sta tuner
     lda #STATUS_WAITING
     jmp set_status
+.endproc
+
+; What has been typed on the Bluetooth keyboard: the keys that stand for
+; the controller's buttons, kept for link_service (nesp_key_queue). After a
+; sound, what was typed in it is dropped, until a reply has fewer than a
+; full reply's keys: then the nesp32 has no more of them.
+.proc ask_keys
+    lda #NESP_SVC_KBD
+    ldx #NESP_KBD_KEYS
+    ldy #0
+    jsr nesp_call
+    bcc @came
+    jmp link_silent
+@came:
+    cmp #NESP_ST_OK
+    beq @ok
+    jmp link_refused
+@ok:
+    lda keys_stale
+    beq @fresh
+    lda nesp_reply
+    cmp #NESP_KBD_KEYS_MAX
+    bcs @heard
+    lda #0
+    sta keys_stale
+    beq @heard
+@fresh:
+    sta key_at
+@key:
+    ldx key_at
+    cpx nesp_reply
+    bcs @heard
+    lda nesp_reply + 1,x
+    jsr nesp_key_queue
+    inc key_at
+    bne @key
+@heard:
+    jmp link_heard
 .endproc
 
 ; The nesp32 answered, and not with OK: it no longer has the service in
@@ -938,6 +1018,9 @@ main_wait:
     sta PPUCTRL
     lda #0
     sta APU_STATUS
+    sta nesp_key_count          ; a press kept from before is not for after
+    lda #1                      ; nor anything typed in it
+    sta keys_stale
     inc sounds
     ldx #SOUND_SETTLE
     jsr wait_units
@@ -1019,39 +1102,7 @@ main_wait:
     and pad                     ; buttons that went down this frame
     ldx pad
     stx pad_prev
-    tax
-    and #PAD_START | PAD_A
-    beq @no_press
-    lda #1
-    sta pressed
-@no_press:
-    txa
-    and #PAD_MOVE
-    beq @no_move
-    lda #1
-    sta moved
-@no_move:
-    txa
-    and #PAD_B
-    beq @no_back
-    lda #1
-    sta backed
-@no_back:
-    txa
-    and #PAD_SELECT
-    beq @no_quit
-    lda #1
-    sta quitting
-@no_quit:
-    txa
-    and #PAD_LEFT | PAD_RIGHT
-    beq @no_turn
-    and #PAD_RIGHT              ; 1 for Right; $FF for Left
-    bne @turned
-    lda #$FF
-@turned:
-    sta turned
-@no_turn:
+    jsr take_buttons
     lda status_dirty
     beq @foot
     lda #>STATUS_ADDR           ; on both nametables: either may be the one shown
@@ -1189,6 +1240,46 @@ main_wait:
     inx
     dey
     bne @quality_tile
+    rts
+.endproc
+
+; Buttons that went down, A, as what the main loop is to act on: the
+; NMI's, from the controller, and link_service's, from the keyboard. X is
+; lost.
+.proc take_buttons
+    tax
+    and #PAD_START | PAD_A
+    beq @no_press
+    lda #1
+    sta pressed
+@no_press:
+    txa
+    and #PAD_MOVE
+    beq @no_move
+    lda #1
+    sta moved
+@no_move:
+    txa
+    and #PAD_B
+    beq @no_back
+    lda #1
+    sta backed
+@no_back:
+    txa
+    and #PAD_SELECT
+    beq @no_quit
+    lda #1
+    sta quitting
+@no_quit:
+    txa
+    and #PAD_LEFT | PAD_RIGHT
+    beq @no_turn
+    and #PAD_RIGHT              ; 1 for Right; $FF for Left
+    bne @turned
+    lda #$FF
+@turned:
+    sta turned
+@no_turn:
     rts
 .endproc
 

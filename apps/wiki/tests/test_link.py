@@ -15,7 +15,7 @@ import urllib.parse
 import nesp
 import nesp_proto as p
 import pytest
-from console import FRAME_CYCLES, PAD_A, PAD_B, PAD_DOWN, PAD_SELECT, PAD_START, PAD_UP
+from console import FRAME_CYCLES, PAD_A, PAD_B, PAD_DOWN, PAD_LEFT, PAD_SELECT, PAD_START, PAD_UP
 from drive import (STATE_LOADING, STATE_READER, STATE_SEARCH, WINDOW_ROWS, check_reader_frame,
                    open_reader, position, ready, run_until, tap)
 from wire import link, ms
@@ -208,7 +208,7 @@ def test_pages_glide_at_full_speed(linked):
         c.run(1, pad=PAD_A)
         shown = hold(c, lines, 0, 44)
         assert [step for step in moves(shown) if step] == [4] * 40
-    c.run(1, pad=PAD_B)
+    c.run(1, pad=PAD_LEFT)
     shown = hold(c, lines, 0, 44)
     assert [step for step in moves(shown) if step] == [-4] * 40
 
@@ -306,7 +306,7 @@ def test_damaged_and_lost_replies_never_reach_the_screen(linked, seed):
     tap(c, PAD_START)
     run_until(c, STATE_READER, limit=900)
     c.run(2)
-    pads = (PAD_DOWN, PAD_DOWN, PAD_UP, PAD_A, PAD_B, 0)
+    pads = (PAD_DOWN, PAD_DOWN, PAD_UP, PAD_A, PAD_LEFT, 0)
     for _ in range(40):
         hold(c, lines, generator.choice(pads), generator.randint(5, 50))
     shown = hold(c, lines, PAD_DOWN, 700)
@@ -607,7 +607,7 @@ def test_escape_on_the_search_screen_is_b_and_select_does_nothing_off_the_cartri
     assert c.byte("state") == STATE_SEARCH and query(c) == DEFAULT[:-1] + b"x"
 
 
-def test_the_keyboard_scrolls_and_pages_the_reader_and_select_leaves_it(linked):
+def test_the_keyboard_scrolls_and_pages_the_reader_and_escape_and_select_leave_it(linked):
     lines = numbered_article(60)
     c, host = paired(linked, lines)
     c.run(20)
@@ -624,10 +624,14 @@ def test_the_keyboard_scrolls_and_pages_the_reader_and_select_leaves_it(linked):
     host.stick.kbd_type(ENTER)                  # Enter is A: a page down
     shown = hold(c, lines, 0, 80)
     assert position(shown[-1]) == 8 + page
-    host.stick.kbd_type(ESCAPE)                 # and Escape B: a page up
-    shown = hold(c, lines, 0, 80)
-    assert position(shown[-1]) == 8
-    host.stick.kbd_type(SELECT + b"x")          # Ctrl and Escape: Select, back to the search
+    host.stick.kbd_type(ESCAPE + b"x")          # and Escape B: back to the search
+    run_until(c, STATE_SEARCH)
+    c.run(40)
+    assert query(c) == DEFAULT and host.stick.kbd_unread == 0  # what came with it is dropped
+    host.stick.kbd_type(ENTER)
+    run_until(c, STATE_READER)
+    c.run(2)
+    host.stick.kbd_type(SELECT + b"x")          # Ctrl and Escape: Select, built by itself
     run_until(c, STATE_SEARCH)
     c.run(40)
     assert query(c) == DEFAULT and host.stick.kbd_unread == 0  # what came with it is dropped

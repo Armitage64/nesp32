@@ -98,6 +98,13 @@ while it plays. A leaves the sound and tells the nesp32, which pauses the
 station; the ROM then sends STOP, which turns it off. Reset works too: the
 nesp32 hears the console say hello and ends the sound.
 
+A Bluetooth keyboard paired with the nesp32 (in nesp32's Setup) is the
+controller too, until the station plays: the arrows are the D-pad, Enter
+A, Escape B, Ctrl and Enter Start, Ctrl and Escape Select. While it plays
+the console asks the nesp32 nothing, so the keyboard cannot turn it off:
+**A on the controller** (or the nesp32's button) does. Anything typed
+while it plays is dropped.
+
 TUNER can still pause a station (its `PAUSED` state, nesp32's
 `docs/PROTOCOL.md`), and the ROM still plays one that is paused with A
 and turns it off with B, but it pauses one only when its STOP is never

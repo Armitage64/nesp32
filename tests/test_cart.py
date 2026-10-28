@@ -523,7 +523,9 @@ def test_select_in_nespedias_search_is_the_menu_again(cart, images):
     assert c.byte("choice") == 0
 
 
-def test_select_in_nespedias_reader_is_the_search_again(cart, images, cart_build):
+@pytest.mark.parametrize("leave", ("b", "escape", "select", "ctrl_escape"))
+def test_b_in_nespedias_reader_is_the_search_again_and_select_the_menu(cart, images, cart_build,
+                                                                         leave):
     index = next(index for index, image in enumerate(images) if image.program.key == "wiki")
     state = program_labels(cart_build, "wiki")["state"]
     c = cart()
@@ -539,9 +541,19 @@ def test_select_in_nespedias_reader_is_the_search_again(cart, images, cart_build
                      b'"title":"NES","index":1,"extract":"One line."}]}}')
     stick.fetch_done()
     c.run_until(lambda: c.memory[state] == 3, 300)  # STATE_READER
-    c.press(PAD_SELECT)
-    c.run(10)
-    assert not c.home and c.memory[state] == 0      # STATE_SEARCH, not the menu
+    if leave == "b":
+        c.press(PAD_B)
+    elif leave == "select":
+        c.press(PAD_SELECT)
+    else:
+        key = nesp_proto.NESP_KEY_ESCAPE if leave == "escape" else nesp_proto.NESP_KEY_SELECT
+        stick.kbd_type(bytes((key,)))
+    if leave in ("b", "escape"):
+        c.run(30)
+        assert not c.home and c.memory[state] == 0  # STATE_SEARCH, not the menu
+    else:
+        c.strict = True
+        c.run_until(lambda: at_menu(c), 30)
 
 
 def test_ctrl_and_escape_in_nespedias_search_is_select_the_menu_again(cart, images):
