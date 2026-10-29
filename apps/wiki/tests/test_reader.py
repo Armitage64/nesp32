@@ -100,7 +100,7 @@ def test_a_page_glides_four_pixels_a_frame(console, article):
         assert steps == [4] * (PAGE // 4)
         # Two lines of the last page are still in view.
         assert shown[-1].lines[0] == article[before // 8 + WINDOW_ROWS - 2]
-    for button in (PAD_LEFT, PAD_LEFT):
+    for button in (PAD_B, PAD_LEFT):
         before = position(c.frames[-1])
         c.run(1, pad=button)
         shown = hold(c, article, 0, 60)
@@ -111,7 +111,7 @@ def test_a_page_glides_four_pixels_a_frame(console, article):
 def test_pages_stop_at_the_ends(console, article):
     c = console()
     open_reader(c)
-    c.run(1, pad=PAD_LEFT)
+    c.run(1, pad=PAD_B)
     assert all(position(frame) == 0 for frame in hold(c, article, 0, 20))
     assert c.byte("glide") == 0
     for _ in range(len(article) // (WINDOW_ROWS - 2) + 1):
@@ -148,13 +148,11 @@ def test_start_goes_back_to_the_top(console, article):
     assert c.byte("state") == STATE_READER
 
 
-@pytest.mark.parametrize("button", (PAD_B, PAD_SELECT), ids=("b", "select"))
-def test_b_and_select_go_back_to_the_search_and_the_article_opens_again(console, article, button):
-    # Built by itself: on the cartridge, Select is its menu.
+def test_select_goes_back_to_the_search_and_the_article_opens_again(console, article):
     c = console()
     open_reader(c)
     hold(c, article, PAD_DOWN, 50)
-    tap(c, button)
+    tap(c, PAD_SELECT)
     c.run(3)
     assert c.byte("state") == STATE_SEARCH
     assert c.frames[-1].split is None and c.frames[-1].header == 0x0400
@@ -258,7 +256,7 @@ def test_any_mix_of_buttons_and_failures_keeps_the_screen_right(console):
     c.load_article(lines)
     open_reader(c)
     c.on_line = lambda console: generator.random() < 0.4
-    moves = (PAD_DOWN, PAD_UP, PAD_A, PAD_LEFT, PAD_RIGHT, 0, PAD_DOWN | PAD_A, PAD_DOWN)
+    moves = (PAD_DOWN, PAD_UP, PAD_A, PAD_B, PAD_LEFT, PAD_RIGHT, 0, PAD_DOWN | PAD_A, PAD_DOWN)
     seen = set()
     for _ in range(150):
         pad = generator.choice(moves)
@@ -290,7 +288,7 @@ def test_one_line_at_most_is_drawn_a_frame(console, article):
     open_reader(c)
     since = len(c.frames)
     hold(c, article, PAD_DOWN, 100)
-    c.run(1, pad=PAD_LEFT)
+    c.run(1, pad=PAD_B)
     hold(c, article, 0, 50)
     for frame in c.frames[since:]:
         assert len(frame.vblank_writes) in (0, 28)

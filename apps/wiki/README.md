@@ -71,8 +71,8 @@ Controller 1:
 | Up, Down | move over the keys | scroll by the pixel, while held |
 | Left, Right | move over the keys | a page up, a page down |
 | A | type the key; on ⇧, small letters / capitals | a page down |
-| B | delete; while searching, give up | back to the search screen |
-| Select | on nesp32's cartridge, back to its menu (`SELECT : MENU`) | on nesp32's cartridge, back to its menu; built by itself, back to the search screen |
+| B | delete; while searching, give up | a page up |
+| Select | on nesp32's cartridge, back to its menu (`SELECT : MENU`) | back to the search screen |
 | Start | search | top of the article |
 
 The shift key, ⇧, is on the space bar's row, under Z. On that row, Left
@@ -90,9 +90,9 @@ no nesp32 to pair a keyboard with.
 | Up, Down | the keys on the screen, as the D-pad | a line up, a line down |
 | Page Up, Page Down | | a page up, a page down (as Left and Right) |
 | Left, Right | the keys on the screen, as the D-pad | the same |
-| Escape | delete, as B | back to the search screen, as B |
+| Escape | delete, as B | a page up, as B |
 | Ctrl and Enter | search, as Start | back to the top, as Start |
-| Ctrl and Escape | on nesp32's cartridge, back to its menu, as Select | as Select |
+| Ctrl and Escape | on nesp32's cartridge, back to its menu, as Select | back to the search screen, as Select |
 
 What the keys on the screen do not have, the keyboard does not type
 either, and a key held down repeats. Keys the reader does not take are
