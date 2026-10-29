@@ -48,6 +48,7 @@ static void (*s_prev_sync_cb)(void) = NULL;
 #define HIDH_MAX_SVCS   10
 #define HIDH_MAX_CHRS   20
 #define HIDH_MAX_DSCS   20
+#define ENCRYPT_WAIT_MS 10000   /* nesp32: for a first pairing to finish */
 
 /* variables used for attribute discovery */
 static int services_discovered;
@@ -1057,8 +1058,13 @@ esp_hidh_gattc_event_handler(struct ble_gap_event *event, void *arg)
         /* nesp32: a keyboard asks for a short connection interval, which is
          * airtime Wi-Fi does without on the same radio. It has one no shorter
          * than NimBLE's initial 30 to 50 ms, and the supervision timeout that
-         * the latency it asked for then needs. */
-        struct ble_gap_upd_params *params = event->conn_update_req.self_params;
+         * the latency it asked for then needs. Asked by L2CAP (an MX Keys S
+         * does), self_params is NULL: NimBLE applies its own copy of what was
+         * asked, the one peer_params points to, so that is what changes. */
+        struct ble_gap_upd_params *params =
+            (struct ble_gap_upd_params *)event->conn_update_req.peer_params;
+        ESP_LOGI(TAG, "connection update asked: %u to %u ms, latency %u",
+                 params->itvl_min * 5 / 4, params->itvl_max * 5 / 4, params->latency);
         if (params->itvl_min < BLE_GAP_INITIAL_CONN_ITVL_MIN) {
             params->itvl_min = BLE_GAP_INITIAL_CONN_ITVL_MIN;
         }
@@ -1070,10 +1076,6 @@ esp_hidh_gattc_event_handler(struct ble_gap_event *event, void *arg)
         if (params->supervision_timeout < least) {
             params->supervision_timeout = least > 3200 ? 3200 : (uint16_t)least;
         }
-        ESP_LOGI(TAG, "connection update asked: %u to %u ms, latency %u",
-                 event->conn_update_req.peer_params->itvl_min * 5 / 4,
-                 event->conn_update_req.peer_params->itvl_max * 5 / 4,
-                 event->conn_update_req.peer_params->latency);
         return 0;
     }
 
@@ -1285,7 +1287,12 @@ esp_hidh_dev_t *esp_ble_hidh_dev_open(uint8_t *bda, uint8_t address_type)
 
     /* nesp32: Wi-Fi shares the radio, and NimBLE's own parameters (NULL)
      * listen for the device all the time while it is asleep: 10% of the
-     * time here. */
+     * time here, for one paired. One being paired has NimBLE's own: an MX
+     * Keys S's advertising was missed half the time at 10%, and the pairing
+     * failed. */
+    struct ble_store_key_sec bond_key = {.peer_addr = addr};
+    struct ble_store_value_sec bond;
+    bool paired = ble_store_read_peer_sec(&bond_key, &bond) == 0;
     struct ble_gap_conn_params conn_params = {
         .scan_itvl = BLE_GAP_SCAN_ITVL_MS(200),
         .scan_window = BLE_GAP_SCAN_WIN_MS(20),
@@ -1298,7 +1305,8 @@ esp_hidh_dev_t *esp_ble_hidh_dev_open(uint8_t *bda, uint8_t address_type)
     };
 
     LOCK_OPS();
-    ret = ble_gap_connect(own_addr_type, &addr, 30000, &conn_params, esp_hidh_gattc_event_handler, dev);
+    ret = ble_gap_connect(own_addr_type, &addr, 30000, paired ? &conn_params : NULL,
+                          esp_hidh_gattc_event_handler, dev);
     if (ret) {
         esp_hidh_dev_free_inner(dev);
         ESP_LOGE(TAG, "esp_ble_gattc_open failed: %d", ret);
@@ -1330,6 +1338,16 @@ esp_hidh_dev_t *esp_ble_hidh_dev_open(uint8_t *bda, uint8_t address_type)
         esp_event_post_to(event_loop_handle, ESP_HIDH_EVENTS, ESP_HIDH_OPEN_EVENT, &p, sizeof(esp_hidh_event_data_t), portMAX_DELAY);
     }
 
+    /* nesp32: the reports are turned on once the link is encrypted. A
+     * keyboard pairing for the first time may still be at it after the
+     * services are read, and one turned on before then takes no notice. */
+    for (int waited = 0; waited < ENCRYPT_WAIT_MS; waited += 50) {
+        struct ble_gap_conn_desc desc;
+        if (ble_gap_conn_find(dev->ble.conn_id, &desc) != 0 || desc.sec_state.encrypted) {
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
     attach_report_listeners(dev);
     UNLOCK_OPS();
     return dev;
