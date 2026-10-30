@@ -8,6 +8,8 @@ This hat is also compatible with the M5 StickC-Plus2 which is no longer availabl
 
 The circuit, the pins it uses on each Stick, and why the levels have to be shifted are in [docs/WIRING.md](../docs/WIRING.md).
 
+To build one step by step, with the checks to run before you plug it in, follow the [Build Guide](../docs/BUILD_GUIDE.md).
+
 ## Specifications
 * Base Material: FR-4
 * Layers: 2
