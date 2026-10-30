@@ -46,8 +46,21 @@ nav { display: flex; gap: 20px; flex-wrap: wrap; margin: 0 0 40px; font-size: 15
 .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
 .grid .card { padding: 20px; }
 .grid .card p { margin: 0; color: var(--dim); }
-.shots { display: grid; gap: 12px; grid-template-columns: repeat(4, 1fr); }
-.shots img { width: 100%; height: auto; display: block; border-radius: 6px;
-             border: 1px solid var(--line); image-rendering: pixelated; }
+/* The product page's slideshow: its pictures stacked, the one showing on top. */
+.shots { margin: 0 auto; max-width: 512px; text-align: center; }
+.shots .frames { display: grid; cursor: pointer; }
+.shots img { grid-area: 1 / 1; width: 100%; height: auto; display: block;
+             border-radius: 6px; border: 1px solid var(--line);
+             image-rendering: pixelated; opacity: 0; transition: opacity .6s; }
+.shots img.on { opacity: 1; }
+.shots figcaption { font-size: 14px; color: var(--dim); margin: 8px 0 4px; min-height: 1.55em; }
+.shots .dots { display: flex; gap: 8px; justify-content: center; }
+.shots .dots button { width: 10px; height: 10px; padding: 0; border: 0; border-radius: 50%;
+                      background: var(--line); cursor: pointer; }
+.shots .dots button.on { background: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .shots img { transition: none; } }
+/* The product page's videos, side by side, or one over the other on a phone. */
+.videos { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.videos iframe { width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 6px; display: block; }
 footer { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--line);
          font-size: 14px; color: var(--dim); }
