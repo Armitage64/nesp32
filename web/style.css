@@ -54,7 +54,12 @@ nav { display: flex; gap: 20px; flex-wrap: wrap; margin: 0 0 40px; font-size: 15
              image-rendering: pixelated; opacity: 0; transition: opacity .6s; }
 .shots img.on { opacity: 1; }
 .shots figcaption { font-size: 14px; color: var(--dim); margin: 8px 0 4px; min-height: 1.55em; }
-.shots .dots { display: flex; gap: 8px; justify-content: center; }
+.shots .controls { display: flex; gap: 12px; align-items: center; justify-content: center; }
+.shots .controls .prev, .shots .controls .next {
+  padding: 0 6px; border: 0; background: none; color: var(--dim); cursor: pointer;
+  font: 28px/1 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.shots .controls .prev:hover, .shots .controls .next:hover { color: var(--accent); }
+.shots .dots { display: flex; gap: 8px; }
 .shots .dots button { width: 10px; height: 10px; padding: 0; border: 0; border-radius: 50%;
                       background: var(--line); cursor: pointer; }
 .shots .dots button.on { background: var(--accent); }

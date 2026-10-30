@@ -30,7 +30,11 @@
       <img src="img/bluesky.png" alt="Bluesky's splash, after ConnectedNES" width="512" height="480">
     </div>
     <figcaption></figcaption>
-    <div class="dots"></div>
+    <div class="controls">
+      <button class="prev" aria-label="Previous picture">&lsaquo;</button>
+      <div class="dots"></div>
+      <button class="next" aria-label="Next picture">&rsaquo;</button>
+    </div>
   </figure>
 
   <h2>About</h2>
@@ -138,6 +142,8 @@
     dots.appendChild(dot);
   });
   shots.querySelector(".frames").onclick = function () { show(at + 1); start(); };
+  shots.querySelector(".next").onclick = function () { show(at + 1); start(); };
+  shots.querySelector(".prev").onclick = function () { show(at - 1); start(); };
   shots.onmouseenter = stop;
   shots.onmouseleave = start;
   show(0);
