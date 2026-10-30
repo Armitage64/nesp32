@@ -24,7 +24,8 @@ later, and waking a keyboard may take a fraction of a second more. The
 third turns a keyboard's reports on only once the link is encrypted: one
 pairing for the first time may finish after its services are read. A
 TECKNET keyboard types nothing on that connection even so, and
-`firmware/main/keyboard.c` connects to a keyboard again once it is paired.
+`firmware/main/keyboard.c` connects to one again once it is paired, but for
+a Logitech one, which then sleeps until a key is pressed.
 
 Delete this directory once the ESP-IDF the firmware is built with has the
 fix, keeping those three.

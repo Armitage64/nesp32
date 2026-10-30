@@ -39,6 +39,7 @@
 #include "keyboard.h"
 
 #include <string.h>
+#include <strings.h>
 
 #include "sdkconfig.h"
 
@@ -92,6 +93,7 @@
 #define APPEARANCE_HID 0x03C0
 #define APPEARANCE_KEYBOARD 0x03C1
 #define UUID_HID 0x1812
+#define VENDOR_LOGITECH 0x046D       /* the PnP ID's, a USB vendor ID */
 
 #define OPENED BIT0
 #define CLOSED BIT1
@@ -576,6 +578,23 @@ static void forget(void)
     portEXIT_CRITICAL(&lock);
 }
 
+/* Whether a keyboard just paired keeps the connection it was paired on. A
+ * TECKNET keyboard types nothing on it, though esp_hid's host turns the
+ * reports on once the link is encrypted (components/esp_hid), and types
+ * once let go of and connected to again. A Logitech one (an MX Keys S)
+ * types on it at once, and let go of sleeps until a key is pressed: it is
+ * kept. A Logitech keyboard says so by its vendor, or else its name. */
+static bool kept_after_pairing(esp_hidh_dev_t *opened, const nesp_keyboard_t *shown)
+{
+    uint16_t vendor = esp_hidh_dev_vendor_id_get(opened);
+    bool logitech = vendor == VENDOR_LOGITECH
+                    || (shown->name_len >= 3 && strncasecmp(shown->name, "MX ", 3) == 0);
+    ESP_LOGI(TAG, "vendor 0x%04x, product 0x%04x: %s", vendor,
+             esp_hidh_dev_product_id_get(opened),
+             logitech ? "kept" : "let go of, and connected to again");
+    return logitech;
+}
+
 static void pair(int index)
 {
     seen_t one;
@@ -600,21 +619,20 @@ static void pair(int index)
         set_doing(NESP_KEYBOARD_FAILED);
         return;
     }
-    /* A TECKNET keyboard types nothing on the connection it was paired on,
-     * though esp_hid's host turns the reports on only once the link is
-     * encrypted (components/esp_hid). So it is let go of, and run()
-     * connects to it again as the keyboard paired. An MX Keys S let go of
-     * sleeps until a key is pressed, and Setup says PRESS A KEY ON IT. */
     device = opened;
-    disconnect();
+    bool kept = kept_after_pairing(opened, &one.shown);
+    if (!kept) {
+        disconnect();               /* run() connects to it as the keyboard paired */
+    }
     one.shown.rssi = 0;
     keep_name(&one.shown);
     portENTER_CRITICAL(&lock);
     paired = true;
     paired_one = one.shown;
+    connected = kept;
     doing = 0;
     portEXIT_CRITICAL(&lock);
-    ESP_LOGI(TAG, "paired; connecting to it again");
+    ESP_LOGI(TAG, "%s", kept ? "paired, and connected" : "paired; connecting to it again");
 }
 
 /* True while Bluetooth is to stay on: a ROM has KBD in use, or let go of
