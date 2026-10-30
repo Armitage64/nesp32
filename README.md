@@ -38,6 +38,10 @@ to be configured from the NES itself.
 
 - [NESP32 Home Page](https://nesp32.retrobits.tv/)
 
+- [User Guide](docs/USER_GUIDE.md): setting up and using a NESP32, for new users
+
+- [Build Guide](docs/BUILD_GUIDE.md): building and checking the hat
+
 - [Purchase the M5 StickS3](https://amzn.to/3TVUV0y)*
 
 - [Order Hat from PCBWay](https://www.pcbway.com/project/shareproject/NESP32_Hat_for_M5_StickS3_d23db4e5.html)
@@ -140,6 +144,8 @@ Contra's build needs your own copy of the game (US release) at `apps/contra/base
 
 | | |
 |---|---|
+| [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | using a NESP32: setup, Wi-Fi, the keyboard, every program, online play, troubleshooting |
+| [docs/BUILD_GUIDE.md](docs/BUILD_GUIDE.md) | building the hat and checking it, step by step |
 | [docs/WIRING.md](docs/WIRING.md) | the hat: its pins, the level shifter, and why it is needed |
 | [docs/PROTOCOL.md](docs/PROTOCOL.md) | the link: the line, frames, the hello, every service, timing, and the console's library |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | building, the cartridge, what is where in the repository, the tests, and how far each part has got |
