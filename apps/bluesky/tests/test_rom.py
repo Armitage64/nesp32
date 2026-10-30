@@ -333,3 +333,18 @@ def test_the_previews_are_up_to_date(tmp_path):
     for name in ("screen.png", "screen-list.png", "screen-form.png", "screen-splash.png"):
         with open(os.path.join(docs, name), "rb") as ours, open(tmp_path / name, "rb") as made:
             assert ours.read() == made.read(), name
+
+
+def test_the_bluetooth_keyboard_is_the_controller(sky, feed):
+    """Enter is A, the arrows the D-pad and Escape B."""
+    s = sky()
+    s.go()
+    expected = cards(feed)
+    s.stick.kbd_type(bytes((p.NESP_KEY_ENTER,)))
+    s.post_is_up()
+    s.stick.kbd_type(bytes((p.NESP_KEY_DOWN, p.NESP_KEY_RIGHT)))
+    s.c.run_until(lambda: s.status == "POST 2 OF 8 PAGE 1/3", 120)
+    assert s.post_is_up() == slots(expected[1])
+    s.stick.kbd_type(bytes((p.NESP_KEY_ESCAPE,)))
+    assert s.list_is_up() == DEFAULTS
+    assert s.stick.kbd_unread == 0

@@ -148,7 +148,7 @@ One exchange a frame, the first of these that applies:
 
 | When | Request |
 |---|---|
-| Before anything else, and again whenever the nesp32 says a service is not in use | SYS HELLO, as `JUKE` version 2, asking for the JUKE and RAW services and replies of up to 63 bytes |
+| Before anything else, and again whenever the nesp32 says a service is not in use | SYS HELLO, as `JUKE` version 2, asking for the JUKE, RAW and KBD services and replies of up to 63 bytes. KBD only keeps a Bluetooth keyboard connected for the next program on nesp32's cartridge, and a nesp32 without it is one to use |
 | A button on controller 1 was pressed | JUKE BUTTON: Right is next, Left previous, Start or A play or pause. Sent again, unchanged, every frame until it is answered, for up to 30 frames |
 | A sound record has played, and the screen has caught up with it | JUKE SOUND: the ring's epoch, and the record's rate, or `$FF` if this console cannot play it (part 4) |
 | Otherwise, every frame | JUKE STREAM: the ring's epoch, how many of its bytes the ROM has taken, the room in the ring up to 56 bytes, and the low byte of its count of underruns |

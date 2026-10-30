@@ -7,11 +7,14 @@
  * from it to hid_event. (firmware/components/esp_hid is ESP-IDF's, with a
  * fix its NimBLE host needs.)
  *
- * Bluetooth is on only while a ROM has KBD in use: it shares the radio
- * with Wi-Fi, and takes some 75 KB of the chip's own memory. It is turned
- * off OFF_MS after KBD was last let go of, so that a hello that asks for
- * KBD again, which lets go of it and takes it again at once, leaves the
- * keyboard connected.
+ * Bluetooth is on only while a ROM has KBD in use, and a keyboard is paired
+ * or one is being looked for: it shares the radio with Wi-Fi, and takes
+ * some 75 KB of the chip's own memory. A SCAN with Bluetooth off turns it
+ * on, and is BUSY until it is, so a ROM that asks again has its scan a
+ * second or so later; it stays on through the pairing, and from then on
+ * there is a keyboard paired. It is turned off OFF_MS after KBD was last
+ * let go of, so that a hello that asks for KBD again, which lets go of it
+ * and takes it again at once, leaves the keyboard connected.
  *
  * Everything that waits is the keyboard's task's, run(). What the console
  * asks only leaves an order for it and wakes it. The one wait it cannot
@@ -36,6 +39,7 @@
 #include "keyboard.h"
 
 #include <string.h>
+#include <strings.h>
 
 #include "sdkconfig.h"
 
@@ -71,6 +75,8 @@
 
 /* HID's usages (the USB HID usage tables, the keyboard page). */
 #define USAGE_A 0x04
+#define USAGE_ENTER 0x28
+#define USAGE_ESCAPE 0x29
 #define USAGE_SLASH 0x38            /* the last with a character */
 #define USAGE_CAPS_LOCK 0x39
 #define USAGE_PAGE_UP 0x4B
@@ -80,12 +86,14 @@
 #define USAGE_ROLLOVER 0x01         /* too many keys down: the report means nothing */
 #define SHIFT 0x22                  /* the left and right Shift in the modifiers' byte */
 #define CHORD 0xDD                  /* Ctrl, Alt and GUI: a key with one is not typed */
+#define CTRL 0x11                   /* the left and right Ctrl */
 
 /* Appearances (Bluetooth's assigned numbers). A scan offers what says it is
  * a keyboard, and what offers HID and says nothing more of itself. */
 #define APPEARANCE_HID 0x03C0
 #define APPEARANCE_KEYBOARD 0x03C1
 #define UUID_HID 0x1812
+#define VENDOR_LOGITECH 0x046D       /* the PnP ID's, a USB vendor ID */
 
 #define OPENED BIT0
 #define CLOSED BIT1
@@ -115,6 +123,7 @@ typedef struct {
 /* What the link's task and this file's both touch, under the lock. */
 static portMUX_TYPE lock = portMUX_INITIALIZER_UNLOCKED;
 static bool want_on;
+static bool looking;                /* a SCAN has asked for Bluetooth with none paired */
 static int64_t let_go_at;           /* when KBD was last let go of, in microseconds */
 static bool scan_asked;
 static int pair_asked = -1;         /* the index of the one to pair with */
@@ -169,6 +178,11 @@ static void pressed(uint8_t usage, uint8_t modifiers)
         return;
     }
     if ((modifiers & CHORD) != 0) {
+        /* But Ctrl with Enter or Escape, and nothing else of the chord's,
+         * is the controller's Start or Select. */
+        if ((modifiers & CHORD & ~CTRL) == 0 && (usage == USAGE_ENTER || usage == USAGE_ESCAPE)) {
+            keep(usage == USAGE_ENTER ? NESP_KEY_START : NESP_KEY_SELECT);
+        }
         return;
     }
     if (usage >= USAGE_RIGHT && usage <= USAGE_UP) {
@@ -311,11 +325,19 @@ static void hid_event(void *arg, esp_event_base_t base, int32_t id, void *data)
     }
 }
 
-/* Whether the pairing worked, which esp_hid's host does not say: a
- * listener hears it besides the connection's own handler. */
+/* Whether the pairing worked, which esp_hid's host does not say, and the
+ * connection's interval once it is agreed, for the log: a listener hears
+ * them besides the connection's own handler. */
 static int gap_watch(struct ble_gap_event *event, void *arg)
 {
     (void)arg;
+    if (event->type == BLE_GAP_EVENT_CONN_UPDATE && event->conn_update.status == 0) {
+        struct ble_gap_conn_desc desc;
+        if (ble_gap_conn_find(event->conn_update.conn_handle, &desc) == 0) {
+            ESP_LOGI(TAG, "connection interval %u ms, latency %u", desc.conn_itvl * 5 / 4,
+                     desc.conn_latency);
+        }
+    }
     if (event->type == BLE_GAP_EVENT_ENC_CHANGE) {
         ESP_LOGI(TAG, "encryption: status %d", event->enc_change.status);
         if (event->enc_change.status == 0) {
@@ -556,6 +578,23 @@ static void forget(void)
     portEXIT_CRITICAL(&lock);
 }
 
+/* Whether a keyboard just paired keeps the connection it was paired on. A
+ * TECKNET keyboard types nothing on it, though esp_hid's host turns the
+ * reports on once the link is encrypted (components/esp_hid), and types
+ * once let go of and connected to again. A Logitech one (an MX Keys S)
+ * types on it at once, and let go of sleeps until a key is pressed: it is
+ * kept. A Logitech keyboard says so by its vendor, or else its name. */
+static bool kept_after_pairing(esp_hidh_dev_t *opened, const nesp_keyboard_t *shown)
+{
+    uint16_t vendor = esp_hidh_dev_vendor_id_get(opened);
+    bool logitech = vendor == VENDOR_LOGITECH
+                    || (shown->name_len >= 3 && strncasecmp(shown->name, "MX ", 3) == 0);
+    ESP_LOGI(TAG, "vendor 0x%04x, product 0x%04x: %s", vendor,
+             esp_hidh_dev_product_id_get(opened),
+             logitech ? "kept" : "let go of, and connected to again");
+    return logitech;
+}
+
 static void pair(int index)
 {
     seen_t one;
@@ -581,22 +620,27 @@ static void pair(int index)
         return;
     }
     device = opened;
+    bool kept = kept_after_pairing(opened, &one.shown);
+    if (!kept) {
+        disconnect();               /* run() connects to it as the keyboard paired */
+    }
     one.shown.rssi = 0;
     keep_name(&one.shown);
     portENTER_CRITICAL(&lock);
     paired = true;
     paired_one = one.shown;
-    connected = true;
+    connected = kept;
     doing = 0;
     portEXIT_CRITICAL(&lock);
-    ESP_LOGI(TAG, "paired, and connected");
+    ESP_LOGI(TAG, "%s", kept ? "paired, and connected" : "paired; connecting to it again");
 }
 
 /* True while Bluetooth is to stay on: a ROM has KBD in use, or let go of
- * it less than OFF_MS ago. Under the lock. */
+ * it less than OFF_MS ago, and a keyboard is paired or being looked for.
+ * Under the lock. */
 static bool wanted(int64_t now)
 {
-    return want_on || now - let_go_at < (int64_t)OFF_MS * 1000;
+    return (want_on || now - let_go_at < (int64_t)OFF_MS * 1000) && (paired || looking);
 }
 
 static void run(void *arg)
@@ -626,6 +670,9 @@ static void run(void *arg)
             }
             continue;
         }
+        if (forgetting) {
+            forget();               /* first: with none paired, Bluetooth may now go */
+        }
         if (!on) {
             stop();
             continue;
@@ -633,9 +680,6 @@ static void run(void *arg)
         if (device != NULL && (xEventGroupGetBits(happened) & CLOSED) != 0) {
             device = NULL;          /* it went: esp_hid's host has let go of it */
             set_connected(false);
-        }
-        if (forgetting) {
-            forget();
         }
         if (scanning) {
             scan();
@@ -708,6 +752,7 @@ void keyboard_enable(void *ctx, bool on)
     want_on = on;
     if (!on) {
         let_go_at = esp_timer_get_time();
+        looking = false;            /* the ROM that looked has gone, or said hello again */
     }
     portEXIT_CRITICAL(&lock);
     wake();
@@ -725,7 +770,7 @@ uint8_t keyboard_state(void *ctx, nesp_keyboard_t *out, uint8_t *count)
     }
     *count = doing == NESP_KEYBOARD_SCANNED ? found_count : 0;
     if (!running) {
-        state = NESP_KEYBOARD_OFF;
+        state = paired ? NESP_KEYBOARD_OFF : NESP_KEYBOARD_UNPAIRED;
     } else if (doing != 0) {
         state = doing;
     } else if (connected) {
@@ -743,6 +788,7 @@ bool keyboard_scan(void *ctx)
 {
     (void)ctx;
     portENTER_CRITICAL(&lock);
+    looking = true;                 /* with Bluetooth off, it is turned on for this */
     bool can = running && doing != NESP_KEYBOARD_PAIRING;
     if (can && doing != NESP_KEYBOARD_SCANNING) {
         scan_asked = true;

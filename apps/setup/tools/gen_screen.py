@@ -33,6 +33,7 @@ import zlib
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "..", "nes", "lib"))
+import badge  # noqa: E402
 import logo  # noqa: E402
 
 SCREEN_COLUMNS = 32
@@ -119,6 +120,7 @@ PALETTES = (
 PALETTE_RED = 2
 PALETTE_LOGO = 3
 SPRITE_PALETTE = (0x21, 0x10, 0x30)     # colour 3, white: the cursors
+SPRITE_PALETTES = (SPRITE_PALETTE, badge.PALETTE, SPRITE_PALETTE, SPRITE_PALETTE)
 
 
 
@@ -346,6 +348,10 @@ def build_screen(title=TITLE_TEXT):
         screen.named[name] = screen.add(tile_bytes(picture_tile(rows, 1)))
     for level in range(1, 5):
         screen.named["BARS%d" % level] = screen.add(tile_bytes(picture_tile(bars_picture(level))))
+    for tile, pixels in zip(badge.TILES, badge.tiles()):
+        if tile in screen.tiles:
+            raise ValueError("tile $%02X is not free for the badge" % tile)
+        screen.tiles[tile] = tile_bytes(pixels)
     return screen
 
 
@@ -423,6 +429,8 @@ def include(screen):
     constant("TEST_VALUE_COLUMN", TEST_VALUE_COLUMN)
     for name, tile in sorted(screen.named.items()):
         constant("TILE_" + name, "$%02X" % tile)
+    for name, value in badge.constants():
+        constant(name, value)
     lines += ["", "; The keys, a layer after another, a row after another."]
     for layer in LAYERS:
         if len(layer) != KEY_ROWS or any(len(row) != KEY_COLUMNS for row in layer):
@@ -432,7 +440,7 @@ def include(screen):
         for row in layer:
             lines.append("    .byte " + ", ".join("$%02X" % ord(char) for char in row))
     lines += ["", "palette_data:"]
-    for palette in PALETTES + (SPRITE_PALETTE,) * 4:
+    for palette in PALETTES + SPRITE_PALETTES:
         lines.append("    .byte " + ", ".join("$%02X" % color for color in (BACKDROP,) + palette))
     lines += ["", "; The header's attributes; the rest are 0."]
     lines.append("header_attributes:")

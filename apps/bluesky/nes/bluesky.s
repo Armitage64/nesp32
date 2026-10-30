@@ -109,6 +109,8 @@ PENDING_REMOVE = 2
 
 FEED_UNKNOWN = $FF              ; feed_state: the nesp32 has not said how it stands
 POLL_MASK = $07                 ; a feed being fetched is asked after every 8 frames
+KEYS_EVERY = $03                ; what is typed, every fourth frame,
+KEYS_PHASE = $02                ; and never on a frame of the feed's
 BLINK_MASK = $10                ; the form's mark is hidden for 16 frames in 32
 MISSED_MAX = 8                  ; exchanges in a row with no reply: the nesp32 is not there
 SPRITE_HIDDEN = $FF
@@ -149,6 +151,8 @@ status_addr:  .res 2            ; where the status line is, high byte first,
 status_buf:   .res WIDTH        ; and its tiles
 status_y:     .res 1            ; set_status's
 greeted:      .res 1            ; the nesp32 has answered this ROM's hello
+keys_ok:      .res 1            ; and it had KBD: what is typed is asked for
+key_at:       .res 1            ; ask_keys's: the next key of its reply
 link_missed:  .res 1            ; exchanges in a row with no reply, up to MISSED_MAX
 link_failed:  .res 2            ; every exchange with none, for a debugger's watch list
 why_buf:      .res COLUMNS      ; the nesp32's words for what went wrong, as ASCII
@@ -192,9 +196,10 @@ text_top:     .res 1            ; the first of them on the screen
 row_next:     .res 1            ; the next of her lines to draw; SLOTS when they all are
 asked_line:   .res 1            ; the post's line that LINE asked for
 
+NESP_KEY_PAD = 1                ; the Bluetooth keyboard's keys as the controller's buttons
 .include "nesp.inc"
 
-.assert NESP_TX_MAX >= NESP_HELLO_FIXED + 1, error, "the hello must fit a request"
+.assert NESP_TX_MAX >= NESP_HELLO_FIXED + 2, error, "the hello must fit a request"
 .assert NESP_TX_MAX = 1 + NESP_BSKY_HANDLE_MAX, error, "an id and a handle must fit a request"
 .assert 5 + NESP_BSKY_COLUMNS <= NESP_RX_MASK, error, "a line must fit its buffer"
 .assert POST_COLUMNS = NESP_BSKY_COLUMNS && POST_LINES = NESP_BSKY_ROWS, error, "a post is the nesp32's"
@@ -752,15 +757,17 @@ main_wait:
 
 ; --- the buttons -------------------------------------------------------------------
 
-; What the controller asked for since the last frame.
+; What the controller asked for since the last frame, and a key typed on
+; the Bluetooth keyboard that stands for buttons (nesp_key_next).
 .proc buttons
-    lda pad_new
+    jsr nesp_key_next
+    ldx #0
+    ora pad_new
+    stx pad_new
     bne @some
 @done:
     rts
 @some:
-    ldx #0
-    stx pad_new
     sta presses
     and #PAD_SELECT             ; Select: back to the cartridge's menu, from
     beq @view                   ; every view. B is only ever back a step, and
@@ -876,8 +883,8 @@ main_wait:
 
 ; Back to the cartridge's menu, as reset would go: through its stub, with
 ; the NMI off first, since the stub's `inc` puts the menu's bank, and its
-; NMI, under this. The menu says nothing to the nesp32; the next program's
-; hello is what tells it this one has gone.
+; NMI, under this. The menu says hello to the nesp32 (KBD alone), and the
+; next program's hello is what tells it which one runs.
 .proc quit
     lda #0
     sta PPUCTRL
@@ -1266,6 +1273,14 @@ main_wait:
     bne @greeted
     jmp say_hello
 @greeted:
+    lda keys_ok                 ; every fourth frame, what is typed
+    beq @pending
+    lda frame_count
+    and #KEYS_EVERY
+    cmp #KEYS_PHASE
+    bne @pending
+    jmp ask_keys
+@pending:
     lda pending
     beq @favorites
     jmp ask_pending
@@ -1308,17 +1323,34 @@ main_wait:
 
 ; Hello: this is Bluesky, and it needs BSKY. A nesp32 that lacks it, or
 ; speaks another protocol, has older firmware than this ROM, and the screen
-; says so.
+; says so. It asks for KBD too, for the keys that stand for the
+; controller's buttons, and so that the keyboard stays connected from one
+; program on the cartridge to the next; a nesp32 without KBD is one to use,
+; with the controller alone.
 .proc say_hello
     lda #NESP_SVC_BSKY
     sta nesp_request + NESP_HELLO_FIXED
-    ldy #1
+    lda #NESP_SVC_KBD
+    sta nesp_request + NESP_HELLO_FIXED + 1
+    ldy #2
     jsr nesp_hello
     bcc @came
     jmp link_silent
 @came:
+    ldx #1
     cmp #NESP_ST_OK
+    beq @greeted
+    cmp #NESP_ST_NO_SERVICE     ; only KBD missing is a nesp32 to use
     bne @old
+    lda nesp_reply + 6
+    cmp #1
+    bne @old
+    lda nesp_reply + 7
+    cmp #NESP_SVC_KBD
+    bne @old
+    dex
+@greeted:
+    stx keys_ok
     lda #1
     sta greeted
     sta fav_load                ; a nesp32 that was switched off and on has them anew
@@ -1694,6 +1726,34 @@ main_wait:
 @app:
     lda #STATUS_WAITING
     jmp set_status
+.endproc
+
+; What has been typed on the Bluetooth keyboard: the keys that stand for
+; the controller's buttons, kept for buttons (nesp_key_queue).
+.proc ask_keys
+    lda #NESP_SVC_KBD
+    ldx #NESP_KBD_KEYS
+    ldy #0
+    jsr nesp_call
+    bcc @came
+    jmp link_silent
+@came:
+    cmp #NESP_ST_OK
+    beq @ok
+    jmp link_refused
+@ok:
+    lda #0
+    sta key_at
+@key:
+    ldx key_at
+    cpx nesp_reply
+    bcs @heard
+    lda nesp_reply + 1,x
+    jsr nesp_key_queue
+    inc key_at
+    bne @key
+@heard:
+    jmp link_heard
 .endproc
 
 ; The nesp32 answered, and not with OK: it no longer has the service in

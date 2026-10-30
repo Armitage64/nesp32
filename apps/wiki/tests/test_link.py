@@ -514,6 +514,7 @@ def test_an_article_that_stops_arriving_can_still_be_read(linked):
 
 # --- a Bluetooth keyboard ----------------------------------------------------------
 
+START, SELECT = (bytes((key,)) for key in (p.NESP_KEY_START, p.NESP_KEY_SELECT))
 ESCAPE, BACKSPACE, ENTER = (bytes((key,)) for key in (p.NESP_KEY_ESCAPE, p.NESP_KEY_BACKSPACE,
                                                        p.NESP_KEY_ENTER))
 UP, DOWN, PAGE_UP, PAGE_DOWN = (bytes((key,)) for key in (p.NESP_KEY_UP, p.NESP_KEY_DOWN,
@@ -598,15 +599,15 @@ def test_what_is_typed_while_reading_is_not_searched_for_on_coming_back(linked):
     assert host.searches == [DEFAULT, DEFAULT]
 
 
-def test_escape_on_the_search_screen_does_nothing_off_the_cartridge(linked):
+def test_escape_on_the_search_screen_is_b_and_select_does_nothing_off_the_cartridge(linked):
     c, host = linked(numbered_article(30))
     c.run(40)
-    host.stick.kbd_type(ESCAPE + b"x")
+    host.stick.kbd_type(ESCAPE + SELECT + b"x")
     c.run(20)
-    assert c.byte("state") == STATE_SEARCH and query(c) == DEFAULT + b"x"
+    assert c.byte("state") == STATE_SEARCH and query(c) == DEFAULT[:-1] + b"x"
 
 
-def test_the_keyboard_scrolls_and_pages_the_reader_and_escape_leaves_it(linked):
+def test_the_keyboard_scrolls_and_pages_the_reader_and_select_leaves_it(linked):
     lines = numbered_article(60)
     c, host = paired(linked, lines)
     c.run(20)
@@ -620,7 +621,13 @@ def test_the_keyboard_scrolls_and_pages_the_reader_and_escape_leaves_it(linked):
         shown = hold(c, lines, 0, 80)
         assert position(shown[-1]) == place, keys
     assert host.stick.kbd_unread == 0
-    host.stick.kbd_type(ESCAPE + b"x")
+    host.stick.kbd_type(ENTER)                  # Enter is A: a page down
+    shown = hold(c, lines, 0, 80)
+    assert position(shown[-1]) == 8 + page
+    host.stick.kbd_type(ESCAPE)                 # and Escape B: a page up
+    shown = hold(c, lines, 0, 80)
+    assert position(shown[-1]) == 8
+    host.stick.kbd_type(SELECT + b"x")          # Ctrl and Escape: Select, back to the search
     run_until(c, STATE_SEARCH)
     c.run(40)
     assert query(c) == DEFAULT and host.stick.kbd_unread == 0  # what came with it is dropped

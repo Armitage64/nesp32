@@ -207,6 +207,8 @@ def include(screen, images):
     constant("ARROW_X", arrow()[0])
     constant("ARROW_Y", arrow()[1], "beside the first name")
     constant("TILE_ARROW", "$%02X" % screen.named["ARROW"])
+    for name, value in layout.badge.constants():
+        constant(name, value)
     constant("MENU_CHR", "$%02X" % (2 * MENU_PAGE), "the menu's tiles, as the mapper counts")
     constant("RESET_STUB", "$%04X" % RESET_STUB)
     lines += ["", "; The programs, in the menu's order: " + ", ".join(
@@ -217,7 +219,7 @@ def include(screen, images):
     table("entry_lo", [image.entry & 0xFF for image in images], "where it starts")
     table("entry_hi", [image.entry >> 8 for image in images], "")
     lines += ["", "palette_data:"]
-    for palette in layout.PALETTES + (layout.SPRITE_PALETTE,) * 4:
+    for palette in layout.PALETTES + layout.SPRITE_PALETTES:
         lines.append("    .byte " + ", ".join("$%02X" % color
                                               for color in (layout.BACKDROP,) + palette))
     return "\n".join(line.rstrip() for line in lines) + "\n"

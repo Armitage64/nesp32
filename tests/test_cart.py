@@ -64,6 +64,11 @@ def choose(c, index):
         c.press(PAD_DOWN)
 
 
+def program_hello(stick):
+    """A program has said hello: the menu says its own first."""
+    return stick.hellos and stick.app[0] != b"MENU"
+
+
 def start(c, index, button=PAD_A):
     """Run a program from the menu. The console is then as lenient as the
     program needs."""
@@ -206,7 +211,7 @@ def test_a_program_starts_and_reset_is_the_menu_again(cart, images, index):
     if key == "wiki":
         c.run(60)
         c.press(PAD_START)              # its hello is with its first search
-    c.run_until(lambda: stick.hellos, 300)
+    c.run_until(lambda: program_hello(stick), 300)
     assert stick.app[0] == APPS[key]
     c.run(30)
     if image.program.mapper:
@@ -243,7 +248,7 @@ def test_setups_quit_is_the_menu_again(cart, images, with_stick):
     c.run(4)
     start(c, index)
     if with_stick:
-        c.run_until(lambda: stick.hellos, 300)
+        c.run_until(lambda: program_hello(stick), 300)
     c.run(30)
     row = layout.MENU_ROW + len(layout.MENU_ITEMS)  # the status screen's menu, its last
     assert c.text(row, layout.LEFT + 2, 4) == "QUIT"    # on the cartridge, there is one
@@ -271,7 +276,7 @@ def test_nes_radar_has_its_splash_and_then_its_scopes_tiles(cart, images):
     c.run(20)
     first = cart_layout.mapper_page(image.program)
     assert c.mapper[1] == first and c.chr == splash
-    c.run_until(lambda: stick.hellos, 300)      # the splash is over: its editor is next
+    c.run_until(lambda: program_hello(stick), 300)      # the splash is over: its editor is next
     c.run(10)
     assert c.mapper[1] == first + 2 and c.chr == scope
     # Nothing of another program's is under it, whatever it asks for.
@@ -295,10 +300,10 @@ def test_nes_radars_splash_is_not_skipped_by_the_start_that_chose_it(cart, image
     c.run(2, pad=PAD_START)             # Start chooses it, and is held
     c.strict = False
     c.run(88)
-    assert not c.home and c.chr == splash and not stick.hellos
+    assert not c.home and c.chr == splash and not program_hello(stick)
     c.run(10, pad=0)
-    assert c.chr == splash and not stick.hellos
-    c.run_until(lambda: stick.hellos, 120)      # and the splash's two seconds end it
+    assert c.chr == splash and not program_hello(stick)
+    c.run_until(lambda: program_hello(stick), 120)      # and the splash's two seconds end it
 
 
 def test_select_in_nes_radars_editor_is_the_menu_again(cart, images):
@@ -307,7 +312,7 @@ def test_select_in_nes_radars_editor_is_the_menu_again(cart, images):
     stick, _ = link(c, Stick)          # with no Wi-Fi: Start comes back to the editor
     c.run(4)
     start(c, index)
-    c.run_until(lambda: stick.hellos, 300)      # the splash is over: its editor is next
+    c.run_until(lambda: program_hello(stick), 300)      # the splash is over: its editor is next
     c.run(30)
     assert not c.home
     # Select held from before the editor came back is not a press of it.
@@ -346,7 +351,7 @@ def test_select_in_bluesky_s_favorites_is_the_menu_again(cart, images):
     stick, _ = link(c, Stick)
     c.run(4)
     start(c, index)
-    c.run_until(lambda: stick.hellos, 300)
+    c.run_until(lambda: program_hello(stick), 300)
     c.run(10)
     c.press(PAD_START)                  # past the splash, to the favorites
     c.run(30)
@@ -367,7 +372,7 @@ def test_select_in_weathers_form_is_the_menu_again_and_b_is_not(cart, images):
     stick, _ = link(c, Stick)
     c.run(4)
     start(c, index)
-    c.run_until(lambda: stick.hellos, 300)
+    c.run_until(lambda: program_hello(stick), 300)
     c.run(60)                           # the form, all of it
     assert not c.home
     assert c.line(26) == "A : SUBMIT   SELECT : MENU"  # on the cartridge, there is a menu
@@ -381,7 +386,7 @@ def test_select_in_weathers_form_is_the_menu_again_and_b_is_not(cart, images):
     assert c.byte("choice") == 0
 
 
-def test_escape_in_weathers_form_is_the_menu_again(cart, images):
+def test_ctrl_and_escape_in_weathers_form_is_select_the_menu_again(cart, images):
     index = next(index for index, image in enumerate(images) if image.program.key == "weather")
     c = cart()
     stick, _ = link(c, Stick)
@@ -390,7 +395,7 @@ def test_escape_in_weathers_form_is_the_menu_again(cart, images):
     c.run_until(lambda: stick.kbd_on, 300)
     c.run(60)                           # the form, all of it
     assert not c.home
-    stick.kbd_type(bytes((nesp_proto.NESP_KEY_ESCAPE,)))
+    stick.kbd_type(bytes((nesp_proto.NESP_KEY_SELECT,)))
     c.strict = True
     c.run_until(lambda: at_menu(c), 30)
     assert c.byte("choice") == 0
@@ -405,7 +410,7 @@ def test_the_jukebox_waits_for_a_start_of_its_own(cart, images):
     choose(c, index)
     c.run(2, pad=PAD_A)                 # A chooses it, and is held
     c.strict = False
-    c.run_until(lambda: stick.hellos, 300)
+    c.run_until(lambda: program_hello(stick), 300)
     c.run(60, pad=PAD_A)
     assert c.line(16) == "> First"      # nothing plays: that A was the menu's
     c.run(10, pad=0)                    # nor once it is let go
@@ -430,7 +435,7 @@ def test_the_press_that_chose_a_program_does_not_start_it(cart, images, key, but
     choose(c, index)
     c.run(2, pad=button)                # it chooses the program, and is held
     c.strict = False
-    c.run_until(lambda: stick.hellos, 300)
+    c.run_until(lambda: program_hello(stick), 300)
     c.run(60, pad=button)
     waiting = WAITING[key]
     assert waiting(c)
@@ -446,7 +451,7 @@ def test_select_in_nprs_menu_is_the_menu_again_and_b_is_not(cart, images):
     stick, _ = link(c, Stick)
     c.run(4)
     start(c, index)
-    c.run_until(lambda: stick.hellos, 300)
+    c.run_until(lambda: program_hello(stick), 300)
     c.run(30)
     assert not c.home
     assert c.text(26).strip().endswith("SELECT : MENU")    # on the cartridge, there is a menu
@@ -467,7 +472,7 @@ def test_select_in_the_jukeboxs_menu_is_the_menu_again_and_b_is_not(cart, images
     stick.add_track(ONE)
     c.run(4)
     start(c, index)
-    c.run_until(lambda: stick.hellos, 300)
+    c.run_until(lambda: program_hello(stick), 300)
     c.run(40)
     assert not c.home
     assert c.line(16) == "> First" and c.line(26) == "A : PLAY   SELECT : MENU"
@@ -488,7 +493,7 @@ def test_select_in_the_throughput_test_is_the_menu_again_and_b_is_not(cart, imag
     stick, _ = link(c, Stick)
     c.run(4)
     start(c, index)
-    c.run_until(lambda: stick.hellos, 300)
+    c.run_until(lambda: program_hello(stick), 300)
     c.run_until(lambda: "PRESS START" in c.line(26), 120)   # at the foot
     assert not c.home
     c.press(PAD_B)                      # B never leaves a program
@@ -539,7 +544,7 @@ def test_select_in_nespedias_reader_is_the_search_again(cart, images, cart_build
     assert not c.home and c.memory[state] == 0      # STATE_SEARCH, not the menu
 
 
-def test_escape_in_nespedias_search_is_the_menu_again(cart, images):
+def test_ctrl_and_escape_in_nespedias_search_is_select_the_menu_again(cart, images):
     index = next(index for index, image in enumerate(images) if image.program.key == "wiki")
     c = cart()
     stick, _ = link(c, Stick)
@@ -548,7 +553,7 @@ def test_escape_in_nespedias_search_is_the_menu_again(cart, images):
     c.run_until(lambda: stick.kbd_on, 300)
     c.run(10)
     assert not c.home
-    stick.kbd_type(bytes((nesp_proto.NESP_KEY_ESCAPE,)))
+    stick.kbd_type(bytes((nesp_proto.NESP_KEY_SELECT,)))
     c.strict = True
     c.run_until(lambda: at_menu(c), 30)
     assert c.byte("choice") == 0
@@ -583,7 +588,7 @@ def test_select_in_setup_is_the_menu_again_and_b_is_not(cart, images, with_stick
     c.run(4)
     start(c, index)
     if with_stick:
-        c.run_until(lambda: stick.hellos, 300)
+        c.run_until(lambda: program_hello(stick), 300)
     c.run(30)
     c.press(PAD_B)                      # B never leaves a program
     c.run(30)
@@ -615,7 +620,7 @@ def test_select_in_bluesky_s_form_is_the_menu_again(cart, images, cart_build):
     stick, _ = link(c, Stick)
     c.run(4)
     start(c, index)
-    c.run_until(lambda: stick.hellos, 300)
+    c.run_until(lambda: program_hello(stick), 300)
     c.run(10)
     c.press(PAD_START)                  # past the splash, to the favorites
     c.run_until(lambda: c.memory[view] == 1 and not c.memory[fav_load], 600)
@@ -628,3 +633,67 @@ def test_select_in_bluesky_s_form_is_the_menu_again(cart, images, cart_build):
     c.run(6)
     assert at_menu(c)
     assert c.byte("choice") == 0
+
+
+# --- the Bluetooth keyboard on the menu --------------------------------------------
+
+BADGE = 0x3F15                          # the badge's colour 1, in sprite palette 1
+
+
+def badge(c):
+    """The badge's colour, or None while its sprites are hidden."""
+    shown = [c.oam[4 * sprite] < 0xEF for sprite in range(1, 5)]
+    assert len(set(shown)) == 1         # all four, or none
+    return c.vram[BADGE] if shown[0] else None
+
+
+def test_the_menus_hello_asks_for_kbd_and_the_keyboard_moves_the_arrow(cart, images):
+    c = cart()
+    stick, _ = link(c, Stick)
+    c.run_until(lambda: stick.hellos, 60)
+    assert stick.app[0] == b"MENU" and stick.kbd_on
+    stick.kbd_type(bytes((nesp_proto.NESP_KEY_DOWN, nesp_proto.NESP_KEY_DOWN, nesp_proto.NESP_KEY_UP)))
+    c.run_until(lambda: stick.kbd_unread == 0, 60)
+    c.run(8)
+    assert c.byte("choice") == 1 and c.home
+    stick.kbd_type(bytes((nesp_proto.NESP_KEY_ENTER,)))        # Enter is A: the second program
+    c.strict = False
+    c.run_until(lambda: not c.home, 60)
+    assert (c.mapper[0], c.mapper[1], c.mapper[3]) == registers(images[1])
+
+
+def test_the_badge_says_how_the_keyboard_stands(cart):
+    c = cart()
+    stick, _ = link(c, Stick)
+    c.run_until(lambda: stick.hellos, 60)
+    c.run(40)
+    assert badge(c) is None                                     # none paired
+    stick.kbd_paired(b"MX KEYS S")
+    stick.kbd_state = nesp_proto.NESP_KEYBOARD_CONNECTED
+    c.run(40)
+    assert badge(c) == layout.badge.COLORS["BLUE"]
+    stick.kbd_state = nesp_proto.NESP_KEYBOARD_FAILED
+    c.run(40)
+    assert badge(c) == layout.badge.COLORS["YELLOW"]
+    stick.kbd_state = nesp_proto.NESP_KEYBOARD_WAITING          # connecting: it flashes,
+    c.run(20)                                                   # once the menu has asked
+    seen = set()
+    for _ in range(80):
+        c.run(1)
+        seen.add(badge(c))
+    assert seen == {layout.badge.COLORS["BLUE"], layout.badge.COLORS["BLUE_DIM"]}
+    c.run(600)                                                  # and after 10 s, grey
+    assert badge(c) == layout.badge.COLORS["GREY"]
+
+
+def test_the_badge_is_yellow_when_the_nesp32_stops_answering(cart):
+    c = cart()
+    stick, port = link(c, Stick)
+    stick.kbd_paired(b"MX KEYS S")
+    stick.kbd_state = nesp_proto.NESP_KEYBOARD_CONNECTED
+    c.run_until(lambda: stick.hellos, 60)
+    c.run(40)
+    assert badge(c) == layout.badge.COLORS["BLUE"]
+    c.host = None                                               # unplugged
+    c.run(60)
+    assert badge(c) == layout.badge.COLORS["YELLOW"] and c.home

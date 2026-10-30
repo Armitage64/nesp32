@@ -244,7 +244,8 @@ On a line with no limit of its own, the upper half ends like this:
 The console is in charge, as everywhere on nesp32's link: it asks in
 frames at 85227 baud, and the nesp32 answers. The ROM says hello as `THRU`
 and asks for the RAW service ([nesp32's protocol](../../docs/PROTOCOL.md),
-"RAW"). A block is one run of RAW's:
+"RAW"), and for KBD, which only keeps a Bluetooth keyboard connected for
+the next program on nesp32's cartridge. A block is one run of RAW's:
 
 | | The console asks | Then |
 |---|---|---|

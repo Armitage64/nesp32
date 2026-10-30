@@ -88,8 +88,8 @@ tests and for the cartridge.
 | `tools/preview.py` | the pictures in `docs/` |
 
 The link is nesp32's: [`docs/PROTOCOL.md`](../../docs/PROTOCOL.md) has the
-line, the frames and the services this ROM asks for (SYS, NET and DIAG,
-and KBD on the Bluetooth keyboard's screen),
+line, the frames and the services this ROM asks for (SYS, NET, DIAG and
+KBD),
 and `nes/lib/nesp.inc` at the top is the library it includes.
 
 ## Tests

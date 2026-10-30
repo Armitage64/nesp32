@@ -23,6 +23,8 @@
 
 KBD_HELLO_EVERY = $07           ; say hello every 8 frames until answered
 KBD_STATE_EVERY = $0F           ; ask how the keyboard stands every 16 frames
+KBD_PAIR_WAIT = 30              ; of those asked, some 8 s: a keyboard just paired
+                                ; and not connected to again by then is asleep
 KBD_UNKNOWN = $FF
 
 KBD_GREETED = 1                 ; kbd_greeted: the hello was answered
@@ -181,7 +183,7 @@ kbd_nothing_text: .byte "NO KEYBOARD IS PAIRED", 0
     jmp kbd_draw
 .endproc
 
-; Back to the status screen, whose hello is without KBD: Bluetooth goes off.
+; Back to the status screen, which says hello again.
 .proc kbd_back
     lda #0
     sta linked
@@ -204,6 +206,7 @@ kbd_nothing_text: .byte "NO KEYBOARD IS PAIRED", 0
     bne @old
     lda #KBD_GREETED
     sta kbd_greeted
+    sta badge_ok
     lda #0
     sta misses
 @silent:
@@ -331,6 +334,7 @@ kbd_nothing_text: .byte "NO KEYBOARD IS PAIRED", 0
 @silent:
     rts
 @heard:
+    jsr badge_heard
     ; The name, drawn again if it is not the one shown.
     ldy nesp_reply + 2
     cpy #NESP_KBD_NAME_MAX + 1
@@ -361,6 +365,22 @@ kbd_nothing_text: .byte "NO KEYBOARD IS PAIRED", 0
     sta kbd_dirty
 @name_done:
     lda nesp_reply
+    cmp #NESP_KEYBOARD_WAITING  ; the nesp32 connects to one it has just paired
+    bne @shown                  ; with again, some seconds: it is still pairing
+    ldx kbd_pairing             ; until it is connected, or KBD_PAIR_WAIT
+    beq @shown                  ; asked: then it is paired, and asleep until
+    inx                         ; a key is pressed (an MX Keys S)
+    cpx #KBD_PAIR_WAIT + 1
+    bcs @asleep
+    stx kbd_pairing
+    lda #NESP_KEYBOARD_PAIRING
+    bne @shown
+@asleep:
+    lda #0
+    sta kbd_pairing
+    say kbd_paired_text
+    lda #NESP_KEYBOARD_WAITING
+@shown:
     cmp kbd_state
     beq @state_done
     sta kbd_state
@@ -406,7 +426,8 @@ kbd_nothing_text: .byte "NO KEYBOARD IS PAIRED", 0
     rts
 .endproc
 
-; What has been typed, onto the line under TRY IT.
+; What has been typed, onto the line under TRY IT, and those that stand for
+; buttons as the controller's (nesp_key_queue).
 .proc kbd_keys
     lda #NESP_SVC_KBD
     ldx #NESP_KBD_KEYS
@@ -421,6 +442,10 @@ kbd_nothing_text: .byte "NO KEYBOARD IS PAIRED", 0
     bcs @done
     lda nesp_reply + 1,x
     jsr kbd_typed
+    stx key_at
+    lda nesp_reply + 1,x
+    jsr nesp_key_queue
+    ldx key_at
     inx
     bne @key
 @done:

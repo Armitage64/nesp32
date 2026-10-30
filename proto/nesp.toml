@@ -344,8 +344,8 @@ BUTTON_POWER = 3
 
 [enums.KEYBOARD]        # KBD: how the Bluetooth keyboard stands
 NONE = 0                # this board cannot have one
-OFF = 1                 # Bluetooth is starting
-UNPAIRED = 2            # on, and no keyboard is paired
+OFF = 1                 # Bluetooth is starting, or off with a keyboard paired
+UNPAIRED = 2            # no keyboard is paired: Bluetooth is off until a SCAN
 WAITING = 3             # a keyboard is paired, and is not connected: a key wakes it
 CONNECTED = 4           # and is: what is typed comes in KEYS
 SCANNING = 5
@@ -363,6 +363,8 @@ LEFT = 0x13
 RIGHT = 0x14
 PAGE_UP = 0x15
 PAGE_DOWN = 0x16
+START = 0x17               # Ctrl and Enter: the controller's Start
+SELECT = 0x18              # Ctrl and Escape: its Select
 ESCAPE = 0x1B
 
 [sizes]

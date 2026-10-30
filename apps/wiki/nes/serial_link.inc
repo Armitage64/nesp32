@@ -27,8 +27,12 @@ NESP_CRC_TABLE = 1              ; 35 cycles a byte: a line's reply is checked
                                 ; in the frame it arrives in, with room to spare
 .define NESP_APP "WIKI"
 NESP_APP_VERSION = 2
+NESP_KEY_PAD = 1                ; the keyboard's keys as the controller's buttons
 
 .include "nesp.inc"
+
+link_key_queue = nesp_key_queue
+link_key_next = nesp_key_next
 
 ; WIKI's replies (nesp32's docs/PROTOCOL.md). To a search: its state, the
 ; search's id, the article's length, and with an error, words for the
@@ -53,6 +57,7 @@ LINE_TEXT    = nesp_reply + 5
 .assert KEY_LEFT = NESP_KEY_LEFT && KEY_RIGHT = NESP_KEY_RIGHT, error, "the keyboard's keys are KBD's"
 .assert KEY_PAGE_UP = NESP_KEY_PAGE_UP, error, "the keyboard's keys are KBD's"
 .assert KEY_PAGE_DOWN = NESP_KEY_PAGE_DOWN, error, "the keyboard's keys are KBD's"
+.assert KEY_START = NESP_KEY_START && KEY_SELECT = NESP_KEY_SELECT, error, "the keyboard's keys are KBD's"
 .assert COLUMNS = NESP_WIKI_COLUMNS, error, "a line is as wide as the Stick lays it out"
 .assert QUERY_MAX = NESP_WIKI_QUERY_MAX, error, "a search is as long as the Stick takes"
 

@@ -262,9 +262,18 @@ main_wait:
     jsr opening_frame
     jmp main_loop
 
-; pad_new = the buttons that went down since the last frame, and any
-; direction that has been held long enough to repeat.
+; pad_new = the buttons that went down since the last frame, any direction
+; that has been held long enough to repeat, and a key typed that stands for
+; buttons (link_key_next).
 .proc read_input
+    jsr read_pad
+    jsr link_key_next
+    ora pad_new
+    sta pad_new
+    rts
+.endproc
+
+.proc read_pad
     lda pad
     tax
     eor pad_seen
@@ -469,8 +478,8 @@ main_wait:
 
 ; Back to the cartridge's menu, as reset would go: through its stub, with
 ; the NMI off first, since the stub's `inc` puts the menu's bank, and its
-; NMI, under this. The menu says nothing to the nesp32; the next program's
-; hello is what tells it this one has gone.
+; NMI, under this. The menu says hello to the nesp32 (KBD alone), and the
+; next program's hello is what tells it which one runs.
 .proc quit
     lda #0
     sta PPUCTRL

@@ -23,7 +23,7 @@ NESP := $(NESP_BUILD)/nesp.stamp
 NESP_LIB := $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/gen_link.py
 ROM := $(BUILD)/setup.nes
 ROM_SIZE := 40976   # 16-byte header + 32 KB PRG + 8 KB CHR
-SOURCES := $(wildcard nes/*.s nes/*.inc) $(NESP32)/nes/lib/nesp.inc
+SOURCES := $(wildcard nes/*.s nes/*.inc) $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/badge.inc
 INCLUDES := -I $(BUILD) -I $(NESP_BUILD) -I $(NESP32)/nes/lib -I nes
 
 .PHONY: all timeout-rom verify test preview clean FORCE
@@ -46,7 +46,7 @@ $(BUILD)/link.inc: $(NESP_LIB) $(NESP)
 # each of them, and on a stamp for the three.
 SCREEN := $(BUILD)/chr.bin $(BUILD)/header.bin $(BUILD)/screen.inc
 
-$(BUILD)/screen.stamp: tools/gen_screen.py $(NESP32)/nes/lib/logo.py $(NESP) | $(BUILD)
+$(BUILD)/screen.stamp: tools/gen_screen.py $(NESP32)/nes/lib/logo.py $(NESP32)/nes/lib/badge.py $(NESP) | $(BUILD)
 	$(PYTHON) tools/gen_screen.py $(BUILD)
 	touch $@
 

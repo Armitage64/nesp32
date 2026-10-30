@@ -35,7 +35,10 @@ From Airport/Center.*
 - A nesp32 on controller port 2, with nesp32's firmware flashed
   ([its README](../../firmware/README.md)) and put on Wi-Fi with
   [Setup](../setup)
-- A normal controller in port 1, to enter the airport code
+- A normal controller in port 1, to enter the airport code, or a
+  Bluetooth keyboard paired with a StickS3 in [Setup](../setup): type the
+  code and press Enter, and the arrows, Enter and Escape are the D-pad, A
+  and B
 - A Wi-Fi network with Internet access
 
 The ROM is on nes-radar's
@@ -45,7 +48,7 @@ The ROM is on nes-radar's
 ## Using it
 
 1. Load the ROM with the nesp32 in port 2, or choose NES Radar from the
-   cartridge's menu. The splash shows the version, `V0.6.0`, for two
+   cartridge's menu. The splash shows the version, `V0.7.0`, for two
    seconds; on a ROM by itself Start skips it.
 2. Up and Down change a letter, and Left and Right move along the
    four. The editor begins at the last airport the nesp32 found, which it

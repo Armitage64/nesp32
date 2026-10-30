@@ -147,6 +147,18 @@ def test_a_nesp32_whose_firmware_has_no_radar(scope):
     s.c.run_until(lambda: s.message == "UPDATE NESP32", 200)
 
 
+def test_a_nesp32_whose_firmware_has_no_kbd_is_used_all_the_same(scope):
+    def older(data):
+        if data[1] == p.NESP_SVC_SYS:           # the hello's reply: KBD missing
+            payload = bytes((p.NESP_PROTOCOL, 0, 1, 0, p.NESP_BOARD_S3, 127, 1, p.NESP_SVC_KBD))
+            return reply_frame(p.NESP_SVC_SYS, p.NESP_ST_NO_SERVICE, data[3], payload)
+        return data
+    s = scope(to_console=older)
+    s.open("KSBA")
+    s.land([plane(0.02, 0.0, flight="SBA")])
+    assert s.airport == "KSBA" and s.calls()[0] == "SBA"
+
+
 def test_select_does_nothing_on_the_scope_of_a_rom_on_no_cartridge(scope):
     s = scope()
     s.open("KSBA")
@@ -334,3 +346,37 @@ def test_the_airport_kept_comes_through_lost_replies(scope):
     s = scope(kept="KLAX", to_console=lossy)
     s.past_splash()
     assert s.code == "KLAX"
+
+
+
+def test_the_bluetooth_keyboard_is_the_controller_in_the_editor_and_on_the_scope(scope):
+    """The arrows are the D-pad and Enter is A, which looks the airport up.
+    Escape on the scope is B: the editor again."""
+    s = scope()
+    s.past_splash()
+    s.choose("KSBB")
+    s.stick.kbd_type(bytes((p.NESP_KEY_LEFT, p.NESP_KEY_DOWN)))    # the last letter, one down
+    s.c.run_until(lambda: s.code == "KSBA", 60)
+    s.stick.kbd_type(bytes((p.NESP_KEY_ENTER,)))
+    s.locate("KSBA")
+    s.c.run_until(lambda: s.link == "WAITING" and s.airport == "KSBA", 200)
+    s.land([plane(0.02, 0.0, flight="SBA")])
+    s.stick.kbd_type(bytes((p.NESP_KEY_ESCAPE,)))
+    s.c.run_until(lambda: s.stick.kbd_unread == 0, 60)
+    s.c.run(20)
+    s.choose("KLAX")                    # the editor's
+    s.c.press(PAD_A)
+    s.locate("KLAX")
+
+
+def test_an_airport_typed_on_the_bluetooth_keyboard_goes_in_the_editor(scope):
+    """Letters in either case go where the cursor is, which moves on, and
+    Backspace is Left: Enter then looks it up."""
+    s = scope()
+    s.past_splash()
+    s.stick.kbd_type(b"klxx" + bytes((p.NESP_KEY_BACKSPACE, p.NESP_KEY_BACKSPACE)) + b"A")
+    s.c.run_until(lambda: s.code == "KLAX" and s.stick.kbd_unread == 0, 120)
+    s.c.run(20)
+    assert s.code == "KLAX"
+    s.stick.kbd_type(bytes((p.NESP_KEY_ENTER,)))
+    s.locate("KLAX")

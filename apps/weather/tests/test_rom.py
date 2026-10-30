@@ -427,6 +427,7 @@ ENTER, ESCAPE, BACKSPACE = (bytes((key,)) for key in (p.NESP_KEY_ENTER, p.NESP_K
                                                       p.NESP_KEY_BACKSPACE))
 LEFT, RIGHT, UP, DOWN = (bytes((key,)) for key in (p.NESP_KEY_LEFT, p.NESP_KEY_RIGHT,
                                                    p.NESP_KEY_UP, p.NESP_KEY_DOWN))
+START, SELECT = (bytes((key,)) for key in (p.NESP_KEY_START, p.NESP_KEY_SELECT))
 
 
 def typed(s, keys):
@@ -471,11 +472,11 @@ def test_a_digit_typed_over_a_report_begins_the_next_zip_code(sky, where, weathe
     assert s.view == VIEW_REPORT and s.rows() == SHOWN
     typed(s, b"1")
     assert s.form_is_up() == "10210" and s.lit == 1
-    typed(s, b"0001" + ESCAPE)                      # Escape on the form is Select: off the cartridge, nothing
-    assert s.form_is_up() == "10001" and s.lit == 0
-    s.press(PAD_A)
+    typed(s, b"0001" + ESCAPE + SELECT)             # Escape is B, nothing on the form, and Ctrl
+    assert s.form_is_up() == "10001" and s.lit == 0     # and Escape Select: off the cartridge, nothing
+    typed(s, START)                                 # Ctrl and Enter: Start, as A is
     s.report_is_up()
-    typed(s, ESCAPE)                                # and on the report, the form
+    typed(s, ESCAPE)                                # and on the report, Escape is B: the form
     assert s.form_is_up() == "10001"
 
 
