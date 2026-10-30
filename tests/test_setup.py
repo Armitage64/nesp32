@@ -844,6 +844,26 @@ def test_a_keyboard_found_is_chosen_from_a_list_and_paired(setup):
     assert s.kbd_value("KEYBOARD") == "K380" and s.kbd_value("STATUS") == "CONNECTED"
 
 
+def test_a_keyboard_paired_and_asleep_is_said_to_want_a_key(setup):
+    # An MX Keys S let go of after its pairing sleeps until a key is pressed.
+    s = setup()
+    open_kbd(s)
+    kbd_scan(s)
+    s.wait_for(STATE_KBD_LIST)
+    s.press(PAD_A)
+    s.wait_for(STATE_KBD)
+    s.wait_for_message("PAIRING...")
+    s.stick.kbd_paired(b"MX KEYS S")
+    s.stick.kbd_state = p.NESP_KEYBOARD_WAITING
+    s.c.run(300)
+    assert s.kbd_value("STATUS") == "PAIRING..."
+    s.wait_for_message("THE KEYBOARD IS PAIRED")
+    assert s.kbd_value("KEYBOARD") == "MX KEYS S" and s.kbd_value("STATUS") == "PRESS A KEY ON IT"
+    s.stick.kbd_state = p.NESP_KEYBOARD_CONNECTED
+    s.c.run(60)
+    assert s.kbd_value("STATUS") == "CONNECTED"
+
+
 def test_a_pairing_that_fails_says_so(setup):
     s = setup()
     open_kbd(s)

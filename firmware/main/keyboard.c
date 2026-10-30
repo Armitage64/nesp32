@@ -600,19 +600,21 @@ static void pair(int index)
         set_doing(NESP_KEYBOARD_FAILED);
         return;
     }
-    /* It types at once: esp_hid's host turns the reports on only once the
-     * pairing has made the link encrypted (components/esp_hid). Let go of
-     * and connected to again, an MX Keys S sleeps until a key is pressed. */
+    /* A TECKNET keyboard types nothing on the connection it was paired on,
+     * though esp_hid's host turns the reports on only once the link is
+     * encrypted (components/esp_hid). So it is let go of, and run()
+     * connects to it again as the keyboard paired. An MX Keys S let go of
+     * sleeps until a key is pressed, and Setup says PRESS A KEY ON IT. */
     device = opened;
+    disconnect();
     one.shown.rssi = 0;
     keep_name(&one.shown);
     portENTER_CRITICAL(&lock);
     paired = true;
     paired_one = one.shown;
-    connected = true;
     doing = 0;
     portEXIT_CRITICAL(&lock);
-    ESP_LOGI(TAG, "paired, and connected");
+    ESP_LOGI(TAG, "paired; connecting to it again");
 }
 
 /* True while Bluetooth is to stay on: a ROM has KBD in use, or let go of

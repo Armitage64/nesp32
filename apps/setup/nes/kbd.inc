@@ -23,6 +23,8 @@
 
 KBD_HELLO_EVERY = $07           ; say hello every 8 frames until answered
 KBD_STATE_EVERY = $0F           ; ask how the keyboard stands every 16 frames
+KBD_PAIR_WAIT = 30              ; of those asked, some 8 s: a keyboard just paired
+                                ; and not connected to again by then is asleep
 KBD_UNKNOWN = $FF
 
 KBD_GREETED = 1                 ; kbd_greeted: the hello was answered
@@ -365,9 +367,19 @@ kbd_nothing_text: .byte "NO KEYBOARD IS PAIRED", 0
     lda nesp_reply
     cmp #NESP_KEYBOARD_WAITING  ; the nesp32 connects to one it has just paired
     bne @shown                  ; with again, some seconds: it is still pairing
-    ldx kbd_pairing             ; until it is connected
-    beq @shown
+    ldx kbd_pairing             ; until it is connected, or KBD_PAIR_WAIT
+    beq @shown                  ; asked: then it is paired, and asleep until
+    inx                         ; a key is pressed (an MX Keys S)
+    cpx #KBD_PAIR_WAIT + 1
+    bcs @asleep
+    stx kbd_pairing
     lda #NESP_KEYBOARD_PAIRING
+    bne @shown
+@asleep:
+    lda #0
+    sta kbd_pairing
+    say kbd_paired_text
+    lda #NESP_KEYBOARD_WAITING
 @shown:
     cmp kbd_state
     beq @state_done

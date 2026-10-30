@@ -22,8 +22,9 @@ keyboard that asks for a connection interval shorter than 30 to 50 ms has
 that, which is airtime Wi-Fi does without. A key is then at most some 50 ms
 later, and waking a keyboard may take a fraction of a second more. The
 third turns a keyboard's reports on only once the link is encrypted: one
-pairing for the first time may finish after its services are read, and a
-TECKNET keyboard whose reports were turned on before then typed nothing.
+pairing for the first time may finish after its services are read. A
+TECKNET keyboard types nothing on that connection even so, and
+`firmware/main/keyboard.c` connects to a keyboard again once it is paired.
 
 Delete this directory once the ESP-IDF the firmware is built with has the
 fix, keeping those three.
