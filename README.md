@@ -58,6 +58,13 @@ Interested in trying out or even developing for the NESP32? We'd love to grow a 
 
 Please join our [Discord](https://discord.gg/kwSC7pwtmb)!
 
+## Videos
+
+<p>
+  <a href="https://www.youtube.com/watch?v=eGUmaMX9nOs"><img src="https://img.youtube.com/vi/eGUmaMX9nOs/maxresdefault.jpg" alt="NESP32 video" width="49%"></a>
+  <a href="https://www.youtube.com/watch?v=hZ8sniz4Z2M"><img src="https://img.youtube.com/vi/hZ8sniz4Z2M/maxresdefault.jpg" alt="NESP32 video" width="49%"></a>
+</p>
+
 ## Demonstration Apps
 
 | Name | Description |
@@ -194,10 +201,3 @@ Not everything in the repository is nesp32's to license:
 - **The firmware is built with** ESP-IDF and esp_tinyusb (Apache-2.0), and
   TinyUSB, M5Unified and M5GFX (MIT), which are fetched when it is built
   and are not in this repository.
-
-## Videos
-
-<p>
-  <a href="https://www.youtube.com/watch?v=eGUmaMX9nOs"><img src="https://img.youtube.com/vi/eGUmaMX9nOs/maxresdefault.jpg" alt="NESP32 video" width="49%"></a>
-  <a href="https://www.youtube.com/watch?v=hZ8sniz4Z2M"><img src="https://img.youtube.com/vi/hZ8sniz4Z2M/maxresdefault.jpg" alt="NESP32 video" width="49%"></a>
-</p>
