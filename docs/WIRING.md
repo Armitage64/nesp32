@@ -297,8 +297,10 @@ capacitor right at its part's pins 5 and 3.
   levels than ordinary CMOS and take up to 5.5 V whatever the supply (rated
   to 7 V absolute). Per TI's datasheet (SCLS738E):
   - **TX**, at 4.5–5 V: the input reads a high at 2.03 V or more, so G8's
-    3.3 V has margin, and the output stays at 4.5 V or more while sourcing
-    8 mA, well above the 3.5 V the NES's '368 needs.
+    3.3 V has margin. The output is guaranteed 3.95 V or more while sourcing
+    8 mA at 4.5 V, and 4.5 V or more at 5 V; the real load is microamps, so
+    it sits within 0.1 V of the supply, well above the 3.5 V the NES's '368
+    needs.
   - **RX**, at 3–3.3 V: the input reads a high at 1.37 V or more, so how high
     the NES CPU's unbuffered OUT0 goes matters even less than with the NPN.
 - **Speed:** propagation delay is 7 ns or less into 30 pF, and the output
@@ -320,13 +322,24 @@ capacitor right at its part's pins 5 and 3.
 - **Power states:** each part is powered by the side it drives, so nothing
   actively drives a powered‑down side. The inverted UART idles G8 low, so
   it pushes almost nothing into the TX part while the NES is off.
+- **Extra supply current:** a 3.3 V high on an input of a part running at
+  5 V makes it draw up to about 1.5 mA more from the NES's 5 V. That
+  happens only while G8 is high, during space bits. It is harmless.
+- **On a StickC Plus2** the TX slot is G0, that board's boot‑mode pin, and
+  the 100 kΩ pull‑down loads it. That is a lighter load than the NPN
+  stage's 10 kΩ into the transistor's base, which boots reliably, so it
+  should boot too, but it has not been tried.
 - **Untested: OUT0's edge rate.** The datasheet asks that inputs rise and
   fall no slower than 20 ns per volt; a slower edge on a gate without
   hysteresis can make its output glitch. OUT0 comes from the 2A03, an NMOS
   part, and drives the cable and both controllers; how fast its edges are
-  has not been measured. If RX proves unreliable, look at OUT0 on a scope,
-  and consider a Schmitt‑trigger inverter for RX (SN74LV1T14 or
-  SN74LVC1G14, also SOT‑23‑5).
+  has not been measured. If it is too slow, fit a Schmitt‑trigger
+  SN74LVC1G14 for RX: it has the same SOT‑23‑5 footprint and pinout,
+  inverts, reads a high at 1.87 V or less at a 3 V supply, has at least
+  0.56 V of hysteresis, and takes 5.5 V on its input even unpowered. It
+  cannot do TX: at a 5 V supply its rising threshold can be about 3.0 V,
+  too close to G8's 3.3 V. The SN74LV1T14 would do both, but TI publishes
+  no datasheet for it and no distributor lists it.
 
 ## Alternative: two single‑gate buffers (surface mount, non‑inverting)
 
