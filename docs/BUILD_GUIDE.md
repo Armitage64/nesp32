@@ -51,6 +51,8 @@ damage the Stick.
 | 1 | Reverse 8-pin, 2.54 mm, right-angle male header |
 | 1 | NES controller pigtail, or a controller extension cable cut to make one |
 
+Use high quality transistors from a reputable vendor such as Digikey or Mouser. Generic / bulk components from Amazon, etc. can be relabeled general-purpose or audio spec parts with sub-par switching speeds that result in a lower maximum throughput. See [WIRING.md](WIRING.md) for details.
+
 Part references and photos of both sides of a finished board are in
 [hardware/README.md](../hardware/README.md). Keep the photos open while
 you work.
