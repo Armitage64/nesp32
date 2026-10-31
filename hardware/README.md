@@ -18,7 +18,7 @@ To build one step by step, with the checks to run before you plug it in, follow 
 * Outer Copper Weight: 1 oz
 
 ## Bill of Materials
-* 2 x 2N3904 Transistors
+* 2 x 2N3904 Transistors (see note below!)
 * 1 x 1K Axial-0.3 Resistor
 * 2 x 10K Axial-0.3 Resistors
 * 1 x 3.3K Axial-0.3 Resistor (the TX pull-up, from NES +5V to the TX transistor's collector)
@@ -27,8 +27,8 @@ To build one step by step, with the checks to run before you plug it in, follow 
 * 1 x NES Controller Pigtail [Amazon](https://amzn.to/4dVqi2r)
 
 ## Important Notes
+* Use high quality transistors from a reputable vendor such as Digikey or Mouser. Generic / bulk components from Amazon, etc. can be relabeled general-purpose or audio spec parts with sub-par switching speeds that result in a lower maximum throughput.
 * It is recommended to use additional flux when soldering in the transistors due to the small pads
-* Avoid cheap no-name 2N3904s. The BOJACK ones from Amazon (marked H331) were too slow for the higher link rates; 2N3904s marked K02 work. See [docs/WIRING.md](../docs/WIRING.md)
 * Make sure to orient the 8-pin connector as shown in the pictures (below)
 
 <img src="pcb_top.png" width=49%> <img src="pcb_bottom.png" width=49%>
