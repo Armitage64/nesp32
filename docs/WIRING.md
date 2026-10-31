@@ -9,7 +9,8 @@ would do. The circuit was first worked out for nes-radar.
 
 Whether the link is inverted is `BOARD_LINK_INVERTED` in
 [`firmware/main/board.h`](../firmware/main/board.h): 1 for the NPN
-shifter, 0 for the two alternatives, which do not invert.
+shifter and the SN74LV1T04 alternative, which both invert, and 0 for the
+single‑gate buffers, which do not.
 
 The ESP32‑S3 is a 3.3 V part and **not 5 V tolerant**, and a 3.3 V high is not
 guaranteed to register on the NES. Each direction goes through one NPN
@@ -230,34 +231,102 @@ hardware to cancel it (`BOARD_LINK_INVERTED` 1, the default).
 - Make all connections with the NES off and the Stick off. Identify leads by
   continuity, not color.
 
-## Alternative: TXU0202 (surface mount, non‑inverting)
+## Alternative: SN74LV1T04 (surface mount, inverting)
 
-If you have room for an MSOP/VSSOP‑8‑to‑DIP adapter, one TI TXU0202
-(`TXU0202DCUR`, VSSOP‑8, 0.5 mm pitch) does both directions with levels
-guaranteed by its datasheet. Build the firmware with **`BOARD_LINK_INVERTED` 0**.
+Two TI SN74LV1T04 single inverters (`SN74LV1T04DBVR`, SOT‑23‑5, 0.95 mm
+pitch), one per direction, each on its own SOT‑23‑5‑to‑DIP adapter. Each
+stage inverts, as the NPN stages do, so this uses the same firmware:
+**`BOARD_LINK_INVERTED` 1**. Only the supply differs between the two: the TX
+part is powered by the NES and the RX part by the Stick.
 
-| TXU0202 pin | Name | Connect to |
+```
+ TX (Stick → NES): powered by the NES
+
+                           NES +5 V (pin 5)
+                                   │
+                                   ├──┤├── GND (0.1 µF)
+                                 5 │
+                             ┌─────┴─────┐
+ Stick G8 ──────────┬──── 2 ─┤ A  >o  Y  ├─ 4 ──[1 kΩ]──► NES D0 (pin 4)
+                    │        │ LV1T04    │
+                [100 kΩ]     └─────┬─────┘
+                    │            3 │
+                   GND            GND
+
+ RX (NES → Stick): powered by the Stick
+
+                             Stick 3V3_L2
+                                   │
+                                   ├──┤├── GND (0.1 µF)
+                                 5 │
+                             ┌─────┴─────┐
+ NES OUT0 ──[1 kΩ]──┬──── 2 ─┤ A  >o  Y  ├─ 4 ─────────► Stick G1
+                    │        │ LV1T04    │
+                [100 kΩ]     └─────┬─────┘
+                    │            3 │
+                   GND            GND
+
+ NES GND (pin 1) ── Stick GND
+ EXT_5V, 5V_IN, BAT, G0 ── not connected
+```
+
+**Parts:** two SN74LV1T04DBVR, two 1 kΩ, two 100 kΩ, and two 0.1 µF ceramic
+capacitors. There is no through‑hole version; to breadboard it, solder the
+parts onto SOT‑23‑5 breakout boards.
+
+| From | Through | To |
 |---|---|---|
-| 1 | B2 (input, 5 V side) | 1 kΩ from NES pin 3 (OUT0) |
-| 2 | GND | Stick GND and NES pin 1 (GND) |
-| 3 | VCCA | Stick 3V3_L2, with 0.1 µF to GND |
-| 4 | A2Y (output, 3.3 V side) | Stick G1 (RX) |
-| 5 | A1 (input, 3.3 V side) | Stick G8 (TX) |
-| 6 | OE | Stick 3V3_L2. **Active high.** |
-| 7 | VCCB | NES pin 5 (+5 V), with 0.1 µF to GND |
-| 8 | B1Y (output, 5 V side) | 1 kΩ, then NES pin 4 (D0) |
+| Stick G8 | – | TX LV1T04 pin 2 (A) |
+| TX LV1T04 pin 2 (A) | 100 kΩ | GND |
+| TX LV1T04 pin 4 (Y) | 1 kΩ | NES pin 4 (D0) |
+| TX LV1T04 pin 5 (VCC) | – | NES pin 5 (+5 V) |
+| TX LV1T04 pin 5 (VCC) | 0.1 µF | GND |
+| TX LV1T04 pin 3 (GND) | – | GND |
+| NES pin 3 (OUT0) | 1 kΩ | RX LV1T04 pin 2 (A) |
+| RX LV1T04 pin 2 (A) | 100 kΩ | GND |
+| RX LV1T04 pin 4 (Y) | – | Stick G1 |
+| RX LV1T04 pin 5 (VCC) | – | Stick 3V3_L2 |
+| RX LV1T04 pin 5 (VCC) | 0.1 µF | GND |
+| RX LV1T04 pin 3 (GND) | – | GND |
+| Stick GND | – | NES pin 1 (GND) |
 
-- This pinout is for the `DCU` package (TI datasheet SCES942A, figure 6‑1).
-  The SON and X2SON packages differ and are impractical by hand.
-- Per the datasheet:
-  - The A inputs read a high at 1.92 V or more at a 3 V supply.
-  - The B inputs read a high at about 3.0 V at 5 V (2.74 V at 4.5 V, 3.33 V at
-    5.5 V).
-  - Both outputs go high‑impedance if either supply falls below 100 mV.
-  - The supplies may come up in any order, and every input has a weak 5 MΩ
-    pull‑down.
-- G1 floats while the NES is off; an optional 100 kΩ from G1 to GND keeps
-  it quiet.
+Pin 1 is not connected inside the part; leave it open or ground it. Fit each
+capacitor right at its part's pins 5 and 3.
+
+- **Why it works both ways:** the LV1T family's inputs switch at lower
+  levels than ordinary CMOS and take up to 5.5 V whatever the supply (rated
+  to 7 V absolute). Per TI's datasheet (SCLS738E):
+  - **TX**, at 4.5–5 V: the input reads a high at 2.03 V or more, so G8's
+    3.3 V has margin, and the output stays at 4.5 V or more while sourcing
+    8 mA, well above the 3.5 V the NES's '368 needs.
+  - **RX**, at 3–3.3 V: the input reads a high at 1.37 V or more, so how high
+    the NES CPU's unbuffered OUT0 goes matters even less than with the NPN.
+- **Speed:** propagation delay is 7 ns or less into 30 pF, and the output
+  drives D0 both ways, so its rising edge no longer waits on a pull‑up as
+  the NPN stage's does. The RX stage has no transistor storage time. Both
+  directions should carry the NPN board's 298296 baud or better, but this
+  has not been tested; run [the throughput test](../apps/throughput/README.md)
+  on a real NES to confirm.
+- **Why the 100 kΩ pull‑downs:** a CMOS input must not float. On TX it holds
+  G8's input low while the Stick is off or booting, so D0 rests high, the
+  correct idle level. On RX it holds the input low while the NES is off, so
+  G1 reads a break, which the decoder ignores. Together with the 1 kΩ it
+  draws about 50 µA from OUT0, about what the NPN's 100 kΩ base resistor
+  draws; with a MiSTer SNAC adapter's 10 kΩ pull‑up the strobe still
+  reaches about 4.5 V.
+- **Why the 1 kΩ resistors:** the one on D0 is the same fault‑current
+  limiter the FTDI cable uses. The one on OUT0 limits current into the RX
+  input, the job the NPN's 100 kΩ base resistor does.
+- **Power states:** each part is powered by the side it drives, so nothing
+  actively drives a powered‑down side. The inverted UART idles G8 low, so
+  it pushes almost nothing into the TX part while the NES is off.
+- **Untested: OUT0's edge rate.** The datasheet asks that inputs rise and
+  fall no slower than 20 ns per volt; a slower edge on a gate without
+  hysteresis can make its output glitch. OUT0 comes from the 2A03, an NMOS
+  part, and drives the cable and both controllers; how fast its edges are
+  has not been measured. If RX proves unreliable, look at OUT0 on a scope,
+  and consider a Schmitt‑trigger inverter for RX (SN74LV1T14 or
+  SN74LVC1G14, also SOT‑23‑5).
 
 ## Alternative: two single‑gate buffers (surface mount, non‑inverting)
 
@@ -307,7 +376,7 @@ only guaranteed to switch fully on by around 3 V, which leaves no margin at
 3.3 V. The BSS138 used on level‑shift boards switches reliably at 3.3 V but is
 surface mount. A bipolar transistor needs only about 0.7 V on its base.
 
-Sources: [TI TXU0202 datasheet](https://www.ti.com/lit/ds/symlink/txu0202.pdf),
+Sources: [TI SN74LV1T04 datasheet](https://www.ti.com/lit/ds/symlink/sn74lv1t04.pdf),
 [NESdev CPU pinout](https://www.nesdev.org/wiki/CPU_pinout),
 [NESdev controller port pinout](https://www.nesdev.org/wiki/Controller_port_pinout),
 [NESdev forum on the inverted '368 inputs](https://forums.nesdev.org/viewtopic.php?t=16734),
