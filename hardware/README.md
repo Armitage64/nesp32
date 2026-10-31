@@ -28,6 +28,7 @@ To build one step by step, with the checks to run before you plug it in, follow 
 
 ## Important Notes
 * It is recommended to use additional flux when soldering in the transistors due to the small pads
+* Avoid cheap no-name 2N3904s. The BOJACK ones from Amazon (marked H331) were too slow for the higher link rates; 2N3904s marked K02 work. See [docs/WIRING.md](../docs/WIRING.md)
 * Make sure to orient the 8-pin connector as shown in the pictures (below)
 
 <img src="pcb_top.png" width=49%> <img src="pcb_bottom.png" width=49%>

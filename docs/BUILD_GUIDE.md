@@ -51,6 +51,11 @@ damage the Stick.
 | 1 | Reverse 8-pin, 2.54 mm, right-angle male header |
 | 1 | NES controller pigtail, or a controller extension cable cut to make one |
 
+Not all 2N3904s are fast enough. Cheap no-name ones from Amazon (BOJACK
+brand, marked H331) worked only at the slower rates, so the jukebox's
+20338 Hz sound failed. 2N3904s marked K02 fixed it. Buy from a known
+source if you can. See [WIRING.md](WIRING.md) for details.
+
 Part references and photos of both sides of a finished board are in
 [hardware/README.md](../hardware/README.md). Keep the photos open while
 you work.

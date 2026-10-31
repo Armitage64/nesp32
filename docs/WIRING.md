@@ -210,6 +210,14 @@ hardware to cancel it (`BOARD_LINK_INVERTED` 1, the default).
   the board carries 223722 baud, on a real NES as on the MiSTer, and
   298296 fails; nothing the console sends is near that fast, its
   requests going at 85227.
+- **Not every 2N3904 is fast enough:** the speed depends on which 2N3904s
+  you fit. Cheap no‑name 2N3904s from Amazon (BOJACK brand, marked H331)
+  were too slow: on a hat built with them, the jukebox's 20338 Hz sound
+  failed and only its 10169 Hz sound played. Swapping in 2N3904s marked
+  K02 fixed it, and the 20338 Hz sound plays. The likely cause is
+  turn‑off delay (storage time), which varies a lot from one maker or
+  batch to another, but it was not measured. If a hat passes at low rates
+  and fails at high ones, try 2N3904s from another source first.
 - **Why the 1 kΩ stays:** it is the same fault‑current limiter the FTDI
   cable uses on D0. On the RX side the 100 kΩ base resistor does that job.
 
