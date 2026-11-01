@@ -19,7 +19,9 @@ make test       # about three and a half minutes
 
 The nesp32's firmware is built with ESP-IDF, from `firmware/`
 ([its README](../firmware/README.md)). Each program in `apps/` has a
-Makefile and a README of its own.
+Makefile and a README of its own, and so does each sample in
+[`samplecode/`](../samplecode): small ROMs written to be read and copied,
+the first a two-player game's lobby and session.
 
 Four programs are other people's, and are not in this repository. Their
 code is in submodules in `third_party/`. Three are games with netplay, from
