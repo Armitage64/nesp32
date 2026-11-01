@@ -70,6 +70,12 @@ typedef struct {
      * says, before any of the body, how many bytes of it come between two
      * of them: the reply's icy-metaint, or 0 for a reply with none. */
     void (*icy)(void *ctx, uint32_t id, uint32_t metaint);
+    /* May be NULL. Set: the sink hears the reply whatever its status, not
+     * only a 200, and is told before any of the body its status, its
+     * Content-Type ("" if it has none) and its Content-Length
+     * (NESP_HTTP_LENGTH_UNKNOWN if it has none). Without it, a status but
+     * 200 is a failed fetch, as done's why says. */
+    void (*head)(void *ctx, uint32_t id, uint16_t status, const char *type, uint32_t length);
 } nesp_sink_t;
 
 typedef struct {
@@ -370,6 +376,30 @@ typedef struct {
     nesp_extract_t extract;
     nesp_wrap_t wrap;
 } nesp_wiki_t;
+
+/* HTTP: any address's reply, as it came: its status, its type and length,
+ * and the start of its body (http.c). */
+typedef struct {
+    const nesp_hal_t *hal;
+    nesp_sink_t sink;
+    /* What the link's task and the fetch's both touch, under the hal's
+     * lock: the reply, and which fetch it is from. */
+    uint32_t generation;
+    uint8_t state;                  /* NESP_FETCH_* */
+    uint16_t status;                /* the reply's, once it has come */
+    uint32_t length;                /* its Content-Length, or NESP_HTTP_LENGTH_UNKNOWN */
+    uint16_t held;                  /* bytes of body */
+    char text[NESP_HTTP_TEXT_MAX + 1];  /* its Content-Type, or why it failed */
+    uint8_t body[NESP_HTTP_KEEP];
+    /* The link's task alone. */
+    char url[NESP_HTTP_URL_MAX + 1];
+    bool got;                       /* a GET has been asked for since the hello, */
+    uint8_t get_id;                 /* with this id */
+    uint32_t now;                   /* the clock, as tick last saw it */
+    uint32_t began;                 /* when the GET was asked for */
+    uint32_t took;                  /* ms it took, once it was over */
+    bool timed;
+} nesp_http_t;
 
 /* RADAR: the aircraft round an airport, as NES Radar's scope shows them
  * (radar.c). */
@@ -828,7 +858,8 @@ typedef struct {
     nesp_weather_t weather;
     nesp_bsky_t bsky;
     nesp_kbd_t kbd;
-    nesp_service_t services[12];
+    nesp_http_t http;
+    nesp_service_t services[13];
 } nesp_stick_t;
 
 void nesp_stick_init(nesp_stick_t *stick, const nesp_hal_t *hal);
@@ -868,6 +899,7 @@ void nesp_tuner_service(nesp_service_t *service, nesp_tuner_t *tuner, nesp_raw_t
 void nesp_weather_service(nesp_service_t *service, nesp_weather_t *weather,
                           const nesp_hal_t *hal);
 void nesp_bsky_service(nesp_service_t *service, nesp_bsky_t *bsky, const nesp_hal_t *hal);
+void nesp_http_service(nesp_service_t *service, nesp_http_t *http, const nesp_hal_t *hal);
 
 /* For a service with something to send as a run (JUKE's sampled sound).
  *
