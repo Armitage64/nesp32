@@ -8,6 +8,7 @@ library from this checkout.
 | Sample | What it shows |
 |---|---|
 | [lobby](lobby) | A two-player game over the network: the lobby the netplay games have, then both players' controllers on both screens, in lockstep |
+| [https](https) | Fetch an address from the Internet with the HTTP service, and show the reply as it came: status, length, type, time and the start of the body |
 
 The protocol itself is in [`docs/PROTOCOL.md`](../docs/PROTOCOL.md), and
 the console's library in its section 7.

@@ -100,7 +100,7 @@ MODE_SESSION = 1
 
 ; One run for draw_texts, at a row and column of the screen.
 .macro text row, column, string
-    .byte >($2000 + row * 32 + column), <($2000 + row * 32 + column)
+    .byte >($2000 + (row) * 32 + (column)), <($2000 + (row) * 32 + (column))
     .byte .strlen(string), string
 .endmacro
 
