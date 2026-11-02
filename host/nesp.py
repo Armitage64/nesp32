@@ -111,6 +111,10 @@ def library():
         lib.host_fetch_wants_icy.restype = ctypes.c_bool
         lib.host_fetch_wants_icy.argtypes = [ctypes.c_void_p]
         lib.host_fetch_icy.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32]
+        lib.host_fetch_wants_head.restype = ctypes.c_bool
+        lib.host_fetch_wants_head.argtypes = [ctypes.c_void_p]
+        lib.host_fetch_head.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint16,
+                                        ctypes.c_char_p, ctypes.c_uint32]
         lib.host_to_ascii.restype = ctypes.c_int
         lib.host_to_ascii.argtypes = [ctypes.c_uint32, ctypes.c_char_p]
         lib.host_vgm_to_jbs.restype = ctypes.c_size_t
@@ -957,6 +961,18 @@ class Stick:
         """The reply's icy-metaint, before any of its body: bytes of sound
         between two of the stream's blocks of titles."""
         self._lib.host_fetch_icy(self._host, self.fetch_id if fetch is None else fetch, metaint)
+
+    @property
+    def fetch_wants_head(self):
+        """The last fetch's sink hears every status, and the reply's headers."""
+        return self._lib.host_fetch_wants_head(self._host)
+
+    def fetch_head(self, status=200, content_type=b"", length=proto.NESP_HTTP_LENGTH_UNKNOWN,
+                   fetch=None):
+        """The reply's status, Content-Type and Content-Length, before any of
+        its body."""
+        self._lib.host_fetch_head(self._host, self.fetch_id if fetch is None else fetch,
+                                  status, content_type, length)
 
     def fetch_done(self, ok=True, why=b"", fetch=None):
         self._lib.host_fetch_done(self._host, self.fetch_id if fetch is None else fetch,

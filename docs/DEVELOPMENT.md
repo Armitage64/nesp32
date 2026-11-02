@@ -19,7 +19,10 @@ make test       # about three and a half minutes
 
 The nesp32's firmware is built with ESP-IDF, from `firmware/`
 ([its README](../firmware/README.md)). Each program in `apps/` has a
-Makefile and a README of its own.
+Makefile and a README of its own, and so does each sample in
+[`samplecode/`](../samplecode): small ROMs written to be read and copied,
+a two-player game's lobby and session, an HTTPS fetch, and a Bluetooth
+keyboard.
 
 Four programs are other people's, and are not in this repository. Their
 code is in submodules in `third_party/`. Three are games with netplay, from
@@ -211,6 +214,11 @@ make test
   they come; handles; an account that does not exist told from a site
   that is down; and the favorites, kept. Bluesky's ROM is run against
   this code in its own tests.
+- `test_http.py`: an address set in pieces, a GET and the reply as it
+  came (its status, whatever it is, its type and length, how long it
+  took, and the start of its body), an older fetch refused, and one that
+  failed, with the test as the site. The HTTPS sample's ROM is run
+  against this code in its own tests.
 - `test_put_files.py`: the image of the tracks that goes over USB.
 - `test_vgm.py`: the converter of rips, held to the same bytes as
   nes-jukebox's Python over its rips, over made-up ones, and over 300 made

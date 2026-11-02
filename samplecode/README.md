@@ -1,0 +1,15 @@
+# Sample code
+
+Small, documented ROMs that each show one thing a nesp32 does, for a
+developer to read, run, or copy into a program of their own. Each is
+built with its own Makefile, and takes the protocol and the console's
+library from this checkout.
+
+| Sample | What it shows |
+|---|---|
+| [lobby](lobby) | A two-player game over the network: the lobby the netplay games have, then both players' controllers on both screens, in lockstep |
+| [https](https) | Fetch an address from the Internet with the HTTP service, and show the reply as it came: status, length, type, time and the start of the body |
+| [keyboard](keyboard) | Text from a Bluetooth keyboard paired with the nesp32: whether one is paired, its state and name, and a field to type in |
+
+The protocol itself is in [`docs/PROTOCOL.md`](../docs/PROTOCOL.md), and
+the console's library in its section 7.
