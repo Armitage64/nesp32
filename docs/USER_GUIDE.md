@@ -164,6 +164,8 @@ The online games (Dr. Mario, Tetris, Contra and TMNT II) are **not** on
 the cartridge, because they contain the original games. See
 [Chapter 11](#11-playing-online-with-a-friend). Nor is
 [Family BASIC](#family-basic-not-on-the-cartridge), for the same reason.
+For these you patch your own copy of each game instead, with the **ROM
+patches** from the NESP32 home page ("Download ROM patches").
 
 > **Keep the firmware and the cartridge in step.** When you update one,
 > update the other too, from the same release. A mismatched pair can show
@@ -582,12 +584,13 @@ keyboard. On a Famicom it needs the Family keyboard, which plugs into a
 port the NES doesn't have; here the NESP32's keyboard takes its place.
 
 **Getting it:** it contains the original program, so it isn't on the
-cartridge and can't be handed out ready-made. Apply the patch
-`apps/family-basic/dist/fbasic.bps` to your own copy of Family BASIC V3
-with a BPS patcher such as Floating IPS or RomPatcher.js (it runs in a
-web browser), and put the result on your flash cartridge or MiSTer. Or
-build it from source ([its README](../apps/family-basic/README.md)). It
-needs:
+cartridge and can't be handed out ready-made. Download the **ROM
+patches** from the [NESP32 home page](https://nesp32.retrobits.tv/)
+("Download ROM patches") and unzip them. Apply `fbasic.bps` to your own
+copy of Family BASIC V3 (40976 bytes, CRC32 `667F6EA6`) with a BPS
+patcher such as [RomPatcher.js](https://www.marcrobledo.com/RomPatcher.js/)
+(it runs in a web browser) or Floating IPS, and put the result on your
+flash cartridge or MiSTer. It needs:
 
 - a **StickS3** with a keyboard paired ([Chapter 8](#8-pairing-a-bluetooth-keyboard)),
   and firmware from the same release as the ROM,
@@ -668,22 +671,29 @@ Each player needs:
 - working Wi-Fi.
 
 **Getting the games:** these contain the original games, so they can't
-be handed out ready-made.
+be handed out ready-made. Instead, you patch your own copy of each game:
 
-Apply the game's patch to your own copy of it with a BPS patcher such as
-Floating IPS or RomPatcher.js (it runs in a web browser), then put the
-result on your flash cartridge. The patcher refuses a copy that isn't the
-one the patch is for.
+1. Download the **ROM patches** from the
+   [NESP32 home page](https://nesp32.retrobits.tv/) ("Download ROM
+   patches") and unzip them.
+2. Open a BPS patcher, such as
+   [RomPatcher.js](https://www.marcrobledo.com/RomPatcher.js/) (it runs
+   in a web browser) or Floating IPS.
+3. Apply the game's patch to your own copy of the game, below. The
+   patcher refuses a copy that isn't the right release: a different
+   release won't work, and the zip's README lists the releases that don't.
+4. Put the patched ROM on your flash cartridge.
 
-| Game | Patch | Apply it to |
-|---|---|---|
-| Dr. Mario | `apps/drmario/dist/drmario_net.bps` | Dr. Mario (Japan, USA), the first release (PRG0) |
-| Tetris | `apps/tetris/dist/tetris_net.bps` | Tetris (USA) |
-| Contra | `apps/contra/dist/contra_net.bps` | Contra (USA) |
-| TMNT II | `apps/tmnt2/dist/tmnt2_net.bps` | Teenage Mutant Ninja Turtles II: The Arcade Game (USA) |
+| Game | Patch | Apply it to | Size and CRC32 |
+|---|---|---|---|
+| Dr. Mario | `drmario_net.bps` | Dr. Mario (Japan, USA), the first release (PRG0) | 65552 bytes, `B1F7E3E9` |
+| Tetris | `tetris_net.bps` | Tetris (USA) | 49168 bytes, `6D72C53A` |
+| Contra | `contra_net.bps` | Contra (USA) | 131088 bytes, `C50A8304` |
+| TMNT II | `tmnt2_net.bps` | Teenage Mutant Ninja Turtles II: The Arcade Game (USA) | 524304 bytes, `C9FFBBDB` |
 
-Or build them from source ([the README](../README.md#building)). Ask on
-the [Discord](https://discord.gg/kwSC7pwtmb) if you need help.
+Both players need the same patched game. Use the patches from the same
+release as your NESP32's firmware. Ask on the
+[Discord](https://discord.gg/kwSC7pwtmb) if you need help.
 
 Contra and TMNT II need a flash cartridge or emulator that supports their
 cartridge type (MMC3).

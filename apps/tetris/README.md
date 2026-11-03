@@ -36,6 +36,11 @@ ends when either player's curtain is down; Start, from either player, goes
 back to the level menu for another. Start pauses for both, and Select hides
 a player's own next piece.
 
+**To play, you don't need to build anything:** apply `dist/tetris_net.bps` to
+your own copy of the game (["The patch, for players"](#the-patch-for-players),
+below), or get every game's patch at once from **Download ROM patches** on
+the [home page](https://nesp32.retrobits.tv/).
+
 **The game is not in this repository.** What is here is the netplay code,
 the code that finishes the game for two, the tests, and a few lines to be
 put into the game's own code. The rest, the game's code and its graphics,
@@ -59,7 +64,8 @@ into CHR with `tools/png2chr.py`, which needs nothing.
 
 ## The patch, for players
 
-To play, there is no need to build anything. `dist/tetris_net.bps` is the
+To play, there is no need to build anything. `dist/tetris_net.bps`, also in
+**Download ROM patches** on the [home page](https://nesp32.retrobits.tv/), is the
 netplay ROM as a patch to the US release: apply it to your own copy of the game
 with any BPS patcher (Floating IPS, or RomPatcher.js in a browser), and
 put the ROM it makes on a flash cartridge. A BPS patch knows the ROM it is

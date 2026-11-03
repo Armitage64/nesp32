@@ -15,6 +15,7 @@
   <div class="actions">
     <a class="button" href="flash/">Install the firmware</a>
     <a class="button" href="nesp32.nes" download>Download the cartridge</a>
+    <a class="button" href="nesp32-rom-patches.zip" download>Download ROM patches</a>
     <a class="button quiet" href="https://github.com/Armitage64/nesp32">Project on GitHub</a>
   </div>
 
@@ -70,11 +71,13 @@
     <div class="card"><h3>Weather</h3>
       <p>Current conditions and a 5-day forecast for your US zip code, with pictures.</p></div>
     <div class="card"><h3>Online Gaming</h3>
-      <p>Play Dr. Mario, Tetris, Contra, and TMNT2 online using room codes, no firewall changes required!</p></div>
+      <p>Play Dr. Mario, Tetris, Contra, and TMNT2 online using room codes, no firewall changes required!
+        Patch your own copy of each game with the <a href="nesp32-rom-patches.zip" download>ROM patches</a>.</p></div>
     <div class="card"><h3>Bluesky</h3>
       <p>Read the latest posts from your favorite Bluesky accounts, after ConnectedNES.</p></div>
     <div class="card"><h3>Family BASIC</h3>
-      <p>Family BASIC V3 using a Bluetooth keyboard. Save and load programs to the NESP32 instead of cassette!</p></div>
+      <p>Family BASIC V3 using a Bluetooth keyboard. Save and load programs to the NESP32 instead of cassette!
+        Patch your own copy with the <a href="nesp32-rom-patches.zip" download>ROM patches</a>.</p></div>
     <div class="card"><h3>Setup</h3>
       <p>Configure Wi-Fi/USB and test connectivity directly from the console.</p></div>
     <div class="card"><h3>Throughput Test</h3>
@@ -91,6 +94,12 @@
 
       <li><strong>Get the cartridge </strong> <a href="nesp32.nes" download>
         ROM</a>. Use it with a flash cart or MiSTer FPGA w/SNAC adapter.</li>
+
+      <li><strong>Patch the games.</strong> The online games and Family BASIC aren't on the cartridge, because they
+        contain the original games. Download the <a href="nesp32-rom-patches.zip" download>ROM patches</a> and apply
+        each one to your own copy of the game with a BPS patcher such as
+        <a href="https://www.marcrobledo.com/RomPatcher.js/">RomPatcher.js</a>. The zip's README says which release
+        of each game you need.</li>
 
       <li><strong>Plug it in.</strong> Attach the hat to the S3's bottom GPIO header, furthest from the LCD screen, and connect the NESP32 to controller
         port 2.</li>

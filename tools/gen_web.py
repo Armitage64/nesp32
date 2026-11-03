@@ -7,6 +7,8 @@ flashes a nesp32 from a browser.
     index.html            web/product/index.html, as it is
     style.css             web/style.css, which both pages use
     nesp32.nes            the cartridge, which the product page links to
+    nesp32-rom-patches.zip  each game's BPS patch, from apps/*/dist/ as
+                          committed, and web/patches/README.txt for players
     img/                  pictures of the programs, from their docs, and
                           img/logo.png and img/logo-dark.png, the header's logo
                           (nes/lib/logo.py) for a light page and a dark one
@@ -32,6 +34,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import zipfile
 import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -88,6 +91,35 @@ def date():
             ["git", "-C", ROOT, "log", "-1", "--format=%cs"], text=True).strip()
     except (OSError, subprocess.CalledProcessError):
         return ""
+
+
+# The patches that make the games that are not on the cartridge, each
+# from the player's own copy: as committed, since the game is needed to
+# make one (`make bps` in the app's directory).
+PATCHES = ["apps/drmario/dist/drmario_net.bps", "apps/tetris/dist/tetris_net.bps",
+           "apps/contra/dist/contra_net.bps", "apps/tmnt2/dist/tmnt2_net.bps",
+           "apps/family-basic/dist/fbasic.bps"]
+
+
+def write_patches(path):
+    """The patches and their README in one zip, the same for every build
+    of a commit: each entry dated the commit's day."""
+    missing = [name for name in PATCHES if not os.path.exists(os.path.join(ROOT, name))]
+    if missing:
+        sys.exit("No %s: run make bps in its app." % ", ".join(missing))
+    stamp = tuple(int(part) for part in (date() or "1980-01-01").split("-")) + (0, 0, 0)
+    with open(os.path.join(WEB, "patches", "README.txt")) as f:
+        readme = f.read().replace("{version}", version())
+    entries = [("README.txt", readme.encode())]
+    for name in PATCHES:
+        with open(os.path.join(ROOT, name), "rb") as f:
+            entries.append((os.path.basename(name), f.read()))
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, data in entries:
+            info = zipfile.ZipInfo(name, stamp)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o644 << 16
+            archive.writestr(info, data)
 
 
 def build(family, directory, prefix, out):
@@ -177,12 +209,13 @@ def main(out, cart):
         f.write("\n")
     shutil.copyfile(os.path.join(WEB, "style.css"), os.path.join(out, "style.css"))
     shutil.copyfile(cart, os.path.join(out, "nesp32.nes"))
+    write_patches(os.path.join(out, "nesp32-rom-patches.zip"))
     for name, path in PICTURES:
         shutil.copyfile(os.path.join(ROOT, path), os.path.join(out, "img", name))
     write_logo(os.path.join(out, "img", "logo.png"), accent(), LOGO_OUTLINE_LIGHT, swap_blues=True)
     write_logo(os.path.join(out, "img", "logo-dark.png"))
     # The pages last, since they name the files by what is in them.
-    files = ["style.css", "nesp32.nes"] + ["img/" + name for name in os.listdir(
+    files = ["style.css", "nesp32.nes", "nesp32-rom-patches.zip"] + ["img/" + name for name in os.listdir(
         os.path.join(out, "img"))]
     versions = {name: fingerprint(os.path.join(out, name)) for name in files}
     page(os.path.join(WEB, "flash", "index.html"), os.path.join(flash, "index.html"), versions)

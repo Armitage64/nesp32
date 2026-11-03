@@ -27,6 +27,11 @@ LOCAL GAME. How the three netplay games are played, and how they keep the
 two consoles in one game, is nesp32's
 [`docs/MULTIPLAYER.md`](../../docs/MULTIPLAYER.md).
 
+**To play, you don't need to build anything:** apply `dist/drmario_net.bps` to
+your own copy of the game (["The patch, for players"](#the-patch-for-players),
+below), or get every game's patch at once from **Download ROM patches** on
+the [home page](https://nesp32.retrobits.tv/).
+
 **The game is not in this repository.** What is here is the netplay code,
 its tests, and a few lines to be put into the game's own code. The rest,
 the game's code and its graphics, is the `Dr. Mario` directory of
@@ -50,7 +55,8 @@ about six minutes.
 
 ## The patch, for players
 
-To play, there is no need to build anything. `dist/drmario_net.bps` is the
+To play, there is no need to build anything. `dist/drmario_net.bps`, also in
+**Download ROM patches** on the [home page](https://nesp32.retrobits.tv/), is the
 netplay ROM as a patch to Dr. Mario (Japan, USA), the first release (PRG0): apply it to your own copy of the game
 with any BPS patcher (Floating IPS, or RomPatcher.js in a browser), and
 put the ROM it makes on a flash cartridge. A BPS patch knows the ROM it is

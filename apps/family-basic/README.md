@@ -48,7 +48,8 @@ the tests hold the ROM to all of this but the microphone (Tests).
 
 ## The patch, for players
 
-To play, there is no need to build anything. `dist/fbasic.bps` is the ROM
+To play, there is no need to build anything. `dist/fbasic.bps`, also in
+**Download ROM patches** on the [home page](https://nesp32.retrobits.tv/), is the ROM
 as a patch to Family BASIC V3: apply it to your own copy of the game with
 any BPS patcher (Floating IPS, or RomPatcher.js in a browser), and put the
 ROM it makes on a flash cartridge or the MiSTer. A BPS patch knows the ROM
