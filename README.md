@@ -83,7 +83,7 @@ Please join our [Discord](https://discord.gg/kwSC7pwtmb)!
 | [Bluesky](apps/bluesky) | Bluesky posts from a list of favorite accounts the NESP32 remembers, after [ConnectedNES](https://github.com/hxlnt/connectedNES) |
 | [Family BASIC](apps/family-basic)* | Family BASIC V3 using a Bluetooth keyboard. Save and load programs to the NESP32 instead of cassette |
 
-\* These games contain copyrighted material, so the ROM isn't provided ready-made: build it yourself from your own copy of the game, using the publicly available disassembly where there is one, and the NESP32 patch provided here. TMNT2 Arcade and Family BASIC have a BPS patch to apply to your own ROM instead, with no build needed.
+\* These games contain copyrighted material, so the ROM isn't provided ready-made: patch your own copy of the game instead, with no build needed. Get the patches from **Download ROM patches** on the [home page](https://nesp32.retrobits.tv/), and see the [User Guide](docs/USER_GUIDE.md#11-playing-online-with-a-friend) for how to apply them. Developers can build the games instead ([Building](#building), below).
 
 ## How it works
 
@@ -99,8 +99,13 @@ Please join our [Discord](https://discord.gg/kwSC7pwtmb)!
 
 **Just want to install the firmware?** You don't need to build anything: connect the StickS3
 (or StickC-Plus2) over USB and flash the latest release from your browser with the
-[Online Firmware Installer](https://nesp32.retrobits.tv/flash/). The steps below are for
-building the firmware and ROMs from source.
+[Online Firmware Installer](https://nesp32.retrobits.tv/flash/).
+
+**Just want to play the online games or Family BASIC?** You don't need to build those either:
+download the ROM patches from the [home page](https://nesp32.retrobits.tv/) and apply each to
+your own copy of the game ([User Guide](docs/USER_GUIDE.md#11-playing-online-with-a-friend)).
+
+The steps below are for building the firmware and ROMs from source.
 
 You will need [cc65](https://cc65.github.io/) (`ca65`, `ld65`), a C compiler, `make`, `patch`,
 Python 3, and for the firmware [ESP-IDF 5.x](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/)
@@ -134,19 +139,26 @@ make cart                   # the cartridge
 make -C apps/drmario        # Dr. Mario 2P
 make -C apps/contra         # Contra 2P
 make -C apps/tetris         # Tetris 2P
+make -C apps/tmnt2          # TMNT II 2P
+make -C apps/family-basic   # Family BASIC
 ```
 
-Contra's build needs your own copy of the game (US release) at `apps/contra/baserom.nes`.
+Contra, TMNT II and Family BASIC need your own copy of the game at `apps/<name>/baserom.nes`
+(each app's README says which release). Dr. Mario and Tetris are built from their disassemblies
+alone. After changing a game, `make -C apps/<name> bps` writes its patch for players in
+`apps/<name>/dist/` again; commit it, since the web site ships the patches as committed.
 
 **4. Find the ROM images**
 
 | File | What it is |
 |---|---|
-| `build/nesp32.nes` | The cartridge: every program above but the two games, behind one menu (MMC1, 256 KB PRG, 128 KB CHR) |
+| `build/nesp32.nes` | The cartridge: every program above but the games, behind one menu (MMC1, 256 KB PRG, 128 KB CHR) |
 | `build/setup.nes` | Setup as a ROM of its own. For any other program on the cartridge, `make -C apps/<name>` builds one into `apps/<name>/build/` |
 | `apps/drmario/build/drmario_net.nes` | Dr. Mario 2P, which is not on the cartridge |
 | `apps/tetris/build/tetris_net.nes` | Tetris 2P, which is not on the cartridge |
 | `apps/contra/build/contra_net.nes` | Contra 2P, which is not on the cartridge. `make -C apps/contra ines` also makes `contra_net_ines.nes`, with an iNES header in place of the NES 2.0 one |
+| `apps/tmnt2/build/tmnt2_net.nes` | TMNT II 2P, which is not on the cartridge |
+| `apps/family-basic/build/fbasic.nes` | Family BASIC, which is not on the cartridge |
 
 ## Further Reading
 
@@ -178,11 +190,14 @@ Not everything in the repository is nesp32's to license:
 - **`third_party/`** is other people's, each under its own terms:
   [nes-radar](https://github.com/k6lcm/nes-radar) (GPL-3.0, as this is),
   [minimp3](third_party/minimp3/LICENSE) (CC0), and the disassemblies of
-  Dr. Mario, Contra and Tetris that the two-player ROMs are built from.
-- **The games.** `apps/drmario`, `apps/contra` and `apps/tetris` hold
-  nesp32's patches and the code they add, which are under this licence;
-  Dr. Mario, Contra and Tetris are their publishers', and no ROM of any of
-  them is here. Contra's build wants your own copy.
+  Dr. Mario, Contra, Tetris and TMNT II that the two-player ROMs are built from.
+- **The games.** `apps/drmario`, `apps/contra`, `apps/tetris`,
+  `apps/tmnt2` and `apps/family-basic` hold nesp32's patches and the code
+  they add, which are under this licence; Dr. Mario, Contra, Tetris,
+  TMNT II and Family BASIC are their publishers', and no ROM of any of
+  them is here. Each app's `dist/` has a BPS patch, which holds none of
+  the game and is applied to your own copy. Building Contra, TMNT II or
+  Family BASIC also needs your own copy.
 - **Tetris's game for two** follows ejona86's
   [TAUS](https://github.com/ejona86/taus) twoplayer mod, Eric Anderson's,
   under the MIT License ([its terms](apps/tetris/net/TAUS-LICENSE)): its

@@ -63,6 +63,21 @@ and none of the original. That is why each submodule is kept at one commit
 patches are line numbers in that commit's files. `make clean` will not
 delete copies that have changes `patches/` has not.
 
+### The games' patches for players
+
+Players don't build the games: each game's `dist/` has the netplay ROM
+(Family BASIC's ROM) as a BPS patch to the original, which they apply to
+their own copy. `make bps` in the app writes it, from the original as
+built and verified (Dr. Mario, Tetris, Contra, TMNT II) or from
+`baserom.nes` (Family BASIC); `tools/gen_patch.py` copies what it can
+from the player's ROM and refuses a patch that carries sixteen bytes in a
+row of the game. `make web` puts all five, as committed, into
+`nesp32-rom-patches.zip` on the web site with `web/patches/README.txt`,
+which says which release of each game a player needs. The site's
+workflow has no copy of any game, so it builds none of the patches: after
+a change to a game, run `make bps` and commit what it writes.
+`tests/test_patch.py` in each app fails while a patch is out of date.
+
 ## The cartridge
 
 ![The cartridge's menu](cart-menu.png)

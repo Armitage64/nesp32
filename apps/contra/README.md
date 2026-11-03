@@ -15,6 +15,11 @@ cartridge"). A flash cartridge or an emulator has to take that, as for
 TMNT II; `make ines` writes it with an iNES header for one that takes no
 NES 2.0.
 
+**To play, you don't need to build anything:** apply `dist/contra_net.bps` to
+your own copy of the game (["The patch, for players"](#the-patch-for-players),
+below), or get every game's patch at once from **Download ROM patches** on
+the [home page](https://nesp32.retrobits.tv/).
+
 **The game is not in this repository.** What is here is the netplay code,
 its tests, and a few lines to be put into the game's own code. The build
 takes the rest from two places:
@@ -32,12 +37,34 @@ git submodule update --init third_party/nes-contra-us
 make            # build/contra.nes (the original), build/contra_net.nes, and
                 # build/contra_net_slow.nes, with the game's passes, for the tests
 make verify     # the original still matches its SHA-512
+make bps        # dist/contra_net.bps again, for players ("The patch", below)
 make test       # needs: python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 ```
 
 Needs cc65 (`ca65`, `ld65`), Python 3, `patch`, and a C compiler: the
 link's library for the console is nesp32's, and the tests build its
 firmware's link and services for this computer.
+
+## The patch, for players
+
+To play, there is no need to build anything. `dist/contra_net.bps`, also in
+**Download ROM patches** on the [home page](https://nesp32.retrobits.tv/), is the
+netplay ROM as a patch to the US release: apply it to your own copy of the game
+with any BPS patcher (Floating IPS, or RomPatcher.js in a browser), and
+put the ROM it makes on a flash cartridge. A BPS patch knows the ROM it is
+for, and a patcher refuses any other: the US release with its iNES header,
+131088 bytes, CRC32 `C50A8304`, as `make verify` knows it. The ROM it makes has an NES 2.0 header; for a cartridge that will not
+take one, build it (`make ines`).
+
+The patch holds none of the game. The netplay's lines in the game's own
+code move what comes after them, so the patch copies the game's bytes
+from wherever they are in the player's own ROM, and carries only the
+netplay's code, its header, and the game's instructions the move has
+changed (an address, a branch). There is no IPS patch, which cannot copy.
+`tools/gen_patch.py` (at the top of this repository) refuses to write a
+patch that carries sixteen bytes in a row that are found anywhere in the
+game; and `tests/test_patch.py` holds the patch in `dist/` to the ROM this
+tree builds: after a change to the netplay, `make bps` writes it again.
 
 ## What is where
 
@@ -48,6 +75,7 @@ firmware's link and services for this computer.
 | `tools/extract_assets.py` | cuts the graphics and the sound out of `baserom.nes` |
 | `tests/` | a console on py65, and two of them with their nesp32s and a network between |
 | `docs/Netplay.md` | the design, the figures, and what has been learned |
+| `dist/contra_net.bps` | the netplay ROM as a patch to the game, for players (`make bps`) |
 
 ## Changing the game's code
 

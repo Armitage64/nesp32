@@ -7,8 +7,8 @@
 #   make verify     check the original against the ROM's SHA-512
 #   make test       the simulation's tests (needs requirements-dev.txt)
 #   make patches    write patches/ again from the sources in build/src
-#   make bps        dist/tmnt2_net.bps and .ips again, the netplay ROM as
-#                   a patch to the game, which players apply to their own
+#   make bps        dist/tmnt2_net.bps again, the netplay ROM as a patch
+#                   to the game, which players apply to their own
 #   make clean
 #
 # The game is not here. Its disassembly is Aaron Bottegal's
@@ -145,7 +145,7 @@ test:
 # is for the US release and no other.
 bps: verify $(NET_ROM)
 	mkdir -p $(DIST)
-	$(PYTHON) $(GEN_PATCH) $(ROM) $(NET_ROM) $(DIST)/tmnt2_net.bps --ips $(DIST)/tmnt2_net.ips
+	$(PYTHON) $(GEN_PATCH) $(ROM) $(NET_ROM) $(DIST)/tmnt2_net.bps
 
 # What a source in build/src has that the converted one has not.
 PATCH_OF = diff -U0 --label a/src/$(1).asm --label b/src/$(1).asm \

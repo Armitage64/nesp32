@@ -5,6 +5,8 @@
 #   make verify     check it against the original ROM's SHA-1
 #   make test       the simulation's tests (needs requirements-dev.txt)
 #   make patches    write patches/ again from the sources in build/upstream
+#   make bps        dist/drmario_net.bps again, the netplay ROM as a patch
+#                   to the game, which players apply to their own
 #   make clean
 #
 # The game is not here. Its disassembly, with its graphics, is in
@@ -28,6 +30,11 @@ NESP := $(NESP_BUILD)/nesp.stamp
 NESP_LIB := $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/gen_link.py
 ROM := $(BUILD)/drmario.nes
 NET_ROM := $(BUILD)/drmario_net.nes
+# The netplay ROM as a patch to the game, the first release (PRG0), for
+# players who build nothing: kept in the repository, as it holds none of
+# the game (tools/gen_patch.py refuses one that would).
+DIST := dist
+GEN_PATCH := $(NESP32)/tools/gen_patch.py
 NET_SOURCES := net/common.inc net/ram.inc net/net.inc
 MENU_SOURCES := net/menu.s net/session.inc net/common.inc net/ram.inc $(BUILD)/link.inc \
 	$(NESP_LIB) $(NESP)
@@ -46,7 +53,7 @@ SOURCES := $(addprefix $(UP)/,$(SOURCE_NAMES))
 COPIES := $(addprefix $(BUILD)/copy_,$(SOURCE_NAMES))
 FROM_UPSTREAM := $(SOURCES) $(UP)/DPCM.bin $(UP)/CHR_ROM.chr $(UP)/header.bin $(UP)/ld65.cfg
 
-.PHONY: all verify test patches clean FORCE
+.PHONY: all verify test patches bps clean FORCE
 
 all: $(ROM) $(NET_ROM)
 
@@ -130,6 +137,12 @@ verify: $(ROM)
 
 test:
 	$(PYTHON) -m pytest -q tests
+
+# From the original as built, once it is known to be the game: the patch
+# is for that release and no other.
+bps: verify $(NET_ROM)
+	mkdir -p $(DIST)
+	$(PYTHON) $(GEN_PATCH) $(ROM) $(NET_ROM) $(DIST)/drmario_net.bps
 
 # What a source in build/upstream has that the disassembly's has not.
 PATCH_OF = diff -U0 --label a/$(1) --label b/$(1) "$(DRMARIO_SRC)/$(1)" $(UP)/$(1)

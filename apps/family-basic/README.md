@@ -48,7 +48,8 @@ the tests hold the ROM to all of this but the microphone (Tests).
 
 ## The patch, for players
 
-To play, there is no need to build anything. `dist/fbasic.bps` is the ROM
+To play, there is no need to build anything. `dist/fbasic.bps`, also in
+**Download ROM patches** on the [home page](https://nesp32.retrobits.tv/), is the ROM
 as a patch to Family BASIC V3: apply it to your own copy of the game with
 any BPS patcher (Floating IPS, or RomPatcher.js in a browser), and put the
 ROM it makes on a flash cartridge or the MiSTer. A BPS patch knows the ROM
@@ -60,11 +61,11 @@ There is no IPS patch. The game's 8 KB of CHR comes after its PRG in the
 file, and the ROM's PRG is twice the game's, so the CHR is further on in
 the ROM than in the game: the BPS patch copies it from the player's own
 copy, and an IPS patch, which cannot copy, would have to hold it. The
-patch holds none of the game: its 32 KB are the second half of the PRG,
-which is this ROM's own, the 46 bytes changed in the game's (How it
-works), and the header. `tools/gen_patch.py` (at the top of this
-repository) refuses to write a patch with sixteen bytes in a row of the
-game's; and `tests/test_patch.py` holds the patch to the ROM this tree
+patch holds none of the game: what it carries is the second half of the
+PRG, which is this ROM's own (and mostly empty), the 46 bytes changed in
+the game's (How it works), and the header. `tools/gen_patch.py` (at the
+top of this repository) refuses to write a patch that carries sixteen
+bytes in a row of the game's; and `tests/test_patch.py` holds the patch to the ROM this tree
 builds: after a change to the ROM, `make bps` writes it again.
 
 ## Building

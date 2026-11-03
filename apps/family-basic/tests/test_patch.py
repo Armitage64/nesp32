@@ -16,7 +16,6 @@ import gen_patch  # noqa: E402
 DIST = os.path.join(ROOT, "dist")
 CHR_FROM = fbasic.INES_HEADER + fbasic.PRG_SIZE         # in the game's file
 CHR_TO = fbasic.INES_HEADER + 2 * fbasic.PRG_SIZE       # and in ours
-MOVES = [(CHR_FROM, CHR_TO, fbasic.CHR_SIZE)]
 
 
 def read(path):
@@ -55,8 +54,7 @@ def test_the_patch_holds_none_of_the_game(roms):
     player's ROM: what the patch carries is the build's own."""
     game, built = roms
     assert built[CHR_TO:CHR_TO + fbasic.CHR_SIZE] == game[CHR_FROM:CHR_FROM + fbasic.CHR_SIZE]
-    runs = gen_patch.differing_runs(game, built, MOVES)
+    runs = gen_patch.carried(patch())
     assert runs
     assert gen_patch.borrowed(game, runs) == []
-    carried = sum(len(data) for _, data in runs)
-    assert len(patch()) < carried + 1024
+    assert not any(at < CHR_TO + fbasic.CHR_SIZE and at + len(data) > CHR_TO for at, data in runs)

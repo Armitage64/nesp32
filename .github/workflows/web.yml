@@ -1,5 +1,5 @@
-# The web site: the product page, the cartridge to download, and the page
-# that flashes a nesp32 from a browser, built as `make web` builds it and
+# The web site: the product page, the cartridge and the games' ROM patches
+# to download, and the page that flashes a nesp32 from a browser, built as `make web` builds it and
 # put on GitHub Pages. It runs when anything that goes into the firmware,
 # the cartridge or the pages changes on main, and by hand from the Actions
 # tab.
@@ -42,8 +42,9 @@ jobs:
         with:
           # The firmware's version is `git describe`, which wants the history.
           fetch-depth: 0
-          # The cartridge's NES Radar is built from its submodule; the two
-          # games' disassemblies are not on the cartridge.
+          # The cartridge's NES Radar is built from its submodule; the
+          # games' disassemblies are not on the cartridge, and their ROM
+          # patches are the ones committed in apps/*/dist.
           submodules: false
 
       - name: Fetch the nes-radar submodule
