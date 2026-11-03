@@ -38,6 +38,7 @@ cyneprepou4uk's disassemblies, a submodule at
 git submodule update --init third_party/NES-Games-Disassembly
 make            # build/drmario.nes (the original) and build/drmario_net.nes
 make verify     # the original still matches its SHA-1
+make bps        # dist/drmario_net.bps again, for players ("The patch", below)
 make test       # needs: python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 ```
 
@@ -46,6 +47,25 @@ Needs cc65 (`ca65`, `ld65`), Python 3, `patch`, and for the netplay ROM
 compiler: the link's library for the console comes from there, and the
 tests build its firmware's link and services for this computer. They take
 about six minutes.
+
+## The patch, for players
+
+To play, there is no need to build anything. `dist/drmario_net.bps` is the
+netplay ROM as a patch to Dr. Mario (Japan, USA), the first release (PRG0): apply it to your own copy of the game
+with any BPS patcher (Floating IPS, or RomPatcher.js in a browser), and
+put the ROM it makes on a flash cartridge. A BPS patch knows the ROM it is
+for, and a patcher refuses any other: Dr. Mario (Japan, USA), the first release (PRG0) with its iNES header,
+65552 bytes, CRC32 `B1F7E3E9`, as `make verify` knows it.
+
+The patch holds none of the game. The netplay's lines in the game's own
+code move what comes after them, so the patch copies the game's bytes
+from wherever they are in the player's own ROM, and carries only the
+netplay's code, its header, and the game's instructions the move has
+changed (an address, a branch). There is no IPS patch, which cannot copy.
+`tools/gen_patch.py` (at the top of this repository) refuses to write a
+patch that carries sixteen bytes in a row that are found anywhere in the
+game; and `tests/test_patch.py` holds the patch in `dist/` to the ROM this
+tree builds: after a change to the netplay, `make bps` writes it again.
 
 ## What is where
 
@@ -60,6 +80,7 @@ about six minutes.
 | `tools/prepare.py` | strips the disassembly's left-hand columns for ca65 (a port of its `preparations.lua`) |
 | `tests/console.py`, `tests/wire.py`, `tests/netplay.py` | a console on py65, the serial line, and two consoles with their nesp32s and a network between |
 | `docs/PROTOCOL.md` | what is Dr. Mario's own in keeping the two games the same: its music, its cartridge, its memory and its timing |
+| `dist/drmario_net.bps` | the netplay ROM as a patch to the game, for players (`make bps`) |
 
 The link itself is nesp32's: its `docs/PROTOCOL.md` has the line, the
 frames and the PEER service, its `docs/MULTIPLAYER.md` what the three

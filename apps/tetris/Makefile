@@ -5,6 +5,8 @@
 #   make verify     check it against the original ROM's SHA-1
 #   make test       the simulation's tests (needs requirements-dev.txt)
 #   make patches    write patches/ again from the sources in build/upstream
+#   make bps        dist/tetris_net.bps again, the netplay ROM as a patch
+#                   to the game, which players apply to their own
 #   make clean
 #
 # The game is not here. Its disassembly, with its graphics, is
@@ -28,6 +30,11 @@ NESP := $(NESP_BUILD)/nesp.stamp
 NESP_LIB := $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/gen_link.py
 ROM := $(BUILD)/tetris.nes
 NET_ROM := $(BUILD)/tetris_net.nes
+# The netplay ROM as a patch to the US release, for players who build
+# nothing: kept in the repository, as it holds none of the game
+# (tools/gen_patch.py refuses one that would).
+DIST := dist
+GEN_PATCH := $(NESP32)/tools/gen_patch.py
 NET_SOURCES := net/common.inc net/ram.inc net/net.inc net/twoplayer.inc net/twoplayer_game.nam
 MENU_SOURCES := net/menu.s net/session.inc net/common.inc net/ram.inc $(BUILD)/link.inc \
 	$(NESP_LIB) $(NESP)
@@ -47,7 +54,7 @@ CHRS := $(TILESETS:%=$(UP)/gfx/%.chr)
 # The four tilesets, in the order tetris.asm has them.
 CHR := $(BUILD)/tetris.chr
 
-.PHONY: all verify test patches clean FORCE
+.PHONY: all verify test patches bps clean FORCE
 
 all: $(ROM) $(NET_ROM)
 
@@ -136,6 +143,12 @@ verify: $(ROM)
 
 test:
 	$(PYTHON) -m pytest -q tests
+
+# From the original as built, once it is known to be the game: the patch
+# is for the US release and no other.
+bps: verify $(NET_ROM)
+	mkdir -p $(DIST)
+	$(PYTHON) $(GEN_PATCH) $(ROM) $(NET_ROM) $(DIST)/tetris_net.bps
 
 # What a source in build/upstream has that the disassembly's has not.
 PATCH_OF = diff -U0 --label a/$(1) --label b/$(1) $(TETRIS_SRC)/$(1) $(UP)/$(1)

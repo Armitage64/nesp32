@@ -27,10 +27,9 @@ ROM_SIZE := 73744   # 16-byte header + 64 KB PRG + 8 KB CHR
 # kept in the repository, as it holds none of the game (tools/gen_patch.py
 # refuses one that would). The game's 8 KB of CHR is after its 32 KB of
 # PRG in its file, and after the 64 KB in ours: the patch copies it from
-# the player's own ROM. So there is no IPS, which cannot copy.
+# the player's own ROM.
 DIST := dist
 GEN_PATCH := $(NESP32)/tools/gen_patch.py
-CHR_MOVED := 0x8010:0x10010:0x2000
 
 .PHONY: all verify test bps clean FORCE
 
@@ -71,7 +70,7 @@ test:
 # was built, and the patch is for that one release.
 bps: verify
 	mkdir -p $(DIST)
-	$(PYTHON) $(GEN_PATCH) $(BASEROM) $(ROM) $(DIST)/fbasic.bps --moved $(CHR_MOVED)
+	$(PYTHON) $(GEN_PATCH) $(BASEROM) $(ROM) $(DIST)/fbasic.bps
 
 clean:
 	rm -rf $(BUILD)

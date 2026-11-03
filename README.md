@@ -83,7 +83,7 @@ Please join our [Discord](https://discord.gg/kwSC7pwtmb)!
 | [Bluesky](apps/bluesky) | Bluesky posts from a list of favorite accounts the NESP32 remembers, after [ConnectedNES](https://github.com/hxlnt/connectedNES) |
 | [Family BASIC](apps/family-basic)* | Family BASIC V3 using a Bluetooth keyboard. Save and load programs to the NESP32 instead of cassette |
 
-\* These games contain copyrighted material, so the ROM isn't provided ready-made: build it yourself from your own copy of the game, using the publicly available disassembly where there is one, and the NESP32 patch provided here. TMNT2 Arcade and Family BASIC have a BPS patch to apply to your own ROM instead, with no build needed.
+\* These games contain copyrighted material, so the ROM isn't provided ready-made: apply the app's BPS patch (in its `dist/`) to your own copy of the game, with no build needed, or build it yourself, using the publicly available disassembly where there is one, and the NESP32 patch provided here.
 
 ## How it works
 

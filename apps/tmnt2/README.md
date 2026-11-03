@@ -54,7 +54,7 @@ make            # build/tmnt2.nes, the original, and build/tmnt2_net.nes
 make verify     # the original matches its SHA-512
 make test       # the simulation's tests (needs requirements-dev.txt)
 make patches    # patches/ again, from what has been changed in build/src
-make bps        # dist/'s patches again, for players ("The patch", below)
+make bps        # dist/'s patch again, for players ("The patch", below)
 ```
 
 Needs cc65 (`ca65`, `ld65`), Python 3, `patch`, and a C compiler: the
@@ -68,21 +68,20 @@ game with any BPS patcher (Floating IPS, or RomPatcher.js in a browser),
 and put the ROM it makes on a flash cartridge. A BPS patch knows the ROM
 it is for, and a patcher refuses any other: the US release with its iNES
 header, 524304 bytes, CRC32 `C9FFBBDB`, as `make verify` knows it.
-`dist/tmnt2_net.ips` is the same for a patcher that takes only IPS, which
-checks nothing: it has to be applied to that file.
+There is no IPS patch, as for the other netplay games, whose builds move
+the game's code (`tools/gen_patch.py`).
 
-The patches hold none of the game: 6642 bytes in 46 places, all of them
-the netplay's. Nothing of the game moves in the netplay build, every
-change being the length of what it replaces, so what differs is its
-header (2 bytes), its code in bank 29 (6416, all $FF in the game) and in
-the fixed banks' free bytes (200, all $FF too), and the instructions that
-call it: 24 bytes in ten places, none longer than four. `tools/gen_patch.py`
-(at the top of this repository) refuses to write a patch with sixteen
-bytes in a row that are found anywhere in the game, which once caught the
-sprite pass writing a hidden tile in the game's own order (`invalid`, in
-`net/sprites.inc`); and `tests/test_patch.py` holds the patches in `dist/`
-to the ROM this tree builds: after a change to the netplay, `make bps`
-writes them again.
+The patch holds none of the game. Nothing of the game moves in the
+netplay build, every change being the length of what it replaces, so what
+differs is its header, its code in bank 29 and in the fixed banks' free
+bytes (all $FF in the game), and the instructions that call it, none
+longer than four bytes; what the patch has of the game, it copies from
+the player's own ROM. `tools/gen_patch.py` (at the top of this repository)
+refuses to write a patch that carries sixteen bytes in a row that are
+found anywhere in the game, which once caught the sprite pass writing a
+hidden tile in the game's own order (`invalid`, in `net/sprites.inc`);
+and `tests/test_patch.py` holds the patch in `dist/` to the ROM this tree
+builds: after a change to the netplay, `make bps` writes it again.
 
 ## The cartridge
 

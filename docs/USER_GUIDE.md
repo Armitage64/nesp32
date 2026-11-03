@@ -668,16 +668,22 @@ Each player needs:
 - working Wi-Fi.
 
 **Getting the games:** these contain the original games, so they can't
-be handed out ready-made:
+be handed out ready-made.
 
-- **TMNT II:** apply the patch `apps/tmnt2/dist/tmnt2_net.bps` to your own
-  copy of the US game with a BPS patcher such as Floating IPS or
-  RomPatcher.js (it runs in a web browser). Then put the result on your
-  flash cartridge.
-- **Dr. Mario, Tetris and Contra** have to be built from source
-  ([the README](../README.md#building)). Contra also needs your own copy
-  of the game. Ask on the [Discord](https://discord.gg/kwSC7pwtmb) if you
-  need help.
+Apply the game's patch to your own copy of it with a BPS patcher such as
+Floating IPS or RomPatcher.js (it runs in a web browser), then put the
+result on your flash cartridge. The patcher refuses a copy that isn't the
+one the patch is for.
+
+| Game | Patch | Apply it to |
+|---|---|---|
+| Dr. Mario | `apps/drmario/dist/drmario_net.bps` | Dr. Mario (Japan, USA), the first release (PRG0) |
+| Tetris | `apps/tetris/dist/tetris_net.bps` | Tetris (USA) |
+| Contra | `apps/contra/dist/contra_net.bps` | Contra (USA) |
+| TMNT II | `apps/tmnt2/dist/tmnt2_net.bps` | Teenage Mutant Ninja Turtles II: The Arcade Game (USA) |
+
+Or build them from source ([the README](../README.md#building)). Ask on
+the [Discord](https://discord.gg/kwSC7pwtmb) if you need help.
 
 Contra and TMNT II need a flash cartridge or emulator that supports their
 cartridge type (MMC3).
