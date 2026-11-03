@@ -8,13 +8,14 @@ service), and the game reads what is typed on it as if from its own.
 
 ## Status
 
-**A prototype, on a simulated console only.** It has not yet run on
-hardware. On py65, against nesp32's own firmware code over a line that
-models every bit, with the test as the keyboard: BASIC starts, lines typed
-are run, a program typed in lists and runs, every sign the keyboard has
-comes out as itself, Backspace and the arrows edit, Escape stops a running
-program, the reset button keeps the keyboard, and with no nesp32 BASIC
-still starts.
+**A prototype, and it works on hardware**: on a real NES, a hello world
+program was typed in on a Bluetooth keyboard through a nesp32, and run.
+Not more than that has been tried there yet. On py65, against nesp32's
+own firmware code over a line that models every bit, with the test as the
+keyboard: BASIC starts, lines typed are run, a program typed in lists and
+runs, every sign the keyboard has comes out as itself, Backspace and the
+arrows edit, Escape stops a running program, the reset button keeps the
+keyboard, and with no nesp32 BASIC still starts.
 
 | Part | State |
 |---|---|
@@ -22,7 +23,7 @@ still starts.
 | Characters typed on a Bluetooth keyboard, as keys of the Family keyboard | done for every character it has a key for, Enter, Backspace, the arrows and Escape; tested on py65 |
 | BASIC's memory, `$6000-$6FFF`, kept apart from the keyboard's code at `$7000` | done; tested on py65 with BASIC's memory full |
 | The nesp32's own screen: "NES: Family BASIC" for the hello's `FBAS` | done in `firmware/main/main.cpp`; not yet built |
-| Real hardware: an MMC1 with 8 KB of battery-backed memory on a flash cartridge, a StickS3 and a keyboard | not yet tried |
+| Real hardware: an MMC1 with 8 KB of battery-backed memory on a flash cartridge, a StickS3 and a keyboard | working: a hello world program typed in and run on a real NES |
 | The Family keyboard's keys that KBD does not send | not started (see Not done) |
 | SAVE and LOAD to the nesp32's flash, in place of the data recorder | not started (see Not done) |
 
@@ -99,14 +100,16 @@ one unanswered costs the frame a receiver's wait.
 
 ## Not done
 
-- **On hardware.** A flash cartridge must take an MMC1 with 8 KB of
-  battery-backed memory (iNES byte 8 is 1), and the MMC1 must have its
-  last 16 KB at `$C000` at power-on, as nesp32's cartridge counts on too.
-  A board that did not would start BASIC's own reset with no code at
-  `$7000`, and its first NMI would jump into nothing. Then: the time to
-  type a character on a real console, the 5000 cycles a KEYS takes with
-  a real nesp32's time to answer, and the keyboard's wait to type again
-  after it sleeps (nesp32's `docs/TODO.md`).
+- **More on hardware.** A hello world program has been typed in and run;
+  so the flash cartridge took the MMC1 with its 8 KB of battery-backed
+  memory, and its MMC1 had its last 16 KB at `$C000` at power-on, which
+  the boot counts on. Not yet tried there: the signs and the shifted
+  ones, Backspace, the arrows and Escape (STOP) on a running program, the
+  reset button, a long program typed fast, the program kept over a
+  power-off, and BASIC with no nesp32. Not yet measured: the time to type
+  a character on a real console, the 5000 cycles a KEYS takes with a real
+  nesp32's time to answer, and the keyboard's wait to type again after it
+  sleeps (nesp32's `docs/TODO.md`).
 - **The keys KBD does not send.** F1 to F8 (which type BASIC's own
   words), GRPH and KANA (the game's graphics and kana), CTR, CLR HOME and
   INS on keys of their own, SHIFT with CLR HOME (which clears the
