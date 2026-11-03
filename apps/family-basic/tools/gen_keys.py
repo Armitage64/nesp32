@@ -1,4 +1,4 @@
-"""keys.inc: for each character KBD KEYS sends, the key of the Family
+"""keys.inc: for each character KBD KEYS_ALL sends, the key of the Family
 keyboard that types it, from the game's own tables of what its keys type.
 
     tools/gen_keys.py baserom.nes NESP_BUILD build/keys.inc
@@ -6,8 +6,10 @@ keyboard that types it, from the game's own tables of what its keys type.
 A character is a place in the matrix (row * 8 + bit), with $80 if SHIFT is
 down with it, or KEY_NONE if no key types it. A small letter is its
 capital: the game has no small letters but in kana. A backslash is the
-yen. Of the keys that are
-not characters, Escape is STOP, Page Up CLR HOME and Page Down INS.
+yen. Of the keys that are not characters (KBD KEYS_ALL's), Escape is STOP,
+Home and Page Up CLR HOME, Shift and Home SHIFT and CLR HOME (which clears
+the screen), Insert and Page Down INS, F12 KANA, and F1 to F8 the game's.
+Delete, and a key with Ctrl or Alt (CTR, GRPH), are nes/fbkbd.s's.
 """
 
 import os
@@ -40,8 +42,16 @@ def table(rom, proto):
                       (proto.NESP_KEY_RIGHT, fbasic.CODE_RIGHT),
                       (proto.NESP_KEY_PAGE_UP, fbasic.CODE_CLR_HOME),
                       (proto.NESP_KEY_PAGE_DOWN, fbasic.CODE_INS),
-                      (proto.NESP_KEY_ESCAPE, fbasic.CODE_STOP)):
+                      (proto.NESP_KEY_ESCAPE, fbasic.CODE_STOP),
+                      (proto.NESP_KEY_HOME, fbasic.CODE_CLR_HOME),
+                      (proto.NESP_KEY_SHIFT_HOME, fbasic.CODE_CLS),
+                      (proto.NESP_KEY_INSERT, fbasic.CODE_INS),
+                      (proto.NESP_KEY_F12, fbasic.CODE_KANA)):
         keys[key] = places[code]
+    functions = (proto.NESP_KEY_F1, proto.NESP_KEY_F2, proto.NESP_KEY_F3, proto.NESP_KEY_F4,
+                 proto.NESP_KEY_F5, proto.NESP_KEY_F6, proto.NESP_KEY_F7, proto.NESP_KEY_F8)
+    for number, key in enumerate(functions):
+        keys[key] = places[fbasic.CODE_F1 + number]
     return keys
 
 

@@ -26,7 +26,10 @@ CODE_DEL = 0x08
 CODE_CLR_HOME = 0x0B
 CODE_RETURN = 0x0D
 CODE_INS = 0x12
+CODE_CLS = 0x0C                 # SHIFT and CLR HOME
 CODE_RIGHT, CODE_LEFT, CODE_UP, CODE_DOWN = 0x1C, 0x1D, 0x1E, 0x1F
+CODE_F1 = 0xF0                  # to F8, $F7
+CODE_KANA = 0xFF
 # Its codes that are not ASCII's for the same character: its font has the
 # square brackets at $B2 and $B3, and other signs at ASCII's $5B and $5D.
 # (It has the yen at ASCII's backslash, and the key that types it.)

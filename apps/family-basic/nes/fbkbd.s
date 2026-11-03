@@ -57,8 +57,11 @@ PAD_BITS        = $90           ; the buttons it read
 ; Keys in the matrix, as the game reads them (row, bit).
 STOP_ROW        = 0
 STOP_BIT        = $01
-SHIFT_ROW       = 7             ; the left SHIFT
+SHIFT_ROW       = 7             ; the left SHIFT, and CTR and GRPH
 SHIFT_BIT       = $08
+CTR_BIT         = $10
+GRPH_BIT        = $04
+FUNCTION_BIT    = 7             ; the keys in a row's bit 7 are F1 to F8 (and CLR HOME)
 
 ; A key is down until the game has scanned the matrix this many times and
 ; a frame has passed, and up until it has scanned it this many times again.
@@ -66,9 +69,11 @@ SHIFT_BIT       = $08
 ; and types it again only once it has seen it up. About four frames a
 ; character, which is 15 a second.
 SCANS_DOWN      = 2
+SCANS_FUNCTION  = 6             ; for a function key, which the game takes from five
 SCANS_UP        = 2
 FRAMES_DOWN     = 1             ; frames at the least, after the one it went down in
-QUEUE           = 16            ; characters from KEYS not yet put in the matrix: a reply's
+QUEUE           = 32            ; characters from KEYS not yet put in the matrix: a reply's,
+                                ; each Delete two
 HELLO_RETRY     = 60            ; frames after a hello with no answer
 MISS_WAIT       = 30            ; frames after a KEYS with no answer
 STOP_EVERY      = 7             ; mask: while only STOP is asked about, every 8th frame
@@ -112,10 +117,12 @@ fb_saved:       .res BORROWED_LEN
 fb_matrix:      .res ROWS       ; what fb_scan gives the game
 fb_changes:     .res 1          ; counts the NMI's changes to fb_matrix
 fb_queue:       .res QUEUE
-.assert QUEUE >= NESP_KBD_KEYS_MAX && (QUEUE & (QUEUE - 1)) = 0, error, "QUEUE holds a reply, and is a power of two"
+.assert QUEUE >= 2 * NESP_KBD_KEYS_MAX && (QUEUE & (QUEUE - 1)) = 0, error, "QUEUE holds a reply of Deletes, and is a power of two"
 fb_head:        .res 1          ; the next character out of the queue
 fb_count:       .res 1          ; how many are in it
 fb_phase:       .res 1          ; PHASE_*
+fb_with:        .res 1          ; CTR_BIT and GRPH_BIT, for the next key: KEY_WITH_CTRL and _ALT
+fb_scans_down:  .res 1          ; scans the key down is held for
 fb_scans:       .res 1          ; the game's scans since the phase began
 fb_frames:      .res 1          ; and frames
 fb_frame:       .res 1          ; frames since power-on
@@ -405,7 +412,7 @@ PHASE_UP        = 2
     sta fb_want_keys
     sta fb_want_stop
     lda #NESP_SVC_KBD
-    ldx #NESP_KBD_KEYS
+    ldx #NESP_KBD_KEYS_ALL
     ldy #0
     jsr nesp_call
     bcs @missed
@@ -416,6 +423,12 @@ PHASE_UP        = 2
     cpx nesp_reply
     beq @not_now
     lda nesp_reply + 1,x
+    cmp #NESP_KEY_DELETE
+    bne @queue
+    lda #NESP_KEY_RIGHT         ; the game's DEL takes the one before the cursor
+    jsr fb_queue_char
+    lda #NESP_KEY_BACKSPACE
+@queue:
     jsr fb_queue_char
     inx
     bne @char
@@ -469,16 +482,27 @@ PHASE_UP        = 2
     sta fb_head
     dec fb_count
     pla
+    ldx #CTR_BIT
+    cmp #NESP_KEY_WITH_CTRL
+    beq @with
+    ldx #GRPH_BIT
+    cmp #NESP_KEY_WITH_ALT
+    beq @with
     jsr fb_press
     bcs @idle                   ; no key types it
     lda #PHASE_DOWN
     bne @phase
+@with:
+    txa
+    ora fb_with
+    sta fb_with
+    bne @idle
 @down:
     lda fb_frames
     cmp #FRAMES_DOWN
     bcc @done
     lda fb_scans
-    cmp #SCANS_DOWN
+    cmp fb_scans_down
     bcc @done
     ldx #ROWS - 1
     lda #0
@@ -506,7 +530,8 @@ PHASE_UP        = 2
 .endproc
 
 ; The key for character A down in fb_matrix, and SHIFT with it if it is
-; shifted. Carry set if no key types it.
+; shifted, and CTR and GRPH if fb_with says so. Carry set if no key types
+; it.
 .proc fb_press
     cmp #$80
     bcs @none
@@ -517,6 +542,11 @@ PHASE_UP        = 2
     pha
     and #$07
     tax
+    ldy #SCANS_DOWN
+    cpx #FUNCTION_BIT
+    bne :+
+    ldy #SCANS_FUNCTION
+:   sty fb_scans_down
     lda #$01
 @bit:
     dex
@@ -541,9 +571,16 @@ PHASE_UP        = 2
     ora #SHIFT_BIT
     sta fb_matrix + SHIFT_ROW
 @plain:
+    lda fb_matrix + SHIFT_ROW
+    ora fb_with
+    sta fb_matrix + SHIFT_ROW
+    lda #0
+    sta fb_with
     clc
     rts
 @none:
+    lda #0
+    sta fb_with
     sec
     rts
 .endproc

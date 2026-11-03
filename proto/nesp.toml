@@ -121,6 +121,7 @@ SCAN = 0x02             # look for keyboards in their pairing mode
 FOUND = 0x03            # one keyboard the scan found, by its place in the list
 PAIR = 0x04             # pair with that one, in place of the one paired
 FORGET = 0x05           # forget the one paired
+KEYS_ALL = 0x06         # as KEYS, and the keys KEYS leaves out (enum KEY): Family BASIC's
 
 [services.JUKE]
 id = 0x10
@@ -354,9 +355,21 @@ PAIRING = 7
 FAILED = 8              # the last pairing did not work
 
 [enums.KEY]             # KBD KEYS: what is not a printable character ($20 to $7E)
+F1 = 0x01                  # F1 to F8, F12, the Home to Delete, and WITH_*: KEYS_ALL's alone
+F2 = 0x02
+F3 = 0x03
+F4 = 0x04
+F5 = 0x05
+F6 = 0x06
+F7 = 0x07
 BACKSPACE = 0x08
 TAB = 0x09
 ENTER = 0x0A
+HOME = 0x0B
+SHIFT_HOME = 0x0C          # Shift and Home
+F8 = 0x0E
+INSERT = 0x0F
+DELETE = 0x10
 UP = 0x11
 DOWN = 0x12
 LEFT = 0x13
@@ -365,7 +378,10 @@ PAGE_UP = 0x15
 PAGE_DOWN = 0x16
 START = 0x17               # Ctrl and Enter: the controller's Start
 SELECT = 0x18              # Ctrl and Escape: its Select
+F12 = 0x19
 ESCAPE = 0x1B
+WITH_CTRL = 0x1C           # the next key was typed with Ctrl
+WITH_ALT = 0x1D            # and with Alt
 
 [sizes]
 NAME_MAX = 32           # a network's name

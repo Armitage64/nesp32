@@ -260,7 +260,10 @@ takes keys more slowly than they repeat ([Family BASIC](../apps/family-basic)'s,
 15 a second) is not left typing a run of them after the key is let go. Besides printable
 ASCII, KBD sends Backspace, Tab, Enter, Escape, the arrows, and Page Up
 and Page Down, and Ctrl with Enter or Escape as Start and Select, which
-the cartridge's programs take as the controller's.
+the cartridge's programs take as the controller's. KEYS_ALL, which only
+Family BASIC asks for, has besides F1 to F8, F12, Home (and with Shift),
+Insert and Delete, and a key with Ctrl or Alt after a code that says so,
+for the Famicom keyboard's CTR and GRPH (`docs/PROTOCOL.md`).
 
 What is typed is logged only at the debug level, as it may be a password.
 The log's report ends with how the keyboard stands: off, unpaired,

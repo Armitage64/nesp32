@@ -73,12 +73,10 @@ its own list in its README.
   First, nes-throughput's trial of each rate with the music's samples
   playing, on a real NES with each board: the rates above were found with
   none.
-- **For [Family BASIC](../apps/family-basic):** KBD codes for the keys a
-  Famicom's keyboard has and KBD KEYS does not send (F1 to F8, GRPH, KANA,
-  CTR, CLR HOME, INS, Delete, Home, End), among the codes below `$20` it
-  leaves unused; and a service that keeps a BASIC program as a file in the
-  nesp32's filing system, for the game's SAVE and LOAD in place of the data
-  recorder. Its README, "Not done", has the console's side of each.
+- **For [Family BASIC](../apps/family-basic):** a service that keeps a
+  BASIC program as a file in the nesp32's filing system, for the game's
+  SAVE and LOAD in place of the data recorder. Its README, "Not done", has
+  the console's side.
 - An idle opponent on the nesp32, as `host/serial_host.py --idle` has, to
   test one console with a nesp32 alone.
 - A fetch that drops partway made again; today what came is read, if it

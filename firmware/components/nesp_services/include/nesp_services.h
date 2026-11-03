@@ -343,6 +343,7 @@ typedef struct {
 /* KBD: a Bluetooth keyboard, for a ROM's text (kbd.c). */
 typedef struct {
     const nesp_hal_t *hal;
+    bool chord;         /* KEYS has left out a WITH_*, and leaves out the key after it */
 } nesp_kbd_t;
 
 /* WIKI: an article from Wikipedia, as lines the console asks for by number

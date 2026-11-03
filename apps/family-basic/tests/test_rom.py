@@ -111,6 +111,63 @@ def test_backspace_held_down_stops_when_let_go(basic):
     assert len(let_go) - len(typed_line(b)) <= 2
 
 
+def key(name):
+    return chr(getattr(p, "NESP_KEY_" + name))
+
+
+def test_the_function_keys_type_the_game_s_words(basic):
+    b = started(basic())
+    b.enter("10 ? 7*8")
+    # F7 is LIST and F8 RUN, each with RETURN; a function key wants five
+    # scans in a row.
+    b.type(key("F7"))
+    b.typed_out()
+    b.run(10)
+    assert last_rows(b, 3) == ["LIST", "10 PRINT 7*8", "OK"]
+    b.type(key("F8"))
+    b.typed_out()
+    b.run(20)
+    assert last_rows(b, 3) == ["RUN", "56", "OK"]
+
+
+def test_delete_insert_home_and_shift_home(basic):
+    b = started(basic())
+    b.type("abcdef" + key("LEFT") * 3 + key("DELETE"))
+    b.typed_out()
+    b.run(3)
+    assert last_rows(b, 1) == ["ABCEF"]         # the one under the cursor
+    b.type(key("INSERT") + "x")
+    b.typed_out()
+    b.run(3)
+    assert last_rows(b, 1) == ["ABCXEF"]
+    b.type(key("HOME") + "q")
+    b.typed_out()
+    b.run(3)
+    assert b.c.text(3, 2, 4) == "QS-H"         # CLR HOME: over the N of NS-HUBASIC
+    b.type(key("SHIFT_HOME"))
+    b.typed_out()
+    b.run(5)
+    assert b.screen().strip() == ""             # SHIFT and CLR HOME: the screen cleared
+
+
+def test_f12_is_kana_and_alt_is_grph_in_it(basic):
+    b = started(basic())
+    b.type(key("F12") + "k" + key("WITH_ALT") + "a" + key("F12") + "k")
+    b.typed_out()
+    b.run(3)
+    # K's kana, A's graphic with GRPH (the game has those in kana alone),
+    # and K again.
+    assert b.c.tiles(7, 2, 3) == bytes((0x80, 0x9C, ord("K")))
+
+
+def test_ctrl_is_ctr(basic):
+    b = started(basic())
+    b.type(key("WITH_CTRL") + "l")             # CTR and L: the screen cleared
+    b.typed_out()
+    b.run(5)
+    assert b.screen().strip() == ""
+
+
 def test_escape_is_stop(basic):
     b = started(basic())
     b.enter("10 goto 10")

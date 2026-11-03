@@ -34,7 +34,7 @@ keyboard, and with no nesp32 BASIC still starts.
 | BASIC's memory, `$6000-$6FFF`, kept apart from the keyboard's code at `$7000` | done; tested on py65 with BASIC's memory full |
 | The nesp32's own screen: "NES: Family BASIC" for the hello's `FBAS` | done in `firmware/main/main.cpp`; in the firmware flashed for the held key, and not yet looked for on the screen |
 | Real hardware: an MMC1 with 8 KB of battery-backed memory, a StickS3 and a keyboard | working on the MiSTer and on an EverDrive N8 |
-| The Family keyboard's keys that KBD does not send | not started (see Not done) |
+| The Family keyboard's other keys: F1 to F8, KANA, CTR, GRPH, CLR HOME, INS, and a Delete | done, with the firmware's KBD KEYS_ALL; tested on py65, and not yet on hardware |
 | SAVE and LOAD to the nesp32's flash, in place of the data recorder | not started (see Not done) |
 
 ## Building
@@ -65,11 +65,17 @@ is printed on them, in capitals: the game has small letters only in kana.
 | Backspace | DEL |
 | the arrows | the cursor keys |
 | Escape | STOP: it stops a running program, and at the prompt leaves the line for a new one, as STOP does |
-| Page Up | CLR HOME (SHIFT and CLR HOME, which clears the screen, is not yet to be had) |
-| Page Down | INS |
+| Delete | the character under the cursor: the cursor right, then DEL |
+| Home, and Page Up | CLR HOME: the cursor to the top of the screen |
+| Shift and Home | SHIFT and CLR HOME: the screen cleared |
+| Insert, and Page Down | INS: a space opened under the cursor |
+| F1 to F8 | F1 to F8: the game's words for them, which `KEY` changes. As it starts, F1 to F4 are `GAME 0` to `GAME 3`, F5 `SPRITE`, F6 `LOAD` (from the data recorder, which is not there: STOP), F7 `LIST` and F8 `RUN`, each with RETURN but F5 |
+| F12 | KANA: kana on, or off. In kana the keys type their kana, as on the Family keyboard |
+| Ctrl and a key | CTR and that key: a control code, as CTR and L clears the screen |
+| Alt and a key | GRPH and that key: in kana, the game's graphic for it (out of kana the game types nothing for it) |
 
-`{ | } ~` and the backquote have no key, and Tab none: they are dropped. The
-game types over what is under the cursor; INS opens a space.
+`{ | } ~` and the backquote have no key, and Tab and End none: they are
+dropped. The game types over what is under the cursor; INS opens a space.
 
 ## Keeping a program
 
@@ -123,7 +129,7 @@ these ways, and with the memory turned off by bit 4.
 | `$AD15` | read a controller, and left OUT0 low | `fb_pad` does the same and leaves OUT0 at mark, where the line to the nesp32 rests |
 
 Every exchange with the nesp32 is made in the NMI, after the game's
-handler: a hello for KBD, and then KBD KEYS, every other frame while the
+handler: a hello for KBD, and then KBD KEYS_ALL, every other frame while the
 game is waiting for a key and every eighth while a program only looks for
 STOP, and only once the game has had every key of the last reply. The
 nesp32 sends characters; each is put into the matrix as the key
@@ -150,16 +156,13 @@ one unanswered costs the frame a receiver's wait.
   on a real console, the 5000 cycles a KEYS takes with a real
   nesp32's time to answer, and the keyboard's wait to type again after it
   sleeps (nesp32's `docs/TODO.md`).
-- **The keys KBD does not send.** F1 to F8 (which type BASIC's own
-  words), GRPH and KANA (the game's graphics and kana), CTR, CLR HOME and
-  INS on keys of their own, SHIFT with CLR HOME (which clears the
-  screen), and Delete, Home and End. Each wants a code from the nesp32's
-  firmware, among those below `$20` that KBD KEYS does not use
-  (`proto/nesp.toml`'s `enums.KEY`), and a line in `tools/gen_keys.py`:
-  every program that takes KBD would see them, so each must be checked to
-  pass over a code it does not know. Or, for a keyboard laid out as the Family's,
-  an op that sends which keys are down and not characters; that would
-  also let a program hold a key, which characters cannot.
+- **The new keys, on hardware.** F1 to F8, F12 (KANA), Home, Shift and
+  Home, Insert, Delete, and Ctrl (CTR) and Alt (GRPH) with a key want the
+  firmware with KBD KEYS_ALL (`firmware/main/keyboard.c`, and
+  `firmware/components/nesp_services/kbd.c`) as well as the ROM. KEYS_ALL
+  is KEYS with these besides, and KEYS leaves them out, so the other
+  programs on the cartridge have what they had: their tests and KBD's
+  hold them to it.
 - **SAVE and LOAD to the nesp32's flash.** The game saves to and loads
   from a data recorder on the Famicom's expansion port, which a NES does
   not have. Its routines are at about `$BDE7-$BFCD` (the reads of bit 1

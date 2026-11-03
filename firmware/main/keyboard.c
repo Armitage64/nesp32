@@ -29,7 +29,9 @@
  * nesp32's other settings.
  *
  * Keys are kept, as characters, until KBD takes them: printable ASCII with
- * Shift and Caps Lock (a US layout), and NESP_KEY_*. A key held down is
+ * Shift and Caps Lock (a US layout), and NESP_KEY_*; a key with Ctrl or Alt
+ * after NESP_KEY_WITH_CTRL or _ALT, for KBD's KEYS_ALL (Family BASIC's CTR
+ * and GRPH), which KEYS leaves out. A key held down is
  * typed again after REPEAT_DELAY_MS, and every REPEAT_EVERY_MS from then
  * on, as a computer does: the keyboard says only which keys are down. The
  * last key to go down is the one repeated, and Enter and Escape never are,
@@ -82,14 +84,22 @@
 #define USAGE_ESCAPE 0x29
 #define USAGE_SLASH 0x38            /* the last with a character */
 #define USAGE_CAPS_LOCK 0x39
+#define USAGE_F1 0x3A
+#define USAGE_F8 0x41
+#define USAGE_F12 0x45
+#define USAGE_INSERT 0x49
+#define USAGE_HOME 0x4A
 #define USAGE_PAGE_UP 0x4B
+#define USAGE_DELETE 0x4C
 #define USAGE_PAGE_DOWN 0x4E
 #define USAGE_RIGHT 0x4F
 #define USAGE_UP 0x52
 #define USAGE_ROLLOVER 0x01         /* too many keys down: the report means nothing */
 #define SHIFT 0x22                  /* the left and right Shift in the modifiers' byte */
-#define CHORD 0xDD                  /* Ctrl, Alt and GUI: a key with one is not typed */
+#define CHORD 0xDD                  /* Ctrl, Alt and GUI: a key with one does not repeat */
 #define CTRL 0x11                   /* the left and right Ctrl */
+#define ALT 0x44                    /* and Alt */
+#define GUI 0x88                    /* and the Windows or Command key: a key with it is none */
 
 /* Appearances (Bluetooth's assigned numbers). A scan offers what says it is
  * a keyboard, and what offers HID and says nothing more of itself. */
@@ -117,6 +127,10 @@ _Static_assert('\n' == NESP_KEY_ENTER && '\b' == NESP_KEY_BACKSPACE && '\t' == N
                && '\x1b' == NESP_KEY_ESCAPE, "the control keys are KBD's");
 /* Right, Left, Down and Up, as the usages run. */
 static const uint8_t ARROWS[] = {NESP_KEY_RIGHT, NESP_KEY_LEFT, NESP_KEY_DOWN, NESP_KEY_UP};
+/* F1 to F8, as the usages run. */
+static const uint8_t FUNCTIONS[] = {NESP_KEY_F1, NESP_KEY_F2, NESP_KEY_F3, NESP_KEY_F4,
+                                    NESP_KEY_F5, NESP_KEY_F6, NESP_KEY_F7, NESP_KEY_F8};
+_Static_assert(sizeof(FUNCTIONS) == USAGE_F8 - USAGE_F1 + 1, "a key for every usage");
 
 typedef struct {
     ble_addr_t addr;
@@ -173,38 +187,70 @@ static void keep(uint8_t key)
     ESP_LOGD(TAG, "typed $%02x", key);
 }
 
-/* A key that has gone down. */
-static void pressed(uint8_t usage, uint8_t modifiers)
+/* What a key types with these modifiers, Ctrl and Alt aside: a character
+ * or a NESP_KEY_*, or 0 for nothing. */
+static uint8_t typed(uint8_t usage, uint8_t modifiers)
 {
-    if (usage == USAGE_CAPS_LOCK) {
-        caps = !caps;
-        return;
-    }
-    if ((modifiers & CHORD) != 0) {
-        /* But Ctrl with Enter or Escape, and nothing else of the chord's,
-         * is the controller's Start or Select. */
-        if ((modifiers & CHORD & ~CTRL) == 0 && (usage == USAGE_ENTER || usage == USAGE_ESCAPE)) {
-            keep(usage == USAGE_ENTER ? NESP_KEY_START : NESP_KEY_SELECT);
-        }
-        return;
-    }
     if (usage >= USAGE_RIGHT && usage <= USAGE_UP) {
-        keep(ARROWS[usage - USAGE_RIGHT]);
-        return;
+        return ARROWS[usage - USAGE_RIGHT];
     }
     if (usage == USAGE_PAGE_UP || usage == USAGE_PAGE_DOWN) {
-        keep(usage == USAGE_PAGE_UP ? NESP_KEY_PAGE_UP : NESP_KEY_PAGE_DOWN);
-        return;
+        return usage == USAGE_PAGE_UP ? NESP_KEY_PAGE_UP : NESP_KEY_PAGE_DOWN;
+    }
+    if (usage >= USAGE_F1 && usage <= USAGE_F8) {
+        return FUNCTIONS[usage - USAGE_F1];
+    }
+    switch (usage) {
+    case USAGE_F12:
+        return NESP_KEY_F12;
+    case USAGE_HOME:
+        return (modifiers & SHIFT) != 0 ? NESP_KEY_SHIFT_HOME : NESP_KEY_HOME;
+    case USAGE_INSERT:
+        return NESP_KEY_INSERT;
+    case USAGE_DELETE:
+        return NESP_KEY_DELETE;
+    default:
+        break;
     }
     if (usage < USAGE_A || usage > USAGE_SLASH) {
-        return;
+        return 0;
     }
     char plain = PLAIN[usage - USAGE_A];
     bool shift = (modifiers & SHIFT) != 0;
     if (caps && plain >= 'a' && plain <= 'z') {
         shift = !shift;
     }
-    keep((uint8_t)(shift ? SHIFTED[usage - USAGE_A] : plain));
+    return (uint8_t)(shift ? SHIFTED[usage - USAGE_A] : plain);
+}
+
+/* A key that has gone down. With Ctrl or Alt it is kept after WITH_CTRL or
+ * WITH_ALT, which KBD's KEYS leaves out with it; but Ctrl with Enter or
+ * Escape, and nothing else, is the controller's Start or Select. */
+static void pressed(uint8_t usage, uint8_t modifiers)
+{
+    if (usage == USAGE_CAPS_LOCK) {
+        caps = !caps;
+        return;
+    }
+    if ((modifiers & GUI) != 0) {
+        return;
+    }
+    if ((modifiers & CHORD) == (modifiers & CTRL) && (modifiers & CTRL) != 0
+        && (usage == USAGE_ENTER || usage == USAGE_ESCAPE)) {
+        keep(usage == USAGE_ENTER ? NESP_KEY_START : NESP_KEY_SELECT);
+        return;
+    }
+    uint8_t key = typed(usage, modifiers);
+    if (key == 0) {
+        return;
+    }
+    if ((modifiers & CTRL) != 0) {
+        keep(NESP_KEY_WITH_CTRL);
+    }
+    if ((modifiers & ALT) != 0) {
+        keep(NESP_KEY_WITH_ALT);
+    }
+    keep(key);
 }
 
 /* Whether a key held down is typed again: one that types something, and
@@ -215,7 +261,7 @@ static bool repeats(uint8_t usage, uint8_t modifiers)
         return false;
     }
     if ((usage >= USAGE_RIGHT && usage <= USAGE_UP) || usage == USAGE_PAGE_UP
-        || usage == USAGE_PAGE_DOWN) {
+        || usage == USAGE_PAGE_DOWN || usage == USAGE_DELETE || usage == USAGE_INSERT) {
         return true;
     }
     if (usage < USAGE_A || usage > USAGE_SLASH) {

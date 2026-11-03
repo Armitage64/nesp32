@@ -710,6 +710,7 @@ hears characters.
 | `$03` | FOUND | `INDEX` | `INDEX`, `SIGNAL`, `NAME_LEN`, `NAME` |
 | `$04` | PAIR | `INDEX` | status only; FAILED if there is no such keyboard |
 | `$05` | FORGET | | status only |
+| `$06` | KEYS_ALL | | as KEYS, with the keys KEYS leaves out |
 
 - `KEYBOARD`: 0 this board cannot have one, 1 Bluetooth is starting (or
   off, with one paired), 2 no keyboard is paired, 3 one is paired and not connected (a key pressed
@@ -724,8 +725,17 @@ hears characters.
   then on, as on a computer, but only when every character before it has
   been taken by a KEYS: a ROM that asks for KEYS only when it has done
   with the last reply's has the repeats at its own pace. Enter and Escape
-  do not repeat, nor Start and Select. Any other key pressed with Ctrl, Alt or the Windows or Command
-  key is none.
+  do not repeat, nor Start and Select. Any other key pressed with the
+  Windows or Command key is none.
+- KEYS_ALL has, besides, the keys of a Famicom's keyboard that a
+  computer's has too, for [Family BASIC](../apps/family-basic): `$01` to
+  `$07` F1 to F7, `$0E` F8, `$19` F12, `$0B` Home, `$0C` Shift and Home,
+  `$0F` Insert, `$10` Delete; and a key pressed with Ctrl or Alt (Enter and
+  Escape with Ctrl alone aside) comes after `$1C` (with Ctrl) or `$1D`
+  (with Alt), or both. Delete and Insert repeat, and a key with Ctrl or
+  Alt does not. KEYS leaves all of these out, and a key that comes after
+  `$1C` or `$1D` with them, so a ROM that asks for KEYS has what it had
+  before there were any.
 - A KEYS reply has up to 16 characters, fewer if `REPLY_MAX` is smaller;
   more typed come in the next. They are taken off the nesp32 when they
   are sent, and the same request again gets the same reply again, so a
