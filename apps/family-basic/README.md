@@ -25,6 +25,10 @@ other:
   the N8's menu after `SYSTEM` (Keeping a program);
 - BASIC with no nesp32.
 
+SAVE and LOAD to the nesp32's flash, in place of the data recorder, work
+on the MiSTer and on a real NES: a program saved, the console reset, and
+the program loaded again (Saving and loading).
+
 The N8 started nothing of the first builds, a grey screen; it starts this
 one, which no longer counts on how the MMC1 comes up at power-on (How it
 works). Of BASIC's own, `GAME 0` (F1) wants the Famicom's microphone, so
@@ -40,7 +44,7 @@ the tests hold the ROM to all of this but the microphone (Tests).
 | The nesp32's own screen: "NES: Family BASIC" for the hello's `FBAS` | done in `firmware/main/main.cpp`, and in the firmware on hardware; not yet looked for on the screen |
 | Real hardware: an MMC1 with 8 KB of battery-backed memory, a StickS3 and a keyboard | working on the MiSTer and on an EverDrive N8 |
 | The Family keyboard's other keys: F1 to F8, KANA, CTR, GRPH, CLR HOME, INS, and a Delete | done, with the firmware's KBD KEYS_ALL; working on hardware |
-| SAVE and LOAD to the nesp32's flash, in place of the data recorder | not started (see Not done) |
+| SAVE and LOAD to the nesp32's flash, in place of the data recorder | done, with the firmware's TAPE: working on the MiSTer and a real NES, and tested on py65; BG GRAPHIC's not tried |
 
 ## Building
 
@@ -74,13 +78,45 @@ is printed on them, in capitals: the game has small letters only in kana.
 | Home, and Page Up | CLR HOME: the cursor to the top of the screen |
 | Shift and Home | SHIFT and CLR HOME: the screen cleared |
 | Insert, and Page Down | INS: a space opened under the cursor |
-| F1 to F8 | F1 to F8: the game's words for them, which `KEY` changes. As it starts, F1 to F4 are `GAME 0` to `GAME 3`, F5 `SPRITE`, F6 `LOAD` (from the data recorder, which is not there: STOP), F7 `LIST` and F8 `RUN`, each with RETURN but F5. `GAME 0` is played with the Famicom's microphone (it waits on bit 2 of `$4016`, which a NES's never changes), so only its demo plays: N to `PLAY ? Y/N` |
+| F1 to F8 | F1 to F8: the game's words for them, which `KEY` changes. As it starts, F1 to F4 are `GAME 0` to `GAME 3`, F5 `SPRITE`, F6 `LOAD` (the first program on the nesp32: Saving and loading), F7 `LIST` and F8 `RUN`, each with RETURN but F5. `GAME 0` is played with the Famicom's microphone (it waits on bit 2 of `$4016`, which a NES's never changes), so only its demo plays: N to `PLAY ? Y/N` |
 | F12 | KANA: kana on, or off. In kana the keys type their kana, as on the Family keyboard |
 | Ctrl and a key | CTR and that key: a control code, as CTR and L clears the screen |
 | Alt and a key | GRPH and that key: in kana, the game's graphic for it (out of kana the game types nothing for it) |
 
 `{ | } ~` and the backquote have no key, and Tab and End none: they are
 dropped. The game types over what is under the cursor; INS opens a space.
+
+## Saving and loading
+
+`SAVE "NAME"` keeps the program as a file on the nesp32, and `LOAD
+"NAME"` has it back, after a power-off too, as the data recorder did:
+
+```
+SAVE "HELLO"
+WRITING HELLO
+OK
+NEW
+OK
+LOAD "HELLO"
+LOADING HELLO
+OK
+```
+
+`LOAD` with no name has the first program the nesp32 has, and `LOAD?
+"NAME"` checks the program in memory against the file. A SAVE of a name
+there is already a program of is in its place. Where the tape would have
+gone on looking, or a SAVE could not be written, the game says `?TP
+ERROR`: no such file, a nesp32 that does not answer, or one whose
+firmware is from before SAVE and LOAD (the keyboard works with it still).
+BG GRAPHIC's own SAVE and LOAD keep its screen the same way.
+
+The files are in `basic` on the nesp32's drive (lent to a computer from
+Setup), `HELLO.fbp` for a program and `HELLO.fbg` for a screen: the
+blocks as the game would have written them to tape. One copied there from
+a computer loads by its file's name. A program is up to 4 KB: one of 4000 bytes
+loads in 0.9 s on py65's line, and saves in about as long, with the
+nesp32's time to write its flash besides. The nesp32's protocol has the details (TAPE, in
+`docs/PROTOCOL.md`).
 
 ## Keeping a program
 
@@ -94,7 +130,12 @@ the switch to be turned ON, and waits. A flash cartridge has no such
 switch, so: type `SYSTEM`, press Escape (STOP) at its message, and then
 switch off or reset. BASIC finds the mark when it next starts, and has the
 program back (`BASIC HOT START`). The mark is used up then: `SYSTEM` again
-before the next power-off. The cartridge's memory must still be kept by
+before the next power-off.
+
+To start BASIC as from power-on, without switching off: `POKE &H9E,0`,
+and the reset button. The game's reset takes the hot start when `$9E`, in
+the console's memory, holds `$59`, and otherwise, with no `SYSTEM` mark,
+starts afresh (`4086 BYTES FREE`). After a `SYSTEM`, `POKE &H6001,0` too. The cartridge's memory must still be kept by
 its battery, or saved to the flash cartridge's card.
 
 ## How it works
@@ -132,6 +173,11 @@ these ways, and with the memory turned off by bit 4.
 | `$B958` | scanned the keyboard's 9 rows into its matrix at `$0634` | `fb_scan` copies the matrix the NMI made, and the game reads it at `$B9A1` as it did its own |
 | `$883A` | while a program ran, read the STOP key alone | `fb_stop` reads it from that matrix |
 | `$AD15` | read a controller, and left OUT0 low | `fb_pad` does the same and leaves OUT0 at mark, where the line to the nesp32 rests |
+| `$BF1F`, `$BF30` | wrote a header block and a data block to tape | `fb_save_header` and `fb_save_data` send them to the nesp32 (TAPE PUT and SAVE) |
+| `$9D9C` | SAVE's jump to the second | `fb_save_program`: the same, and `?TP ERROR` if the file was not kept |
+| `$BE53` | read a header block from tape, for LOAD | `fb_find_program` asks the nesp32 for the program of the name (TAPE FIND), and reads its header |
+| `$C56D` | BG GRAPHIC's call of the same | `fb_find_screen`: a pair of its screen, by the page |
+| `$BE24`, `$BE1C` | read a data block, or checked one against memory (LOAD?) | `fb_load_data` and `fb_check_data` read it from the nesp32 (TAPE GET) |
 
 Every exchange with the nesp32 is made in the NMI, after the game's
 handler: a hello for KBD, and then KBD KEYS_ALL, every other frame while the
@@ -150,6 +196,21 @@ repeats modelled, and one or two more come after it at the most.) Which
 key types what is read out of the game's own tables at `$BAA9` and `$BAF1`
 when it is built (`tools/gen_keys.py`).
 
+SAVE and LOAD are made where the game's tape routines were, which turn
+the NMI off for as long as they take, so their exchanges are made there,
+outside the NMI, with the zero page the link needs borrowed as the NMI's
+link borrows it. Each takes what the game's routine took and gives back
+what it gave, so the game does the rest as it did with a tape: the
+messages, the checks of the name and the type, and what is done with a
+program once it is in memory. A block goes in pieces of 120 bytes, each
+sent again until it is answered, eight times at the most; a SAVE or a FIND
+is asked again until it has ended, 2048 times at the most, which is eight
+seconds and more of the nesp32 not answering while it writes or reads its
+flash. The tape's own `LOAD` of a
+name it had not got to went on looking until STOP; here a name the nesp32
+has no file of is `?TP ERROR` at once, and so is a nesp32 that is not
+there.
+
 A KEYS with nothing typed takes about 5000 cycles of a frame, with the
 nesp32's time to answer, so the link costs a waiting BASIC about 8% of the
 console's time. With no nesp32, a hello is tried once a second, and each
@@ -161,15 +222,25 @@ one unanswered costs the frame a receiver's wait.
   on a real console, the 5000 cycles a KEYS takes with a real
   nesp32's time to answer, and the keyboard's wait to type again after it
   sleeps (nesp32's `docs/TODO.md`).
-- **SAVE and LOAD to the nesp32's flash.** The game saves to and loads
-  from a data recorder on the Famicom's expansion port, which a NES does
-  not have. Its routines are at about `$BDE7-$BFCD` (the reads of bit 1
-  of `$4016`, the writes at `$BFBA`) and are untouched. In their place: a
-  service on the nesp32 that keeps a program, by name, as a file in its
-  filing system, and the game's SAVE and LOAD (and perhaps FILES) sending
-  it the 4 KB at `$6000` in pieces, as the other services' requests do.
-  About 2 KB of `$7000-$7FFF` is still free for its code (`build/fbkbd.map`:
-  the code and its memory end at `$77BF`).
+- **The time a SAVE takes on hardware**, with the nesp32 writing its
+  flash while the console waits: not measured.
+- **GAME 2 after a STOP.** Started with F3 (`GAME 2`) it plays; stopped
+  with Escape and started again with `RUN`, after a reset to `BASIC HOT
+  START` or after a SAVE and a LOAD, it says GAME OVER within a couple of
+  seconds, most times. The program in memory is the same, so `GAME` must
+  set up something more than it that `RUN` does not; whether a Famicom
+  does the same, or the cause is here, is not known.
+- **BG GRAPHIC's SAVE and LOAD.** They go the same way, a pair of blocks
+  for each of the screen's four pages, and the nesp32's side of that is
+  tested; the game's side is not, as BG GRAPHIC is reached through
+  `SYSTEM`'s wait for the BACKUP switch, which the tests cannot turn.
+- **A list of the files.** The game has no FILES; `LOAD` of a name not
+  there could list what is (the tape's `SKIP` messages), or a key could.
+  For now the drive, lent to a computer, is the list.
+- **STOP during a SAVE or a LOAD**, which the tape's routines took. Here
+  the NMI is off, and the keys come in it.
+- About 1.3 KB of `$7000-$7FFF` is still free (`build/fbkbd.map`: the
+  code and its memory end at `$7AF8`).
 - **The cost to a running program.** While a program runs, KEYS is asked
   for every eighth frame, for STOP; a program that reads the keyboard
   (INKEY$) has it every other frame, about 8% of the console's time. The
@@ -203,7 +274,7 @@ screen is read back as text.
 
 | Path | Purpose |
 |---|---|
-| `nes/fbkbd.s` | power-on, and the code in the cartridge's memory: the NMI, the link, and the matrix |
+| `nes/fbkbd.s` | power-on, and the code in the cartridge's memory: the NMI, the link, the matrix, and SAVE and LOAD |
 | `nes/mmc1.cfg` | where the linker puts it: the PRG's second 32 KB, its code kept at `$D000` and run at `$7000` |
 | `tools/fbasic.py` | what is known of the game: its checksum, its keys' tables, and the bytes changed |
 | `tools/gen_keys.py` | `build/keys.inc`: for each character, the key that types it |

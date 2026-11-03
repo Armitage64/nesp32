@@ -28,6 +28,7 @@ _RATE = ctypes.CFUNCTYPE(None, ctypes.c_uint8)
 _WRITE = ctypes.CFUNCTYPE(ctypes.c_size_t, _u8p, ctypes.c_size_t)
 _IDLE = ctypes.CFUNCTYPE(ctypes.c_bool)
 _lib = None
+FILE_NAME = 64                  # a kept file's name, with its 0 (nesp_services.h)
 
 
 def library():
@@ -79,6 +80,22 @@ def library():
             getattr(lib, name).argtypes = [ctypes.c_void_p]
         lib.host_kbd_unread.restype = ctypes.c_size_t
         lib.host_kbd_unread.argtypes = [ctypes.c_void_p]
+        lib.host_files_absent.argtypes = [ctypes.c_void_p]
+        lib.host_drop_service.argtypes = [ctypes.c_void_p, ctypes.c_uint8]
+        lib.host_file_put.restype = ctypes.c_bool
+        lib.host_file_put.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p,
+                                      ctypes.c_size_t]
+        lib.host_file_size.restype = ctypes.c_long
+        lib.host_file_size.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        lib.host_file_get.restype = ctypes.c_size_t
+        lib.host_file_get.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p,
+                                      ctypes.c_size_t]
+        lib.host_file_count.restype = ctypes.c_uint16
+        lib.host_file_count.argtypes = [ctypes.c_void_p]
+        lib.host_file_name.argtypes = [ctypes.c_void_p, ctypes.c_uint16, ctypes.c_char_p]
+        lib.host_file_writes.restype = ctypes.c_uint32
+        lib.host_file_writes.argtypes = [ctypes.c_void_p]
+        lib.host_files_fail.argtypes = [ctypes.c_void_p, ctypes.c_bool]
         for name in ("host_scan_state", "host_wifi_state", "host_app_version"):
             getattr(lib, name).restype = ctypes.c_uint8
             getattr(lib, name).argtypes = [ctypes.c_void_p]
@@ -568,6 +585,48 @@ class Stick:
     def kbd_unread(self):
         """Keys typed that the nesp32 has not handed on."""
         return self._lib.host_kbd_unread(self._host)
+
+    def drop_service(self, svc):
+        """The nesp32 as a firmware from before a service."""
+        self._lib.host_drop_service(self._host, svc)
+
+    def files_absent(self):
+        """The nesp32 as a board that keeps no files for a ROM."""
+        self._lib.host_files_absent(self._host)
+
+    def put_file(self, name, data):
+        """A file among those a ROM keeps (TAPE), in place of any of that
+        name."""
+        data = bytes(data)
+        if not self._lib.host_file_put(self._host, name.encode(), data, len(data)):
+            raise ValueError("no room for %s" % name)
+
+    def file(self, name):
+        """A file's bytes, or None if there is none of that name."""
+        size = self._lib.host_file_size(self._host, name.encode())
+        if size < 0:
+            return None
+        out = ctypes.create_string_buffer(max(size, 1))
+        count = self._lib.host_file_get(self._host, name.encode(), out, size)
+        return out.raw[:count]
+
+    @property
+    def file_names(self):
+        """The files' names, in the order they are listed."""
+        out = ctypes.create_string_buffer(FILE_NAME)
+        names = []
+        for index in range(self._lib.host_file_count(self._host)):
+            self._lib.host_file_name(self._host, index, out)
+            names.append(out.value.decode())
+        return names
+
+    @property
+    def file_writes(self):
+        return self._lib.host_file_writes(self._host)
+
+    def fail_files(self, failing=True):
+        """Every write of a file fails from now on, or no more."""
+        self._lib.host_files_fail(self._host, failing)
 
     def add_track(self, data):
         """A file among the nesp32's tracks, after those already there. A

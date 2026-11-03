@@ -13,7 +13,7 @@ import sys
 
 import fbasic
 
-JMP, JSR = 0x4C, 0x20
+JMP, JSR = fbasic.JMP, fbasic.JSR
 MAPPER_MMC1 = 1
 FLAGS6 = MAPPER_MMC1 << 4 | 0x02 | 0x01     # battery, vertical mirroring
 PRG_BANKS = 4                               # of 16 KB
@@ -52,6 +52,8 @@ def patch(rom, labels, ours):
     start = stub - fbasic.PRG_START
     rom.write(stub, ours[start:start + len(room)])
     rom.write(fbasic.PATCH_SITES["reset_vector"][0], word(stub))
+    for site, (opcode, label) in fbasic.TAPE_SITES.items():
+        rom.write(fbasic.PATCH_SITES[site][0], bytes((opcode,)) + word(labels[label]))
 
 
 def main(argv):

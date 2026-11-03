@@ -26,9 +26,21 @@
 ;                 for leaving OUT0 at mark
 ;   $B958         the game's scan of the keyboard's matrix: fb_scan, then
 ;                 the game's own reading of the matrix at $B9A1
+;   $BF1F, $BF30  the game's writing of a header block and a data block to
+;                 tape: fb_save_header and fb_save_data, which send them to
+;                 the nesp32 (TAPE)
+;   $9D9C         SAVE's jump to the second: fb_save_program, which says
+;                 TP ERROR if it failed
+;   $BE53         the game's reading of a header block: fb_find_program,
+;                 which asks the nesp32 for the program LOAD names
+;   $C56D         BG GRAPHIC's call of the same: fb_find_screen
+;   $BE24, $BE1C  its reading of a data block, and its checking of one
+;                 against memory (LOAD?): fb_load_data and fb_check_data
 ;
-; Every exchange with the nesp32 is made in the NMI, after the game's
-; handler, so none is ever cut into by one. The keys come from KBD KEYS as
+; Every exchange for the keyboard is made in the NMI, after the game's
+; handler, so none is ever cut into by one. Those for SAVE and LOAD are made
+; where the game's tape routines were, which turn the NMI off for as long
+; as they take. The keys come from KBD KEYS as
 ; characters. Each is put into the matrix as the key that types it (with
 ; SHIFT if it is shifted) until the game has scanned it, then taken out
 ; until the game has scanned it gone, so that two of a letter are two
@@ -78,9 +90,34 @@ HELLO_RETRY     = 60            ; frames after a hello with no answer
 MISS_WAIT       = 30            ; frames after a KEYS with no answer
 STOP_EVERY      = 7             ; mask: while only STOP is asked about, every 8th frame
 
+; The game's data recorder, whose routines the nesp32's TAPE takes the place
+; of. A header block is 128 bytes at $0500, and says where the data block
+; after it goes in memory and how long it is.
+TAPE_HEADER     = $0500
+TAPE_TYPE       = TAPE_HEADER + NESP_TAPE_TYPE_AT
+TAPE_LENGTH     = TAPE_HEADER + NESP_TAPE_LENGTH_AT
+TYPE_PROGRAM    = 2
+TYPE_SCREEN     = 3
+WANTED          = $0580         ; the name LOAD asks for: 16 characters, spaces after it
+NAMED           = $EA           ; not 0 if LOAD gave one
+BLOCK_AT        = $AD           ; and $AE: where in memory the block is, as it goes
+BLOCK_END       = $AF           ; and $B0: where it ends
+SCREEN_PAGE     = $60           ; BG GRAPHIC's: the page of the screen saved or loaded,
+SCREEN_FIRST    = $24           ; from this one, a pair each
+BASIC_NMI_OFF   = $BE0E
+BASIC_NMI_ON    = $BE14
+BASIC_HEADER_BLOCK = $BDFD      ; BLOCK_AT and BLOCK_END for the header block,
+BASIC_DATA_BLOCK = $BDE7        ; and for the data block, from the header
+BASIC_ERROR     = $B237         ; the error A
+ERROR_TP        = $11           ; TP ERROR: the tape
+TAPE_FAILED     = 2             ; what the game's tape reading returns, with carry, when it fails
+PIECE           = 120           ; bytes of a block in one PUT or GET
+TAPE_TRIES      = 8             ; times a PUT or a GET is sent before it is given up
+JOB_TRIES       = 8             ; and pages of 256 for a SAVE or a FIND: each a reply, or 4.15 ms
+
 ; The link's library (nesp32's nes/lib/nesp.inc).
-NESP_RX_MASK    = $1F           ; a KEYS reply is 17 bytes at the most
-NESP_TX_MAX     = 8             ; a hello for one service
+NESP_RX_MASK    = $7F           ; a GET's reply is PIECE bytes
+NESP_TX_MAX     = 2 + PIECE     ; and a PUT's request
 NESP_TIMEOUT    = 1             ; passes of 4.15 ms waited for a reply
 NESP_NMI_ONLY   = 1
 NESP_OWN_MEMORY = 1
@@ -131,6 +168,15 @@ fb_wait:        .res 1          ; frames before the link is used again
 fb_want_keys:   .res 1          ; the game has scanned the keyboard since the last KEYS
 fb_want_stop:   .res 1          ; it has asked about STOP since then
 fb_in_pad:      .res 1          ; it is reading a controller, with OUT0 low
+fb_tape:        .res 1          ; not 0 if the nesp32 has TAPE
+fb_job:         .res 1          ; the id of the last SAVE or FIND
+fb_job_op:      .res 1          ; and its op,
+fb_job_len:     .res 1          ; and its payload's length
+fb_at:          .res 2          ; where in the pair the next piece is
+fb_piece:       .res 1          ; bytes in it
+fb_check:       .res 1          ; bit 7: a block read is checked against memory, not stored
+fb_put_failed:  .res 1          ; not 0 if the last header block did not reach the nesp32
+fb_tries:       .res 2
 
 PHASE_IDLE      = 0
 PHASE_DOWN      = 1
@@ -371,14 +417,30 @@ PHASE_UP        = 2
     rts
 .endproc
 
+; A hello for KBD and TAPE. A firmware from before TAPE has the keyboard
+; still, and SAVE and LOAD fail.
 .proc fb_say_hello
     lda #NESP_SVC_KBD
     sta nesp_request + NESP_HELLO_FIXED
-    ldy #1
+    lda #NESP_SVC_TAPE
+    sta nesp_request + NESP_HELLO_FIXED + 1
+    ldy #2
     jsr nesp_hello
     bcs @none
+    ldx #1
     cmp #NESP_ST_OK
+    beq @hello
+    cmp #NESP_ST_NO_SERVICE
     bne @none
+    lda nesp_reply + 6          ; how many it has not
+    cmp #1
+    bne @none
+    lda nesp_reply + 7
+    cmp #NESP_SVC_TAPE
+    bne @none
+    ldx #0
+@hello:
+    stx fb_tape
     lda #1
     sta fb_hello
     rts
@@ -582,5 +644,410 @@ PHASE_UP        = 2
     lda #0
     sta fb_with
     sec
+    rts
+.endproc
+
+; --- SAVE and LOAD ----------------------------------------------------------
+
+; In place of the data recorder: each pair of blocks the game writes goes to
+; the nesp32 in pieces (TAPE PUT) and is kept there as a file (SAVE), and
+; LOAD finds one there (FIND) and has it back in pieces (GET). The game's
+; own routines are left to do the rest, as they did with a tape: the
+; messages, the checks of the type and the name, and what is done with a
+; program once it is in memory.
+;
+; Each of these is where one of the game's routines was, and takes what it
+; took and gives back what it gave: a read gives carry clear and A 0, or
+; carry set and A TAPE_FAILED. The NMI is off from the start to the end,
+; as it was, so the exchanges are made here, outside it, and the zero page
+; the serial routines need is borrowed as the NMI's link borrows it.
+
+; The game's writing of a header block, from $0500.
+.proc fb_save_header
+    jsr fb_tape_begin
+    bcs @failed
+    jsr BASIC_HEADER_BLOCK
+    lda #0
+    sta fb_at
+    sta fb_at + 1
+    jsr fb_put_block
+@failed:
+    lda #0
+    rol a
+    sta fb_put_failed
+    jmp fb_tape_end
+.endproc
+
+; The game's writing of a data block: carry set if it was not kept. The
+; first of a BG GRAPHIC's pairs starts its file, and each after it goes onto
+; its end.
+.proc fb_save_data
+    jsr fb_tape_begin
+    bcs @failed
+    lda fb_put_failed
+    bne @failed
+    jsr BASIC_DATA_BLOCK
+    lda #<NESP_TAPE_HEADER
+    sta fb_at
+    lda #>NESP_TAPE_HEADER
+    sta fb_at + 1
+    jsr fb_put_block
+    bcs @failed
+    jsr fb_pair
+    sta nesp_request + 1
+    lda TAPE_LENGTH
+    sta nesp_request + 2
+    lda TAPE_LENGTH + 1
+    sta nesp_request + 3
+    ldx #NESP_TAPE_SAVE
+    ldy #4
+    jsr fb_job_call
+    bcs @failed
+    cmp #NESP_DECK_DONE
+    bne @failed
+    clc
+    bcc @end
+@failed:
+    sec
+@end:
+    php
+    jsr fb_tape_end
+    plp
+    rts
+.endproc
+
+; SAVE's jump to the writing of its data block: TP ERROR if it failed,
+; where the tape would have said nothing.
+.proc fb_save_program
+    jsr fb_save_data
+    bcs @failed
+    rts
+@failed:
+    lda #ERROR_TP
+    jmp BASIC_ERROR
+.endproc
+
+; The game's reading of a header block into $0500, for LOAD: the program of
+; the name it asked for, or with none the first the nesp32 has. Not found,
+; and LOAD says TP ERROR, where the tape would have run on.
+.proc fb_find_program
+    lda #TYPE_PROGRAM
+    ldx #0
+    beq fb_find
+.endproc
+
+; And for BG GRAPHIC's LOAD, a pair of its screen at a time.
+.proc fb_find_screen
+    lda SCREEN_PAGE
+    sec
+    sbc #SCREEN_FIRST
+    tax
+    lda #TYPE_SCREEN
+    ; fall through
+.endproc
+
+; A pair of type A, the X-th of its file.
+.proc fb_find
+    sta nesp_request + 1
+    stx nesp_request + 2
+    jsr fb_tape_begin
+    bcs @failed
+    ldy #3
+    lda NAMED
+    beq @ask
+    ldx #NESP_TAPE_NAME - 1
+@name:
+    lda WANTED,x
+    sta nesp_request + 3,x
+    dex
+    bpl @name
+    ldy #3 + NESP_TAPE_NAME
+@ask:
+    ldx #NESP_TAPE_FIND
+    jsr fb_job_call
+    bcs @failed
+    cmp #NESP_DECK_DONE
+    bne @failed
+    jsr BASIC_HEADER_BLOCK
+    lda #0
+    sta fb_at
+    sta fb_at + 1
+    sta fb_check
+    jsr fb_get_block
+    jmp fb_tape_read
+@failed:
+    sec
+    jmp fb_tape_read
+.endproc
+
+; The game's reading of a data block into memory where the header says.
+.proc fb_load_data
+    lda #0
+    beq fb_read_data
+.endproc
+
+; And its checking of one against memory, for LOAD?.
+.proc fb_check_data
+    lda #$80
+    ; fall through
+.endproc
+
+.proc fb_read_data
+    sta fb_check
+    jsr fb_tape_begin
+    bcs fb_tape_read
+    jsr BASIC_DATA_BLOCK
+    lda #<NESP_TAPE_HEADER
+    sta fb_at
+    lda #>NESP_TAPE_HEADER
+    sta fb_at + 1
+    jsr fb_get_block
+    ; fall through
+.endproc
+
+; The end of a read: carry clear and A 0, or carry set and A TAPE_FAILED.
+.proc fb_tape_read
+    php
+    jsr fb_tape_end
+    plp
+    lda #0
+    bcc :+
+    lda #TAPE_FAILED
+:   rts
+.endproc
+
+; The NMI off, as the game's tape routines had it, and the zero page the
+; link needs borrowed. Carry set if the nesp32 has no TAPE.
+.proc fb_tape_begin
+    jsr BASIC_NMI_OFF
+    ldx #BORROWED_LEN - 1
+@save:
+    lda BORROWED,x
+    sta fb_saved,x
+    dex
+    bpl @save
+    lda #OUT0_MARK
+    sta JOY1
+    lda fb_hello
+    beq @none
+    lda fb_tape
+    beq @none
+    clc
+    rts
+@none:
+    sec
+    rts
+.endproc
+
+; And the zero page given back, and the NMI on again. Preserves carry.
+.proc fb_tape_end
+    ldx #BORROWED_LEN - 1
+@restore:
+    lda fb_saved,x
+    sta BORROWED,x
+    dex
+    bpl @restore
+    jmp BASIC_NMI_ON
+.endproc
+
+; Which of its file's pairs the one in $0500 is: a BG GRAPHIC screen's by
+; its page, and a program's the only one.
+.proc fb_pair
+    lda TAPE_TYPE
+    cmp #TYPE_SCREEN
+    bne @first
+    lda SCREEN_PAGE
+    sec
+    sbc #SCREEN_FIRST
+    rts
+@first:
+    lda #0
+    rts
+.endproc
+
+; The block from BLOCK_AT to BLOCK_END to the nesp32, from fb_at in the
+; pair on. Carry set if it did not all get there.
+.proc fb_put_block
+@piece:
+    jsr fb_next_piece
+    beq @done
+    lda fb_at
+    sta nesp_request
+    lda fb_at + 1
+    sta nesp_request + 1
+    ldx #0
+@byte:
+    ldy #0
+    lda (BLOCK_AT),y
+    sta nesp_request + 2,x
+    jsr fb_step
+    inx
+    cpx fb_piece
+    bne @byte
+    inx
+    inx
+    txa
+    tay
+    ldx #NESP_TAPE_PUT
+    jsr fb_tape_call
+    bcs @failed
+    cmp #NESP_ST_OK
+    bne @failed
+    jsr fb_piece_done
+    jmp @piece
+@done:
+    clc
+    rts
+@failed:
+    sec
+    rts
+.endproc
+
+; The block from BLOCK_AT to BLOCK_END from the nesp32, from fb_at in the
+; pair it found on: into memory, or checked against it if bit 7 of
+; fb_check is set. Carry set if it did not all come, or was not the same.
+.proc fb_get_block
+@piece:
+    jsr fb_next_piece
+    beq @done
+    lda fb_at
+    sta nesp_request
+    lda fb_at + 1
+    sta nesp_request + 1
+    lda fb_piece
+    sta nesp_request + 2
+    ldx #NESP_TAPE_GET
+    ldy #3
+    jsr fb_tape_call
+    bcs @failed
+    cmp #NESP_ST_OK
+    bne @failed
+    lda nesp_reply_len
+    cmp fb_piece
+    bne @failed                 ; the file is shorter than its header says
+    ldx #0
+@byte:
+    ldy #0
+    lda nesp_reply,x
+    bit fb_check
+    bmi @check
+    sta (BLOCK_AT),y
+    bpl @next
+@check:
+    cmp (BLOCK_AT),y
+    bne @failed
+@next:
+    jsr fb_step
+    inx
+    cpx fb_piece
+    bne @byte
+    jsr fb_piece_done
+    jmp @piece
+@done:
+    clc
+    rts
+@failed:
+    sec
+    rts
+.endproc
+
+; fb_piece: PIECE bytes, or what is left of the block if that is fewer.
+; Z set if nothing is. Destroys X.
+.proc fb_next_piece
+    lda BLOCK_END
+    sec
+    sbc BLOCK_AT
+    tax
+    lda BLOCK_END + 1
+    sbc BLOCK_AT + 1
+    bne @whole
+    txa
+    cmp #PIECE
+    bcc @last
+@whole:
+    lda #PIECE
+@last:
+    sta fb_piece
+    tax                         ; Z for none
+    rts
+.endproc
+
+.proc fb_piece_done
+    lda fb_at
+    clc
+    adc fb_piece
+    sta fb_at
+    bcc :+
+    inc fb_at + 1
+:   rts
+.endproc
+
+; BLOCK_AT on a byte. Preserves X.
+.proc fb_step
+    inc BLOCK_AT
+    bne :+
+    inc BLOCK_AT + 1
+:   rts
+.endproc
+
+; A TAPE request, op X with Y bytes of payload, sent again until it is
+; answered, TAPE_TRIES times at the most: the nesp32 answers the same one
+; again with the same reply, and does nothing twice. Carry clear and A =
+; the status if a reply came.
+.proc fb_tape_call
+    lda #NESP_SVC_TAPE
+    jsr nesp_call
+    bcc @done
+    lda #TAPE_TRIES
+    sta fb_tries
+@again:
+    jsr nesp_again
+    bcc @done
+    dec fb_tries
+    bne @again
+@done:
+    rts
+.endproc
+
+; A SAVE or a FIND, op X with Y bytes of payload after its id, asked again
+; until it has ended: carry clear and A = how it ended (NESP_DECK_*), or
+; carry set if the nesp32 said nothing of it. While the nesp32 writes or
+; reads its flash, it answers nothing.
+.proc fb_job_call
+    inc fb_job
+    lda fb_job
+    sta nesp_request
+    stx fb_job_op
+    sty fb_job_len
+    lda #0
+    sta fb_tries
+    lda #JOB_TRIES
+    sta fb_tries + 1
+@ask:
+    lda #NESP_SVC_TAPE
+    ldx fb_job_op
+    ldy fb_job_len
+    jsr nesp_call
+    bcs @again
+    cmp #NESP_ST_BUSY
+    beq @again                  ; another job, ended and not yet said to be
+    cmp #NESP_ST_OK
+    bne @failed
+    lda nesp_reply + 1
+    cmp fb_job
+    bne @again
+    lda nesp_reply
+    cmp #NESP_DECK_BUSY
+    bne @ended
+@again:
+    dec fb_tries
+    bne @ask
+    dec fb_tries + 1
+    bne @ask
+@failed:
+    sec
+    rts
+@ended:
+    clc
     rts
 .endproc

@@ -748,6 +748,9 @@ const nesp_hal_t *radio_hal(void)
     hal.tracks = store_tracks;
     hal.track_size = store_track_size;
     hal.track_read = store_track_read;
+    hal.file_read = store_file_read;
+    hal.file_write = store_file_write;
+    hal.file_name = store_file_name;
     hal.show = hal_show;
     hal.watch = hal_watch;
     hal.peer_state = conn_state;

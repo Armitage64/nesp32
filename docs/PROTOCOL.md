@@ -208,6 +208,7 @@ nothing done on the nesp32.
 | `$13` | TUNER | a radio station from the Internet, as sampled sound | done |
 | `$14` | WEATHER | the weather at a zip code, as rows for the screen | done |
 | `$15` | BSKY | Bluesky: an account's posts as lines, and favorites | done |
+| `$16` | TAPE | Family BASIC's data recorder: programs and screens kept as files | done |
 | `$80`-`$FF` | | experiments and other people's | |
 
 Multi-byte numbers are low byte first, except the CRC.
@@ -1362,6 +1363,60 @@ takes replies of 63 (a shorter `REPLY_MAX` is BAD_ARG). A reply from
 Bluesky is a few dozen kilobytes, most of it what no console has a use
 for; the nesp32 reads it as it comes, and keeps only the 25 posts it lays
 out, 12 KB.
+
+### TAPE `$16`: Family BASIC's data recorder
+
+[Family BASIC](../apps/family-basic) saved to tape and loaded from it, on
+a data recorder plugged into the Famicom's keyboard. Here what it would
+have written to tape is kept as a file on the nesp32, and found again by
+its name.
+
+The game writes in pairs of blocks: a header of 128 bytes, then the data
+block it describes. The header has the file's `TYPE` at byte 0 (2 a
+program, 3 a BG GRAPHIC screen), its name at bytes 1 to 16 (ended with a 0
+if it is shorter, and spaces after that), and the data block's length,
+low byte first, at bytes `$12` and `$13`; the rest is the game's. A
+program is one pair, a screen four, one for each page of it.
+
+| `OP` | Name | Request | Reply |
+|---|---|---|---|
+| `$00` | PUT | `AT[2]`, then up to 125 bytes | status only: they are in the pair being sent, from `AT` on |
+| `$01` | SAVE | `ID`, `PAIR`, `LENGTH[2]` | `STATE`, `ID` |
+| `$02` | FIND | `ID`, `TYPE`, `PAIR`, then the 16 bytes of a name, or none | `STATE`, `ID` |
+| `$03` | GET | `AT[2]`, `COUNT` | up to `COUNT` bytes of the pair found, from `AT` on: fewer at its end |
+
+| `STATE` | Name | Meaning |
+|---|---|---|
+| `$00` | IDLE | nothing asked since the hello |
+| `$01` | BUSY | under way: ask again |
+| `$02` | DONE | |
+| `$03` | NOT_FOUND | FIND: no such file, or no such pair in it |
+| `$04` | FAILED | the file could not be written or read, or what was sent is not a pair |
+
+- **Saving.** The console PUTs the header at 0 and the data block at 128,
+  then asks SAVE, with `LENGTH` the data block's, which must be what the
+  header says, up to 4096. `PAIR` 0 is kept as a file in place of any of
+  its name and type; each pair after it goes onto that file's end.
+- **Finding.** FIND reads the `PAIR`-th pair of the file of that type and
+  name into the nesp32's memory, and GET reads it out, the header at 0.
+  With no name, it is the first file of the type the nesp32 lists. The
+  header GET gives has the type and the name asked for, whatever the file
+  had: a file renamed on a computer loads by its new name.
+- **SAVE and FIND are each both "do this" and "how is it going"**, by an
+  id, as WIKI's SEARCH is: the console sends the same request until it
+  has ended, and the nesp32 starts on one only when its id is new. The
+  writing and the reading are done once the reply has gone, and the
+  nesp32 answers nothing while it writes or reads its flash. One is under
+  way at a time: anything else asked meanwhile is BUSY, and PUT too.
+- A PUT after a FIND loses what it found, as the two share the nesp32's
+  memory for a pair, 4224 bytes.
+
+The files are in `basic` on the nesp32's drive, named for the name in the
+header and the type: `HELLO.fbp` for a program, `HELLO.fbg` for a
+screen, and `.tNNN` for any other type. A character a filing system may
+not take, or would take for another (a small letter, a kana, a sign such
+as `/`), is `%` and its two hex digits, as is a space at the start; a
+name of nothing is `%20`. A board that keeps no files answers FAILED.
 
 ## 6. Timing
 

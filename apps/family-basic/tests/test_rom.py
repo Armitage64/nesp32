@@ -28,14 +28,15 @@ def last_rows(b, count):
     return [row.strip() for row in b.rows() if row.strip()][-count:]
 
 
-def test_it_starts_and_asks_for_the_keyboard(basic):
+def test_it_starts_and_asks_for_the_keyboard_and_the_tape(basic):
     b = started(basic())
     assert "NS-HUBASIC V3.0" in b.screen()
     assert "4086 BYTES FREE" in b.screen()
     assert b.stick.kbd_on
     hello = [payload for service, op, payload in b.requests()
              if service == p.NESP_SVC_SYS and op == p.NESP_SYS_HELLO]
-    assert hello and hello[-1][1:5] == b"FBAS" and hello[-1][-1:] == bytes((p.NESP_SVC_KBD,))
+    assert hello and hello[-1][1:5] == b"FBAS" and hello[-1][-2:] == bytes((p.NESP_SVC_KBD,
+                                                                             p.NESP_SVC_TAPE))
 
 
 def test_a_line_typed_is_run(basic):

@@ -124,7 +124,7 @@ What is still to do on the hardware and the firmware is in
 
 | Part | State |
 |---|---|
-| The protocol ([`PROTOCOL.md`](PROTOCOL.md)) | version 1: frames, short frames, hello, and the services SYS, NET, RAW, PEER, DIAG, KBD, JUKE, WIKI, RADAR, TUNER, WEATHER and BSKY |
+| The protocol ([`PROTOCOL.md`](PROTOCOL.md)) | version 1: frames, short frames, hello, and the services SYS, NET, RAW, PEER, DIAG, KBD, JUKE, WIKI, RADAR, TUNER, WEATHER, BSKY and TAPE |
 | The link and services in C (`firmware/components/`) | done; tested on a computer |
 | The console's library (`nes/lib/`) | done; every read and write timed on py65 |
 | The firmware (`firmware/main/`): UART, Wi-Fi, HTTPS, the screen, the files, the USB drive, the connection to another nesp32 | working on a StickS3 and on a StickC Plus2, with the MiSTer and with a real NES ([its README](../firmware/README.md)) |
@@ -143,6 +143,7 @@ What is still to do on the hardware and the firmware is in
 | [Weather](../apps/weather), WEATHER | working on hardware, the ROM by itself |
 | [Bluesky](../apps/bluesky), BSKY | on a simulated console against the firmware's code; not yet on hardware |
 | [Family BASIC](../apps/family-basic), KBD (and its KEYS_ALL) | a prototype, working on hardware, the MiSTer and an EverDrive N8: programs typed in on a Bluetooth keyboard, every key of the Famicom's that a computer's has, edited and run, and kept over a reset (on the N8, after `SYSTEM`) |
+| [Family BASIC](../apps/family-basic)'s SAVE and LOAD, TAPE | working on hardware, the MiSTer and a real NES: a program saved, the console reset, and loaded again; BG GRAPHIC's not tried |
 
 ## What is where
 

@@ -619,11 +619,22 @@ Family key, so they do nothing.
 
 The function keys type BASIC's own shortcuts, each followed by Enter:
 **F1** to **F4** are `GAME 0` to `GAME 3`, **F5** `SPRITE` (without
-Enter), **F6** `LOAD`, **F7** `LIST` and **F8** `RUN`. **F6** waits for a
-cassette recorder the NES doesn't have: press **Esc** to stop waiting.
+Enter), **F6** `LOAD`, **F7** `LIST` and **F8** `RUN`. **F6** loads the first
+program saved on the NESP32 (see below).
 `GAME 0` is played with the Famicom controller's microphone, which the
 NES doesn't have either, so only its demo works: answer **N** to
 `PLAY ? Y/N`.
+
+**Saving and loading.** Programs are saved on the NESP32 in place of
+the Famicom's cassette recorder. `SAVE "HELLO"` saves your program, and
+`LOAD "HELLO"` loads it back, even after switching off. `LOAD` on its own
+loads the first program saved, and `LOAD? "HELLO"` checks the program you
+have against the saved one. A name that isn't there, or a save that
+couldn't be written, says `?TP ERROR`. The programs are files in the
+`basic` folder of the NESP32's USB drive (`HELLO.fbp`), so you can copy
+them to and from a computer. Saving and loading need the NESP32's
+firmware from the same release as the ROM; with older firmware the
+keyboard still works, and `SAVE` says `?TP ERROR`.
 
 **Keeping your program.** **Reset** on the console keeps your program
 (BASIC says `BASIC HOT START`). Switching off, or a flash cartridge's

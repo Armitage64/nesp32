@@ -46,7 +46,23 @@ PATCH_SITES = {
     "stub": (0xB95E, bytes((0xEA, 0xEA, 0xEA, 0xEA, 0xEA, 0xA2, 0x00, 0xA9, 0x04, 0x8D,
                             0x16, 0x40))),
     "reset_vector": (0xFFFC, bytes((0xBA, 0x80))),
+    # The data recorder: the starts of its routines, each of which turned
+    # the NMI off first (jsr $BE0E), and two of their calls.
+    "save_header": (0xBF1F, bytes((0x20, 0x0E, 0xBE))),
+    "save_data": (0xBF30, bytes((0x20, 0x0E, 0xBE))),
+    "find_program": (0xBE53, bytes((0x20, 0x0E, 0xBE))),
+    "load_data": (0xBE24, bytes((0x20, 0x0E, 0xBE))),
+    "check_data": (0xBE1C, bytes((0x20, 0x0E, 0xBE))),
+    "save_program": (0x9D9C, bytes((0x4C, 0x30, 0xBF))),     # SAVE's jmp to save_data
+    "find_screen": (0xC56D, bytes((0x20, 0x53, 0xBE))),      # BG GRAPHIC's jsr to find_program
 }
+# Where each of those goes now, in fbkbd.s: a routine's start jumps to
+# its, and a call or a jump is to its instead.
+JMP, JSR = 0x4C, 0x20
+TAPE_SITES = {"save_header": (JMP, "fb_save_header"), "save_data": (JMP, "fb_save_data"),
+              "find_program": (JMP, "fb_find_program"), "load_data": (JMP, "fb_load_data"),
+              "check_data": (JMP, "fb_check_data"), "save_program": (JMP, "fb_save_program"),
+              "find_screen": (JSR, "fb_find_screen")}
 SCAN_DECODE = 0xB9A1        # where the game reads the matrix it scanned
 
 

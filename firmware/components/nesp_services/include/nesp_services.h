@@ -238,6 +238,22 @@ typedef struct {
     /* What has been typed, oldest first: printable ASCII and NESP_KEY_*.
      * Returns how many, up to max; they are gone from the nesp32 then. */
     size_t (*kbd_read)(void *ctx, uint8_t *out, size_t max);
+    /* All may be NULL: a board that keeps no files for a ROM. The files a
+     * ROM keeps on the nesp32 (TAPE), in a directory of their own, by
+     * name: a name is a file's whole name, with no directory. Flash is
+     * slow: these are called from a service's tick only, never on the way
+     * to a reply.
+     *
+     * Bytes of a file from an offset. Returns how many came: fewer at its
+     * end, none past it or if there is no such file. */
+    size_t (*file_read)(void *ctx, const char *name, uint32_t offset, uint8_t *out, size_t len);
+    /* Write a file, in place of any of that name, or onto its end. False:
+     * it could not be written. */
+    bool (*file_write)(void *ctx, const char *name, const uint8_t *data, size_t len,
+                       bool append);
+    /* The name of the index-th file, in the order the files are listed,
+     * into out (max bytes, with its 0). False: there are not that many. */
+    bool (*file_name)(void *ctx, uint16_t index, char *out, size_t max);
 } nesp_hal_t;
 
 /* A stream of bytes over datagrams (arq.c): what a port needs to carry
@@ -345,6 +361,28 @@ typedef struct {
     const nesp_hal_t *hal;
     bool chord;         /* KEYS has left out a WITH_*, and leaves out the key after it */
 } nesp_kbd_t;
+
+/* TAPE: Family BASIC's data recorder, as files on the nesp32 (tape.c). A
+ * pair is a header block and the data block after it; a file is its pairs,
+ * one after the other, as they were sent. */
+#define NESP_TAPE_PAIR (NESP_TAPE_HEADER + NESP_TAPE_DATA_MAX)
+#define NESP_TAPE_FILE_NAME 64      /* a file's name, with its 0 */
+
+typedef struct {
+    const nesp_hal_t *hal;
+    /* The job last asked for: a SAVE or a FIND, by its id. */
+    bool asked;
+    uint8_t op;                     /* NESP_TAPE_SAVE or _FIND */
+    uint8_t id;
+    uint8_t state;                  /* NESP_DECK_* */
+    bool due;                       /* tick has yet to do it */
+    uint8_t type;
+    uint8_t pair_index;
+    bool named;                     /* FIND: the name below; otherwise the first of the type */
+    uint8_t name[NESP_TAPE_NAME];
+    uint16_t length;                /* of the pair, header and all */
+    uint8_t pair[NESP_TAPE_PAIR];   /* the pair being sent, or the one found */
+} nesp_tape_t;
 
 /* WIKI: an article from Wikipedia, as lines the console asks for by number
  * (wiki.c). */
@@ -829,7 +867,8 @@ typedef struct {
     nesp_weather_t weather;
     nesp_bsky_t bsky;
     nesp_kbd_t kbd;
-    nesp_service_t services[12];
+    nesp_tape_t tape;
+    nesp_service_t services[13];
 } nesp_stick_t;
 
 void nesp_stick_init(nesp_stick_t *stick, const nesp_hal_t *hal);
@@ -855,6 +894,7 @@ void nesp_sys_service(nesp_service_t *service, nesp_sys_t *sys, nesp_link_t *lin
 void nesp_net_service(nesp_service_t *service, nesp_net_t *net, const nesp_hal_t *hal);
 void nesp_diag_service(nesp_service_t *service, nesp_diag_t *diag, nesp_link_t *link);
 void nesp_kbd_service(nesp_service_t *service, nesp_kbd_t *kbd, const nesp_hal_t *hal);
+void nesp_tape_service(nesp_service_t *service, nesp_tape_t *tape, const nesp_hal_t *hal);
 void nesp_wiki_service(nesp_service_t *service, nesp_wiki_t *wiki, const nesp_hal_t *hal);
 void nesp_raw_service(nesp_service_t *service, nesp_raw_t *raw, nesp_link_t *link,
                       const nesp_hal_t *hal);

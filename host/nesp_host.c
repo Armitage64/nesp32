@@ -19,6 +19,7 @@
 #define HOST_SHOWN_MAX 96
 #define HOST_CONN_MAX 256
 #define HOST_TYPED_MAX 256
+#define HOST_FILES_MAX 32
 
 typedef struct {
     nesp_stick_t stick;
@@ -130,6 +131,16 @@ typedef struct {
     uint32_t kbd_forgets;
     uint8_t kbd_typed[HOST_TYPED_MAX];
     size_t kbd_typed_len;
+    /* The files a ROM keeps (TAPE), in the order they were first written,
+     * as a FAT directory lists them; the caller may add some and look. */
+    struct {
+        char name[NESP_TAPE_FILE_NAME];
+        uint8_t *data;
+        size_t len;
+    } files[HOST_FILES_MAX];
+    uint16_t file_count;
+    uint32_t file_writes;
+    bool files_failing;             /* set by the caller: a write fails */
 } host_t;
 
 static uint8_t hal_board(void *ctx)
@@ -564,6 +575,85 @@ static size_t hal_kbd_read(void *ctx, uint8_t *out, size_t max)
     return count;
 }
 
+static int find_file(const host_t *host, const char *name)
+{
+    for (uint16_t index = 0; index < host->file_count; index++) {
+        if (strcmp(host->files[index].name, name) == 0) {
+            return index;
+        }
+    }
+    return -1;
+}
+
+/* Flash, as with the tracks: never on the way to a reply. */
+static size_t hal_file_read(void *ctx, const char *name, uint32_t offset, uint8_t *out,
+                            size_t len)
+{
+    host_t *host = ctx;
+    if (host->answering) {
+        abort();
+    }
+    int index = find_file(host, name);
+    if (index < 0 || offset >= host->files[index].len) {
+        return 0;
+    }
+    if (len > host->files[index].len - offset) {
+        len = host->files[index].len - offset;
+    }
+    memcpy(out, host->files[index].data + offset, len);
+    return len;
+}
+
+static bool put_file(host_t *host, const char *name, const uint8_t *data, size_t len,
+                     bool append)
+{
+    if (strlen(name) >= NESP_TAPE_FILE_NAME) {
+        return false;
+    }
+    int index = find_file(host, name);
+    if (index < 0) {
+        if (host->file_count == HOST_FILES_MAX) {
+            return false;
+        }
+        index = host->file_count++;
+        memset(&host->files[index], 0, sizeof(host->files[index]));
+        strcpy(host->files[index].name, name);
+    }
+    size_t kept = append ? host->files[index].len : 0;
+    uint8_t *grown = realloc(host->files[index].data, kept + len + 1);
+    if (grown == NULL) {
+        return false;
+    }
+    memcpy(grown + kept, data, len);
+    host->files[index].data = grown;
+    host->files[index].len = kept + len;
+    return true;
+}
+
+static bool hal_file_write(void *ctx, const char *name, const uint8_t *data, size_t len,
+                           bool append)
+{
+    host_t *host = ctx;
+    if (host->answering) {
+        abort();
+    }
+    host->file_writes++;
+    return !host->files_failing && put_file(host, name, data, len, append);
+}
+
+static bool hal_file_name(void *ctx, uint16_t index, char *out, size_t max)
+{
+    host_t *host = ctx;
+    if (host->answering) {
+        abort();
+    }
+    if (index >= host->file_count || strlen(host->files[index].name) >= max) {
+        return false;
+    }
+    strcpy(out, host->files[index].name);
+    return true;
+}
+
 static bool hal_airport_last(void *ctx, char *code, int32_t *latitude, int32_t *longitude)
 {
     host_t *host = ctx;
@@ -705,6 +795,9 @@ host_t *host_new(void)
     host->hal.kbd_pair = hal_kbd_pair;
     host->hal.kbd_forget = hal_kbd_forget;
     host->hal.kbd_read = hal_kbd_read;
+    host->hal.file_read = hal_file_read;
+    host->hal.file_write = hal_file_write;
+    host->hal.file_name = hal_file_name;
     host->battery = 0xFF;
     host->drive = NESP_DRIVE_OFF;
     host->screen = NESP_SCREEN_FLIPPED;     /* as the firmware is built */
@@ -720,6 +813,9 @@ void host_free(host_t *host)
     nesp_link_hello(&host->stick.link, none, 0, NESP_REPLY_MIN, none);
     for (uint16_t index = 0; index < host->track_count; index++) {
         free(host->tracks[index].data);
+    }
+    for (uint16_t index = 0; index < host->file_count; index++) {
+        free(host->files[index].data);
     }
     free(host);
 }
@@ -887,6 +983,64 @@ uint32_t host_kbd_pairs(const host_t *host) { return host->kbd_pairs; }
 uint8_t host_kbd_pair_index(const host_t *host) { return host->kbd_pair_index; }
 uint32_t host_kbd_forgets(const host_t *host) { return host->kbd_forgets; }
 size_t host_kbd_unread(const host_t *host) { return host->kbd_typed_len; }
+
+/* A firmware from before a service: it is not there to be asked for. */
+void host_drop_service(host_t *host, uint8_t id)
+{
+    nesp_link_t *link = &host->stick.link;
+    for (uint8_t index = 0; index < link->count; index++) {
+        if (link->slots[index].service->id == id) {
+            memmove(&link->slots[index], &link->slots[index + 1],
+                    (link->count - index - 1u) * sizeof(link->slots[0]));
+            link->count--;
+            return;
+        }
+    }
+}
+
+void host_files_absent(host_t *host)
+{
+    host->hal.file_read = NULL;
+    host->hal.file_write = NULL;
+    host->hal.file_name = NULL;
+}
+
+bool host_file_put(host_t *host, const char *name, const uint8_t *data, size_t len)
+{
+    return put_file(host, name, data, len, false);
+}
+
+/* A file's length, or -1 if there is none of that name. */
+long host_file_size(const host_t *host, const char *name)
+{
+    int index = find_file(host, name);
+    return index < 0 ? -1 : (long)host->files[index].len;
+}
+
+size_t host_file_get(const host_t *host, const char *name, uint8_t *out, size_t max)
+{
+    int index = find_file(host, name);
+    if (index < 0) {
+        return 0;
+    }
+    size_t len = host->files[index].len < max ? host->files[index].len : max;
+    memcpy(out, host->files[index].data, len);
+    return len;
+}
+
+uint16_t host_file_count(const host_t *host) { return host->file_count; }
+
+/* The index-th file's name into out, NESP_TAPE_FILE_NAME bytes. */
+void host_file_name(const host_t *host, uint16_t index, char *out)
+{
+    out[0] = 0;
+    if (index < host->file_count) {
+        strcpy(out, host->files[index].name);
+    }
+}
+
+uint32_t host_file_writes(const host_t *host) { return host->file_writes; }
+void host_files_fail(host_t *host, bool failing) { host->files_failing = failing; }
 
 void host_set_line(host_t *host, void (*rate)(uint8_t), size_t (*write)(const uint8_t *, size_t),
                    bool (*idle)(void))

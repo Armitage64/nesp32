@@ -55,9 +55,9 @@ by the component manager on the first build (`main/idf_component.yml`).
 | Path | Purpose |
 |---|---|
 | `components/nesp_core` | frames, the CRC, the services' registry, who is asked what. No hardware; also built for the tests |
-| `components/nesp_services` | SYS, NET (Wi-Fi), DIAG, KBD, WIKI, RAW, JUKE, PEER, RADAR, TUNER and WEATHER, the text code, the MP3 decoder (`mp3.c`, which is minimp3 from `../third_party`), and `nesp_hal_t`, what they ask of the hardware |
+| `components/nesp_services` | SYS, NET (Wi-Fi), DIAG, KBD, WIKI, RAW, JUKE, PEER, RADAR, TUNER, WEATHER and TAPE, the text code, the MP3 decoder (`mp3.c`, which is minimp3 from `../third_party`), and `nesp_hal_t`, what they ask of the hardware |
 | `main/link.c` | the UART and the one task that answers the console, on a core of its own; the UART with framing off, for RAW |
-| `main/store.c` | the files: a FAT filing system in the `storage` partition, and the jukebox's tracks in it |
+| `main/store.c` | the files: a FAT filing system in the `storage` partition, the jukebox's tracks in it, and Family BASIC's programs (TAPE) in `basic` |
 | `main/usb.c` | a StickS3 as a USB drive of those files, when the setup ROM asks |
 | `main/keyboard.c` | a StickS3's Bluetooth keyboard, under KBD: on while a ROM uses it, pairing, and what is typed ("A Bluetooth keyboard", below) |
 | `components/esp_hid` | ESP-IDF's HID host, with a fix to it from ESP-IDF's master that the keyboard needs ([its README](components/esp_hid/README.md)) |
