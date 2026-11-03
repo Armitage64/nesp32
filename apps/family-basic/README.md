@@ -12,7 +12,8 @@ service), and the game reads what is typed on it as if from its own.
 N8: a hello world program typed in on a Bluetooth keyboard through a
 nesp32, and run; the characters, signs and shifted signs typed as
 themselves, small letters as capitals; Backspace, the arrows, editing a
-line on the screen, Page Up (CLR HOME) and Page Down (INS); a program
+line on the screen, Page Up (CLR HOME) and Page Down (INS); programs
+listed and run, and Escape (STOP) breaking one; a program
 kept over the reset button on the MiSTer, and over a reset to the N8's
 menu after `SYSTEM` (Keeping a program). The N8 started nothing of the
 first builds, a grey screen; it starts this one, which no longer counts on
@@ -60,7 +61,7 @@ is printed on them, in capitals: the game has small letters only in kana.
 | Enter | RETURN |
 | Backspace | DEL |
 | the arrows | the cursor keys |
-| Escape | STOP |
+| Escape | STOP: it stops a running program, and at the prompt leaves the line for a new one, as STOP does |
 | Page Up | CLR HOME (SHIFT and CLR HOME, which clears the screen, is not yet to be had) |
 | Page Down | INS |
 
@@ -135,8 +136,7 @@ one unanswered costs the frame a receiver's wait.
 
 ## Not done
 
-- **More on hardware.** Not yet tried: Escape (STOP) on a running
-  program, a long program typed fast, a key held down (KBD repeats 25
+- **More on hardware.** Not yet tried: a long program typed fast, a key held down (KBD repeats 25
   times a second and the ROM types 15, so the repeats may run on after the
   key is let go), and BASIC with no nesp32. Not yet measured: the time to
   type a character on a real console, the 5000 cycles a KEYS takes with a real
