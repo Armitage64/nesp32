@@ -404,7 +404,8 @@ main_wait:
 .endproc
 
 ; What is typed on the Bluetooth keyboard, every other frame, as the
-; controller's buttons (nesp_key_queue), and every sixteenth how it stands,
+; controller's buttons (nesp_key_queue), or as text on the keyboard on the
+; screen (keys_typed), and every sixteenth how it stands,
 ; for the badge: on the screens whose link is not busy with something
 ; else, and with a Stick whose hello had KBD. The keyboard's own screen
 ; asks for both itself (kbd_ask).
@@ -446,7 +447,17 @@ main_wait:
     cpx nesp_reply
     bcs @done
     lda nesp_reply + 1,x
+    ldy state
+    cpy #STATE_KEYS
+    bne @button
+    jsr keys_typed
+    lda state                   ; Enter has sent the password: the rest is dropped
+    cmp #STATE_KEYS
+    bne @done
+    beq @next
+@button:
     jsr nesp_key_queue
+@next:
     inc key_at
     bne @key
 @done:
