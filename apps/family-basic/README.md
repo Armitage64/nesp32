@@ -8,13 +8,15 @@ service), and the game reads what is typed on it as if from its own.
 
 ## Status
 
-**A prototype, working on the MiSTer**: a hello world program typed in on
-a Bluetooth keyboard through a nesp32, and run; the characters, signs and
-shifted signs typed as themselves, small letters as capitals; and a
-program kept over the reset button. On an EverDrive N8 the build before
-this one did not start at all, a grey screen with the nesp32 on or off;
-this one starts as a board might have the MMC1 at power-on (How it
-works), and has not yet been tried there. On py65, against nesp32's
+**A prototype, working on hardware**, on the MiSTer and on an EverDrive
+N8: a hello world program typed in on a Bluetooth keyboard through a
+nesp32, and run; the characters, signs and shifted signs typed as
+themselves, small letters as capitals; Backspace, the arrows, editing a
+line on the screen, Page Up (CLR HOME) and Page Down (INS); a program
+kept over the reset button on the MiSTer, and over a reset to the N8's
+menu after `SYSTEM` (Keeping a program). The N8 started nothing of the
+first builds, a grey screen; it starts this one, which no longer counts on
+how the MMC1 comes up at power-on (How it works). On py65, against nesp32's
 own firmware code over a line that models every bit, with the test as the
 keyboard: BASIC starts, lines typed are run, a program typed in lists and
 runs, every sign the keyboard has comes out as itself, Backspace and the
@@ -27,7 +29,7 @@ keyboard, and with no nesp32 BASIC still starts.
 | Characters typed on a Bluetooth keyboard, as keys of the Family keyboard | done for every character it has a key for, Enter, Backspace, the arrows and Escape; tested on py65 |
 | BASIC's memory, `$6000-$6FFF`, kept apart from the keyboard's code at `$7000` | done; tested on py65 with BASIC's memory full |
 | The nesp32's own screen: "NES: Family BASIC" for the hello's `FBAS` | done in `firmware/main/main.cpp`; not yet built |
-| Real hardware: an MMC1 with 8 KB of battery-backed memory, a StickS3 and a keyboard | working on the MiSTer; on an EverDrive N8, a grey screen from the build before this one, and this one not yet tried |
+| Real hardware: an MMC1 with 8 KB of battery-backed memory, a StickS3 and a keyboard | working on the MiSTer and on an EverDrive N8 |
 | The Family keyboard's keys that KBD does not send | not started (see Not done) |
 | SAVE and LOAD to the nesp32's flash, in place of the data recorder | not started (see Not done) |
 
@@ -99,10 +101,9 @@ ours, and resets the MMC1 (the last 16 KB at `$C000`) and goes to `boot`.
 The reset button goes the same way. Before the cartridge's memory is
 used, `boot` clears bit 4 of the PRG register, which turns an MMC1B's
 memory off, and of both CHR registers, which turns an SNROM board's off,
-as a flash cartridge may copy. The build before this one set the CHR
-registers only after the copy, and a board that came up with their bit 4
-set would have had no code at `$7000`; that is the likeliest cause of the
-N8's grey screen. The tests start the ROM with the registers each of
+as a flash cartridge may copy. The first builds set the CHR registers
+only after the copy, and a board that came up with their bit 4 set had no
+code at `$7000`; the N8 gave them a grey screen, and starts this one. The tests start the ROM with the registers each of
 these ways, and with the memory turned off by bit 4.
 
 `tools/build_rom.py` changes these of the game's bytes
@@ -134,14 +135,11 @@ one unanswered costs the frame a receiver's wait.
 
 ## Not done
 
-- **More on hardware.** This build on the EverDrive N8, which did not
-  start the last. On the MiSTer, not yet tried: Backspace, the arrows,
-  Page Up and Page Down, Escape (STOP) on a running program, a long
-  program typed fast, a key held down (KBD repeats 25 times a second and
-  the ROM types 15, so the repeats may run on after the key is let go),
-  the program kept over a power-off, and BASIC with no nesp32. Not yet
-  measured: the time to type
-  a character on a real console, the 5000 cycles a KEYS takes with a real
+- **More on hardware.** Not yet tried: Escape (STOP) on a running
+  program, a long program typed fast, a key held down (KBD repeats 25
+  times a second and the ROM types 15, so the repeats may run on after the
+  key is let go), and BASIC with no nesp32. Not yet measured: the time to
+  type a character on a real console, the 5000 cycles a KEYS takes with a real
   nesp32's time to answer, and the keyboard's wait to type again after it
   sleeps (nesp32's `docs/TODO.md`).
 - **The keys KBD does not send.** F1 to F8 (which type BASIC's own
