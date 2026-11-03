@@ -14,7 +14,9 @@ nesp32, and run; the characters, signs and shifted signs typed as
 themselves, small letters as capitals; Backspace, the arrows, editing a
 line on the screen, Page Up (CLR HOME) and Page Down (INS); programs
 listed and run, and Escape (STOP) breaking one; a long line typed fast,
-every key in its place; BASIC with no nesp32; a program
+every key in its place; a key held down repeating at the game's pace and
+stopping when let go (How it works), with the firmware that paces the
+repeats; BASIC with no nesp32; a program
 kept over the reset button on the MiSTer, and over a reset to the N8's
 menu after `SYSTEM` (Keeping a program). The N8 started nothing of the
 first builds, a grey screen; it starts this one, which no longer counts on
@@ -30,7 +32,7 @@ keyboard, and with no nesp32 BASIC still starts.
 | The ROM (`build/fbasic.nes`): the game on an MMC1, the keyboard's code in the cartridge's memory | done; tested on py65 against nesp32's KBD |
 | Characters typed on a Bluetooth keyboard, as keys of the Family keyboard | done for every character it has a key for, Enter, Backspace, the arrows and Escape; tested on py65 |
 | BASIC's memory, `$6000-$6FFF`, kept apart from the keyboard's code at `$7000` | done; tested on py65 with BASIC's memory full |
-| The nesp32's own screen: "NES: Family BASIC" for the hello's `FBAS` | done in `firmware/main/main.cpp`; not yet built |
+| The nesp32's own screen: "NES: Family BASIC" for the hello's `FBAS` | done in `firmware/main/main.cpp`; in the firmware flashed for the held key, and not yet looked for on the screen |
 | Real hardware: an MMC1 with 8 KB of battery-backed memory, a StickS3 and a keyboard | working on the MiSTer and on an EverDrive N8 |
 | The Family keyboard's keys that KBD does not send | not started (see Not done) |
 | SAVE and LOAD to the nesp32's flash, in place of the data recorder | not started (see Not done) |
@@ -130,7 +132,10 @@ has scanned it twice and a frame has passed, then up until it has scanned
 it twice more. That is about four frames a character, 15 a second. A key
 held down on the keyboard repeats faster than that, 25 times a second,
 but the nesp32 keeps a repeat only once everything before it has been
-taken, so it repeats as fast as the game types it. Which
+taken, so it repeats as fast as the game types it. (Before the firmware
+did that, a key held down on hardware ran on after it was let go, with
+the repeats queued up; the tests hold a key for 3 s, with the firmware's
+repeats modelled, and one or two more come after it at the most.) Which
 key types what is read out of the game's own tables at `$BAA9` and `$BAF1`
 when it is built (`tools/gen_keys.py`).
 
@@ -141,17 +146,6 @@ one unanswered costs the frame a receiver's wait.
 
 ## Not done
 
-- **A key held down, on hardware.** It ran on after it was let go: the
-  firmware repeated it 25 times a second, the game takes 15, and the
-  repeats queued up, in the ROM and on the nesp32 (Backspace worst, as
-  BASIC takes longer over each DEL). Now the ROM asks for KEYS only once
-  it has typed the last reply's, and the firmware keeps a repeat only
-  once everything before it has been taken, so a key repeats at the
-  game's pace and stops when it is let go; on py65, with the firmware's
-  repeats modelled, one or two more come after it at the most. Not yet
-  tried on hardware, which needs the firmware with the change
-  (`firmware/main/keyboard.c`) as well as the ROM: with the firmware before
-  it, the run-on is shorter but still there.
 - **More on hardware.** Not yet measured: the time to type a character
   on a real console, the 5000 cycles a KEYS takes with a real
   nesp32's time to answer, and the keyboard's wait to type again after it
