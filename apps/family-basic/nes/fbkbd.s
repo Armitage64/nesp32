@@ -68,7 +68,7 @@ SHIFT_BIT       = $08
 SCANS_DOWN      = 2
 SCANS_UP        = 2
 FRAMES_DOWN     = 1             ; frames at the least, after the one it went down in
-QUEUE           = 32            ; characters from KEYS not yet put in the matrix
+QUEUE           = 16            ; characters from KEYS not yet put in the matrix: a reply's
 HELLO_RETRY     = 60            ; frames after a hello with no answer
 MISS_WAIT       = 30            ; frames after a KEYS with no answer
 STOP_EVERY      = 7             ; mask: while only STOP is asked about, every 8th frame
@@ -112,6 +112,7 @@ fb_saved:       .res BORROWED_LEN
 fb_matrix:      .res ROWS       ; what fb_scan gives the game
 fb_changes:     .res 1          ; counts the NMI's changes to fb_matrix
 fb_queue:       .res QUEUE
+.assert QUEUE >= NESP_KBD_KEYS_MAX && (QUEUE & (QUEUE - 1)) = 0, error, "QUEUE holds a reply, and is a power of two"
 fb_head:        .res 1          ; the next character out of the queue
 fb_count:       .res 1          ; how many are in it
 fb_phase:       .res 1          ; PHASE_*
@@ -380,12 +381,13 @@ PHASE_UP        = 2
     rts
 .endproc
 
-; KEYS, when the game has asked about the keyboard and there is room for a
-; reply's worth.
+; KEYS, when the game has asked about the keyboard and has had every key
+; of the last reply. What is typed meanwhile waits on the nesp32, which
+; keeps a key held down from repeating while anything waits: so a key's
+; repeats come as fast as the game takes them, and stop when it is let go.
 .proc fb_ask_keys
     lda fb_count
-    cmp #QUEUE - NESP_KBD_KEYS_MAX + 1
-    bcs @not_now
+    bne @not_now
     lda fb_want_keys
     beq @stop_only
     lda fb_frame

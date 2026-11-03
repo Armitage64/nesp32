@@ -254,7 +254,10 @@ report map would have to be read for where the keys are.
 A key held down is typed again after 500 ms and every 40 ms from then
 on, as a computer does it, since a keyboard says only which keys are down
 (an esp_timer, `REPEAT_DELAY_MS` and `REPEAT_EVERY_MS`). Only the last key
-to go down repeats, and Enter and Escape never do. Besides printable
+to go down repeats, and Enter and Escape never do. A repeat is kept only
+once the console has taken everything typed before it, so a ROM that
+takes keys more slowly than they repeat ([Family BASIC](../apps/family-basic)'s,
+15 a second) is not left typing a run of them after the key is let go. Besides printable
 ASCII, KBD sends Backspace, Tab, Enter, Escape, the arrows, and Page Up
 and Page Down, and Ctrl with Enter or Escape as Start and Select, which
 the cartridge's programs take as the controller's.

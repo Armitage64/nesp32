@@ -721,8 +721,10 @@ hears characters.
   `$13` Left, `$14` Right, `$15` Page Up, `$16` Page Down, `$17` Start
   (Ctrl and Enter), `$18` Select (Ctrl and Escape), `$1B` Escape. A key
   held down comes again after half a second, and 25 times a second from
-  then on, as on a computer; Enter and Escape do not, nor Start and
-  Select. Any other key pressed with Ctrl, Alt or the Windows or Command
+  then on, as on a computer, but only when every character before it has
+  been taken by a KEYS: a ROM that asks for KEYS only when it has done
+  with the last reply's has the repeats at its own pace. Enter and Escape
+  do not repeat, nor Start and Select. Any other key pressed with Ctrl, Alt or the Windows or Command
   key is none.
 - A KEYS reply has up to 16 characters, fewer if `REPLY_MAX` is smaller;
   more typed come in the next. They are taken off the nesp32 when they

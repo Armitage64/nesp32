@@ -33,7 +33,10 @@
  * typed again after REPEAT_DELAY_MS, and every REPEAT_EVERY_MS from then
  * on, as a computer does: the keyboard says only which keys are down. The
  * last key to go down is the one repeated, and Enter and Escape never are,
- * since each is an order to a ROM. What is typed goes to the log only at
+ * since each is an order to a ROM. A repeat is kept only once KBD has taken
+ * everything kept before it, so that a ROM slower than the repeats (Family
+ * BASIC's types 15 keys a second) is not left with a run of them to type
+ * after the key is let go. What is typed goes to the log only at
  * the debug level, as it may be a password.
  */
 #include "keyboard.h"
@@ -222,17 +225,21 @@ static bool repeats(uint8_t usage, uint8_t modifiers)
     return plain != '\n' && plain != '\x1b';
 }
 
-/* The key held down is typed again, if it still is, and again after
- * REPEAT_EVERY_MS. In esp_timer's task. */
+/* The key held down is typed again, if it still is and what was typed
+ * before has been taken, and the next repeat is after REPEAT_EVERY_MS. In
+ * esp_timer's task. */
 static void repeat(void *arg)
 {
     (void)arg;
     portENTER_CRITICAL(&lock);
     uint8_t usage = repeating;
     uint8_t modifiers = repeat_modifiers;
+    bool waiting = held_count != 0;
     portEXIT_CRITICAL(&lock);
     if (usage != 0) {
-        pressed(usage, modifiers);
+        if (!waiting) {
+            pressed(usage, modifiers);
+        }
         esp_timer_start_once(repeater, (uint64_t)REPEAT_EVERY_MS * 1000);
     }
 }

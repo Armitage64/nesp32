@@ -16,6 +16,9 @@ from wire import link
 import fbasic
 
 PALETTE = 0x3F00
+FRAME_MS = 1000 * 29780.5 / p.NESP_CPU_HZ
+REPEAT_DELAY_MS = 500           # the firmware's (firmware/main/keyboard.c)
+REPEAT_EVERY_MS = 40
 FONT = {code: char for char, code in fbasic.CODES_NOT_ASCII.items()}
 SCREEN_ROWS = 30
 
@@ -125,6 +128,25 @@ class Basic:
                                 frames=60 + frames_each * self.waiting)
         self.waiting = 0
         return frames
+
+    def hold(self, key, ms, paced=True):
+        """Hold a key down for this long, as the nesp32's firmware repeats
+        it (firmware/main/keyboard.c): once at once, then after
+        REPEAT_DELAY_MS and every REPEAT_EVERY_MS, each repeat kept only if
+        everything typed before it has been taken (unless not paced, as
+        the firmware was before)."""
+        if isinstance(key, str):
+            key = key.encode()
+        self.stick.kbd_type(key)
+        held = 0.0
+        due = REPEAT_DELAY_MS
+        while held < ms:
+            self.run(1)
+            held += FRAME_MS
+            while due <= held:
+                if not paced or self.stick.kbd_unread == 0:
+                    self.stick.kbd_type(key)
+                due += REPEAT_EVERY_MS
 
     def enter(self, line, frames=10):
         """Type a line and Enter, and let the game act on it."""

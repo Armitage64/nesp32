@@ -82,6 +82,35 @@ def test_backspace_deletes_and_the_arrows_move(basic):
     assert last_rows(b, 3) == ["PRINT 1+3", "4", "OK"]
 
 
+def typed_line(b):
+    """What is on the screen under BASIC's first OK: the line being typed."""
+    rows = [row.strip() for row in b.rows()]
+    return "".join(rows[rows.index("OK") + 1:])
+
+
+def test_a_key_held_down_repeats_at_the_game_s_pace_and_stops_when_let_go(basic):
+    b = started(basic())
+    b.hold("x", 3000)
+    let_go = typed_line(b)
+    b.run(60)
+    # 2.5 s of repeats, at the 15 a second the game takes, and no more than
+    # one or two after the key is let go: the one the nesp32 kept, and the
+    # one in the matrix.
+    assert len(let_go) >= 30 and set(let_go) == {"X"}
+    assert len(typed_line(b)) - len(let_go) <= 2
+
+
+def test_backspace_held_down_stops_when_let_go(basic):
+    b = started(basic())
+    b.type("10 rem " + "abcdefghij" * 4)
+    b.typed_out()
+    b.hold(chr(p.NESP_KEY_BACKSPACE), 3000)
+    let_go = typed_line(b)
+    b.run(60)
+    assert len(let_go) < 47 - 20
+    assert len(let_go) - len(typed_line(b)) <= 2
+
+
 def test_escape_is_stop(basic):
     b = started(basic())
     b.enter("10 goto 10")

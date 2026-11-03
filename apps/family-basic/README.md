@@ -13,7 +13,8 @@ N8: a hello world program typed in on a Bluetooth keyboard through a
 nesp32, and run; the characters, signs and shifted signs typed as
 themselves, small letters as capitals; Backspace, the arrows, editing a
 line on the screen, Page Up (CLR HOME) and Page Down (INS); programs
-listed and run, and Escape (STOP) breaking one; a program
+listed and run, and Escape (STOP) breaking one; a long line typed fast,
+every key in its place; BASIC with no nesp32; a program
 kept over the reset button on the MiSTer, and over a reset to the N8's
 menu after `SYSTEM` (Keeping a program). The N8 started nothing of the
 first builds, a grey screen; it starts this one, which no longer counts on
@@ -122,10 +123,14 @@ these ways, and with the memory turned off by bit 4.
 Every exchange with the nesp32 is made in the NMI, after the game's
 handler: a hello for KBD, and then KBD KEYS, every other frame while the
 game is waiting for a key and every eighth while a program only looks for
-STOP. The nesp32 sends characters; each is put into the matrix as the key
+STOP, and only once the game has had every key of the last reply. The
+nesp32 sends characters; each is put into the matrix as the key
 that types it, with SHIFT if it is shifted, and kept down until the game
 has scanned it twice and a frame has passed, then up until it has scanned
-it twice more. That is about four frames a character, 15 a second. Which
+it twice more. That is about four frames a character, 15 a second. A key
+held down on the keyboard repeats faster than that, 25 times a second,
+but the nesp32 keeps a repeat only once everything before it has been
+taken, so it repeats as fast as the game types it. Which
 key types what is read out of the game's own tables at `$BAA9` and `$BAF1`
 when it is built (`tools/gen_keys.py`).
 
@@ -136,10 +141,19 @@ one unanswered costs the frame a receiver's wait.
 
 ## Not done
 
-- **More on hardware.** Not yet tried: a long program typed fast, a key held down (KBD repeats 25
-  times a second and the ROM types 15, so the repeats may run on after the
-  key is let go), and BASIC with no nesp32. Not yet measured: the time to
-  type a character on a real console, the 5000 cycles a KEYS takes with a real
+- **A key held down, on hardware.** It ran on after it was let go: the
+  firmware repeated it 25 times a second, the game takes 15, and the
+  repeats queued up, in the ROM and on the nesp32 (Backspace worst, as
+  BASIC takes longer over each DEL). Now the ROM asks for KEYS only once
+  it has typed the last reply's, and the firmware keeps a repeat only
+  once everything before it has been taken, so a key repeats at the
+  game's pace and stops when it is let go; on py65, with the firmware's
+  repeats modelled, one or two more come after it at the most. Not yet
+  tried on hardware, which needs the firmware with the change
+  (`firmware/main/keyboard.c`) as well as the ROM: with the firmware before
+  it, the run-on is shorter but still there.
+- **More on hardware.** Not yet measured: the time to type a character
+  on a real console, the 5000 cycles a KEYS takes with a real
   nesp32's time to answer, and the keyboard's wait to type again after it
   sleeps (nesp32's `docs/TODO.md`).
 - **The keys KBD does not send.** F1 to F8 (which type BASIC's own
