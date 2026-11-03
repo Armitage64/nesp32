@@ -965,6 +965,61 @@ def test_the_keyboards_arrows_enter_and_escape_are_the_d_pad_a_and_b(setup):
     assert s.stick.kbd_unread == 0
 
 
+def kbd_typing(s, typed):
+    """Type on the Bluetooth keyboard, a reply's worth at a time."""
+    for start in range(0, len(typed), p.NESP_KBD_KEYS_MAX):
+        s.stick.kbd_type(typed[start:start + p.NESP_KBD_KEYS_MAX])
+        s.c.run_until(lambda: s.stick.kbd_unread == 0, 30)
+
+
+def test_a_password_is_typed_on_the_bluetooth_keyboard(setup):
+    s = setup()
+    s.scan(NETWORKS)
+    s.choose(0)
+    s.wait_for(STATE_KEYS)
+    s.c.run_until(lambda: s.stick.kbd_on, 60)
+    backspace, enter = bytes((p.NESP_KEY_BACKSPACE,)), bytes((p.NESP_KEY_ENTER,))
+    kbd_typing(s, b"Tr0ub4dor & 4" + backspace + b"3")
+    s.settle(4)
+    assert s.field == "Tr0ub4dor & 3_"
+    kbd_typing(s, enter)
+    s.wait_for(STATE_JOINING)
+    assert (s.stick.joined_name, s.stick.joined_password) == (b"Home Network", b"Tr0ub4dor & 3")
+
+
+def test_a_hidden_network_and_its_password_are_typed_at_once(setup):
+    """The name, Enter, and the password, in one reply: the password goes to
+    the password's keyboard, and what comes after its Enter to none."""
+    name, password = PRINTABLE[1:p.NESP_NAME_MAX + 1], PRINTABLE[-p.NESP_PASSWORD_MAX:]
+    s = setup()
+    s.scan(NETWORKS)
+    s.choose(len(NETWORKS))             # OTHER NETWORK...
+    s.wait_for(STATE_KEYS)
+    s.c.run_until(lambda: s.stick.kbd_on, 60)
+    enter = bytes((p.NESP_KEY_ENTER,))
+    typed = name.encode() + b"!" + enter + password.encode() + b"!" + enter + b"x"
+    kbd_typing(s, typed)                # one more than fits is not taken, twice
+    s.wait_for(STATE_JOINING)
+    assert (s.stick.joined_name, s.stick.joined_password) == (name.encode(), password.encode())
+
+
+def test_backspace_deletes_and_escape_goes_back(setup):
+    s = setup()
+    s.scan(NETWORKS)
+    s.choose(0)
+    s.wait_for(STATE_KEYS)
+    s.c.run_until(lambda: s.stick.kbd_on, 60)
+    backspace, escape = p.NESP_KEY_BACKSPACE, p.NESP_KEY_ESCAPE
+    kbd_typing(s, b"ab" + bytes((backspace,) * 3))
+    s.settle(4)
+    assert s.state == STATE_KEYS and s.field == "_"     # Backspace leaves nothing
+    kbd_typing(s, b"a" + bytes((escape,)))
+    s.settle(4)
+    assert s.state == STATE_KEYS and s.field == "_"     # Escape is B: a deletion
+    kbd_typing(s, bytes((escape,)))
+    s.wait_for(STATE_LIST)                              # and then back
+
+
 def badge(s):
     """The Bluetooth keyboard's badge: its colour, or None while hidden."""
     shown = [s.c.oam[4 * sprite] < 0xEF for sprite in range(1, 5)]

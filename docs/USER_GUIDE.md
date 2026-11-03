@@ -260,10 +260,10 @@ If it fails you'll see **WRONG PASSWORD**, **NETWORK NOT FOUND**,
 **COULD NOT JOIN** or **CANNOT JOIN THAT KIND** (a type of network
 security it can't use). Press **A** to try again or **B** to go back.
 
-> **Tip:** a Bluetooth keyboard doesn't type letters straight into the
-> password. On this screen its arrow keys move around the on-screen
-> keyboard and **Enter** types the highlighted key, just like the
-> controller.
+> **Tip:** with a Bluetooth keyboard paired, just type the password (or a
+> hidden network's name) on it. **Backspace** deletes and **Enter** joins,
+> as Start does. Its arrow keys still move around the on-screen keyboard,
+> and **Esc** is **B**.
 
 ### Testing the connection to the console
 
@@ -405,12 +405,12 @@ Hold **Ctrl**, tap **Enter** or **Esc**, then let go of Ctrl. A key held
 down repeats, as on a computer (except Enter and Esc).
 
 Where a program has a box to type into, the keyboard types into it
-directly: NESpedia's search, Weather's zip code and NES Radar's airport
-code. There, **Enter** sends what you typed and **Backspace** deletes.
+directly: NESpedia's search, Weather's zip code, NES Radar's airport
+code, and Setup's Wi-Fi password and network name. There, **Enter** sends
+what you typed and **Backspace** deletes.
 
-Two screens don't take typing directly. On the **Wi-Fi password** screen
-and Bluesky's **handle form**, the keyboard works like the controller
-instead: arrows move, Enter picks.
+Bluesky's **handle form** doesn't take typing directly. There the
+keyboard works like the controller instead: arrows move, Enter picks.
 
 ### While sound is playing
 

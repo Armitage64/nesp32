@@ -12,6 +12,10 @@
 ; go from the one to the other. Select is the cartridge's menu, as on every
 ; screen, and so changes no set, as it once did.
 ;
+; On a Bluetooth keyboard the text is typed as on a computer's: a printable
+; character is typed, Backspace deletes, and Enter is done (keys_typed). Its
+; arrows still move the cursor, and Escape is B.
+;
 ; It is nes-wiki's (nes/keyboard.inc), with every printable character, a
 ; field longer than the screen is wide, and a sprite under the cursor's key
 ; in place of a palette. A password may be 63 characters; the field shows
@@ -46,6 +50,7 @@ keys_dirty: .res 1
 .segment "RODATA"
 name_screen:
     text  HEADING_ROW, LEFT, "NAME OF THE NETWORK"
+    box   FIELD_ROW
     label SPACE_ROW, SPACE_COLUMN, "SPACE"
     text  HELP_ROW, LEFT, "A : TYPE   B : DELETE"
     text  HELP_ROW + 1, LEFT, "START : DONE"
@@ -53,6 +58,7 @@ name_screen:
 
 password_screen:
     text  HEADING_ROW, LEFT, "PASSWORD FOR"
+    box   FIELD_ROW
     label SPACE_ROW, SPACE_COLUMN, "SPACE"
     text  HELP_ROW, LEFT, "A : TYPE   B : DELETE"
     text  HELP_ROW + 1, LEFT, "START : JOIN"
@@ -237,6 +243,39 @@ row_first:
 .endproc
 .assert KEY_STEP = 2, error, "the cursor counts on keys 16 pixels apart"
 
+; One character from the Bluetooth keyboard, A (poll_keys). A printable one
+; is typed, Backspace deletes, and Enter is done, as Start is; the rest are
+; the controller's buttons (nesp_key_queue), so Escape is B. Enter can open
+; the password's keyboard, or leave this screen: poll_keys gives the rest of
+; what was typed to whichever screen is up then.
+.proc keys_typed
+    cmp #NESP_KEY_BACKSPACE
+    bne @enter
+    lda keys_len
+    beq @done                   ; only B and Escape go back
+    dec keys_len
+    lda keys_dirty
+    ora #DIRTY_FIELD
+    sta keys_dirty
+@done:
+    rts
+@enter:
+    cmp #NESP_KEY_ENTER
+    bne @char
+    jmp keys_done
+@char:
+    cmp #' '
+    bcc @button
+    cmp #$7F
+    bcs @done
+    ldy keys_len
+    cpy keys_max
+    bcs @done
+    bcc type_char
+@button:
+    jmp nesp_key_queue
+.endproc
+
 ; Add the cursor's key to the text, if there is room. An empty key types
 ; nothing. The set key brings up the next set.
 .proc type_key
@@ -252,7 +291,7 @@ row_first:
     bcs @done
     lda #' '
     cpx #KEY_ROWS
-    bcs @store                  ; the space bar
+    bcs type_char               ; the space bar
     lda row_first,x
     clc
     adc cur_col
@@ -261,13 +300,18 @@ row_first:
     lda key_chars,x
     cmp #' '
     beq @done
-@store:
+    bne type_char
+@done:
+    rts
+.endproc
+
+; A, typed at Y = keys_len, which is short of keys_max.
+.proc type_char
     sta (keys_ptr),y
     inc keys_len
     lda keys_dirty
     ora #DIRTY_FIELD
     sta keys_dirty
-@done:
     rts
 .endproc
 
