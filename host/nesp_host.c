@@ -1396,6 +1396,21 @@ void host_fetch_icy(host_t *host, uint32_t id, uint32_t metaint)
     }
 }
 
+/* Whether the last fetch's sink hears every status, and its reply's
+ * status and headers, before any of its body. */
+bool host_fetch_wants_head(const host_t *host)
+{
+    return host->sink != NULL && host->sink->head != NULL;
+}
+
+void host_fetch_head(host_t *host, uint32_t id, uint16_t status, const char *type,
+                     uint32_t length)
+{
+    if (host->sink != NULL && host->sink->head != NULL) {
+        host->sink->head(host->sink->ctx, id, status, type, length);
+    }
+}
+
 void host_fetch_done(host_t *host, uint32_t id, bool ok, const char *why)
 {
     if (host->sink != NULL) {

@@ -17,6 +17,10 @@
  *
  * A sink that wants a stream's titles (its `icy`) has them asked for, and
  * is told the reply's icy-metaint before its body.
+ *
+ * A sink with a `head` (HTTP's) hears every reply, whatever its status, and
+ * is told the status, Content-Type and Content-Length before the body. For
+ * any other, a status but 200 is a fetch that failed.
  */
 #include "fetch.h"
 
@@ -102,23 +106,33 @@ static void failed(const order_t *order, uint32_t began, const char *why)
     }
 }
 
-/* The reply's headers come only to an event handler: icy-metaint, of the
- * last answer when the fetch was sent on. */
+/* What the reply's headers say that a sink is told of. */
+typedef struct {
+    uint32_t metaint;
+    char type[NESP_HTTP_TEXT_MAX + 1];
+} heard_t;
+
+/* The reply's headers come only to an event handler: of the last answer
+ * when the fetch was sent on. */
 static esp_err_t on_event(esp_http_client_event_t *event)
 {
-    uint32_t *metaint = event->user_data;
+    heard_t *heard = event->user_data;
     if (event->event_id == HTTP_EVENT_ON_CONNECTED) {
-        *metaint = 0;
-    } else if (event->event_id == HTTP_EVENT_ON_HEADER
-               && strcasecmp(event->header_key, "icy-metaint") == 0) {
-        *metaint = (uint32_t)strtoul(event->header_value, NULL, 10);
+        heard->metaint = 0;
+        heard->type[0] = '\0';
+    } else if (event->event_id == HTTP_EVENT_ON_HEADER) {
+        if (strcasecmp(event->header_key, "icy-metaint") == 0) {
+            heard->metaint = (uint32_t)strtoul(event->header_value, NULL, 10);
+        } else if (strcasecmp(event->header_key, "content-type") == 0) {
+            snprintf(heard->type, sizeof(heard->type), "%s", event->header_value);
+        }
     }
     return ESP_OK;
 }
 
 static void fetch(const order_t *order, uint32_t began)
 {
-    static uint32_t metaint;
+    static heard_t heard;
     static uint8_t chunk[CHUNK];
     char why[32];
     esp_http_client_config_t config = {
@@ -129,9 +143,9 @@ static void fetch(const order_t *order, uint32_t began)
         .buffer_size = CHUNK,
         .buffer_size_tx = 1024,     /* the request's line is the address, and long */
         .event_handler = on_event,
-        .user_data = &metaint,
+        .user_data = &heard,
     };
-    metaint = 0;
+    memset(&heard, 0, sizeof(heard));
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (client == NULL) {
         failed(order, began, "THE NESP32 IS OUT OF MEMORY");
@@ -166,7 +180,7 @@ static void fetch(const order_t *order, uint32_t began)
     }
     if (!answered) {
         failed(order, began, "THE SITE DID NOT ANSWER");
-    } else if (esp_http_client_get_status_code(client) != 200) {
+    } else if (order->sink->head == NULL && esp_http_client_get_status_code(client) != 200) {
         snprintf(why, sizeof(why), "THE SITE SAID %d", esp_http_client_get_status_code(client));
         failed(order, began, why);
     } else {
@@ -175,8 +189,15 @@ static void fetch(const order_t *order, uint32_t began)
                  (unsigned long)((esp_timer_get_time() - started) / 1000));
         if (order->sink->icy != NULL && wanted(began)) {
             ESP_LOGI(TAG, "fetch %lu: titles every %lu bytes", (unsigned long)order->id,
-                     (unsigned long)metaint);
-            order->sink->icy(order->sink->ctx, order->id, metaint);
+                     (unsigned long)heard.metaint);
+            order->sink->icy(order->sink->ctx, order->id, heard.metaint);
+        }
+        if (order->sink->head != NULL && wanted(began)) {
+            int64_t length = esp_http_client_get_content_length(client);
+            order->sink->head(order->sink->ctx, order->id,
+                              (uint16_t)esp_http_client_get_status_code(client), heard.type,
+                              length < 0 || length > 0xFFFFFFFE ? NESP_HTTP_LENGTH_UNKNOWN
+                                                                : (uint32_t)length);
         }
         for (;;) {
             int count = esp_http_client_read(client, (char *)chunk, sizeof(chunk));

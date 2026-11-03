@@ -123,6 +123,14 @@ PAIR = 0x04             # pair with that one, in place of the one paired
 FORGET = 0x05           # forget the one paired
 KEYS_ALL = 0x06         # as KEYS, and the keys KEYS leaves out (enum KEY): Family BASIC's
 
+[services.HTTP]
+id = 0x07
+[services.HTTP.ops]
+URL = 0x00              # AT, then text: the address the next GET fetches, from AT on
+GET = 0x01              # an id: fetch the address, unless that id was the last; and how it stands
+STATE = 0x02            # how the fetch stands: its status, its length, what is held
+READ = 0x03             # OFFSET (2), COUNT: bytes of the body that are held
+
 [services.JUKE]
 id = 0x10
 [services.JUKE.ops]
@@ -281,6 +289,14 @@ READY = 3               # all of them are held
 NOT_FOUND = 4           # Bluesky has no one by that handle
 FAILED = 5              # the fetch failed; the reply says how
 NO_LINE = 0x80          # on a LINE reply: no such post is held
+
+[enums.FETCH]           # HTTP: how the last GET stands
+IDLE = 0                # nothing has been asked for
+NO_WIFI = 1             # GET found the nesp32 on no network
+ASKING = 2              # the request is out, and the server has not answered
+READING = 3             # it has: its status, type and length are known, and the body is coming
+DONE = 4                # the body has come, or as much of it as is kept
+FAILED = 5              # no answer, or the connection dropped; the reply says why
 
 [enums.DECK]            # TAPE: how a SAVE or a FIND stands
 IDLE = 0                # neither asked for since the hello
@@ -479,6 +495,11 @@ BSKY_COLUMNS = 24       # characters to a line, as ConnectedNES had a tweet's
 BSKY_REPLY = 0x1C       # the sign for replies
 BSKY_REPOST = 0x1D      # for reposts
 BSKY_LIKE = 0x1E        # for likes: a heart
+HTTP_URL_MAX = 255      # characters in an address, which URL sets
+HTTP_KEEP = 2048        # bytes of a body held: the rest is not read
+HTTP_TEXT_MAX = 28      # characters of a content type, or of why a fetch failed
+HTTP_LENGTH_UNKNOWN = 0xFFFFFFFF    # STATE's LENGTH when the reply has no Content-Length
+
 # TAPE: Family BASIC's data recorder, as files. A pair is a header block and
 # the data block after it, as the game writes them to tape.
 TAPE_HEADER = 128       # bytes of a header block

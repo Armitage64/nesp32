@@ -411,6 +411,22 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 
 /* --- the worker: everything that takes time ---------------------------------- */
 
+/* One network often has several access points under the same name. The
+ * default fast scan joins the first of them it hears, going up from channel
+ * 1, however far away that one is, and a network that lets a client join
+ * only its nearest AP is then not joined at all. Scan every channel and take
+ * the strongest; the others stay as fallbacks. The join takes about one scan
+ * of the band longer. esp_wifi keeps these with the network, so the joins at
+ * start and after a drop do the same. True: config was changed. */
+static bool prefer_strongest(wifi_config_t *config)
+{
+    bool changed = config->sta.scan_method != WIFI_ALL_CHANNEL_SCAN
+                   || config->sta.sort_method != WIFI_CONNECT_AP_BY_SIGNAL;
+    config->sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
+    config->sta.sort_method = WIFI_CONNECT_AP_BY_SIGNAL;
+    return changed;
+}
+
 static void begin_join(void)
 {
     portENTER_CRITICAL(&lock);
@@ -590,6 +606,7 @@ static void do_order(order_t *order)
         memcpy(config.sta.password, order->password, order->password_len);
         config.sta.threshold.authmode =
             order->password_len == 0 ? WIFI_AUTH_OPEN : WIFI_AUTH_WEP;
+        prefer_strongest(&config);
         /* Leaving the old network raises a disconnect, which is not this
          * network's failure. If it comes late it costs one of the tries. */
         portENTER_CRITICAL(&lock);
@@ -700,8 +717,13 @@ void radio_start(void)
     wifi.state = length == 0 ? NESP_WIFI_NONE : NESP_WIFI_IDLE;
     wifi.name_len = (uint8_t)length;
     memcpy(wifi.name, saved.sta.ssid, length);
-    memset(&saved, 0, sizeof(saved));
     want_joined = length != 0;
+    /* A network saved by an older firmware was saved for the fast scan:
+     * save it again for the strongest AP, once. */
+    if (want_joined && prefer_strongest(&saved)) {
+        esp_wifi_set_config(WIFI_IF_STA, &saved);
+    }
+    memset(&saved, 0, sizeof(saved));
 
     ESP_ERROR_CHECK(esp_wifi_start());
     if (want_joined) {

@@ -202,6 +202,7 @@ nothing done on the nesp32.
 | `$04` | PEER | a lobby and a lockstep relay of buttons for two consoles | done |
 | `$05` | DIAG | the link's counters and test patterns | done |
 | `$06` | KBD | a Bluetooth keyboard: what is typed on it, and pairing one | done |
+| `$07` | HTTP | any address's reply as it came: its status, type, length and the start of its body | done |
 | `$10` | JUKE | the jukebox: the playlist as a stream, the buttons, sampled sound | done |
 | `$11` | WIKI | NESpedia: a search, and the article it finds as numbered lines | done |
 | `$12` | RADAR | NES Radar: an airport, and the aircraft round it | done |
@@ -778,6 +779,60 @@ search searches, Backspace deletes, and letters and digits are typed.
 Only a StickS3 has KBD, and only Bluetooth LE keyboards: its chip has no
 Bluetooth Classic. A StickC Plus2's firmware has the service, which says
 0.
+
+### HTTP `$07`: any address, fetched
+
+A GET of any address the ROM names, and the reply as it came: its
+status, its `Content-Type` and `Content-Length`, how long it took, and
+the start of its body. It is for a ROM that wants something from the
+Internet that no other service lays out for it, and is what
+[`samplecode/https`](../samplecode/https) shows.
+
+| `OP` | Name | Request | Reply |
+|---|---|---|---|
+| `$00` | URL | `AT`, `TEXT` | `STATE` |
+| `$01` | GET | `ID` | `STATE`, `ID`, `STATUS[2]`, `LENGTH[4]`, `HELD[2]`, `MS[2]`, `TEXT` |
+| `$02` | STATE | | the same |
+| `$03` | READ | `OFFSET[2]`, `COUNT` | `STATE`, `OFFSET[2]`, the body's bytes from `OFFSET` |
+
+| `STATE` | Name | Meaning |
+|---|---|---|
+| `$00` | IDLE | nothing has been asked for since the hello |
+| `$01` | NO_WIFI | GET found the nesp32 on no network |
+| `$02` | ASKING | the request is out, and the server has not answered |
+| `$03` | READING | it has: `STATUS`, `LENGTH` and the type are known, and the body is coming |
+| `$04` | DONE | the body has come, or as much of it as is held |
+| `$05` | FAILED | no answer, or the connection dropped. `TEXT` says why |
+
+- **URL** sets the address: `TEXT` goes at `AT` in it, and the address
+  ends where `TEXT` ends, as TUNER's URL. So one longer than a request,
+  up to `HTTP_URL_MAX` (255), goes in pieces, in order, each `AT` the
+  length so far. `AT` past the end, an address too long, or a 0 in `TEXT`
+  is BAD_ARG, and nothing changes. A hello forgets the address. It may be
+  https or http; the server's certificate is checked against ESP-IDF's
+  bundle of root certificates, and a redirect (301, 302, 303, 307, 308)
+  is followed, as many as five.
+- **GET** fetches the address, unless its `ID` is the last GET's: the
+  same GET again only says how it stands, so the ROM sends it until it is
+  answered. A GET with no address set is BAD_ARG. A new GET drops the
+  fetch under way, and the reply held with it.
+- **`STATUS`** is the server's, whatever it is: a 404 is a reply, and its
+  body is held as a 200's is. 0 until it has answered.
+- **`LENGTH`** is its `Content-Length`, low byte first, or `$FFFFFFFF`
+  when it has none (a chunked reply).
+- **`HELD`** is how many bytes of the body are held. The nesp32 keeps the
+  first `HTTP_KEEP` (2048) and reads no more: a body longer than that is
+  DONE with `HELD` 2048 and `LENGTH` its whole length.
+- **`MS`** is how long since the GET, or how long it took once it is
+  over, in milliseconds, up to 65535.
+- **`TEXT`** is the `Content-Type` as the server wrote it, or with FAILED
+  why, in capitals (`THE SITE DID NOT ANSWER`, `THE CONNECTION DROPPED`),
+  up to `HTTP_TEXT_MAX` (28) characters, and no more than the reply has
+  room for.
+- **READ** hands over the body that is held: up to `COUNT` bytes from
+  `OFFSET`, fewer if the reply has no room for them or fewer are held,
+  and none past what is held. The bytes are the body's as they came, in
+  whatever encoding it has. READING may hold more by the next READ.
 
 ### JUKE `$10`: the jukebox
 
