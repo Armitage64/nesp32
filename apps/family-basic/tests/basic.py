@@ -20,9 +20,26 @@ FONT = {code: char for char, code in fbasic.CODES_NOT_ASCII.items()}
 SCREEN_ROWS = 30
 
 
+RAM = range(0x6000, 0x8000)
+RAM_OFF = 0x10              # bit 4 of the PRG register (MMC1B), or of CHR0 (SNROM)
+
+
 class Famicom(Console):
-    def __init__(self, rom_path, labels_path):
+    """registers, if given, are the MMC1's at power-on (control, CHR0, CHR1,
+    PRG), in place of the last 16 KB at $C000 and the rest 0. With
+    ram_switch, bit 4 of the PRG register or of CHR0 turns the cartridge's
+    memory off, as an MMC1B's and an SNROM board's do: writes do nothing,
+    and reads give the bus's last byte, the address's high one."""
+
+    def __init__(self, rom_path, labels_path, registers=None, ram_switch=False):
         super().__init__(rom_path, labels_path)
+        if registers is not None:
+            self.mapper = list(registers)
+            self._map()
+            self.mpu.pc = self.memory[0xFFFC] | self.memory[0xFFFD] << 8
+        if ram_switch:
+            self.memory.subscribe_to_write(RAM, self._write_ram)
+            self.memory.subscribe_to_read(RAM, self._read_ram)
         self.strict = False
         self._read_buffer = 0
         self.memory.subscribe_to_read([PPUDATA], self._read_data)
@@ -43,6 +60,17 @@ class Famicom(Console):
             self.frame.link_cycles = self.now - self.link_started
             self.link_started = None
         return None
+
+    def _ram_off(self):
+        return (self.mapper[1] | self.mapper[3]) & RAM_OFF
+
+    def _write_ram(self, address, value):
+        if self._ram_off():
+            return self.memory._subject[address]
+        return None
+
+    def _read_ram(self, address):
+        return address >> 8 if self._ram_off() else None
 
     def _read_data(self, address):
         # Below the palette a read gives what the last one fetched.
@@ -66,8 +94,9 @@ class Basic:
     """A console on the ROM, and a nesp32 with a keyboard connected unless
     attached says otherwise."""
 
-    def __init__(self, rom_path, labels_path, attached=True, **port_options):
-        self.c = Famicom(rom_path, labels_path)
+    def __init__(self, rom_path, labels_path, attached=True, registers=None, ram_switch=False,
+                 **port_options):
+        self.c = Famicom(rom_path, labels_path, registers=registers, ram_switch=ram_switch)
         self.stick = self.port = None
         if attached:
             self.stick, self.port = link(self.c, nesp.Stick, **port_options)

@@ -142,7 +142,7 @@ What is still to do on the hardware and the firmware is in
 | [NESradio](../apps/npr), TUNER | working on hardware, and for long runs |
 | [Weather](../apps/weather), WEATHER | working on hardware, the ROM by itself |
 | [Bluesky](../apps/bluesky), BSKY | on a simulated console against the firmware's code; not yet on hardware |
-| [Family BASIC](../apps/family-basic), KBD | a prototype, working on hardware: a hello world program typed in on a Bluetooth keyboard and run on a real NES |
+| [Family BASIC](../apps/family-basic), KBD | a prototype, working on the MiSTer: a program typed in on a Bluetooth keyboard and run, and kept over the reset button. On an EverDrive N8 a grey screen, which the latest build should mend: not yet tried |
 
 ## What is where
 

@@ -8,9 +8,13 @@ service), and the game reads what is typed on it as if from its own.
 
 ## Status
 
-**A prototype, and it works on hardware**: on a real NES, a hello world
-program was typed in on a Bluetooth keyboard through a nesp32, and run.
-Not more than that has been tried there yet. On py65, against nesp32's
+**A prototype, working on the MiSTer**: a hello world program typed in on
+a Bluetooth keyboard through a nesp32, and run; the characters, signs and
+shifted signs typed as themselves, small letters as capitals; and a
+program kept over the reset button. On an EverDrive N8 the build before
+this one did not start at all, a grey screen with the nesp32 on or off;
+this one starts as a board might have the MMC1 at power-on (How it
+works), and has not yet been tried there. On py65, against nesp32's
 own firmware code over a line that models every bit, with the test as the
 keyboard: BASIC starts, lines typed are run, a program typed in lists and
 runs, every sign the keyboard has comes out as itself, Backspace and the
@@ -23,7 +27,7 @@ keyboard, and with no nesp32 BASIC still starts.
 | Characters typed on a Bluetooth keyboard, as keys of the Family keyboard | done for every character it has a key for, Enter, Backspace, the arrows and Escape; tested on py65 |
 | BASIC's memory, `$6000-$6FFF`, kept apart from the keyboard's code at `$7000` | done; tested on py65 with BASIC's memory full |
 | The nesp32's own screen: "NES: Family BASIC" for the hello's `FBAS` | done in `firmware/main/main.cpp`; not yet built |
-| Real hardware: an MMC1 with 8 KB of battery-backed memory on a flash cartridge, a StickS3 and a keyboard | working: a hello world program typed in and run on a real NES |
+| Real hardware: an MMC1 with 8 KB of battery-backed memory, a StickS3 and a keyboard | working on the MiSTer; on an EverDrive N8, a grey screen from the build before this one, and this one not yet tried |
 | The Family keyboard's keys that KBD does not send | not started (see Not done) |
 | SAVE and LOAD to the nesp32's flash, in place of the data recorder | not started (see Not done) |
 
@@ -64,20 +68,35 @@ game types over what is under the cursor; INS opens a space.
 ## How it works
 
 The game is a 32 KB NROM, and full: there is no room in it for the link.
-So the ROM is an MMC1 with twice that, and the game, unchanged but for 14
-bytes, is its first 32 KB. The second has `nes/fbkbd.s`. At power-on an
-MMC1 has its last 16 KB at `$C000`, and that is `boot`, which copies the
-code into `$7000-$7FFF`, sets the MMC1 to give the game all 32 KB of its
-own, and starts it. The game's memory is the 4 KB at `$6000` (`4086
-BYTES FREE`); filled up, it never writes past `$6F5D`, and the tests hold
-it to that. The reset button starts the game's reset as it is, with the
-code still in place.
+So the ROM is an MMC1 with twice that, and the game, unchanged but for 28
+bytes, is its first 32 KB. The second has `nes/fbkbd.s`, whose `boot`
+copies the code into `$7000-$7FFF`, sets the MMC1 to give the game all 32
+KB of its own, and starts the game's own reset (`BASIC HOT START` after
+the reset button, with the program kept). The game's memory is the 4 KB
+at `$6000` (`4086 BYTES FREE`); filled up, it never writes past `$6F5D`,
+and the tests hold it to that.
+
+An MMC1 is meant to have its last 16 KB at `$C000` at power-on, and that
+is where `boot` is. A board whose registers come up at 0 has the game's
+32 KB instead, and the game's reset vector; so that vector is changed to
+`reset_stub`, which is at the same place in the game's first 16 KB and in
+ours, and resets the MMC1 (the last 16 KB at `$C000`) and goes to `boot`.
+The reset button goes the same way. Before the cartridge's memory is
+used, `boot` clears bit 4 of the PRG register, which turns an MMC1B's
+memory off, and of both CHR registers, which turns an SNROM board's off,
+as a flash cartridge may copy. The build before this one set the CHR
+registers only after the copy, and a board that came up with their bit 4
+set would have had no code at `$7000`; that is the likeliest cause of the
+N8's grey screen. The tests start the ROM with the registers each of
+these ways, and with the memory turned off by bit 4.
 
 `tools/build_rom.py` changes these of the game's bytes
 (`tools/fbasic.py`'s `PATCH_SITES`, each checked against the game first):
 
 | Where | What the game did | What it does |
 |---|---|---|
+| `$FFFC` | its reset vector, `$80BA` | `reset_stub`, which goes by `boot` to `$80BA` |
+| `$B95E` | the rest of its keyboard scan | `reset_stub` |
 | `$80CD`, `$80D1` | its reset put its NMI handler's address, `$8971`, in the jump at `$00ED` | puts `fb_nmi`'s, which runs the game's handler and then the link |
 | `$B958` | scanned the keyboard's 9 rows into its matrix at `$0634` | `fb_scan` copies the matrix the NMI made, and the game reads it at `$B9A1` as it did its own |
 | `$883A` | while a program ran, read the STOP key alone | `fb_stop` reads it from that matrix |
@@ -100,13 +119,13 @@ one unanswered costs the frame a receiver's wait.
 
 ## Not done
 
-- **More on hardware.** A hello world program has been typed in and run;
-  so the flash cartridge took the MMC1 with its 8 KB of battery-backed
-  memory, and its MMC1 had its last 16 KB at `$C000` at power-on, which
-  the boot counts on. Not yet tried there: the signs and the shifted
-  ones, Backspace, the arrows and Escape (STOP) on a running program, the
-  reset button, a long program typed fast, the program kept over a
-  power-off, and BASIC with no nesp32. Not yet measured: the time to type
+- **More on hardware.** This build on the EverDrive N8, which did not
+  start the last. On the MiSTer, not yet tried: Backspace, the arrows,
+  Page Up and Page Down, Escape (STOP) on a running program, a long
+  program typed fast, a key held down (KBD repeats 25 times a second and
+  the ROM types 15, so the repeats may run on after the key is let go),
+  the program kept over a power-off, and BASIC with no nesp32. Not yet
+  measured: the time to type
   a character on a real console, the 5000 cycles a KEYS takes with a real
   nesp32's time to answer, and the keyboard's wait to type again after it
   sleeps (nesp32's `docs/TODO.md`).

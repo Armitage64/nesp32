@@ -34,7 +34,7 @@ def word(address):
     return bytes((address & 0xFF, address >> 8))
 
 
-def patch(rom, labels):
+def patch(rom, labels, ours):
     for site, (address, original) in fbasic.PATCH_SITES.items():
         if rom.read(address, len(original)) != original:
             raise ValueError("the game's bytes at $%04X are not as expected" % address)
@@ -46,6 +46,12 @@ def patch(rom, labels):
     rom.write(fbasic.PATCH_SITES["pad"][0], bytes((JMP,)) + word(labels["fb_pad"]))
     rom.write(fbasic.PATCH_SITES["scan"][0], bytes((JSR,)) + word(labels["fb_scan"])
               + bytes((JMP,)) + word(fbasic.SCAN_DECODE))
+    # reset_stub's bytes, from where they are in ours.
+    stub, room = fbasic.PATCH_SITES["stub"]
+    assert labels["reset_stub"] == stub
+    start = stub - fbasic.PRG_START
+    rom.write(stub, ours[start:start + len(room)])
+    rom.write(fbasic.PATCH_SITES["reset_vector"][0], word(stub))
 
 
 def main(argv):
@@ -53,7 +59,7 @@ def main(argv):
     with open(argv[2], "rb") as handle:
         ours = handle.read()
     assert len(ours) == fbasic.PRG_SIZE
-    patch(rom, load_labels(argv[3]))
+    patch(rom, load_labels(argv[3]), ours)
     header = b"NES\x1a" + bytes((PRG_BANKS, CHR_BANKS, FLAGS6, 0, PRG_RAM_BANKS)) + bytes(7)
     with open(argv[4], "wb") as handle:
         handle.write(header + bytes(rom.prg) + ours + rom.chr)

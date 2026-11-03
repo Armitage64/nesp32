@@ -3,14 +3,21 @@
 ;
 ; The game is a 32 KB NROM, and full. This is the second 32 KB of an MMC1
 ; (mapper 1) that has the game, as it was but for a few bytes, in its
-; first. At power-on the MMC1 has its last 16 KB at $C000: that is `boot`
-; here, which copies the code below into $7000-$7FFF, the half of the
+; first. `boot` copies the code below into $7000-$7FFF, the half of the
 ; cartridge's 8 KB of memory the game leaves alone, sets the MMC1 to give
-; the game all of $8000-$FFFF, and starts the game. The reset button
-; starts the game's own reset, with this code still in $7000.
+; the game all of $8000-$FFFF, and starts the game.
+;
+; An MMC1 has its last 16 KB at $C000 at power-on, and there is `boot`.
+; Not every board's does: one with its registers at 0 has the game's 32 KB,
+; and the game's reset vector. So that, and the reset button, go to
+; `reset_stub`, which is at the same place in the game's first 16 KB and
+; in ours: it resets the MMC1, which puts the last 16 KB at $C000, and
+; goes to `boot`.
 ;
 ; tools/build_rom.py makes the game call it, by these few bytes:
 ;
+;   $FFFC         the game's reset vector: reset_stub
+;   $B95E         reset_stub, in what was the rest of the game's scan
 ;   $80CD, $80D1  the NMI's address, which the game's reset puts in the
 ;                 jump at $00ED: fb_nmi, which runs the game's handler and
 ;                 then the link
@@ -33,11 +40,12 @@ OUT0_MARK       = $01
 
 MMC1_CONTROL    = $8000
 MMC1_CHR0       = $A000
+MMC1_CHR1       = $C000
 MMC1_PRG        = $E000
 MMC1_RESET      = $80
 MMC1_BOOT       = $0E           ; last 16 KB fixed at $C000, vertical mirroring
 MMC1_GAME       = $02           ; 32 KB at a time, 8 KB of CHR, vertical mirroring
-RESET_VECTOR    = $FFFC
+BASIC_RESET     = $80BA         ; the game's reset, which its vector pointed at
 
 ; The game's.
 BASIC_NMI       = $8971         ; its NMI handler, which ends with an rti
@@ -145,7 +153,14 @@ PHASE_UP        = 2
     sta MMC1_CONTROL
     lda #MMC1_BOOT
     mmc1_write MMC1_CONTROL
-    lda #0                      ; bit 4 clear: the cartridge's memory on
+    ; Each register's bit 4 clear before the cartridge's memory is used: on
+    ; the PRG's an MMC1B's memory is on, and on the CHR's an SNROM board's
+    ; (whose CHR lines turn it off), as a flash cartridge may be.
+    lda #0
+    mmc1_write MMC1_CHR0
+    lda #0
+    mmc1_write MMC1_CHR1
+    lda #0
     mmc1_write MMC1_PRG
     ldy #0                      ; the copy, a page at a time, through $00-$03
     sty $00
@@ -167,6 +182,22 @@ PHASE_UP        = 2
     jmp fb_start
 .endproc
 
+; The game's reset vector, and ours, at power-on with the MMC1's registers
+; at 0 and at the reset button: the same bytes in the game's first 16 KB
+; and in ours, so that whichever is at $8000 once the MMC1 is reset, this
+; goes on to boot.
+.segment "STUB"
+
+.proc reset_stub
+    sei
+    lda #MMC1_RESET             ; the last 16 KB at $C000
+    sta MMC1_CONTROL
+    jmp boot
+.endproc
+.assert * - reset_stub <= 12, error, "reset_stub has 12 bytes of the game's"
+
+.segment "BOOT"
+
 ; Never taken: the NMI is off until the game turns it on.
 .proc boot_nmi
     rti
@@ -183,11 +214,9 @@ PHASE_UP        = 2
 .proc fb_start
     lda #MMC1_GAME
     mmc1_write MMC1_CONTROL
-    lda #0
-    mmc1_write MMC1_CHR0
     lda #OUT0_MARK
     sta JOY1
-    jmp (RESET_VECTOR)
+    jmp BASIC_RESET
 .endproc
 
 ; The NMI: the game's handler, and then the link. The game's ends with an

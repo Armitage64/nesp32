@@ -2,7 +2,10 @@
 on through KBD."""
 
 import nesp_proto as p
+import pytest
+from basic import RAM_OFF
 from conftest import BASEROM
+from console import MMC1_LAST_FIXED
 
 import fbasic
 
@@ -136,11 +139,23 @@ def test_the_game_leaves_the_code_alone_and_only_boot_sets_the_mapper(basic):
     assert c.labels["fb_nmi_done"] < RAM_END and c.labels["fb_keys"] < RAM_END
 
 
+@pytest.mark.parametrize("registers", [
+    (MMC1_LAST_FIXED, RAM_OFF, RAM_OFF, RAM_OFF),     # the memory off
+    (0, 0, 0, 0),                                     # the game's 32 KB, and its vector
+    (0, RAM_OFF, RAM_OFF, 0),                         # and the memory off
+], ids=["memory-off", "registers-0", "registers-0-memory-off"])
+def test_it_starts_however_the_mmc1_comes_up(basic, registers):
+    b = started(basic(registers=registers, ram_switch=True))
+    b.enter("print 1+1")
+    assert last_rows(b, 3) == ["PRINT 1+1", "2", "OK"]
+
+
 def test_reset_is_the_game_s_with_the_keyboard_still_on(basic):
     b = started(basic())
     b.enter("10 ? 5")
     b.c.reset()
-    b.run_until(lambda: "OK" in [row.strip() for row in b.rows()])
+    b.run_until(lambda: "BASIC HOT START" in b.screen() and "OK" in last_rows(b, 1))
+    assert "4079 BYTES FREE" in b.screen()     # the line kept
     b.enter("list")
     assert last_rows(b, 2) == ["10 PRINT 5", "OK"]
 
