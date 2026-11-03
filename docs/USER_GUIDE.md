@@ -162,7 +162,8 @@ MiSTer, as you would any NES game.
 
 The online games (Dr. Mario, Tetris, Contra and TMNT II) are **not** on
 the cartridge, because they contain the original games. See
-[Chapter 11](#11-playing-online-with-a-friend).
+[Chapter 11](#11-playing-online-with-a-friend). Nor is
+[Family BASIC](#family-basic-not-on-the-cartridge), for the same reason.
 
 > **Keep the firmware and the cartridge in step.** When you update one,
 > update the other too, from the same release. A mismatched pair can show
@@ -573,6 +574,87 @@ minute. When both halves say **DONE**, **A** runs it again.
 
 If the Stick loses power during the test and the screen freezes, press
 **Reset** on the console.
+
+### Family BASIC (not on the cartridge)
+
+Nintendo's Family BASIC V3 for the Famicom, typed on with your Bluetooth
+keyboard. On a Famicom it needs the Family keyboard, which plugs into a
+port the NES doesn't have; here the NESP32's keyboard takes its place.
+
+**Getting it:** it contains the original program, so it isn't on the
+cartridge and can't be handed out ready-made. Apply the patch
+`apps/family-basic/dist/fbasic.bps` to your own copy of Family BASIC V3
+with a BPS patcher such as Floating IPS or RomPatcher.js (it runs in a
+web browser), and put the result on your flash cartridge or MiSTer. Or
+build it from source ([its README](../apps/family-basic/README.md)). It
+needs:
+
+- a **StickS3** with a keyboard paired ([Chapter 8](#8-pairing-a-bluetooth-keyboard)),
+  and firmware from the same release as the ROM,
+- a flash cartridge or emulator that supports its cartridge type (MMC1)
+  with battery-backed memory. It has been played on an EverDrive N8 and
+  on the MiSTer.
+
+BASIC starts by itself with `NS-HUBASIC V3.0` and `OK`. Type a line and
+press **Enter** to run it, or start it with a number to add it to your
+program. Everything comes out in capitals: Family BASIC has no small
+letters.
+
+| Keyboard | Family keyboard |
+|---|---|
+| Letters, digits and signs | the same, Shift included. `\` types `¥` |
+| **Enter** | RETURN |
+| **Backspace** | DEL: deletes the character before the cursor |
+| **Delete** | deletes the character under the cursor |
+| **Arrow keys** | the cursor keys |
+| **Home** (or **Page Up**) | CLR HOME: the cursor to the top |
+| **Shift + Home** | clears the screen |
+| **Insert** (or **Page Down**) | INS: opens a space |
+| **Esc** | STOP: stops a running program; at the prompt, starts a new line |
+| **F1** to **F8** | F1 to F8: BASIC's own shortcuts (see below) |
+| **F12** | KANA: Japanese kana on or off |
+| **Ctrl** + a key | CTR + that key, for example Ctrl+L clears the screen |
+| **Alt** + a key | GRPH + that key: graphic characters, in kana mode only |
+
+Typing goes over what's under the cursor. Use **Insert** to make room.
+A key held down repeats. `{ | } ~`, the backquote and **Tab** have no
+Family key, so they do nothing.
+
+The function keys type BASIC's own shortcuts, each followed by Enter:
+**F1** to **F4** are `GAME 0` to `GAME 3`, **F5** `SPRITE` (without
+Enter), **F6** `LOAD`, **F7** `LIST` and **F8** `RUN`. **F6** loads the first
+program saved on the NESP32 (see below).
+`GAME 0` is played with the Famicom controller's microphone, which the
+NES doesn't have either, so only its demo works: answer **N** to
+`PLAY ? Y/N`.
+
+**Saving and loading.** Programs are saved on the NESP32 in place of
+the Famicom's cassette recorder. `SAVE "HELLO"` saves your program, and
+`LOAD "HELLO"` loads it back, even after switching off. `LOAD` on its own
+loads the first program saved, and `LOAD? "HELLO"` checks the program you
+have against the saved one. A name that isn't there, or a save that
+couldn't be written, says `?TP ERROR`. The programs are files in the
+`basic` folder of the NESP32's USB drive (`HELLO.fbp`), so you can copy
+them to and from a computer. Saving and loading need the NESP32's
+firmware from the same release as the ROM; with older firmware the
+keyboard still works, and `SAVE` says `?TP ERROR`.
+
+**Keeping your program.** **Reset** on the console keeps your program
+(BASIC says `BASIC HOT START`). Switching off, or a flash cartridge's
+reset that goes back to its own menu, doesn't, unless you tell BASIC to
+keep it first:
+
+1. Type `SYSTEM` and press **Enter**. BASIC asks you to turn on the
+   cartridge's BACKUP switch, which a flash cartridge doesn't have.
+2. Press **Esc**.
+3. Now switch off, or go back to the flash cartridge's menu.
+
+The next time Family BASIC starts, it says `BASIC HOT START` and your
+program is back. Do it again each time before switching off. The flash
+cartridge must keep the cartridge's battery memory, as the EverDrive N8
+does.
+
+> **Experimental:** Family BASIC is new, and not yet part of a release.
 
 ---
 

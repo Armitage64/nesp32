@@ -81,8 +81,9 @@ Please join our [Discord](https://discord.gg/kwSC7pwtmb)!
 | [NESradio](apps/npr) | Live .mp3 radio stations on a radio dial, with what is playing |
 | [Weather](apps/weather) | Current conditions and a 5-day forecast for a US zip code, which the NESP32 remembers |
 | [Bluesky](apps/bluesky) | Bluesky posts from a list of favorite accounts the NESP32 remembers, after [ConnectedNES](https://github.com/hxlnt/connectedNES) |
+| [Family BASIC](apps/family-basic)* | Nintendo's Family BASIC V3, typed on with a Bluetooth keyboard in place of the Famicom's, and programs saved to and loaded from the NESP32 in place of its cassette recorder |
 
-\* These games contain copyrighted material. You must build the ROM yourself using the publicly available disassembly and the NESP32 patch provided here.
+\* These games contain copyrighted material, so the ROM isn't provided ready-made: build it yourself from your own copy of the game, using the publicly available disassembly where there is one, and the NESP32 patch provided here. TMNT2 Arcade and Family BASIC have a BPS patch to apply to your own ROM instead, with no build needed.
 
 ## How it works
 

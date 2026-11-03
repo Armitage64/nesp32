@@ -61,9 +61,9 @@ const struct {
     const char *id;
     const char *name;
 } APP_NAMES[] = {{"BSKY", "Bluesky"}, {"CNTR", "Contra"}, {"DRMA", "Dr. Mario"},
-                 {"JUKE", "Jukebox"}, {"NPR ", "NESradio"}, {"RADR", "Radar"}, {"SETP", "Setup"},
-                 {"THRU", "Throughput"}, {"TTRS", "Tetris"}, {"WIKI", "Wikipedia"},
-                 {"WTHR", "Weather"}};
+                 {"FBAS", "Family BASIC"}, {"JUKE", "Jukebox"}, {"NPR ", "NESradio"},
+                 {"RADR", "Radar"}, {"SETP", "Setup"}, {"THRU", "Throughput"},
+                 {"TTRS", "Tetris"}, {"WIKI", "Wikipedia"}, {"WTHR", "Weather"}};
 const char *const WIFI_STATES[] = {"not set up", "not joined", "joining", "joined", "failed"};
 
 char shown[ROWS][RADIO_SHOWN_MAX];

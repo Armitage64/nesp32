@@ -121,6 +121,7 @@ SCAN = 0x02             # look for keyboards in their pairing mode
 FOUND = 0x03            # one keyboard the scan found, by its place in the list
 PAIR = 0x04             # pair with that one, in place of the one paired
 FORGET = 0x05           # forget the one paired
+KEYS_ALL = 0x06         # as KEYS, and the keys KEYS leaves out (enum KEY): Family BASIC's
 
 [services.HTTP]
 id = 0x07
@@ -177,6 +178,14 @@ ADD = 0x01              # a handle onto the favorites, kept
 REMOVE = 0x02           # a favorite off them, by its number
 FEED = 0x03             # an id, then a handle: fetch its posts, or say how it stands
 LINE = 0x04             # a line of a post, by the post's number and the line's
+
+[services.TAPE]
+id = 0x16
+[services.TAPE.ops]
+PUT = 0x00              # AT (2), then bytes: into the pair being sent, from AT on
+SAVE = 0x01             # an id, PAIR, LENGTH (2): the pair sent kept as a file's PAIR-th, or how it is going
+FIND = 0x02             # an id, TYPE, PAIR, then a name or none: a file's PAIR-th pair, or how it is going
+GET = 0x03              # AT (2), COUNT: bytes of the pair found, from AT on
 
 [enums.WIFI]            # the state of the Stick's Wi-Fi
 NONE = 0                # no network has been set up
@@ -289,6 +298,13 @@ READING = 3             # it has: its status, type and length are known, and the
 DONE = 4                # the body has come, or as much of it as is kept
 FAILED = 5              # no answer, or the connection dropped; the reply says why
 
+[enums.DECK]            # TAPE: how a SAVE or a FIND stands
+IDLE = 0                # neither asked for since the hello
+BUSY = 1                # under way: ask again
+DONE = 2
+NOT_FOUND = 3           # FIND: no such file, or no such pair in it
+FAILED = 4              # the file could not be written or read, or what was sent is not a pair
+
 [enums.PICTURE]         # WEATHER: the pictures a row may have, four tiles each
 SUN = 0
 MOON = 1
@@ -370,9 +386,21 @@ PAIRING = 7
 FAILED = 8              # the last pairing did not work
 
 [enums.KEY]             # KBD KEYS: what is not a printable character ($20 to $7E)
+F1 = 0x01                  # F1 to F8, F12, the Home to Delete, and WITH_*: KEYS_ALL's alone
+F2 = 0x02
+F3 = 0x03
+F4 = 0x04
+F5 = 0x05
+F6 = 0x06
+F7 = 0x07
 BACKSPACE = 0x08
 TAB = 0x09
 ENTER = 0x0A
+HOME = 0x0B
+SHIFT_HOME = 0x0C          # Shift and Home
+F8 = 0x0E
+INSERT = 0x0F
+DELETE = 0x10
 UP = 0x11
 DOWN = 0x12
 LEFT = 0x13
@@ -381,7 +409,10 @@ PAGE_UP = 0x15
 PAGE_DOWN = 0x16
 START = 0x17               # Ctrl and Enter: the controller's Start
 SELECT = 0x18              # Ctrl and Escape: its Select
+F12 = 0x19
 ESCAPE = 0x1B
+WITH_CTRL = 0x1C           # the next key was typed with Ctrl
+WITH_ALT = 0x1D            # and with Alt
 
 [sizes]
 NAME_MAX = 32           # a network's name
@@ -468,6 +499,16 @@ HTTP_URL_MAX = 255      # characters in an address, which URL sets
 HTTP_KEEP = 2048        # bytes of a body held: the rest is not read
 HTTP_TEXT_MAX = 28      # characters of a content type, or of why a fetch failed
 HTTP_LENGTH_UNKNOWN = 0xFFFFFFFF    # STATE's LENGTH when the reply has no Content-Length
+
+# TAPE: Family BASIC's data recorder, as files. A pair is a header block and
+# the data block after it, as the game writes them to tape.
+TAPE_HEADER = 128       # bytes of a header block
+TAPE_TYPE_AT = 0        # where in it the file's type is: 2 a program, 3 a BG GRAPHIC screen
+TAPE_NAME_AT = 1        # its name,
+TAPE_NAME = 16          # this many characters, with spaces after it
+TAPE_LENGTH_AT = 0x12   # and the data block's length (2)
+TAPE_DATA_MAX = 4096    # the longest data block kept: all of BASIC's memory
+TAPE_PAIRS_MAX = 8      # pairs in one file
 PEER_PORT = 6502        # UDP, on the nesp32 that hosts
 PEER_VERSION = 1        # of what two nesp32s say to each other
 PEER_PER_FRAME = 2      # ticks of buttons a TICKS frame may carry, each way

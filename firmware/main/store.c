@@ -14,6 +14,10 @@
  * The tracks are listed once, at start, and read by the link task alone
  * (the jukebox's tick), which keeps the file it is reading open: a track is
  * read from end to end, a few dozen bytes at a time.
+ *
+ * Family BASIC's programs and screens, saved in place of its data recorder
+ * (TAPE), are the files in /files/basic, which the link task alone reads
+ * and writes, a file at a time, opening and closing it each time.
  */
 #include "store.h"
 
@@ -34,6 +38,7 @@
 
 #define BASE STORE_BASE
 #define TRACKS BASE "/tracks"
+#define KEPT BASE "/basic"          /* the files a ROM keeps (TAPE) */
 #define PARTITION STORE_PARTITION
 #define LABEL "NESP32"              /* the drive's name, on a computer */
 #define TRACKS_MAX 200
@@ -51,6 +56,7 @@ typedef struct {
 static wl_handle_t wear = WL_INVALID_HANDLE;
 static track_t tracks[TRACKS_MAX];
 static uint16_t count;
+static bool mounted;                /* and not given up to be lent as a drive */
 static FILE *open_file;             /* the link task's: the track being read */
 static uint16_t open_track;
 
@@ -253,7 +259,9 @@ void store_start(store_progress_t progress)
     if (f_getlabel("0:", label, NULL) == FR_OK && label[0] == 0) {
         f_setlabel("0:" LABEL);
     }
+    mounted = true;
     mkdir(TRACKS, 0775);
+    mkdir(KEPT, 0775);
     leave(BASE "/.metadata_never_index");
     mkdir(BASE "/.fseventsd", 0775);
     leave(BASE "/.fseventsd/no_log");
@@ -323,6 +331,7 @@ void store_close(void)
         open_file = NULL;
     }
     count = 0;
+    mounted = false;
 }
 
 void store_unmount(void)
@@ -384,4 +393,79 @@ size_t store_track_read(void *ctx, uint16_t track, uint32_t offset, uint8_t *out
         return 0;
     }
     return fread(out, 1, len, open_file);
+}
+
+/* A kept file's path, or false if the name would make one that is not in
+ * the directory, or too long. */
+static bool kept_path(const char *name, char *path, size_t max)
+{
+    if (!mounted || name[0] == 0 || name[0] == '.' || strchr(name, '/') != NULL) {
+        return false;
+    }
+    int len = snprintf(path, max, KEPT "/%s", name);
+    return len > 0 && (size_t)len < max;
+}
+
+size_t store_file_read(void *ctx, const char *name, uint32_t offset, uint8_t *out, size_t len)
+{
+    char path[128];
+    (void)ctx;
+    if (!kept_path(name, path, sizeof(path))) {
+        return 0;
+    }
+    FILE *file = fopen(path, "rb");
+    if (file == NULL) {
+        return 0;
+    }
+    size_t got = fseek(file, (long)offset, SEEK_SET) == 0 ? fread(out, 1, len, file) : 0;
+    fclose(file);
+    return got;
+}
+
+bool store_file_write(void *ctx, const char *name, const uint8_t *data, size_t len, bool append)
+{
+    char path[128];
+    (void)ctx;
+    if (!kept_path(name, path, sizeof(path))) {
+        return false;
+    }
+    FILE *file = fopen(path, append ? "ab" : "wb");
+    if (file == NULL) {
+        ESP_LOGW(TAG, "%s cannot be written", path);
+        return false;
+    }
+    bool written = fwrite(data, 1, len, file) == len;
+    written = fclose(file) == 0 && written;
+    ESP_LOGI(TAG, "%s: %u bytes %s%s", path, (unsigned)len, append ? "added" : "written",
+             written ? "" : ", and it failed");
+    return written;
+}
+
+bool store_file_name(void *ctx, uint16_t index, char *out, size_t max)
+{
+    (void)ctx;
+    if (!mounted) {
+        return false;
+    }
+    DIR *dir = opendir(KEPT);
+    if (dir == NULL) {
+        return false;
+    }
+    bool found = false;
+    struct dirent *entry;
+    uint16_t at = 0;
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_type != DT_REG) {
+            continue;
+        }
+        if (at++ == index) {
+            found = strlen(entry->d_name) < max;
+            if (found) {
+                strcpy(out, entry->d_name);
+            }
+            break;
+        }
+    }
+    closedir(dir);
+    return found;
 }
