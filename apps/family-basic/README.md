@@ -65,6 +65,21 @@ is printed on them, in capitals: the game has small letters only in kana.
 `{ | } ~` and the backquote have no key, and Tab none: they are dropped. The
 game types over what is under the cursor; INS opens a space.
 
+## Keeping a program
+
+BASIC keeps a program over the reset button by itself (`BASIC HOT
+START`): it marks its start in the console's own memory, which a reset
+leaves alone. Over a power-off, or a flash cartridge's reset to its menu,
+which clear that memory, it keeps it only if it was told to with
+`SYSTEM`. The cartridge had a BACKUP switch that kept the game from
+writing its memory; `SYSTEM` marks the program as kept and then asks for
+the switch to be turned ON, and waits. A flash cartridge has no such
+switch, so: type `SYSTEM`, press Escape (STOP) at its message, and then
+switch off or reset. BASIC finds the mark when it next starts, and has the
+program back (`BASIC HOT START`). The mark is used up then: `SYSTEM` again
+before the next power-off. The cartridge's memory must still be kept by
+its battery, or saved to the flash cartridge's card.
+
 ## How it works
 
 The game is a 32 KB NROM, and full: there is no room in it for the link.
