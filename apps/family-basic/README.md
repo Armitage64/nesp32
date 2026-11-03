@@ -46,6 +46,27 @@ the tests hold the ROM to all of this but the microphone (Tests).
 | The Family keyboard's other keys: F1 to F8, KANA, CTR, GRPH, CLR HOME, INS, and a Delete | done, with the firmware's KBD KEYS_ALL; working on hardware |
 | SAVE and LOAD to the nesp32's flash, in place of the data recorder | done, with the firmware's TAPE: working on the MiSTer and a real NES, and tested on py65; BG GRAPHIC's not tried |
 
+## The patch, for players
+
+To play, there is no need to build anything. `dist/fbasic.bps` is the ROM
+as a patch to Family BASIC V3: apply it to your own copy of the game with
+any BPS patcher (Floating IPS, or RomPatcher.js in a browser), and put the
+ROM it makes on a flash cartridge or the MiSTer. A BPS patch knows the ROM
+it is for, and a patcher refuses any other: Family BASIC V3 with its iNES
+header, 40976 bytes, CRC32 `667F6EA6` (the SHA-1 `tools/fbasic.py`
+checks). The nesp32 needs its firmware from the same release.
+
+There is no IPS patch. The game's 8 KB of CHR comes after its PRG in the
+file, and the ROM's PRG is twice the game's, so the CHR is further on in
+the ROM than in the game: the BPS patch copies it from the player's own
+copy, and an IPS patch, which cannot copy, would have to hold it. The
+patch holds none of the game: its 32 KB are the second half of the PRG,
+which is this ROM's own, the 46 bytes changed in the game's (How it
+works), and the header. `tools/gen_patch.py` (at the top of this
+repository) refuses to write a patch with sixteen bytes in a row of the
+game's; and `tests/test_patch.py` holds the patch to the ROM this tree
+builds: after a change to the ROM, `make bps` writes it again.
+
 ## Building
 
 The game is not in this repository. Put a copy of Family BASIC V3 in
@@ -58,6 +79,7 @@ Python 3, and nesp32, the top of this repository.
 ```sh
 make            # build/fbasic.nes (MMC1, mapper 1: 64 KB PRG, 8 KB CHR, 8 KB battery RAM)
 make test
+make bps        # dist/fbasic.bps again, for players (The patch, above)
 ```
 
 ## Using it
@@ -141,7 +163,7 @@ its battery, or saved to the flash cartridge's card.
 ## How it works
 
 The game is a 32 KB NROM, and full: there is no room in it for the link.
-So the ROM is an MMC1 with twice that, and the game, unchanged but for 28
+So the ROM is an MMC1 with twice that, and the game, unchanged but for 46
 bytes, is its first 32 KB. The second has `nes/fbkbd.s`, whose `boot`
 copies the code into `$7000-$7FFF`, sets the MMC1 to give the game all 32
 KB of its own, and starts the game's own reset (`BASIC HOT START` after
@@ -279,5 +301,6 @@ screen is read back as text.
 | `tools/fbasic.py` | what is known of the game: its checksum, its keys' tables, and the bytes changed |
 | `tools/gen_keys.py` | `build/keys.inc`: for each character, the key that types it |
 | `tools/build_rom.py` | the game, its bytes changed, and the second 32 KB, as an MMC1 |
-| `tests/` | the ROM on py65 against nesp32's firmware, with the test as the keyboard |
+| `tests/` | the ROM on py65 against nesp32's firmware, with the test as the keyboard, and the patch held to the ROM |
+| `dist/fbasic.bps` | the ROM as a patch to the game, for players (`make bps`) |
 | `requirements-dev.txt` | what the tests need |

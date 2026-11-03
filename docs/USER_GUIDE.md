@@ -582,9 +582,12 @@ keyboard. On a Famicom it needs the Family keyboard, which plugs into a
 port the NES doesn't have; here the NESP32's keyboard takes its place.
 
 **Getting it:** it contains the original program, so it isn't on the
-cartridge and can't be handed out ready-made. It has to be built from
-source with your own copy of Family BASIC V3
-([its README](../apps/family-basic/README.md)). It needs:
+cartridge and can't be handed out ready-made. Apply the patch
+`apps/family-basic/dist/fbasic.bps` to your own copy of Family BASIC V3
+with a BPS patcher such as Floating IPS or RomPatcher.js (it runs in a
+web browser), and put the result on your flash cartridge or MiSTer. Or
+build it from source ([its README](../apps/family-basic/README.md)). It
+needs:
 
 - a **StickS3** with a keyboard paired ([Chapter 8](#8-pairing-a-bluetooth-keyboard)),
   and firmware from the same release as the ROM,

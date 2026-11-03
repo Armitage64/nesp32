@@ -3,6 +3,8 @@
 #   make            build/fbasic.nes
 #   make verify     check its size and header
 #   make test       the ROM against nesp32's firmware, on a simulated console
+#   make bps        dist/fbasic.bps again: the ROM as a patch to the game,
+#                   which players apply to their own copy
 #
 # The game is not in this repository: put a copy of Family BASIC V3 in
 # baserom.nes, or say where it is with BASEROM=. tools/fbasic.py checks it.
@@ -21,8 +23,16 @@ NESP := $(NESP_BUILD)/nesp.stamp
 NESP_LIB := $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/gen_link.py
 ROM := $(BUILD)/fbasic.nes
 ROM_SIZE := 73744   # 16-byte header + 64 KB PRG + 8 KB CHR
+# The ROM as a patch to Family BASIC V3, for players who build nothing:
+# kept in the repository, as it holds none of the game (tools/gen_patch.py
+# refuses one that would). The game's 8 KB of CHR is after its 32 KB of
+# PRG in its file, and after the 64 KB in ours: the patch copies it from
+# the player's own ROM. So there is no IPS, which cannot copy.
+DIST := dist
+GEN_PATCH := $(NESP32)/tools/gen_patch.py
+CHR_MOVED := 0x8010:0x10010:0x2000
 
-.PHONY: all verify test clean FORCE
+.PHONY: all verify test bps clean FORCE
 
 all: $(ROM)
 
@@ -56,6 +66,12 @@ verify: $(ROM)
 
 test:
 	$(PYTHON) -m pytest
+
+# From the game itself: tools/fbasic.py has checked its SHA-1 as the ROM
+# was built, and the patch is for that one release.
+bps: verify
+	mkdir -p $(DIST)
+	$(PYTHON) $(GEN_PATCH) $(BASEROM) $(ROM) $(DIST)/fbasic.bps --moved $(CHR_MOVED)
 
 clean:
 	rm -rf $(BUILD)

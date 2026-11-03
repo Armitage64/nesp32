@@ -365,8 +365,8 @@ PHASE_UP        = 2
     sta JOY1
     nop
     nop
-    ldx #8
-    ldy #0
+    ldy #0                      ; the game's, the other way round: the
+    ldx #8                      ; patch holds no 16 bytes of it in a row
 @bit:
     lda (PAD_POINTER),y
     lsr a
