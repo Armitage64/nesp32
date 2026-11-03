@@ -9,32 +9,37 @@ service), and the game reads what is typed on it as if from its own.
 ## Status
 
 **A prototype, working on hardware**, on the MiSTer and on an EverDrive
-N8: a hello world program typed in on a Bluetooth keyboard through a
-nesp32, and run; the characters, signs and shifted signs typed as
-themselves, small letters as capitals; Backspace, the arrows, editing a
-line on the screen, Page Up (CLR HOME) and Page Down (INS); programs
-listed and run, and Escape (STOP) breaking one; a long line typed fast,
-every key in its place; a key held down repeating at the game's pace and
-stopping when let go (How it works), with the firmware that paces the
-repeats; BASIC with no nesp32; a program
-kept over the reset button on the MiSTer, and over a reset to the N8's
-menu after `SYSTEM` (Keeping a program). The N8 started nothing of the
-first builds, a grey screen; it starts this one, which no longer counts on
-how the MMC1 comes up at power-on (How it works). On py65, against nesp32's
-own firmware code over a line that models every bit, with the test as the
-keyboard: BASIC starts, lines typed are run, a program typed in lists and
-runs, every sign the keyboard has comes out as itself, Backspace and the
-arrows edit, Escape stops a running program, the reset button keeps the
-keyboard, and with no nesp32 BASIC still starts.
+N8, with a StickS3 and a Logitech MX Keys S. Tried there, on one or the
+other:
+
+- programs typed in, listed, edited and run, and Escape (STOP) breaking
+  one;
+- every character and sign, shifted ones too, typed as itself, and small
+  letters as capitals; a long line typed fast, every key in its place;
+- every key in Using it: Backspace and Delete, the arrows, Home, Shift and
+  Home, Insert, Page Up and Page Down, F1 to F8, F12 (KANA), and Ctrl
+  (CTR) and Alt (GRPH) with a key;
+- a key held down repeating at the game's pace, and stopping when it is
+  let go;
+- a program kept over the reset button on the MiSTer, and over a reset to
+  the N8's menu after `SYSTEM` (Keeping a program);
+- BASIC with no nesp32.
+
+The N8 started nothing of the first builds, a grey screen; it starts this
+one, which no longer counts on how the MMC1 comes up at power-on (How it
+works). Of BASIC's own, `GAME 0` (F1) wants the Famicom's microphone, so
+only its demo plays (Using it). On py65, against nesp32's own firmware
+code over a line that models every bit, with the test as the keyboard,
+the tests hold the ROM to all of this but the microphone (Tests).
 
 | Part | State |
 |---|---|
 | The ROM (`build/fbasic.nes`): the game on an MMC1, the keyboard's code in the cartridge's memory | done; tested on py65 against nesp32's KBD |
-| Characters typed on a Bluetooth keyboard, as keys of the Family keyboard | done for every character it has a key for, Enter, Backspace, the arrows and Escape; tested on py65 |
+| Characters typed on a Bluetooth keyboard, as keys of the Family keyboard | done for every character it has a key for, Enter, Backspace, the arrows and Escape; working on hardware |
 | BASIC's memory, `$6000-$6FFF`, kept apart from the keyboard's code at `$7000` | done; tested on py65 with BASIC's memory full |
-| The nesp32's own screen: "NES: Family BASIC" for the hello's `FBAS` | done in `firmware/main/main.cpp`; in the firmware flashed for the held key, and not yet looked for on the screen |
+| The nesp32's own screen: "NES: Family BASIC" for the hello's `FBAS` | done in `firmware/main/main.cpp`, and in the firmware on hardware; not yet looked for on the screen |
 | Real hardware: an MMC1 with 8 KB of battery-backed memory, a StickS3 and a keyboard | working on the MiSTer and on an EverDrive N8 |
-| The Family keyboard's other keys: F1 to F8, KANA, CTR, GRPH, CLR HOME, INS, and a Delete | done, with the firmware's KBD KEYS_ALL; tested on py65, and not yet on hardware |
+| The Family keyboard's other keys: F1 to F8, KANA, CTR, GRPH, CLR HOME, INS, and a Delete | done, with the firmware's KBD KEYS_ALL; working on hardware |
 | SAVE and LOAD to the nesp32's flash, in place of the data recorder | not started (see Not done) |
 
 ## Building
@@ -69,7 +74,7 @@ is printed on them, in capitals: the game has small letters only in kana.
 | Home, and Page Up | CLR HOME: the cursor to the top of the screen |
 | Shift and Home | SHIFT and CLR HOME: the screen cleared |
 | Insert, and Page Down | INS: a space opened under the cursor |
-| F1 to F8 | F1 to F8: the game's words for them, which `KEY` changes. As it starts, F1 to F4 are `GAME 0` to `GAME 3`, F5 `SPRITE`, F6 `LOAD` (from the data recorder, which is not there: STOP), F7 `LIST` and F8 `RUN`, each with RETURN but F5 |
+| F1 to F8 | F1 to F8: the game's words for them, which `KEY` changes. As it starts, F1 to F4 are `GAME 0` to `GAME 3`, F5 `SPRITE`, F6 `LOAD` (from the data recorder, which is not there: STOP), F7 `LIST` and F8 `RUN`, each with RETURN but F5. `GAME 0` is played with the Famicom's microphone (it waits on bit 2 of `$4016`, which a NES's never changes), so only its demo plays: N to `PLAY ? Y/N` |
 | F12 | KANA: kana on, or off. In kana the keys type their kana, as on the Family keyboard |
 | Ctrl and a key | CTR and that key: a control code, as CTR and L clears the screen |
 | Alt and a key | GRPH and that key: in kana, the game's graphic for it (out of kana the game types nothing for it) |
@@ -156,13 +161,6 @@ one unanswered costs the frame a receiver's wait.
   on a real console, the 5000 cycles a KEYS takes with a real
   nesp32's time to answer, and the keyboard's wait to type again after it
   sleeps (nesp32's `docs/TODO.md`).
-- **The new keys, on hardware.** F1 to F8, F12 (KANA), Home, Shift and
-  Home, Insert, Delete, and Ctrl (CTR) and Alt (GRPH) with a key want the
-  firmware with KBD KEYS_ALL (`firmware/main/keyboard.c`, and
-  `firmware/components/nesp_services/kbd.c`) as well as the ROM. KEYS_ALL
-  is KEYS with these besides, and KEYS leaves them out, so the other
-  programs on the cartridge have what they had: their tests and KBD's
-  hold them to it.
 - **SAVE and LOAD to the nesp32's flash.** The game saves to and loads
   from a data recorder on the Famicom's expansion port, which a NES does
   not have. Its routines are at about `$BDE7-$BFCD` (the reads of bit 1
@@ -170,14 +168,18 @@ one unanswered costs the frame a receiver's wait.
   service on the nesp32 that keeps a program, by name, as a file in its
   filing system, and the game's SAVE and LOAD (and perhaps FILES) sending
   it the 4 KB at `$6000` in pieces, as the other services' requests do.
-  About 2 KB of `$7000-$7FFF` is still free for its code (`build/fbkbd.map`).
+  About 2 KB of `$7000-$7FFF` is still free for its code (`build/fbkbd.map`:
+  the code and its memory end at `$77BF`).
 - **The cost to a running program.** While a program runs, KEYS is asked
   for every eighth frame, for STOP; a program that reads the keyboard
   (INKEY$) has it every other frame, about 8% of the console's time. The
   game's own scans are not slowed, as they read a matrix in memory.
-- **Kana and small letters.** A small letter is typed as its capital,
-  since the game has small letters only in its kana modes; nothing types
-  kana.
+- **Small letters.** A small letter is typed as its capital, since the
+  game has small letters only in its kana modes.
+- **The microphone.** Controller II of a Famicom has one, which BASIC reads
+  as bit 2 of `$4016` (`PEEK(&H4016) AND 4`), as `GAME 0` does. A key held
+  down could stand for it, by a change to the game's PEEK (`$A978`) for
+  `$4016`. Left alone for now.
 - **On nesp32's cartridge.** The cartridge's MMC1 has no memory at
   `$6000`, which both the game and this need.
 

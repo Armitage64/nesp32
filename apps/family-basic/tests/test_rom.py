@@ -236,6 +236,36 @@ def test_it_starts_however_the_mmc1_comes_up(basic, registers):
     assert last_rows(b, 3) == ["PRINT 1+1", "2", "OK"]
 
 
+def test_system_and_stop_keep_a_program_over_a_power_off(basic, rom):
+    from basic import Basic
+    b = started(basic())
+    b.enter("10 ? 5")
+    b.enter("system", frames=30)                # and its wait for the BACKUP switch
+    b.type(key("ESCAPE"))
+    b.typed_out()
+    b.run(30)
+    kept = bytes(b.c.memory[BASIC_RAM:RAM_CODE])
+    # A power-off: the console's memory gone, the cartridge's kept but for
+    # $7000, which boot copies again.
+    again = Basic(rom[0], rom[1])
+    again.c.memory.write(BASIC_RAM, kept)
+    started(again)
+    assert "BASIC HOT START" in again.screen()
+    again.enter("list")
+    assert last_rows(again, 2) == ["10 PRINT 5", "OK"]
+
+
+def test_without_system_a_power_off_loses_it(basic, rom):
+    from basic import Basic
+    b = started(basic())
+    b.enter("10 ? 5")
+    kept = bytes(b.c.memory[BASIC_RAM:RAM_CODE])
+    again = Basic(rom[0], rom[1])
+    again.c.memory.write(BASIC_RAM, kept)
+    started(again)
+    assert "4086 BYTES FREE" in again.screen()
+
+
 def test_reset_is_the_game_s_with_the_keyboard_still_on(basic):
     b = started(basic())
     b.enter("10 ? 5")

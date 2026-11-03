@@ -142,7 +142,7 @@ What is still to do on the hardware and the firmware is in
 | [NESradio](../apps/npr), TUNER | working on hardware, and for long runs |
 | [Weather](../apps/weather), WEATHER | working on hardware, the ROM by itself |
 | [Bluesky](../apps/bluesky), BSKY | on a simulated console against the firmware's code; not yet on hardware |
-| [Family BASIC](../apps/family-basic), KBD | a prototype, working on hardware, the MiSTer and an EverDrive N8: programs typed in on a Bluetooth keyboard, edited and run, and kept over a reset (on the N8, after `SYSTEM`) |
+| [Family BASIC](../apps/family-basic), KBD (and its KEYS_ALL) | a prototype, working on hardware, the MiSTer and an EverDrive N8: programs typed in on a Bluetooth keyboard, every key of the Famicom's that a computer's has, edited and run, and kept over a reset (on the N8, after `SYSTEM`) |
 
 ## What is where
 
