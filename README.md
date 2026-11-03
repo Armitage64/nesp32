@@ -83,7 +83,7 @@ Please join our [Discord](https://discord.gg/kwSC7pwtmb)!
 | [Bluesky](apps/bluesky) | Bluesky posts from a list of favorite accounts the NESP32 remembers, after [ConnectedNES](https://github.com/hxlnt/connectedNES) |
 | [Family BASIC](apps/family-basic)* | Family BASIC V3 using a Bluetooth keyboard. Save and load programs to the NESP32 instead of cassette |
 
-\* This software contain copyrighted material and is not provided. Instead, download the patches from the [home page](https://nesp32.retrobits.tv/), and apply them to your own original ROM files.
+\* This software contains copyrighted material and cannot be provided. Instead, download the patches from the [home page](https://nesp32.retrobits.tv/), and apply them to your own original ROM files.
 
 ## How it works
 
