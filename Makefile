@@ -12,7 +12,8 @@
 #   make web        build/web: the product page, and under flash/ the page
 #                   that flashes a nesp32 from a browser, with the firmware
 #                   as firmware/deploy.sh build left it. It builds the
-#                   cartridge and puts it there to be downloaded.
+#                   cartridge and puts it there to be downloaded. The web
+#                   site itself has the latest release's (docs/RELEASING.md).
 #                   make web-serve serves it at http://localhost:8032
 #   make test
 #
@@ -52,7 +53,14 @@ $(PROTO): $(BUILD)/proto.stamp ;
 
 proto: $(PROTO)
 
-$(HOST_LIB): $(HOST_SOURCES) $(HOST_HEADERS) $(BUILD)/nesp_proto.h
+# The version, from VERSION and the commit (tools/version.py), looked at on
+# every build and rewritten only if what it says changed.
+VERSION_H := $(BUILD)/nesp_version.h
+
+$(VERSION_H): FORCE | $(BUILD)
+	$(PYTHON) tools/version.py header $@
+
+$(HOST_LIB): $(HOST_SOURCES) $(HOST_HEADERS) $(BUILD)/nesp_proto.h $(VERSION_H)
 	$(CC) $(CFLAGS) -shared -I $(BUILD) -I $(CORE)/include -I $(SERVICES)/include \
 		-I $(MINIMP3) -o $@ $(HOST_SOURCES) -lm
 

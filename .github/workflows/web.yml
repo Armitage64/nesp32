@@ -1,8 +1,12 @@
 # The web site: the product page, the cartridge and the games' ROM patches
-# to download, and the page that flashes a nesp32 from a browser, built as `make web` builds it and
-# put on GitHub Pages. It runs when anything that goes into the firmware,
-# the cartridge or the pages changes on main, and by hand from the Actions
-# tab.
+# to download, and the page that flashes a nesp32 from a browser, put on
+# GitHub Pages.
+#
+# The firmware and the cartridge are the latest release's, as its GitHub
+# release has them: nothing is built here, and a change to the firmware
+# reaches the site only by a release (release.yml, which runs this when
+# it is done). The pages and the ROM patches are main's, and go up when
+# they change, with no release.
 
 name: Web site
 
@@ -10,19 +14,16 @@ on:
   push:
     branches: [main]
     paths:
-      - "firmware/**"
-      - "nes/**"
-      - "apps/**"
-      - "proto/**"
-      - "host/**"
-      - "third_party/**"
       - "web/**"
+      - "apps/*/dist/**"
       - "docs/cart-menu.png"
+      - "apps/*/docs/*.png"
+      - "nes/lib/logo.py"
       - "tools/gen_web.py"
-      - "tools/gen_proto.py"
-      - "Makefile"
+      - "tools/version.py"
       - ".github/workflows/web.yml"
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -37,46 +38,27 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
-          # The firmware's version is `git describe`, which wants the history.
+          # The patches' day is their last commit's, which wants the history.
           fetch-depth: 0
-          # The cartridge's NES Radar is built from its submodule; the
-          # games' disassemblies are not on the cartridge, and their ROM
-          # patches are the ones committed in apps/*/dist.
           submodules: false
-
-      - name: Fetch the nes-radar submodule
-        run: git submodule update --init --depth 1 third_party/nes-radar
-
-      - name: Build the StickS3's firmware
-        uses: espressif/esp-idf-ci-action@v1
-        with:
-          esp_idf_version: v5.5.5
-          target: esp32s3
-          path: firmware
-          command: idf.py -B build-esp32s3 -D SDKCONFIG=build-esp32s3/sdkconfig -D IDF_TARGET=esp32s3 build
-
-      - name: Build the StickC Plus2's firmware
-        uses: espressif/esp-idf-ci-action@v1
-        with:
-          esp_idf_version: v5.5.5
-          target: esp32
-          path: firmware
-          command: idf.py -B build-esp32 -D SDKCONFIG=build-esp32/sdkconfig -D IDF_TARGET=esp32 build
-
-      - name: Install cc65
-        run: sudo apt-get update && sudo apt-get install -y cc65
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Build the cartridge and the site
-        # clang, as on the Mac the project is developed on: the host
-        # library is built with -Werror.
-        run: make web CC=clang
+      - name: Fetch the latest release
+        run: |
+          mkdir -p build/release
+          gh release download --dir build/release --pattern 'nesp32-*'
+          gh release view --json tagName,publishedAt,url > build/release/release.json
+
+      - name: Build the site
+        run: python tools/gen_web.py build/web --release build/release
 
       - uses: actions/upload-pages-artifact@v3
         with:

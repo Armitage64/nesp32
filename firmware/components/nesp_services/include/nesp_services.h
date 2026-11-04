@@ -15,11 +15,6 @@
 extern "C" {
 #endif
 
-#define NESP_FIRMWARE_MAJOR 0
-#define NESP_FIRMWARE_MINOR 1
-#define NESP_FIRMWARE_PATCH 0
-#define NESP_FIRMWARE_TEXT "0.1.0"
-
 typedef struct {
     uint8_t state;                  /* NESP_WIFI_* */
     uint8_t why;                    /* NESP_WHY_*, when the state is FAILED */

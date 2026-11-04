@@ -150,6 +150,13 @@ need to download or build anything.
 4. Run **Setup** and check that the NESP32 line says **CONNECTED** and
    the firmware version is the new one.
 
+The firmware installer and the home page give the current release's
+number, with a link to what's new in it. The Stick shows its own version
+on the top line of its screen (**NESP32 0.2.0**), and Setup shows it as
+**FIRMWARE**. A version that ends in **-dev** is a build from the source
+between releases, not a release. Every release is also on
+[GitHub](https://github.com/Armitage64/nesp32/releases).
+
 ---
 
 ## 5. Getting the cartridge onto your NES
@@ -169,7 +176,9 @@ patches** from the NESP32 home page ("Download ROM patches").
 
 > **Keep the firmware and the cartridge in step.** When you update one,
 > update the other too, from the same release. A mismatched pair can show
-> **UPDATE NESP32** or **NEEDS AN UPDATE**, or behave oddly.
+> **UPDATE NESP32** or **NEEDS AN UPDATE**, or behave oddly. The ROM
+> patches are updated on their own; their README gives the oldest firmware
+> they work with.
 
 ---
 

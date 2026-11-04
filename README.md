@@ -50,6 +50,8 @@ to be configured from the NES itself.
 
 - [Online Firmware Installer](https://nesp32.retrobits.tv/flash/)
 
+- [Releases](https://github.com/Armitage64/nesp32/releases) and [what changed in each](CHANGELOG.md)
+
 \* Generic ESP32 boards can be used as well.
 
 ## NESP32 needs YOU
@@ -168,6 +170,8 @@ alone. After changing a game, `make -C apps/<name> bps` writes its patch for pla
 | [docs/BUILD_GUIDE.md](docs/BUILD_GUIDE.md) | building the hat and checking it, step by step |
 | [docs/WIRING.md](docs/WIRING.md) | the hat: its pins, the level shifter, and why it is needed |
 | [docs/PROTOCOL.md](docs/PROTOCOL.md) | the link: the line, frames, the hello, every service, timing, and the console's library |
+| [CHANGELOG.md](CHANGELOG.md) | what changed in each release of the firmware and the cartridge |
+| [docs/RELEASING.md](docs/RELEASING.md) | version numbers, the changelog, cutting a release, and how the web site gets it |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | building, the cartridge, what is where in the repository, the tests, and how far each part has got |
 | [docs/TODO.md](docs/TODO.md) | what is still to do on the hardware and the firmware |
 | [firmware/README.md](firmware/README.md) | the nesp32's firmware: building and flashing it, how it keeps time, and what was seen on hardware |

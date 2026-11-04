@@ -19,6 +19,8 @@ import struct
 import sys
 import zlib
 
+import version
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 FONT = os.path.join(HERE, "..", "firmware", "managed_components", "m5stack__m5gfx", "src", "lgfx",
                     "Fonts", "GFXFF", "FreeSans9pt7b.h")
@@ -26,7 +28,7 @@ FONT = os.path.join(HERE, "..", "firmware", "managed_components", "m5stack__m5gf
 WIDTH, HEIGHT, SCALE = 240, 135, 3
 BLACK, WHITE, TITLE_BLUE, BEZEL = (0, 0, 0), (255, 255, 255), (0x40, 0xA0, 0xFF), (40, 40, 40)
 
-TITLE = "NESP32 0.1.0"
+TITLE = "NESP32 " + version.text()
 WIFI = "Wifi: Home Network"
 ADDRESS = "192.168.1.77"
 REQ = "req: 48213"

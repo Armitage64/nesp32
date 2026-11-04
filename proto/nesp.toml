@@ -335,7 +335,7 @@ UNREACHABLE = 5         # the two were introduced, and could not reach each othe
 GONE = 6                # the room was given up while its host waited
 
 [enums.INFO]            # SYS INFO's strings
-FIRMWARE = 0            # "0.1.0"
+FIRMWARE = 0            # "0.2.0", or "0.2.0-dev" between releases
 BOARD = 1               # "StickC Plus2"
 NETWORK = 2             # the name of the saved network
 APP = 3                 # the application id of the last hello

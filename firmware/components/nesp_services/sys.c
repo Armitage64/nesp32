@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "nesp_services.h"
+#include "nesp_version.h"
 
 /* A hello's payload: protocol, application id, its version, the longest
  * reply payload the ROM takes, then the services it needs. */

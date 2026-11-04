@@ -77,6 +77,16 @@ which says which release of each game a player needs. The site's
 workflow has no copy of any game, so it builds none of the patches: after
 a change to a game, run `make bps` and commit what it writes.
 `tests/test_patch.py` in each app fails while a patch is out of date.
+Each patch's entry in `tools/gen_web.py` gives the first firmware release
+it works with ([RELEASING.md](RELEASING.md)).
+
+### Versions and releases
+
+The firmware and the cartridge are released together, as a tag on main
+cut by `tools/release.py`, and the web site has the latest release.
+[RELEASING.md](RELEASING.md) has how. A pull request that changes
+something a player or a ROM sees adds a line to `CHANGELOG.md` under
+Unreleased.
 
 ## The cartridge
 
@@ -173,7 +183,8 @@ What is still to do on the hardware and the firmware is in
 | `firmware/components/nesp_services` | every service, the text code WIKI lays articles out with, and the MP3 decoder TUNER plays a station with |
 | `firmware/main` | the board: UART and link task, Wi-Fi, HTTPS fetches, the connection to another nesp32, files, screen and buttons |
 | `hardware/` | the hat's board, its parts and pictures |
-| `web/` | the product page and the page that flashes a nesp32 from a browser (`make web`); `.github/workflows/web.yml` builds the firmware and the cartridge and puts the site on GitHub Pages whenever either changes on main |
+| `web/` | the product page and the page that flashes a nesp32 from a browser (`make web`); `.github/workflows/web.yml` puts the site on GitHub Pages with the latest release's firmware and cartridge ([RELEASING.md](RELEASING.md)) |
+| `VERSION`, `CHANGELOG.md` | the version of the firmware and the cartridge, and what changed in each release ([RELEASING.md](RELEASING.md)) |
 | `tools/put_files.py` | puts the jukebox's tracks on a nesp32, over USB, for a board that cannot be a drive |
 | `tools/lcd.py` | pictures of the nesp32's own screen, for trying a layout before flashing it |
 | `nes/lib/nesp.inc`, `nes/lib/gen_link.py` | the console's library, and its cycle-timed serial routines |

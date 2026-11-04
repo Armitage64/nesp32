@@ -11,6 +11,7 @@ import gen_screen as layout
 import nesp
 import nesp_proto as p
 import pytest
+import version
 from console import VBLANK_CYCLES
 from drive import (PAD_A, PAD_B, PAD_DOWN, PAD_SELECT, PAD_START, PAD_UP, STATE_FAILED,
                    STATE_JOINING, STATE_KBD, STATE_KBD_LIST, STATE_KEYS, STATE_LIST, STATE_SCAN,
@@ -85,7 +86,7 @@ def test_a_stick_is_greeted_and_shown(setup):
     s.stick.set_battery(83)
     s.settle(80)
     assert s.values() == {
-        "NESP32": "CONNECTED", "FIRMWARE": "0.1.0", "BOARD": "Computer", "WI-FI": "JOINED",
+        "NESP32": "CONNECTED", "FIRMWARE": version.text(), "BOARD": "Computer", "WI-FI": "JOINED",
         "NETWORK": "Home Network", "ADDRESS": "192.168.1.77", "SIGNAL": "-61 DBM",
         "BATTERY": "83%"}
     assert s.stick.app == (b"SETP", 1)
@@ -97,7 +98,7 @@ def test_a_stick_with_no_network_and_no_battery_gauge(setup):
     s = setup()
     s.settle(80)
     assert s.values() == {
-        "NESP32": "CONNECTED", "FIRMWARE": "0.1.0", "BOARD": "Computer", "WI-FI": "NOT SET UP",
+        "NESP32": "CONNECTED", "FIRMWARE": version.text(), "BOARD": "Computer", "WI-FI": "NOT SET UP",
         "NETWORK": "-", "ADDRESS": "-", "SIGNAL": "-", "BATTERY": "-"}
 
 
