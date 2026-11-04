@@ -40,8 +40,10 @@ nav { display: flex; gap: 20px; flex-wrap: wrap; margin: 0 0 40px; font-size: 15
   display: inline-block; background: var(--accent); color: #fff;
   text-decoration: none; font-weight: 600; padding: 10px 18px; border-radius: 8px;
 }
-.button.quiet { background: none; color: var(--accent); border: 1px solid var(--line); }
-.actions { display: flex; gap: 12px; flex-wrap: wrap; margin: 0 0 40px; }
+.button.quiet { background: none; color: var(--accent); border: 1px solid var(--accent); }
+.actions { display: flex; gap: 12px; flex-wrap: wrap; margin: 0; }
+/* The version line, just under the buttons. */
+p.version { margin: 8px 0 16px; }
 
 .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
 .grid .card { padding: 20px; }
