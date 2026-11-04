@@ -133,8 +133,8 @@ def test_busy_is_never_repeated(stick):
 def test_hello_says_what_the_stick_is(stick):
     reply = stick.hello(app=b"SETP", version=3, services=[NET, DIAG])
     assert reply.ok
-    assert reply.payload == bytes((p.NESP_PROTOCOL, 0, 1, 0, p.NESP_BOARD_HOST,
-                                   p.NESP_PAYLOAD_MAX, 0))
+    assert reply.payload == bytes((p.NESP_PROTOCOL,) + version.numbers()
+                                  + (p.NESP_BOARD_HOST, p.NESP_PAYLOAD_MAX, 0))
     assert stick.app == (b"SETP", 3)
 
 
