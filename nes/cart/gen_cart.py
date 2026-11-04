@@ -16,12 +16,12 @@ routines keep their pages and their timing.
     0      setup                0     setup
     1      NESpedia             1     NESpedia
     2-3    throughput test      2     jukebox
-    4-5    NES Radar            3     throughput test
-    6-7    NPR                  4     the menu
-    8      jukebox              5-6   NES Radar
-    9      Weather              7     NPR
-    10     Bluesky              8     Weather
-    11-14  nothing              9     Bluesky
+    4-5    NPR                  3     throughput test
+    6      NES Radar            4     the menu
+    7      jukebox              5-6   NES Radar
+    8      Weather              7     NPR
+    9      Bluesky              8     Weather
+    10-14  nothing              9     Bluesky
     15     the menu             10-15 nothing
 
 A program of 32 KB starts at an even bank: the MMC1 in 32 KB mode leaves
@@ -105,12 +105,12 @@ class Program:
 
 # In the menu's order.
 PROGRAMS = (
-    Program("jukebox", "Jukebox", 8, 2, banks=1),
-    Program("weather", "Weather", 9, 8, banks=1),
-    Program("npr", "NESradio", 6, 7),
+    Program("jukebox", "Jukebox", 7, 2, banks=1),
+    Program("weather", "Weather", 8, 8, banks=1),
+    Program("npr", "NESradio", 4, 7),
     Program("wiki", "NESpedia", 1, 1, banks=1),
-    Program("radar", "NES Radar", 4, 5, pages=2, mapper=MAPPER_MMC1),
-    Program("bluesky", "Bluesky", 10, 9, banks=1),
+    Program("radar", "NES Radar", 6, 5, pages=2, mapper=MAPPER_MMC1, banks=1),
+    Program("bluesky", "Bluesky", 9, 9, banks=1),
     Program("throughput", "Throughput Test", 2, 3),
     Program("setup", "Setup", 0, 0, banks=1),
 )

@@ -4,6 +4,7 @@
 
 ### Cartridge
 - Setup, Weather, NESpedia and the Jukebox take 16 KB each, leaving four banks free for more programs (#5)
+- NES Radar 0.7.1 takes 16 KB too, leaving five banks free (#5)
 
 ### Games
 - Bubble Bobble, online co-op: a session lasts past a game over, and 2P CONTINUE goes on at the round the two reached; its busiest rounds kept at the game's own speed
