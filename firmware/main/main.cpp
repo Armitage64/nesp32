@@ -23,6 +23,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 
 #include "board.h"
@@ -30,6 +31,7 @@
 #include "fetch.h"
 #include "keyboard.h"
 #include "link.h"
+#include "nesp_version.h"
 #include "radio.h"
 #ifdef NESP_SPIKE
 #include "spike.h"
@@ -271,7 +273,9 @@ extern "C" void app_main(void)
     link_start(radio_hal());
     radio_start();
     keyboard_start();
-    ESP_LOGI(TAG, "nesp32 %s on a %s", NESP_FIRMWARE_TEXT, BOARD_NAME);
+    // The version, and the commit it was built from (PROJECT_VER).
+    ESP_LOGI(TAG, "nesp32 %s (%s) on a %s", NESP_FIRMWARE_TEXT, esp_app_get_description()->version,
+             BOARD_NAME);
 
     uint32_t screen_at = 0;
     uint32_t battery_at = 0;

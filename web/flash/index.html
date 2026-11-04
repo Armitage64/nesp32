@@ -58,8 +58,14 @@
 </main>
 <script>
   fetch("manifest.json").then(r => r.json()).then(m => {
-    document.getElementById("version").textContent = "Firmware " + m.version +
-      (m.date ? ", " + m.date : "");
+    const version = document.getElementById("version");
+    version.textContent = "Firmware " + m.version + (m.date ? ", " + m.date : "") +
+      (m.notes ? " \u00b7 " : "");
+    if (m.notes) {
+      const notes = version.appendChild(document.createElement("a"));
+      notes.href = m.notes;
+      notes.textContent = "What's new";
+    }
   }).catch(() => {});
 </script>
 </body>

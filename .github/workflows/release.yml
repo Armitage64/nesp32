@@ -1,0 +1,135 @@
+# A release of the firmware and the cartridge (docs/RELEASING.md). It runs
+# when VERSION changes on main, which only a release's own pull request
+# does (tools/release.py), and by hand from the Actions tab to try again.
+#
+# It tags the commit v and VERSION's number, builds both Sticks' firmware
+# and the cartridge from it (so each says it is that release, not -dev),
+# attaches them to a GitHub release with CHANGELOG.md's notes for it, and
+# then puts them on the web site (web.yml). A version such as 0.3.0-rc.1
+# is a pre-release: it is built and attached, and the site keeps the last
+# release.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths: [VERSION]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    outputs:
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Fetch the nes-radar submodule
+        run: git submodule update --init --depth 1 third_party/nes-radar
+
+      - name: Read VERSION
+        id: version
+        run: |
+          number=$(cat VERSION)
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+          case "$number" in
+            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+          # Run again, the tag is already this commit's. Another's is a
+          # VERSION that was not moved on.
+          if git rev-parse -q --verify "refs/tags/v$number" > /dev/null &&
+             [ "$(git rev-list -n 1 "v$number")" != "$(git rev-parse HEAD)" ]; then
+            echo "::error::v$number is already another commit's: VERSION has to move on."
+            exit 1
+          fi
+
+      - name: Tag the commit
+        run: |
+          number=${{ steps.version.outputs.number }}
+          if ! git rev-parse -q --verify "refs/tags/v$number" > /dev/null; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "v$number" -m "nesp32 $number"
+            git push origin "v$number"
+          fi
+
+      # The container is another user than the checkout's, and git will not
+      # read the tree for tools/version.py until it is told the tree is safe.
+      - name: Build the StickS3's firmware
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.5.5
+          target: esp32s3
+          path: firmware
+          command: >-
+            git config --global --add safe.directory '*' &&
+            idf.py -B build-esp32s3 -D SDKCONFIG=build-esp32s3/sdkconfig -D IDF_TARGET=esp32s3 build
+
+      - name: Build the StickC Plus2's firmware
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.5.5
+          target: esp32
+          path: firmware
+          command: >-
+            git config --global --add safe.directory '*' &&
+            idf.py -B build-esp32 -D SDKCONFIG=build-esp32/sdkconfig -D IDF_TARGET=esp32 build
+
+      - name: Check the firmware says it is the release
+        run: |
+          for target in esp32s3 esp32; do
+            grep -F "\"${{ steps.version.outputs.number }}\"" \
+              "firmware/build-$target/esp-idf/nesp_services/nesp_version.h"
+          done
+
+      - name: Install cc65
+        run: sudo apt-get update && sudo apt-get install -y cc65
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the tests' Python packages
+        run: pip install -r requirements-dev.txt
+
+      # clang, as on the Mac the project is developed on: the host library
+      # is built with -Werror.
+      - name: Test
+        run: make test CC=clang
+
+      - name: Build the cartridge
+        run: make cart CC=clang
+
+      - name: Attach them to a GitHub release
+        run: |
+          number=${{ steps.version.outputs.number }}
+          python tools/release.py pack build/release
+          python tools/release.py notes "$number" > build/notes.md
+          if gh release view "v$number" > /dev/null 2>&1; then
+            gh release upload "v$number" build/release/* --clobber
+          else
+            gh release create "v$number" build/release/* --title "nesp32 $number" \
+              --notes-file build/notes.md \
+              ${{ steps.version.outputs.prerelease == 'true' && '--prerelease' || '' }}
+          fi
+
+  site:
+    needs: release
+    if: needs.release.outputs.prerelease == 'false'
+    uses: ./.github/workflows/web.yml

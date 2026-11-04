@@ -1,7 +1,7 @@
 NESP32 ROM patches
 ==================
 
-For NESP32 release {version}.
+These patches are from {date}.
 
 The NESP32's online games and Family BASIC contain the original games,
 so they can't be handed out ready-made. Instead, this zip has a patch
@@ -19,8 +19,9 @@ What you need
 - A BPS patcher:
     RomPatcher.js, in any web browser: https://www.marcrobledo.com/RomPatcher.js/
     Floating IPS (Flips), for Windows, macOS and Linux
-- NESP32 firmware from the same release as these patches ({version}).
-  Install it from https://nesp32.retrobits.tv/flash/
+- NESP32 firmware {firmware} or later. The Stick shows its version at the
+  top of its screen, and Setup shows it as FIRMWARE. Install the latest
+  from https://nesp32.retrobits.tv/flash/
 
 
 The patches
