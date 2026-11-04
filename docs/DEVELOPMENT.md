@@ -132,10 +132,11 @@ and the few bytes that are not as built: six in each program's padding and
 its reset vector, which make reset the menu.
 
 A program that fits in 16 KB is built as an NROM-128, one bank, to leave
-room on the cartridge (four banks are free). An NROM-128 has its bank at
-`$C000` and again at `$8000`; on the cartridge the MMC1 has the setup ROM
-at `$8000` under it instead, so an NROM-128 may read nothing below `$C000`,
-and the tests hold each one to that. A program of 32 KB starts at an even
+room on the cartridge (five banks are free), and NES Radar's build for it
+is one bank too. An NROM-128 has its bank at `$C000` and again at `$8000`;
+on the cartridge the MMC1 has the setup ROM at `$8000` under it instead,
+so a program in one bank may read nothing below `$C000`, and the tests
+hold each one to that. A program of 32 KB starts at an even
 bank, since the MMC1 leaves out the low bit in that mode.
 
 NES Radar is not an NROM: it has two pages of tiles, its
