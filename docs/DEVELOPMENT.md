@@ -190,6 +190,7 @@ What is still to do on the hardware and the firmware is in
 | The firmware (`firmware/main/`): UART, Wi-Fi, HTTPS, the screen, the files, the USB drive, the connection to another nesp32 | working on a StickS3 and on a StickC Plus2, with the MiSTer and with a real NES ([its README](../firmware/README.md)) |
 | The nesp32's files, in a FAT filing system, with rips converted on the nesp32 itself | working on hardware: written over USB with `tools/put_files.py` to a StickC Plus2, and copied to a StickS3 as a USB drive |
 | A computer in place of a nesp32 (`host/serial_host.py`) | written, not run on a cable |
+| A nesp32 in the Mesen emulator ([`host/mesen/`](../host/mesen)): a Lua script and a bridge to the firmware's code, with the computer's keyboard as the Bluetooth keyboard | working in MesenCE: the cartridge's programs, HTTP and the keyboard; PEER not yet |
 | The cartridge (`nes/cart/`): eight programs and a menu, on an MMC1 | working on hardware with the first five, a real NES and the MiSTer, with each board. NESradio, Weather and Bluesky start from the menu on a simulated console; the cartridge with them has not yet run on hardware |
 | [Setup](../apps/setup), SYS, NET, DIAG | working on hardware |
 | A Bluetooth keyboard: KBD, [Setup](../apps/setup)'s screen for it and its Wi-Fi password, [NESpedia](../apps/wiki)'s search and reader, and [Weather](../apps/weather)'s zip code; every program on the cartridge asks for KBD, to keep the keyboard connected, and takes its keys as the controller's buttons (NESradio's until its station plays) | working on hardware: a StickS3 with a Logitech MX Keys S, paired from Setup, typing NESpedia's searches and Weather's zip codes, and paging NESpedia's articles |
@@ -225,6 +226,7 @@ What is still to do on the hardware and the firmware is in
 | `nes/cart/` | the cartridge: its menu, and the tool that puts the programs on it |
 | `host/nesp_host.c`, `host/nesp.py` | the firmware's code as a library for this computer, with a stand-in for the hardware |
 | `host/serial_host.py` | that, on a USB serial cable in place of a nesp32 |
+| `host/mesen/` | that, in the Mesen emulator: `nesp32.lua` on controller port 2, and `nesp32_bridge.py`, the nesp32 it talks to |
 | `host/peer_net.py` | for it, PEER's connection to another nesp32 on this computer's sockets, and an opponent who never presses a button |
 | `host/peer_player.py` | a second player with no second console: the other nesp32 and its console, for trying a netplay ROM on one NES, in a room at the real rendezvous or by address. `--app` is the game's id (TMN2, CNTR, DRMA, TTRS, BUBL, JACK); each game's version is its builds' own (`VERSIONS`), and a room is met only at the same one |
 | `tests/console.py`, `tests/wire.py`, `tests/drive.py` | a console on py65, the serial line, and a hand on the controller |
@@ -281,6 +283,11 @@ make test
   failed, with the test as the site. The HTTPS sample's ROM is run
   against this code in its own tests.
 - `test_put_files.py`: the image of the tracks that goes over USB.
+- `test_mesen.py`: `host/mesen/nesp32_bridge.py`, the nesp32 for Mesen: a
+  keyboard's reports to characters, held to `firmware/main/keyboard.c`;
+  pairing, forgetting and typing through KBD; a ROM's files kept and
+  loaded again; and fetches as the firmware makes them, with the test
+  as the site.
 - `test_vgm.py`: the converter of rips, held to the same bytes as
   nes-jukebox's Python over its rips, over made-up ones, and over 300 made
   at random.

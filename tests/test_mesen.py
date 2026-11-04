@@ -1,0 +1,372 @@
+"""host/mesen/nesp32_bridge.py, the NESP32 for Mesen's Lua script, with no
+Mesen: the computer's keyboard as the nesp32's Bluetooth keyboard, a
+ROM's files kept, and fetches as the firmware makes them."""
+
+import http.server
+import os
+import sys
+import threading
+
+import nesp_proto as p
+import pytest
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, "..", "host", "mesen"))
+
+import nesp32_bridge as bridge  # noqa: E402
+
+bridge.load_nesp32()
+
+KBD = p.NESP_SVC_KBD
+SHIFT, CTRL, ALT, GUI = 0x02, 0x01, 0x04, 0x08
+A, ENTER, ESCAPE, BACKSPACE = 0x04, 0x28, 0x29, 0x2A
+ONE, SLASH, CAPS, F1, F12, HOME, DELETE, RIGHT, UP = (0x1E, 0x38, 0x39, 0x3A, 0x45, 0x4A,
+                                                    0x4C, 0x4F, 0x52)
+KEYPAD_1 = 0x59
+
+
+def letter(c):
+    return A + ord(c) - ord("a")
+
+
+class Typist:
+    """A Keyboard, and what it has typed."""
+
+    def __init__(self):
+        self.typed = bytearray()
+        self.keyboard = bridge.Keyboard(self.typed.append)
+        self.now = 0
+
+    def tap(self, usage, modifiers=0):
+        self.keyboard.report(modifiers, [usage], self.now)
+        self.keyboard.report(modifiers, [], self.now)
+
+
+# --- the keyboard ---------------------------------------------------------------
+
+def test_letters_digits_and_signs_are_a_us_layout_with_shift():
+    t = Typist()
+    for c in "hi":
+        t.tap(letter(c))
+    t.tap(letter("h"), SHIFT)
+    t.tap(ONE)
+    t.tap(ONE, SHIFT)
+    t.tap(SLASH, SHIFT)
+    t.tap(0x2C)                                 # space
+    t.tap(0x34, 0x20)                           # ' with the right Shift
+    assert bytes(t.typed) == b'hiH1!? "'
+
+
+def test_caps_lock_is_for_the_letters_alone():
+    t = Typist()
+    t.tap(CAPS)
+    t.tap(letter("a"))
+    t.tap(letter("a"), SHIFT)
+    t.tap(ONE)
+    t.tap(CAPS)
+    t.tap(letter("a"))
+    assert bytes(t.typed) == b"Aa1a"
+
+
+def test_the_keys_that_are_not_characters_are_kbds():
+    t = Typist()
+    for usage in (ENTER, ESCAPE, BACKSPACE, RIGHT, RIGHT + 1, RIGHT + 2, UP, 0x4B, 0x4E,
+                  F1, F1 + 7, F12, HOME, 0x49, DELETE):
+        t.tap(usage)
+    t.tap(HOME, SHIFT)
+    assert list(t.typed) == [
+        p.NESP_KEY_ENTER, p.NESP_KEY_ESCAPE, p.NESP_KEY_BACKSPACE, p.NESP_KEY_RIGHT,
+        p.NESP_KEY_LEFT, p.NESP_KEY_DOWN, p.NESP_KEY_UP, p.NESP_KEY_PAGE_UP,
+        p.NESP_KEY_PAGE_DOWN, p.NESP_KEY_F1, p.NESP_KEY_F8, p.NESP_KEY_F12, p.NESP_KEY_HOME,
+        p.NESP_KEY_INSERT, p.NESP_KEY_DELETE, p.NESP_KEY_SHIFT_HOME]
+
+
+def test_keys_the_firmware_has_nothing_for_type_nothing():
+    t = Typist()
+    t.tap(KEYPAD_1)
+    t.tap(0x4D)                                 # End
+    t.tap(F1 + 8)                               # F9
+    t.tap(letter("a"), GUI)                     # with the Windows key
+    assert bytes(t.typed) == b""
+
+
+def test_ctrl_and_enter_or_escape_are_start_and_select():
+    t = Typist()
+    t.tap(ENTER, CTRL)
+    t.tap(ESCAPE, 0x10)                         # the right Ctrl
+    assert list(t.typed) == [p.NESP_KEY_START, p.NESP_KEY_SELECT]
+
+
+def test_a_key_with_ctrl_or_alt_comes_after_with_ctrl_or_with_alt():
+    t = Typist()
+    t.tap(letter("c"), CTRL)
+    t.tap(letter("g"), ALT)
+    t.tap(ENTER, CTRL | ALT)
+    assert list(t.typed) == [p.NESP_KEY_WITH_CTRL, ord("c"), p.NESP_KEY_WITH_ALT, ord("g"),
+                             p.NESP_KEY_WITH_CTRL, p.NESP_KEY_WITH_ALT, p.NESP_KEY_ENTER]
+
+
+def test_a_key_is_typed_when_it_goes_down_and_not_again_while_it_is():
+    t = Typist()
+    k = t.keyboard
+    k.report(0, [letter("a")], 0)
+    k.report(0, [letter("a"), letter("b")], 10)
+    k.report(0, [letter("b")], 20)
+    k.report(0, [letter("b")], 30)
+    k.report(0, [], 40)
+    assert bytes(t.typed) == b"ab"
+
+
+def test_too_many_keys_down_is_a_report_that_means_nothing():
+    t = Typist()
+    t.keyboard.report(0, [bridge.USAGE_ROLLOVER], 0)
+    assert bytes(t.typed) == b""
+
+
+def test_a_key_held_down_repeats_after_half_a_second_then_25_times_a_second():
+    t = Typist()
+    k = t.keyboard
+    k.report(0, [letter("x")], 0)
+    k.tick(499, lambda: False)
+    assert bytes(t.typed) == b"x"
+    k.tick(500, lambda: False)
+    assert bytes(t.typed) == b"xx"
+    for now in range(501, 1000):
+        k.tick(now, lambda: False)
+    assert bytes(t.typed) == b"x" * (2 + 12)    # 540, 580 ... 980
+    k.report(0, [], 1000)
+    k.tick(2000, lambda: False)
+    assert bytes(t.typed) == b"x" * 14
+
+
+def test_a_repeat_waits_until_what_was_typed_before_is_taken():
+    t = Typist()
+    k = t.keyboard
+    k.report(0, [letter("x")], 0)
+    for now in range(0, 1000, 10):
+        k.tick(now, lambda: True)
+    assert bytes(t.typed) == b"x"
+
+
+def test_enter_escape_and_a_key_with_ctrl_do_not_repeat():
+    for usage, modifiers in ((ENTER, 0), (ESCAPE, 0), (letter("c"), CTRL), (ENTER, CTRL)):
+        t = Typist()
+        t.keyboard.report(modifiers, [usage], 0)
+        count = len(t.typed)
+        t.keyboard.tick(5000, lambda: False)
+        assert len(t.typed) == count
+
+
+def test_shift_let_go_of_while_a_key_repeats_changes_what_it_types():
+    t = Typist()
+    k = t.keyboard
+    k.report(SHIFT, [letter("a")], 0)
+    k.report(0, [letter("a")], 100)
+    k.tick(500, lambda: False)
+    assert bytes(t.typed) == b"Aa"
+
+
+# --- the Bluetooth keyboard, on the firmware's own KBD --------------------------
+
+def state(stick):
+    reply = stick.ask(KBD, p.NESP_KBD_STATE)
+    assert reply.ok
+    return reply.payload[0], reply.payload[1], bytes(reply.payload[3:])
+
+
+def keys(stick):
+    reply = stick.ask(KBD, p.NESP_KBD_KEYS)
+    assert reply.ok
+    return bytes(reply.payload[1:])
+
+
+@pytest.fixture
+def bt(stick):
+    assert stick.hello(services=[KBD]).ok
+    return bridge.BluetoothKeyboard(stick, bridge.Memory())
+
+
+def pair(stick, bt, now=0):
+    """The setup ROM's pairing: SCAN, until it is over; FOUND; PAIR."""
+    assert stick.ask(KBD, p.NESP_KBD_SCAN).ok
+    bt.update(now)
+    assert state(stick)[0] == p.NESP_KEYBOARD_SCANNING
+    now += bridge.SCAN_MS
+    bt.update(now)
+    assert state(stick)[:2] == (p.NESP_KEYBOARD_SCANNED, 1)
+    found = stick.ask(KBD, p.NESP_KBD_FOUND, b"\x00")
+    assert found.ok
+    assert found.payload[3:] == bridge.KEYBOARD_NAME
+    assert found.payload[1] == bridge.KEYBOARD_SIGNAL & 0xFF
+    assert stick.ask(KBD, p.NESP_KBD_PAIR, b"\x00").ok
+    bt.update(now)
+    assert state(stick)[0] == p.NESP_KEYBOARD_PAIRING
+    now += bridge.PAIR_MS
+    bt.update(now)
+    return now
+
+
+def test_a_scan_finds_the_computers_keyboard_and_it_pairs(stick, bt):
+    assert state(stick) == (p.NESP_KEYBOARD_UNPAIRED, 0, b"")
+    pair(stick, bt)
+    assert state(stick) == (p.NESP_KEYBOARD_CONNECTED, 0, bridge.KEYBOARD_NAME)
+    assert bt.memory.paired
+    assert stick.ask(KBD, p.NESP_KBD_FOUND, b"\x01").status == p.NESP_ST_NOT_FOUND
+
+
+def test_nothing_is_typed_before_the_keyboard_is_paired(stick, bt):
+    bt.report(0, [letter("a")], 0)
+    bt.report(0, [], 10)
+    assert keys(stick) == b""
+    now = pair(stick, bt)
+    bt.report(SHIFT, [letter("o")], now)
+    bt.report(0, [letter("k")], now)
+    bt.report(0, [], now)
+    assert keys(stick) == b"Ok"
+
+
+def test_what_is_typed_while_no_rom_has_kbd_is_dropped(stick, bt):
+    pair(stick, bt)
+    assert stick.hello(services=[p.NESP_SVC_NET]).ok
+    bt.report(0, [letter("a")], 0)
+    assert stick.hello(services=[KBD]).ok
+    bt.report(0, [], 0)
+    assert keys(stick) == b""
+
+
+def test_forget_unpairs_it_and_the_next_board_has_none(stick, bt):
+    pair(stick, bt)
+    assert stick.ask(KBD, p.NESP_KBD_FORGET).ok
+    bt.update(0)
+    assert state(stick) == (p.NESP_KEYBOARD_UNPAIRED, 0, b"")
+    assert not bt.memory.paired
+    bt.report(0, [letter("a")], 0)
+    assert keys(stick) == b""
+
+
+def test_a_board_after_a_reset_has_the_keyboard_paired_before(stick):
+    memory = bridge.Memory()
+    memory.paired = True
+    bridge.BluetoothKeyboard(stick, memory)
+    assert stick.hello(services=[KBD]).ok
+    assert state(stick) == (p.NESP_KEYBOARD_CONNECTED, 0, bridge.KEYBOARD_NAME)
+
+
+def test_repeats_come_at_the_roms_pace(stick, bt):
+    now = pair(stick, bt)
+    bt.report(0, [RIGHT], now)
+    for t in range(now, now + 2000, 10):
+        bt.update(t)
+    # Nothing was taken, so the key held down came once only.
+    assert keys(stick) == bytes((p.NESP_KEY_RIGHT,))
+    bt.update(now + 2040)
+    assert keys(stick) == bytes((p.NESP_KEY_RIGHT,))
+    bt.report(0, [], now + 2050)
+    bt.update(now + 3000)
+    assert keys(stick) == b""
+
+
+def test_no_more_is_held_than_the_firmware_holds(stick, bt):
+    now = pair(stick, bt)
+    for _ in range(bridge.HELD + 10):
+        bt.report(0, [letter("a")], now)
+        bt.report(0, [], now)
+    assert stick.kbd_unread == bridge.HELD
+
+
+# --- the board: what Mesen hears, and a ROM's files ---------------------------
+
+def test_the_reply_line_ends_with_how_the_keyboard_stands():
+    board = bridge.Board(bridge.Memory())
+    assert board.sync(1000, []) == "R 0 0  K %d 0\n" % p.NESP_KEYBOARD_UNPAIRED
+
+
+def test_a_roms_files_are_kept_in_the_directory_and_back_on_the_next_board(tmp_path):
+    memory = bridge.Memory(str(tmp_path))
+    board = bridge.Board(memory)
+    stick = board.stick
+    assert stick.hello(services=[p.NESP_SVC_TAPE]).ok
+    program = b"10 PRINT 1\x00"
+    header = bytearray(b"\x00" * p.NESP_TAPE_HEADER)
+    header[p.NESP_TAPE_TYPE_AT] = 2
+    header[p.NESP_TAPE_NAME_AT:p.NESP_TAPE_NAME_AT + 5] = b"HELLO"
+    header[p.NESP_TAPE_LENGTH_AT:p.NESP_TAPE_LENGTH_AT + 2] = len(program).to_bytes(2, "little")
+    pair_ = bytes(header) + program
+    for at in range(0, len(pair_), 100):
+        assert stick.ask(p.NESP_SVC_TAPE, p.NESP_TAPE_PUT,
+                         at.to_bytes(2, "little") + pair_[at:at + 100]).ok
+    assert stick.ask(p.NESP_SVC_TAPE, p.NESP_TAPE_SAVE,
+                     bytes((1, 0)) + len(program).to_bytes(2, "little")).ok
+    stick.tick(0)
+    board.files()
+    name = stick.file_names[0]
+    assert (tmp_path / "files" / name).read_bytes() == pair_
+    again = bridge.Board(bridge.Memory(str(tmp_path)))
+    assert again.stick.file(name) == pair_
+
+
+def test_the_pairing_is_kept_in_the_directory(tmp_path):
+    bridge.Memory(str(tmp_path)).set_paired(True)
+    assert bridge.Memory(str(tmp_path)).paired
+    bridge.Memory(str(tmp_path)).set_paired(False)
+    assert not bridge.Memory(str(tmp_path)).paired
+
+
+def test_secrets_in_an_address_are_not_logged():
+    assert bridge.redact("https://x/y?username=me&key=s3cret&q=1") == \
+        "https://x/y?username=...&key=...&q=1"
+
+
+# --- fetches --------------------------------------------------------------------
+
+class Site(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == "/there":
+            body, code = b"hello", 200
+        else:
+            body, code = b"not here", 404
+        self.send_response(code)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+
+@pytest.fixture
+def site():
+    server = http.server.HTTPServer(("127.0.0.1", 0), Site)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield "http://127.0.0.1:%d" % server.server_address[1]
+    server.shutdown()
+
+
+def fetched(url, icy=False, head=False):
+    fetcher = bridge.Fetcher(1, url, b"test", icy, head)
+    items = []
+    while not items or items[-1][0] != "done":
+        items.append(fetcher.items.get(timeout=15))
+    return items
+
+
+def test_a_sink_with_a_head_hears_the_status_type_and_length_first(site):
+    assert fetched(site + "/there", head=True) == [
+        ("head", 200, b"text/plain", 5), ("body", b"hello"), ("done", True, b"")]
+
+
+def test_a_sink_with_a_head_hears_a_404_and_its_body(site):
+    assert fetched(site + "/gone", head=True) == [
+        ("head", 404, b"text/plain", 8), ("body", b"not here"), ("done", True, b"")]
+
+
+def test_for_any_other_sink_a_404_is_a_fetch_that_failed(site):
+    assert fetched(site + "/gone") == [("done", False, b"THE SITE SAID 404")]
+
+
+def test_a_site_that_is_not_there_did_not_answer():
+    with __import__("socket").socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    assert fetched("http://127.0.0.1:%d/" % port) == [("done", False, b"THE SITE DID NOT ANSWER")]
