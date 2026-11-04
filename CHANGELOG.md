@@ -11,10 +11,13 @@ section the release's. [docs/RELEASING.md](docs/RELEASING.md) has the rest.
 
 ## Unreleased
 
+## 0.2.0 — 2026-11-04
+
+The first numbered release.
+
 ### Firmware
-- The version moves: each release has its own number, shown on the
-  Stick's screen and in Setup, and a build that is not a release says
-  `-dev` after it (#35, #7)
+- Each release has its own number, shown on the Stick's screen and in
+  Setup; a build that is not a release says `-dev` after it (#35, #7)
 - Joins the strongest access point when several share the network's name (#47)
 - Bluetooth keyboards (StickS3): pairing, and typing into the cartridge's
   programs (#26, #34)
