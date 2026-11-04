@@ -41,6 +41,9 @@ authors. It is short on purpose:
   a Bluetooth keyboard (#55)".
 - A change to the protocol says what a ROM can now use, and that it needs
   this release's firmware.
+- A game's patch is not part of a release, but a new game, or one whose
+  patch needs this release's firmware, gets a line under **Games**. Its
+  firmware side goes under Firmware and Protocol, as for any program.
 
 ## Cutting a release
 
