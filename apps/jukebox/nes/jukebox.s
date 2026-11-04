@@ -82,7 +82,11 @@ REG_INDEX_FRAME  = 19
 
 .segment "HEADER"
     .byte "NES", $1A
+.ifdef LINK
+    .byte 1                     ; 1 x 16 KB PRG: no song
+.else
     .byte 2                     ; 2 x 16 KB PRG
+.endif
     .byte 1                     ; 1 x 8 KB CHR
     .byte $00, $00              ; mapper 0 (NROM), horizontal mirroring
     .res 8, 0

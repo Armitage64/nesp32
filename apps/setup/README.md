@@ -73,7 +73,7 @@ make preview    # the pictures above, from the ROM itself
 ```
 
 Needs [cc65](https://cc65.github.io/) (`ca65`, `ld65`) and Python 3.
-`build/setup.nes` is NROM-256 (mapper 0). `make rom` at the top of the
+`build/setup.nes` is NROM-128 (mapper 0). `make rom` at the top of the
 repository builds the same ROM into the build directory there, for the
 tests and for the cartridge.
 
@@ -83,7 +83,7 @@ tests and for the cartridge.
 |---|---|
 | `nes/setup.s` | reset, the NMI, and the screens' common code |
 | `nes/status.inc`, `nes/wifi.inc`, `nes/keys.inc`, `nes/test.inc`, `nes/usb.inc`, `nes/kbd.inc` | each screen: status, networks, the keyboard on the screen, the link test, the USB drive, the Bluetooth keyboard |
-| `nes/nrom256.cfg` | where the linker puts it |
+| `nes/nrom128.cfg` | where the linker puts it |
 | `tools/gen_screen.py` | the tiles, the header and the layout's numbers. The cartridge's menu has its tiles from here too |
 | `tools/preview.py` | the pictures in `docs/` |
 

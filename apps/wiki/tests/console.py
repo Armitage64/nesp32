@@ -39,6 +39,7 @@ FIRST_LINE = VBLANK_LINES + 1   # scanlines from the vblank to the picture's fir
 VBLANK_CYCLES = VBLANK_LINES * DOTS_PER_LINE / 3    # 2273: PPU writes must be over
 PRG_START = 0x8000
 PRG_SIZE = 0x8000
+BANK_SIZE = 0x4000              # of PRG, as the header counts it
 INES_HEADER = 16
 CHR_SIZE = 0x2000
 
@@ -112,8 +113,11 @@ class Console:
         with open(rom_path, "rb") as handle:
             rom = handle.read()
         self.labels = load_labels(labels_path)
-        self.prg = bytes(rom[INES_HEADER:INES_HEADER + PRG_SIZE])
-        self.chr = bytes(rom[INES_HEADER + PRG_SIZE:INES_HEADER + PRG_SIZE + CHR_SIZE])
+        chr_start = INES_HEADER + rom[4] * BANK_SIZE
+        self.prg = bytes(rom[INES_HEADER:chr_start])
+        if len(self.prg) == BANK_SIZE:  # NROM-128: the one bank at $8000 and again at $C000
+            self.prg += self.prg
+        self.chr = bytes(rom[chr_start:chr_start + CHR_SIZE])
         self.memory = ObservableMemory()
         for offset, byte in enumerate(self.prg):
             self.memory[PRG_START + offset] = byte

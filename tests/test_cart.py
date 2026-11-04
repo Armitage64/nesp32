@@ -15,7 +15,7 @@ import gen_screen as layout
 import nesp_proto
 import pytest
 from console import (BANK_SIZE, CHR_SIZE, INES_HEADER, PAD_A, PAD_B, PAD_DOWN, PAD_SELECT,
-                     PAD_START, PAD_UP, PPUCTRL_NMI)
+                     PAD_START, PAD_UP, PPUCTRL_NMI, PRG_START)
 from nesp import Stick
 from test_juke import ONE
 from wire import link
@@ -38,6 +38,7 @@ RAM_END = 0x0800
 LAUNCH_WRITES = 15              # three registers, five writes each
 STUB = cart_layout.RESET_STUB & (BANK_SIZE - 1)
 VECTOR = cart_layout.RESET_VECTOR & (BANK_SIZE - 1)
+TOP = cart_layout.TOP                   # an NROM-128's bank, on the cartridge
 
 
 @pytest.fixture(scope="session")
@@ -135,6 +136,19 @@ def test_a_program_with_no_room_for_the_stub_is_refused(images, menu, cart_build
         setup.prg = built
 
 
+def test_a_program_of_32_kb_at_an_odd_bank_is_refused(images, menu, cart_build):
+    with open(os.path.join(cart_build, "cart", "chr.bin"), "rb") as handle:
+        tiles = handle.read()
+    image = next(image for image in images if image.program.banks == 2)
+    bank = image.program.bank
+    try:
+        image.program.bank = bank + 1
+        with pytest.raises(ValueError, match="odd bank"):
+            cart_layout.build_rom(menu, tiles, images)
+    finally:
+        image.program.bank = bank
+
+
 # --- the menu ----------------------------------------------------------------------
 
 def test_power_on_is_the_menu(cart):
@@ -208,6 +222,16 @@ def test_a_program_starts_and_reset_is_the_menu_again(cart, images, index):
     assert not c.home
 
     assert (c.mapper[0], c.mapper[1], c.mapper[3]) == registers(image)
+    # An NROM-128 has its bank at $8000 too on a cartridge of its own, but
+    # here the setup ROM is there: nothing may be read from it.
+    low_reads = []
+    watching = image.program.banks == 1
+
+    def read_low(address):
+        if watching:
+            low_reads.append((c.mpu.pc, address))
+        # None: the read is of what is there
+    c.memory.subscribe_to_read(range(PRG_START, TOP), read_low)
     if key == "wiki":
         c.run(60)
         c.press(PAD_START)              # its hello is with its first search
@@ -227,6 +251,8 @@ def test_a_program_starts_and_reset_is_the_menu_again(cart, images, index):
         # write would have changed the banks under it.
         assert len(c.mapper_writes) == before + LAUNCH_WRITES
         assert (c.mapper[0], c.mapper[1], c.mapper[3]) == registers(image)
+    assert not low_reads, ["$%04X at $%04X" % (address, pc) for pc, address in low_reads[:8]]
+    watching = False                    # the menu's reads, from here on, are its own
 
     c.reset()
     c.strict = True

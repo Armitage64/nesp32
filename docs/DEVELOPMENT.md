@@ -131,6 +131,13 @@ pages they were timed on. `nes/cart/gen_cart.py` has where everything is
 and the few bytes that are not as built: six in each program's padding and
 its reset vector, which make reset the menu.
 
+A program that fits in 16 KB is built as an NROM-128, one bank, to leave
+room on the cartridge (four banks are free). An NROM-128 has its bank at
+`$C000` and again at `$8000`; on the cartridge the MMC1 has the setup ROM
+at `$8000` under it instead, so an NROM-128 may read nothing below `$C000`,
+and the tests hold each one to that. A program of 32 KB starts at an even
+bank, since the MMC1 leaves out the low bit in that mode.
+
 NES Radar is not an NROM: it has two pages of tiles, its
 splash's and its scope's, and changes between them. By itself it is a
 CN-ROM, whose latch is a write to the ROM, and on an MMC1 that write would

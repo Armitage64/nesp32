@@ -13,22 +13,25 @@ so each goes in as it was built: nothing is linked again, and the serial
 routines keep their pages and their timing.
 
     PRG, 16 KB banks            CHR, 8 KB banks
-    0-1    setup                0     setup
-    2-3    NESpedia             1     NESpedia
-    4-5    jukebox              2     jukebox
-    6-7    throughput test      3     throughput test
-    8-9    NES Radar            4     the menu
-    10-11  NPR                  5-6   NES Radar
-    12-13  Weather              7     NPR
-    14     Bluesky              8     Weather
-    15     the menu             9     Bluesky
-                                10-15 nothing
+    0      setup                0     setup
+    1      NESpedia             1     NESpedia
+    2-3    throughput test      2     jukebox
+    4-5    NES Radar            3     throughput test
+    6-7    NPR                  4     the menu
+    8      jukebox              5-6   NES Radar
+    9      Weather              7     NPR
+    10     Bluesky              8     Weather
+    11-14  nothing              9     Bluesky
+    15     the menu             10-15 nothing
 
-Bluesky is an NROM-128, 16 KB of PRG, in the one bank there was room for.
-An NROM-128 has its bank at $C000 (and again at $8000, which Bluesky does
-not use), so for it the MMC1 is set to 16 KB banks with the first fixed at
-$8000 and its own at $C000: the setup ROM's first bank is under $C000, and
-nothing reads it.
+A program of 32 KB starts at an even bank: the MMC1 in 32 KB mode leaves
+out the low bit of the one it is asked for.
+
+A program in one bank is an NROM-128, 16 KB of PRG: every one that fits
+in 16 KB is built as one, to leave room for more. An NROM-128 has its
+bank at $C000 (and again at $8000, which none of them uses), so for it the
+MMC1 is set to 16 KB banks with the first fixed at $8000 and its own at
+$C000: the setup ROM is under $C000, and nothing reads it there.
 
 NES Radar has two pages of tiles, one for its splash and one for its
 scope, and is the one program that writes to the mapper: to its CHR
@@ -102,14 +105,14 @@ class Program:
 
 # In the menu's order.
 PROGRAMS = (
-    Program("jukebox", "Jukebox", 4, 2),
-    Program("weather", "Weather", 12, 8),
-    Program("npr", "NESradio", 10, 7),
-    Program("wiki", "NESpedia", 2, 1),
-    Program("radar", "NES Radar", 8, 5, pages=2, mapper=MAPPER_MMC1),
-    Program("bluesky", "Bluesky", 14, 9, banks=1),
-    Program("throughput", "Throughput Test", 6, 3),
-    Program("setup", "Setup", 0, 0),
+    Program("jukebox", "Jukebox", 8, 2, banks=1),
+    Program("weather", "Weather", 9, 8, banks=1),
+    Program("npr", "NESradio", 6, 7),
+    Program("wiki", "NESpedia", 1, 1, banks=1),
+    Program("radar", "NES Radar", 4, 5, pages=2, mapper=MAPPER_MMC1),
+    Program("bluesky", "Bluesky", 10, 9, banks=1),
+    Program("throughput", "Throughput Test", 2, 3),
+    Program("setup", "Setup", 0, 0, banks=1),
 )
 
 
@@ -270,6 +273,8 @@ def build_rom(menu, tiles, images):
     for image in images:
         program = image.program
         start = program.bank * BANK
+        if program.bank % program.banks:
+            raise ValueError("%s is 32 KB, at an odd bank" % image.path)
         if prg[start:start + len(image.prg)].strip(b"\xFF"):
             raise ValueError("%s is where another program is" % image.path)
         prg[start:start + len(image.prg)] = image.prg
