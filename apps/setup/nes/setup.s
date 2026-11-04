@@ -87,7 +87,7 @@ SPRITE_HIDDEN = $F0
 
 .segment "HEADER"
     .byte "NES", $1A
-    .byte 2                     ; 2 x 16 KB PRG
+    .byte 1                     ; 1 x 16 KB PRG
     .byte 1                     ; 1 x 8 KB CHR
     .byte $01, $00              ; mapper 0 (NROM), vertical mirroring
     .res 8, 0

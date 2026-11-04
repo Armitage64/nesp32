@@ -22,6 +22,7 @@ import jbs
 NTSC_FRAME_CYCLES = 29781
 PRG_START = 0x8000
 PRG_SIZE = 0x8000
+BANK_SIZE = 0x4000      # of PRG, as the header counts it
 INES_HEADER = 16
 PPUCTRL = 0x2000
 PPUSTATUS = 0x2002
@@ -59,7 +60,10 @@ class Console:
             rom = handle.read()
         self.labels = load_labels(labels_path)
         self.memory = ObservableMemory()
-        for offset, byte in enumerate(rom[INES_HEADER:INES_HEADER + PRG_SIZE]):
+        prg = rom[INES_HEADER:INES_HEADER + rom[4] * BANK_SIZE]
+        if len(prg) == BANK_SIZE:   # NROM-128: the one bank at $8000 and again at $C000
+            prg += prg
+        for offset, byte in enumerate(prg[:PRG_SIZE]):
             self.memory[PRG_START + offset] = byte
         self.memory.subscribe_to_read([PPUSTATUS], self._read_ppustatus)
         self.memory.subscribe_to_write([PPUADDR], self._write_ppuaddr)

@@ -19,6 +19,7 @@ ARTICLE ?= nes/demo_article.txt
 ROM := $(BUILD)/nespedia.nes
 LINK_ROM := $(BUILD)/nespedia_link.nes
 ROM_SIZE := 40976   # 16-byte header + 32 KB PRG + 8 KB CHR
+LINK_ROM_SIZE := 24592   # 16-byte header + 16 KB PRG + 8 KB CHR
 NESP := $(NESP_BUILD)/nesp.stamp
 SOURCES := nes/nespedia.s nes/split.inc nes/keyboard.inc nes/reader.inc
 
@@ -76,15 +77,15 @@ $(BUILD)/nespedia_link.o: $(SOURCES) nes/serial_link.inc $(SCREEN) $(NESP_LIB) \
 	ca65 -g -D LINK -I $(BUILD) -I $(NESP_BUILD) -I nes -I $(NESP32)/nes/lib \
 		--bin-include-dir $(BUILD) -o $@ $<
 
-$(LINK_ROM): $(BUILD)/nespedia_link.o nes/nrom256.cfg
-	ld65 -C nes/nrom256.cfg -o $@ -Ln $(BUILD)/nespedia_link.labels \
+$(LINK_ROM): $(BUILD)/nespedia_link.o nes/nrom128_link.cfg
+	ld65 -C nes/nrom128_link.cfg -o $@ -Ln $(BUILD)/nespedia_link.labels \
 		--dbgfile $(BUILD)/nespedia_link.dbg -m $(BUILD)/nespedia_link.map $<
 
 verify: $(ROM) $(LINK_ROM)
-	for rom in $(ROM) $(LINK_ROM); do \
-		test "$$(wc -c < $$rom | tr -d ' ')" = "$(strip $(ROM_SIZE))" && \
-		printf 'NES\032\002\001\001\000' | cmp -n 8 - $$rom || exit 1; \
-	done
+	test "$$(wc -c < $(ROM) | tr -d ' ')" = "$(strip $(ROM_SIZE))" && \
+		printf 'NES\032\002\001\001\000' | cmp -n 8 - $(ROM)
+	test "$$(wc -c < $(LINK_ROM) | tr -d ' ')" = "$(strip $(LINK_ROM_SIZE))" && \
+		printf 'NES\032\001\001\001\000' | cmp -n 8 - $(LINK_ROM)
 
 preview: | $(BUILD)
 	$(PYTHON) tools/gen_screen.py $(BUILD) --preview $(BUILD)/search.png --reader $(BUILD)/reader.png

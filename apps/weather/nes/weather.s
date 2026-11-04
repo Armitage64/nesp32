@@ -106,7 +106,7 @@ MISSED_MAX = 8                  ; exchanges in a row with no reply: the nesp32 i
 
 .segment "HEADER"
     .byte "NES", $1A
-    .byte 2                     ; 2 x 16 KB PRG
+    .byte 1                     ; 1 x 16 KB PRG
     .byte 1                     ; 1 x 8 KB CHR
     .byte $00, $00              ; mapper 0 (NROM), horizontal mirroring
     .res 8, 0

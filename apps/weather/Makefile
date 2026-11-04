@@ -20,7 +20,7 @@ PYTHON ?= $(firstword $(wildcard $(abspath .venv/bin/python $(NESP32)/.venv/bin/
 JUKEBOX ?= ../jukebox
 NESP := $(NESP_BUILD)/nesp.stamp
 ROM := $(BUILD)/weather.nes
-ROM_SIZE := 40976   # 16-byte header + 32 KB PRG + 8 KB CHR
+ROM_SIZE := 24592   # 16-byte header + 16 KB PRG + 8 KB CHR
 
 .PHONY: all verify test preview clean FORCE
 
@@ -52,13 +52,13 @@ $(BUILD)/weather.o: nes/weather.s $(NESP_LIB) $(BUILD)/link.inc $(SCREEN) $(NESP
 	ca65 -g -I $(BUILD) -I $(NESP_BUILD) -I $(NESP32)/nes/lib --bin-include-dir $(BUILD) \
 		-o $@ $<
 
-$(ROM): $(BUILD)/weather.o nes/nrom256.cfg
-	ld65 -C nes/nrom256.cfg -o $@ -Ln $(BUILD)/weather.labels \
+$(ROM): $(BUILD)/weather.o nes/nrom128.cfg
+	ld65 -C nes/nrom128.cfg -o $@ -Ln $(BUILD)/weather.labels \
 		--dbgfile $(BUILD)/weather.dbg -m $(BUILD)/weather.map $<
 
 verify: $(ROM)
 	test "$$(wc -c < $(ROM) | tr -d ' ')" = "$(strip $(ROM_SIZE))" && \
-		printf 'NES\032\002\001\000\000' | cmp -n 8 - $(ROM)
+		printf 'NES\032\001\001\000\000' | cmp -n 8 - $(ROM)
 
 test:
 	$(PYTHON) -m pytest

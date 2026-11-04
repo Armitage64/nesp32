@@ -69,7 +69,8 @@ make SONG="music/01 Running About.vgz"    # any rip, or a .jbs
 its music. It says hello to nesp32's firmware as `JUKE` and asks for the
 JUKE and RAW services.
 
-The standalone ROM is `build/jukebox.nes` (NROM-256, mapper 0). Open it in an emulator
+The standalone ROM is `build/jukebox.nes` (NROM-256, mapper 0, for its
+song; the link ROM, with none, is an NROM-128). Open it in an emulator
 such as Mesen, or copy it to a flash cart. A song can be up to 24 KB of
 stream, which covers every rip tried so far (6-14 KB).
 

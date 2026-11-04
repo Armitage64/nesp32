@@ -22,6 +22,7 @@ SONG ?= $(DEMO)
 ROM := $(BUILD)/jukebox.nes
 LINK_ROM := $(BUILD)/jukebox_link.nes
 ROM_SIZE := 40976   # 16-byte header + 32 KB PRG + 8 KB CHR
+LINK_ROM_SIZE := 24592   # 16-byte header + 16 KB PRG + 8 KB CHR
 
 .PHONY: all verify test clean FORCE
 
@@ -77,15 +78,15 @@ $(BUILD)/jukebox_link.o: nes/jukebox.s nes/ui.inc nes/serial_link.inc $(UI) $(NE
 	ca65 -g -D LINK -I $(BUILD) -I $(NESP_BUILD) -I nes -I $(NESP32)/nes/lib \
 		--bin-include-dir $(BUILD) -o $@ $<
 
-$(LINK_ROM): $(BUILD)/jukebox_link.o nes/nrom256.cfg
-	ld65 -C nes/nrom256.cfg -o $@ -Ln $(BUILD)/jukebox_link.labels \
+$(LINK_ROM): $(BUILD)/jukebox_link.o nes/nrom128_link.cfg
+	ld65 -C nes/nrom128_link.cfg -o $@ -Ln $(BUILD)/jukebox_link.labels \
 		--dbgfile $(BUILD)/jukebox_link.dbg -m $(BUILD)/jukebox_link.map $<
 
 verify: $(ROM) $(LINK_ROM)
-	for rom in $(ROM) $(LINK_ROM); do \
-		test "$$(wc -c < $$rom | tr -d ' ')" = "$(strip $(ROM_SIZE))" && \
-		printf 'NES\032\002\001\000\000' | cmp -n 8 - $$rom || exit 1; \
-	done
+	test "$$(wc -c < $(ROM) | tr -d ' ')" = "$(strip $(ROM_SIZE))" && \
+		printf 'NES\032\002\001\000\000' | cmp -n 8 - $(ROM)
+	test "$$(wc -c < $(LINK_ROM) | tr -d ' ')" = "$(strip $(LINK_ROM_SIZE))" && \
+		printf 'NES\032\001\001\000\000' | cmp -n 8 - $(LINK_ROM)
 
 test:
 	$(PYTHON) -m pytest

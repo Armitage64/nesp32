@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Cartridge
+- Setup, Weather, NESpedia and the Jukebox take 16 KB each, leaving four banks free for more programs (#5)
+
 ## 0.2.0 — 2026-11-04
 
 Roll-up of features and bugfixes since the Retro Bits video went live.
