@@ -67,9 +67,10 @@ authors. It is short on purpose:
 
 If a run fails, fix the cause on main and run *Release* again from the
 Actions tab. A tag that is already the commit's is kept, and the files on
-an existing GitHub release are replaced. If the fix has to change the
-released commit, release the next patch version instead of moving a tag
-players may already have.
+an existing GitHub release are replaced. A tag left by a run that failed
+before it made the GitHub release moves to the new commit, since nobody
+has had it. A tag with a release is never moved: once a release is out,
+a fix is the next patch version.
 
 ## The web site
 

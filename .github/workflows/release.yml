@@ -51,12 +51,19 @@ jobs:
             *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
             *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
           esac
-          # Run again, the tag is already this commit's. Another's is a
-          # VERSION that was not moved on.
+          # Run again, the tag is already this commit's. Another's, with a
+          # GitHub release, is a VERSION that was not moved on. Without
+          # one, a run that failed left it, and nobody has had it: it moves
+          # to this commit, with the fix.
           if git rev-parse -q --verify "refs/tags/v$number" > /dev/null &&
              [ "$(git rev-list -n 1 "v$number")" != "$(git rev-parse HEAD)" ]; then
-            echo "::error::v$number is already another commit's: VERSION has to move on."
-            exit 1
+            if gh release view "v$number" > /dev/null 2>&1; then
+              echo "::error::v$number is already another commit's: VERSION has to move on."
+              exit 1
+            fi
+            echo "v$number was left by a run that failed: it moves to this commit."
+            git push origin ":refs/tags/v$number"
+            git tag -d "v$number"
           fi
 
       - name: Tag the commit
@@ -69,17 +76,16 @@ jobs:
             git push origin "v$number"
           fi
 
-      # The container is another user than the checkout's, and git will not
-      # read the tree for tools/version.py until it is told the tree is safe.
+      # The action tells git the tree is safe itself (it is another user's
+      # than the container's, and tools/version.py reads it), and puts the
+      # command in single quotes: none in the command.
       - name: Build the StickS3's firmware
         uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: v5.5.5
           target: esp32s3
           path: firmware
-          command: >-
-            git config --global --add safe.directory '*' &&
-            idf.py -B build-esp32s3 -D SDKCONFIG=build-esp32s3/sdkconfig -D IDF_TARGET=esp32s3 build
+          command: idf.py -B build-esp32s3 -D SDKCONFIG=build-esp32s3/sdkconfig -D IDF_TARGET=esp32s3 build
 
       - name: Build the StickC Plus2's firmware
         uses: espressif/esp-idf-ci-action@v1
@@ -87,9 +93,7 @@ jobs:
           esp_idf_version: v5.5.5
           target: esp32
           path: firmware
-          command: >-
-            git config --global --add safe.directory '*' &&
-            idf.py -B build-esp32 -D SDKCONFIG=build-esp32/sdkconfig -D IDF_TARGET=esp32 build
+          command: idf.py -B build-esp32 -D SDKCONFIG=build-esp32/sdkconfig -D IDF_TARGET=esp32 build
 
       - name: Check the firmware says it is the release
         run: |
