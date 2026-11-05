@@ -75,17 +75,14 @@ Please join our [Discord](https://discord.gg/kwSC7pwtmb)!
 | [NESpedia](apps/wiki) | Search and display Wikipedia articles |
 | [Jukebox](apps/jukebox) | Stream VGM/VGZ music files and PCM audio to the NES sound chip |
 | [Throughput](apps/throughput) | Test the bandwidth of the NES<>ESP32 interface |
-| [Dr. Mario](apps/drmario)* | Dr. Mario online VS |
-| [Contra](apps/contra)* | Contra online co-op, with framerate optimizations |
-| [Tetris](apps/tetris)* | Tetris online VS |
-| [TMNT2 Arcade](apps/tmnt2)* | Teenage Mutant Ninja Turtles 2 Arcade online co-op, with framerate optimizations |
+| Games* | [Dr. Mario](apps/drmario), [Contra](apps/contra), [Tetris](apps/tetris), [TMNT2 Arcade](apps/tmnt2), and [Bubble Bobble](apps/bubblebobble) 2-player over the network
 | [NES Radar](apps/nes-radar) | [k6lcm](https://github.com/k6lcm)'s live air traffic scope, no PC required |
 | [NESradio](apps/npr) | Live .mp3 radio stations on a radio dial, with what is playing |
 | [Weather](apps/weather) | Current conditions and a 5-day forecast for a US zip code, which the NESP32 remembers |
 | [Bluesky](apps/bluesky) | Bluesky posts from a list of favorite accounts the NESP32 remembers, after [ConnectedNES](https://github.com/hxlnt/connectedNES) |
 | [Family BASIC](apps/family-basic)* | Family BASIC V3 using a Bluetooth keyboard. Save and load programs to the NESP32 instead of cassette |
 
-\* This software contains copyrighted material and cannot be provided. Instead, download the patches from the [home page](https://nesp32.retrobits.tv/), and apply them to your own original ROM files.
+\* These titles contains copyrighted material and cannot be provided. Instead, download the patches from the [home page](https://nesp32.retrobits.tv/), and apply them to your own original ROM files.
 
 ## How it works
 
