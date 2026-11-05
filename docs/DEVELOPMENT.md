@@ -43,6 +43,14 @@ server's code beside the service, from a copy in `tests/fixtures`. None of
 the games is on the cartridge; NES Radar is, so the cartridge's build needs
 that submodule. Nothing else here needs any of the four.
 
+[Bubble Bobble](../apps/bubblebobble) has no disassembly to start from, so
+its build makes one: `tools/convert.py` writes ca65 source of the game
+from the copy of it that whoever builds supplies (`baserom.nes`), with the
+names and comments of its `tools/game.map` and the addresses its
+`tools/trace.py` saw the game run at in the simulation
+(`tools/entries.txt`). Neither file holds any of the game. The original
+built from that source is checked against the ROM's SHA-512.
+
 ### Changing a borrowed program's code
 
 NES Radar's is changed in nes-radar itself, and the submodule moved to the
@@ -50,7 +58,8 @@ commit ([its README](../apps/nes-radar/README.md) has how). For the three
 games, the build copies the submodule's sources into the program's
 `build/` (`build/src` for Contra, `build/upstream` for Dr. Mario and
 Tetris) and applies its `patches/` there; the submodule is never
-written to. To change what nesp32 adds to their own files, edit the
+written to. Bubble Bobble's build applies its `patches/` to a copy of its
+converted source, `build/gen` copied to `build/src`. To change what nesp32 adds to their own files, edit the
 copies, then
 
 ```sh
@@ -63,15 +72,23 @@ and none of the original. That is why each submodule is kept at one commit
 patches are line numbers in that commit's files. `make clean` will not
 delete copies that have changes `patches/` has not.
 
+Bubble Bobble's patches are line numbers in the converted source, so a
+change to its `tools/game.map` or `tools/entries.txt`, which moves the
+converted lines, can put a patch's lines in the wrong place. After one,
+make `build/src` again from `build/gen` with the edits, mark it up to date
+(`touch build/upstream.stamp`) before `make patches`, and check the
+build: `make patches` first remakes `build/src` from the old patches when
+the converted source is newer than it.
+
 ### The games' patches for players
 
 Players don't build the games: each game's `dist/` has the netplay ROM
 (Family BASIC's ROM) as a BPS patch to the original, which they apply to
 their own copy. `make bps` in the app writes it, from the original as
-built and verified (Dr. Mario, Tetris, Contra, TMNT II) or from
+built and verified (Dr. Mario, Tetris, Contra, TMNT II, Bubble Bobble) or from
 `baserom.nes` (Family BASIC); `tools/gen_patch.py` copies what it can
 from the player's ROM and refuses a patch that carries sixteen bytes in a
-row of the game. `make web` puts all five, as committed, into
+row of the game. `make web` puts all six, as committed, into
 `nesp32-rom-patches.zip` on the web site with `web/patches/README.txt`,
 which says which release of each game a player needs. The site's
 workflow has no copy of any game, so it builds none of the patches: after
