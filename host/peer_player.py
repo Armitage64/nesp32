@@ -123,7 +123,7 @@ def main(argv=None):
                         help="JOIN: the room's code, or the console's nesp32's address")
     parser.add_argument("--by-address", action="store_true",
                         help="HOST: wait for a call to this computer's address, not in a room")
-    parser.add_argument("--app", default="TMN2", help="the game's id (TMN2, CNTR, DRMA, TTRS)")
+    parser.add_argument("--app", default="TMN2", help="the game's id (TMN2, CNTR, DRMA, TTRS, BUBL)")
     parser.add_argument("--version", type=int, default=1, help="the game's version (DRMA is 2)")
     parser.add_argument("--play", choices=("copy", "still", "random"), default="copy")
     parser.add_argument("--rendezvous", metavar="URL",

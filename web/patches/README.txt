@@ -52,6 +52,12 @@ tmnt2_net.bps      Teenage Mutant Ninja Turtles II: The Arcade Game, online co-o
     Won't work with: Teenage Mutant Hero Turtles II (Europe), or the
     Japanese release.
 
+bubblebobble_net.bps  Bubble Bobble, online co-op
+    Needs:   Bubble Bobble (USA)
+             163856 bytes, CRC32 D3A91B41
+             SHA-1 0e40052299ada46f6c2d1172323366f872f90570
+    Won't work with: the European release, or the Famicom Disk System's.
+
 fbasic.bps         Family BASIC, typed on a Bluetooth keyboard
     Needs:   Family BASIC V3 (Japan)
              40976 bytes, CRC32 667F6EA6
@@ -82,6 +88,8 @@ Playing
 
 - Contra and TMNT II need a flash cartridge or emulator that supports
   MMC3. Contra's patched ROM has an NES 2.0 header.
+- Bubble Bobble keeps its own cartridge type (MMC1), with 8 KB of RAM
+  that the original has not; its patched ROM has an NES 2.0 header.
 - Family BASIC needs MMC1 with battery-backed memory, and a Bluetooth
   keyboard paired to the NESP32 (a StickS3).
 - For the online games, both players need the same patched game.

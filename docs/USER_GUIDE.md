@@ -36,7 +36,8 @@ software can reach the Internet, so the console can:
 - show live air traffic around an airport,
 - play live Internet radio and NES music through its own sound chip,
 - read Bluesky posts,
-- play Dr. Mario, Tetris, Contra and TMNT II online against a friend.
+- play Dr. Mario, Tetris, Contra, TMNT II and Bubble Bobble online against
+  a friend.
 
 A NESP32 is an **M5Stack StickS3** (a small ready-made computer, about
 $20, with its own screen, battery and buttons) plus a little circuit board
@@ -167,7 +168,8 @@ ROM**, `nesp32.nes`. Download it from the
 cartridge") and copy it to your flash cartridge's SD card, or to your
 MiSTer, as you would any NES game.
 
-The online games (Dr. Mario, Tetris, Contra and TMNT II) are **not** on
+The online games (Dr. Mario, Tetris, Contra, TMNT II and Bubble Bobble)
+are **not** on
 the cartridge, because they contain the original games. See
 [Chapter 11](#11-playing-online-with-a-friend). Nor is
 [Family BASIC](#family-basic-not-on-the-cartridge), for the same reason.
@@ -672,7 +674,8 @@ does.
 
 ## 11. Playing online with a friend
 
-Dr. Mario, Tetris, Contra and TMNT II have special two-console versions.
+Dr. Mario, Tetris, Contra, TMNT II and Bubble Bobble have special
+two-console versions.
 Each player needs:
 
 - their own NES, with a NESP32 in port 2 and a controller in port 1,
@@ -699,19 +702,22 @@ be handed out ready-made. Instead, you patch your own copy of each game:
 | Tetris | `tetris_net.bps` | Tetris (USA) | 49168 bytes, `6D72C53A` |
 | Contra | `contra_net.bps` | Contra (USA) | 131088 bytes, `C50A8304` |
 | TMNT II | `tmnt2_net.bps` | Teenage Mutant Ninja Turtles II: The Arcade Game (USA) | 524304 bytes, `C9FFBBDB` |
+| Bubble Bobble | `bubblebobble_net.bps` | Bubble Bobble (USA) | 163856 bytes, `D3A91B41` |
 
 Both players need the same patched game. Use the patches from the same
 release as your NESP32's firmware. Ask on the
 [Discord](https://discord.gg/kwSC7pwtmb) if you need help.
 
 Contra and TMNT II need a flash cartridge or emulator that supports their
-cartridge type (MMC3).
+cartridge type (MMC3). Bubble Bobble keeps its own (MMC1), but needs the
+8 KB of RAM that one can have, which most flash cartridges and emulators
+give it.
 
 **Starting a game:**
 
 1. On the title screen, choose the two-player option: **2 PLAYERS**
-   (Contra, Tetris), **2 PLAYER GAME** (Dr. Mario) or **2 TURTLES**
-   (TMNT II).
+   (Contra, Tetris), **2 PLAYER GAME** (Dr. Mario), **2 TURTLES**
+   (TMNT II) or **2P START** (Bubble Bobble).
 2. One player chooses **HOST GAME**. Their screen, and the Stick's screen,
    show a **four-character room code**. Codes never use easily confused
    pairs like 0 and O, or 1 and I.
@@ -725,6 +731,14 @@ Internet access, even when both consoles are in the same house.
 
 **LOCAL GAME** is the normal two-controller game on one console. The
 second controller needs port 2, so unplug the NESP32 for this.
+
+**Bubble Bobble after a game over:** the online game carries on. Player 1
+(the host) presses **Start** for the title, and **2P CONTINUE** goes on
+from the furthest round the two of you reached; **Start** shows the round,
+**A** and **B** change it, and **Start** again plays it. Online, the title
+skips the one-player choices, and only the host's controller works it, as
+only player 1's does in the original. With no online game, **2P CONTINUE**
+is skipped.
 
 ### Playing by address
 

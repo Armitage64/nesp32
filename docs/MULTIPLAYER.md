@@ -1,12 +1,13 @@
 # Multiplayer: two consoles, one game
 
-Four of the apps are netplay builds of a two-player game:
+Five of the apps are netplay builds of a two-player game:
 [Contra](../apps/contra), [Dr. Mario](../apps/drmario),
-[Tetris](../apps/tetris) and [TMNT II](../apps/tmnt2). Each is played on two consoles, each console
+[Tetris](../apps/tetris), [TMNT II](../apps/tmnt2) and
+[Bubble Bobble](../apps/bubblebobble). Each is played on two consoles, each console
 with a nesp32 on controller port 2, the nesp32s joined over the network.
-The four work the same way, and this is that way: what the player sees,
+The five work the same way, and this is that way: what the player sees,
 what a tick is, how the two games are kept the same, and what is still
-left to do in all four.
+left to do in all five.
 
 What the nesp32s do between them is the PEER service's, in
 [`PROTOCOL.md`](PROTOCOL.md): its lobby, its exchange of buttons, the
@@ -21,6 +22,7 @@ and from hardware) is in its own docs:
 | Dr. Mario | [apps/drmario/README.md](../apps/drmario/README.md) | [apps/drmario/docs/PROTOCOL.md](../apps/drmario/docs/PROTOCOL.md) |
 | Tetris | [apps/tetris/README.md](../apps/tetris/README.md) | [apps/tetris/docs/PROTOCOL.md](../apps/tetris/docs/PROTOCOL.md) |
 | TMNT II | [apps/tmnt2/README.md](../apps/tmnt2/README.md) | its README, "How the netplay works" |
+| Bubble Bobble | [apps/bubblebobble/README.md](../apps/bubblebobble/README.md) | its README, "How the netplay works" |
 
 ## Playing
 
@@ -52,8 +54,9 @@ left.
   Internet, for a nesp32 that has no rooms, and for two networks that
   rooms cannot get through.
 
-All four games' menus have both ways. Contra and TMNT II write the foot
-of the screen as `SELECT   BY IP`, their fonts having no dash.
+All five games' menus have both ways. Contra, TMNT II and Bubble Bobble
+write the foot of the screen as `SELECT   BY IP`, their fonts having no
+dash.
 
 | Game | The title's choice | Its hello |
 |---|---|---|
@@ -61,6 +64,7 @@ of the screen as `SELECT   BY IP`, their fonts having no dash.
 | Dr. Mario | 2 PLAYER GAME | `DRMA` |
 | Tetris | 2 PLAYERS, where the original says PUSH START | `TTRS` |
 | TMNT II | 2 TURTLES | `TMN2` |
+| Bubble Bobble | 2P START | `BUBL` |
 
 The console that hosted is player 1. When the two nesp32s are connected
 both consoles leave the menu and go straight into a game for two. Each
@@ -199,7 +203,9 @@ ways:
 - **By address**, with Select, between two consoles on one home network.
 
 TMNT II has been played on hardware since (October 2026, its README):
-a session, the menu, and level 7 for two at the game's own speed.
+a session, the menu, and level 7 for two at the game's own speed. And
+Bubble Bobble (November 2026, its README): a session, the menu, and its
+start straight into the game for two.
 
 The nesp32's log (`firmware/deploy.sh watch`) says the same of any
 network: `stun:` lines with what each server saw, and whether the router
@@ -237,11 +243,17 @@ the game's state (they draw the playfields, count the frames, step the
 random numbers), so an NMI that finds the main loop still at work does
 nothing at all. All of Contra's game runs inside its NMI, and all of
 TMNT II's, so there a tick is the NMI that runs the game, and a lag is
-the game's own lag frame, left as it was.
+the game's own lag frame, left as it was. All of Bubble Bobble's runs in
+its NMI too, which turns the NMI off while it works, so it has no lags:
+a frame that overruns has no NMI. The game turns it on again before the
+end once, after Start at its logo, and an NMI that then breaks into its
+own does nothing in the netplay ROM: whether one comes is a matter of
+cycles.
 
 **The exchange is made where the game reads its controllers**, before the
 game's work: after the NMI's writes to the PPU, and before the main loop
-(or, in Contra and TMNT II, the rest of the NMI) does the frame's work.
+(or, in Contra, TMNT II and Bubble Bobble, the rest of the NMI) does the
+frame's work.
 TMNT II's is made a little before its read, where the NMI has set up the
 counter for its splits of the screen and before it lets the IRQs in, so
 that no IRQ breaks into the serial routines. So the buttons
@@ -258,6 +270,8 @@ three the frame is. Dr. Mario and Tetris run it from their main loop, once
 a pass, which in a session is once a tick: every stall and every lag then
 held the music back by a frame, and on real consoles it was heard to speed
 up and slow down. Contra and TMNT II run it from their NMIs anyway.
+Bubble Bobble ran it as one of its tasks, once a tick; its netplay ROM
+runs it in every NMI, and the task only sleeps.
 
 That is safe because the engine keeps to itself: the game only leaves it
 orders, a sound to make, the music to play, and reads nothing back that
@@ -324,7 +338,12 @@ cycles a frame more, net of what the MMC3's bank switches cost, and
 nearly half fewer of the frames that overran.
 TMNT II's level 7 for two would slow a lot: 26 frames in 100, against 2.
 Its netplay ROM builds the sprites faster, from the cartridge's PRG RAM,
-which brings that to 3 in 100 (its README, "The frame rate"). A game's
+which brings that to 3 in 100 (its README, "The frame rate").
+Bubble Bobble's busiest rounds would slow too: round 66 would overrun 26
+frames in 100, against 8 alone, and all 100 rounds 2.0 in 100, against
+0.2. Its netplay ROM looks up the playfield's tiles and pushes the bubbles
+apart faster, from the cartridge's PRG RAM, which brings all 100 rounds
+to 0.2 in 100 and round 66 to 5 (its README, "The frame rate"). A game's
 own work is the place to find the cycles; a faster exchange (To do)
 would give some back to every game.
 
@@ -355,6 +374,7 @@ What the digest covers is each game's own:
 | Dr. Mario | its zero page, less the link's bytes, the sound engine's and the flag the main loop waits on |
 | Tetris | the same as Dr. Mario's, less the session's one byte there too, and both playfields |
 | TMNT II | its zero page, less the link's bytes, the sound engine's, what its IRQs keep and the flag of a frame under way, and its sprites |
+| Bubble Bobble | its zero page, less its scratch, the link's bytes, the sound engine's, the NMI's stack pointer as the tasks saw it and the PPU's status as the NMI read it, and its sprites |
 
 The two nesp32s also tell one build from another, by the name and version
 in its hello, and do not join the two: one might send buttons where the
@@ -368,7 +388,8 @@ cycle-timed serial routines, so the library is built with the receiver
 that gives up by counting: the console waits about 4.1 ms for a reply to
 begin. A reply that is late, cut short or fails its CRC is dropped whole,
 and what it carried is asked for again. Contra asks again in the same NMI
-(`net_ask`), and so does TMNT II; Dr. Mario and Tetris in the next frame.
+(`net_ask`), and so do TMNT II and Bubble Bobble; Dr. Mario and Tetris in
+the next frame.
 
 The strobe line to the controllers (OUT0) is also the line to the nesp32,
 and rests high. The console reads its controller with it low for the 8 reads,
@@ -397,6 +418,11 @@ or after 240 NMIs in a row that were not ticks (4 seconds). One end that
 fails takes both consoles back to the title within seconds: one by its own
 end's silence, the other by the lost connection.
 
+In Bubble Bobble a game over does not end a session: the game over's
+screen and the title are ticks like any other, and the title's 2P CONTINUE
+goes on at the round the two had reached, and its choices for one are
+passed over. With no session, the title passes over 2P CONTINUE.
+
 ## Known limits
 
 - Both consoles must run the same build: the nesp32s tell another game, or
@@ -416,7 +442,7 @@ end's silence, the other by the lost connection.
 ## To do
 
 What is left on the nesp32 itself is in [`TODO.md`](TODO.md). In all
-four games:
+five games:
 
 
 - **Say why on the console** when a session ends (the other console left,
