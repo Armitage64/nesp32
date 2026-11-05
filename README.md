@@ -64,7 +64,7 @@ Please join our [Discord](https://discord.gg/kwSC7pwtmb)!
 
 <p>
   <a href="https://www.youtube.com/watch?v=eGUmaMX9nOs"><img src="https://img.youtube.com/vi/eGUmaMX9nOs/maxresdefault.jpg" alt="NESP32 video" width="49%"></a>
-  <a href="https://www.youtube.com/watch?v=hZ8sniz4Z2M"><img src="https://img.youtube.com/vi/hZ8sniz4Z2M/maxresdefault.jpg" alt="NESP32 video" width="49%"></a>
+  <a href="https://www.youtube.com/watch?v=uLnXXAwg5ic"><img src="https://img.youtube.com/vi/uLnXXAwg5ic/maxresdefault.jpg" alt="NESP32 video" width="49%"></a>
 </p>
 
 ## Demonstration Apps
