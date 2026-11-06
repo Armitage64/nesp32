@@ -536,7 +536,8 @@ six games:
     screen (some 4800 cycles of the 5794 it waits at the least; at 21 the
     two took some 6100, and the split came a few lines late). Contra's
     stages 1, 4 and 6 stand still in 0.41% of frames of play, where it
-    was 0.74%. Neither has been played at 14 on hardware yet.
+    was 0.74%. Both have been played at 14 on a real NES
+    (November 2026): fine, and the music as it was.
   - *Not the others.* Dr. Mario's and Tetris's frames have room to spare
     at 21 (Tetris's busiest is some 14800 cycles in a game for two, Dr.
     Mario's 27400 with the exchange), and each asks for a misheard reply

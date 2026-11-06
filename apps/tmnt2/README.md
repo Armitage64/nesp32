@@ -276,7 +276,9 @@ What it buys, in the simulation (November 2026):
 The game plays the music's drums as samples, whose fetches steal cycles
 from the serial routines, as Jackal's do: Jackal misheard 0.6% to 0.7% of
 replies at 14 on hardware, each asked for again in the same NMI. TMNT II
-at 14 is still to be played on hardware (To do).
+at 14 has been played on a real NES (November 2026): it plays as it
+should, and the music is as it was. How many replies are misheard there
+has not been counted.
 
 ## The simulation
 
@@ -373,6 +375,6 @@ the one picked.
 2. **The original game's slowdown**, if it is wanted: the faster sprite
    pass needs somewhere to run, and the original has no PRG RAM. A build
    of the original with PRG RAM asked for in its header would do.
-3. **The session's line at 14 on hardware**, the music playing: how many
-   replies are misheard (the nesp32's log), that the line stays at 14, and
-   level 7's frame rate in a session against 21's.
+3. **The session's line at 14, counted on hardware**: how many replies
+   are misheard (the nesp32's log), and level 7's frame rate in a session
+   against 21's. Played, it is fine.

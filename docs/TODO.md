@@ -69,7 +69,8 @@ its own list in its README.
   ([MULTIPLAYER.md](MULTIPLAYER.md), "A faster exchange"); Jackal, TMNT II
   and Contra ask for 14 cycles a bit. Dr. Mario and Tetris have the room
   at 21 and would not gain; Bubble Bobble would gain a little. TMNT II and
-  Contra at 14 are still to be played on hardware. Jackal's sessions at 14 have been played on a real NES with
+  Contra at 14 have been played on a real NES and are fine, the music as it
+  was; their misheard replies are not yet counted. Jackal's sessions at 14 have been played on a real NES with
   each board, levels 1, 2 and 4, the music's samples playing: 0.6% to 0.7%
   of replies misheard, and no fall back to 21 in play. 10 was built (the
   fold receiver) and tried: 12% misheard with Jackal's samples, no faster

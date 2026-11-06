@@ -195,8 +195,9 @@ of stages 1, 4 and 6 below, the frames of play that would stand still go
 from 0.74% to some 0.41%. The music's drum samples steal cycles from the
 serial routines: Jackal misheard 0.6% to 0.7% of replies at 14 on
 hardware, each asked for again in the same NMI (`net_ask`), which costs
-that frame a second exchange. Contra at 14 is still to be played on
-hardware.
+that frame a second exchange. Contra at 14 has been played on a real NES
+(November 2026): it plays as it should, and the music is as it was. How
+many replies are misheard there has not been counted.
 
 ## What the simulation measured
 
@@ -452,8 +453,8 @@ on and its own leavings in memory, which the handler acted on.
   and leaving the reply's CRC at one byte. And to see how a local
   two-player game does in the same scenes, which is the least this can
   come to.
-- **The session's line at 14 on hardware**, the music playing: how many
-  replies are misheard (the nesp32's log), and that the line stays at 14.
+- **The session's line at 14, counted on hardware**: how many replies are
+  misheard (the nesp32's log). Played, it is fine.
 - **Player 2 cannot pause.** The game reads only player 1's Start.
 - **Probotector**, the PAL release.
 
