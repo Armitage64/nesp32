@@ -365,16 +365,54 @@ make test
 
 ## To do
 
-1. **Hardware**: levels 2 and 4 in a session, the music through stalls,
-   the last boss's tank, and a long session with the pad log for presses
-   nobody made.
-2. **The session's line at 10 cycles a bit**, perhaps: 14 is done on
-   both boards, in levels 1, 2 and 4. 10 needs a receiver that samples in
-   6 cycles (nes-throughput's): some 380 cycles a tick more.
+The frame rate in a session, in order of what each buys. Effective frames
+of the game a second in play, from `make bench`'s ticks, by where the
+exchange goes and the line's rate (tools as in "What has been learned"):
+
+| | Level 1 | Level 2 | Level 4 |
+|---|---|---|---|
+| One console, no session | 57.7 | 50.5 | 44.5 |
+| A session at 14 (now) | 56.8 | 43.7 | 41.7 |
+| At 14, the exchange ahead | 57.4 | 46.8 | 43.3 |
+| At 10 | 57.0 | 45.3 | 42.4 |
+| At 10, the exchange ahead | 57.5 | 47.8 | 43.6 |
+
+1. **The exchange ahead.** Being tried. A tick's exchange is made at the
+   start of its NMI, where a busy tick has no room for it; a tick that
+   ends early leaves the CPU waiting for the next vblank. The next tick's
+   exchange made in that wait takes it off the busy tick: most of all
+   after a lag, whose second frame is mostly waiting. What it takes: a
+   deadline, so that an exchange (some 2500 cycles, 22 lines) is never
+   begun where it would run into the vblank: the MMC3's scanline IRQ at
+   about line 180, which sets a flag, and the exchange made with the IRQ
+   off only while the flag is clear (the counter can miss a line where
+   all eight sprites are the score's, from the other pattern table, but
+   those are at line 200 and lower, and a missed count only makes the
+   deadline late; the picture has to be on). What it costs: this
+   console's buttons are read when the tick before ends, not at the
+   vblank, so a press in the wait between is seen a tick later; made only
+   after a lag, the cost would be only where the game stands still
+   anyway. The game is the same: only when the buttons are read and the
+   exchange made change.
+2. **The session's line at 10 cycles a bit**: some 380 cycles a tick
+   more, and the same for every netplay game that asks for it. Needs a
+   receiver that samples in 6 cycles (nes-throughput's: the byte kept in
+   A, the port folded into it, and unscrambled from a table after), which
+   counts on `$4017`'s other bits always reading `$40`. The samples' fetch
+   is 40% of a bit at 10, against 29% at 14; 14 has 0.6% to 0.7% misheard.
+   A trial on hardware with each board, the music playing.
 3. **The last boss**, if its fight plays badly in a session: its split by
-   the MMC3's scanline IRQ, in place of the wait, the exchange done before
-   the IRQ's line.
+   the MMC3's scanline IRQ, in place of a wait of some 10,000 cycles in
+   every NMI, the exchange done before the IRQ's line. Its fight alone.
 4. **The bullets' and the weapons' tests** (`Label1001`, `Label996`),
-   unrolled and otherwise the game's: some 200 to 300 cycles a tick. Last.
-5. **The release**: the patch in nesp32's `tools/gen_web.py` and the home
+   unrolled and otherwise the game's: some 200 to 300 cycles a tick. The
+   jump table (`subExecuteCodeViaIndirectJump`) and each object's
+   movement are near as short as they can be. Last.
+
+And besides:
+
+5. **Hardware**: the music through stalls, the last boss's tank, and a
+   long session with the pad log for presses nobody made
+   (`make NET_START_LEVEL=6` for the last boss).
+6. **The release**: the patch in nesp32's `tools/gen_web.py` and the home
    page's downloads.

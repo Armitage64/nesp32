@@ -73,6 +73,13 @@ its own list in its README.
   of replies misheard, and no fall back to 21 in play. Left: 10, which
   needs a receiver that samples in 6 cycles (nes-throughput's), where the
   short receiver takes 11.
+- **The exchange ahead, for the netplay games whose game runs in the NMI**
+  (Jackal first, [its README](../apps/jackal/README.md), "To do"): the
+  next tick's exchange made in the wait at the end of a tick, before the
+  vblank, so a busy tick does not pay for it. A deadline from the MMC3's
+  scanline IRQ keeps it out of the vblank. In Jackal's simulated play,
+  level 2 for two goes from 43.7 to 46.8 frames a second, where 10 cycles
+  a bit gives 45.3; both together 47.8, against 50.5 on one console.
 - **For [Family BASIC](../apps/family-basic):** TAPE, its SAVE and LOAD,
   is done. Left: the time a SAVE takes on hardware, a list of the files,
   and BG GRAPHIC's SAVE and LOAD tried. Its README, "Not done", has them.
