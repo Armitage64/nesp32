@@ -51,6 +51,15 @@ over USB.
 
 M5Unified, and for a StickS3 TinyUSB (`espressif/esp_tinyusb`), are fetched
 by the component manager on the first build (`main/idf_component.yml`).
+M5Unified and M5GFX are pinned there, to the pair the 0.2.0 release was
+built with: `dependencies.lock` is not kept, and unpinned they took
+whatever was newest. M5GFX 0.3.0 broke the StickS3's build (it includes
+`esp_psram.h` without asking for the component that has it), and M5GFX
+pinned alone took M5Unified back to 0.2.25, whose StickS3 crashed as it
+started (November 2026). Move the two together, and try both boards. A
+change of their version can leave the old objects in a build directory,
+since the component manager keeps the sources' dates: delete
+`build-*/esp-idf/m5stack__*` before building.
 
 | Path | Purpose |
 |---|---|
@@ -337,6 +346,14 @@ nesp32. What to look for, with that ROM (`../apps/drmario`,
    them.
 4. **One end switched off**, and the other console back at its title
    within a few seconds.
+
+A session's line at its own rate (PEER's RATE): the log says when it
+changes and why (`peer: line at 14 cycles a bit: the session's, as its
+console asked`, and back to 21 when nothing is heard at it, or at the
+session's end), and each `peer:` line has `line 14` or `line 21`. Jackal's
+netplay ROM asks for 14: on a StickS3, a session of level 1 with the
+music playing stayed at 14 throughout, with 0.6% of its replies misheard
+and asked for again (November 2026).
 
 What `conn.c` leans on: lwIP's sockets from a task on the Wi-Fi's core, a
 non-blocking `connect` waited for with `select`, and a look for received

@@ -64,15 +64,15 @@ its own list in its README.
   Rolling back, as newer games do, is not for any of the three: a
   cartridge with no RAM has nowhere to keep a copy of the game, and no
   frame has the time to run the game again.
-- **PEER's session at a faster rate**: the line at 14 cycles a bit, then
-  perhaps 10, from a session's start to its end, for a faster exchange in
-  every netplay game ([MULTIPLAYER.md](MULTIPLAYER.md), "To do", has what
-  it gains and what it takes). On hold until every player's hardware can
-  run the line at those rates: some cannot yet (issue #15). The nesp32's part is to change its UART's
-  rate both ways when the session begins and ends, as RAW does for a run.
-  First, nes-throughput's trial of each rate with the music's samples
-  playing, on a real NES with each board: the rates above were found with
-  none.
+- **PEER's session at a faster rate** (issue #15): built, November 2026.
+  PEER's RATE runs a session's line faster when its console asks
+  ([MULTIPLAYER.md](MULTIPLAYER.md), "A faster exchange"); Jackal asks for
+  14 cycles a bit, and the other netplay games can when they are next
+  built. Jackal's session at 14 has been played on a real NES with a
+  StickS3, the music's samples playing: 0.6% of replies misheard, no fall
+  back to 21. Left: a StickC Plus2, and a busier level; then 10, which
+  needs a receiver that samples in 6 cycles (nes-throughput's), where the
+  short receiver takes 11.
 - **For [Family BASIC](../apps/family-basic):** TAPE, its SAVE and LOAD,
   is done. Left: the time a SAVE takes on hardware, a list of the files,
   and BG GRAPHIC's SAVE and LOAD tried. Its README, "Not done", has them.
