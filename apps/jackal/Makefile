@@ -98,7 +98,10 @@ $(NESP): FORCE | $(BUILD)
 
 # A session's line, in CPU cycles a bit, once the nesp32 has agreed to it
 # (PEER's RATE): its exchanges at that rate, and everything else at the
-# link's own, 21.
+# link's own, 21. 14 has been played on hardware with both boards, 0.6% of
+# replies misheard; 10 (received by folding, nesp32's nes/lib/gen_link.py)
+# had 12% misheard, the samples' fetches stealing 40% of a bit, and was no
+# faster for it (README, "The session's line").
 NET_RATE ?= 14
 # For trying a level: every game, with a session or not, begins at level n
 # (1 to 6). Not for a release: build it apart, e.g.

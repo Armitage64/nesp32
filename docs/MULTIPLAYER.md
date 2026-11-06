@@ -497,9 +497,13 @@ six games:
     samples out (11 cycles each, the rest padding) and looks for the next
     start bit in a window of looks at once: each byte is timed from its
     own start bit, and a sample's fetch spoils one byte at the most. It
-    takes 13 and 14 cycles a bit; 10 needs a sample in 6 cycles, as
-    nes-throughput's fast receiver has (the byte kept in A, the port
-    folded into it), which is to come.
+    takes 13 and 14 cycles a bit. Under 11 a sample is 6 cycles, as
+    nes-throughput's fast receiver has it: the byte kept in A, the port
+    folded into it, put right from a table once the reply is in (the fold
+    receiver). Jackal tried 10 on hardware (a StickC Plus2, level 4, the
+    music playing): 12% of replies misheard, against 0.6% at 14, which
+    took back what the faster line gave. Its drum samples steal 40% of a
+    bit at 10, and the look for a start bit is 60%. Jackal asks for 14.
   - *Falling back.* A console whose exchanges at the session's rate have
     had no reply for half a second goes back to 21, and asks again 3/4 of
     a second later, once its nesp32 has gone back too: three asks a

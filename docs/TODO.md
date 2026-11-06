@@ -70,9 +70,9 @@ its own list in its README.
   14 cycles a bit, and the other netplay games can when they are next
   built. Jackal's sessions at 14 have been played on a real NES with
   each board, levels 1, 2 and 4, the music's samples playing: 0.6% to 0.7%
-  of replies misheard, and no fall back to 21 in play. Left: 10, which
-  needs a receiver that samples in 6 cycles (nes-throughput's), where the
-  short receiver takes 11.
+  of replies misheard, and no fall back to 21 in play. 10 was built (the
+  fold receiver) and tried: 12% misheard with Jackal's samples, no faster
+  than 14, so Jackal asks for 14. A game with no samples might use it.
 - **The exchange ahead, for the netplay games whose game runs in the NMI**
   (Jackal first, [its README](../apps/jackal/README.md), "To do"): the
   next tick's exchange made in the wait at the end of a tick, before the

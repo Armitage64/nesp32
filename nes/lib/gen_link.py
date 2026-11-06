@@ -24,6 +24,9 @@ RATE, docs/PROTOCOL.md), and NESP_SHORT_PERIOD = N for nesp.inc to see:
                         takes one, at N cycles a bit
     nesp_fast_tx_byte   send A as 8N1 at N cycles a bit
 
+Under 11 cycles a bit the reply's samples are folded into A, 6 cycles each,
+and put right from nesp_fold_table after (the fold receiver).
+
 The link's own routines stay, at the link's rate, for everything else.
 
 Each routine sits on a page of its own and must end on it, so no branch pays
@@ -399,6 +402,95 @@ def crc_table(poly):
     return entries
 
 
+# The fold receiver, for a session's line under 11 cycles a bit, where a
+# sample of 11 cycles is too long: nes-throughput's. The byte is kept in A,
+# and each sample is asl a / eor JOY2, 6 cycles, which folds the port's
+# whole value in. With the port's other bits at $40 every time, as they
+# are on a console with nothing else on its port 2, the byte is the bits
+# backwards, inverted, and $C0 across the top: put right from a table once
+# the reply is all in (nesp_fold_table, NESP_FOLD). A console whose other
+# bits wander mishears every reply at this rate, and a session there goes
+# back to the link's rate (PEER's RATE). On hardware, with Jackal's drum
+# samples playing at 10 cycles a bit, 12% of replies were misheard, where
+# 0.6% were at 14 with the short receiver: no faster in all.
+FOLD_SAMPLE = 6
+# From a byte's last sample to the window's first look: the rest of the
+# eor, sta abs+y, iny, cpy zp, beq not taken, lda #, and the look's read.
+FOLD_TAIL = 1 + 5 + 2 + 3 + 2 + 2 + READ_AT
+
+
+def fold_value(raw):
+    """The byte a fold of eight samples left as raw."""
+    bits = raw ^ 0xC0
+    reverse = int("{:08b}".format(bits)[::-1], 2)
+    return reverse ^ 0xFF
+
+
+def fold_receiver(period, baud, to_nes_bits, early=None):
+    early = EARLY if early is None else early
+    pad = period - FOLD_SAMPLE
+    if pad < 0 or pad == 1:
+        raise ValueError("at %d cycles a bit a folded sample cannot be padded" % period)
+    # From a look 6 cycles after another (start bit 3 cycles before, on
+    # average) to the first sample's read: LOOK_TO_CODE, the delay, the
+    # asl, and the eor's read. A look after the count saw one 2.5 earlier.
+    ideal = 1.5 * period - early - LOOK / 2 - LOOK_TO_CODE - 2 - READ_AT
+    choices = [(abs(ideal - after_look) + abs(ideal - 2.5 - (after_look - 2)), after_look)
+               for after_look in range(2, 40)
+               if after_look not in (1, 3) and after_look - 2 not in (1,) and after_look - 2 >= 0]
+    after_look = min(choices)[1]
+    after_count = after_look - 2
+    edge = 0.5 * period + (to_nes_bits - 9) * period
+    if FOLD_TAIL > edge:
+        raise ValueError("at %d cycles a bit the fold receiver's window opens late" % period)
+    if FOLD_TAIL + (FAST_WINDOW - 1) * LOOK < edge + COUNTED / 2 + 4:
+        raise ValueError("at %d cycles a bit the fold receiver's window closes early" % period)
+    lines = ["", FAST_ALIGN,
+             "; Receive a short reply into nesp_rx, from the place in it in Y up to",
+             "; the place in A, at %d cycles a bit, %d baud, each sample folded into A"
+             % (period, baud),
+             "; (the fold receiver), and then put right. Otherwise as the short",
+             "; receiver. Destroys A, X, Y and nesp_rx_data.",
+             ".proc nesp_fast_rx_bytes", "    sta nesp_rx_end",
+             "    sty nesp_rx_data        ; where the reply begins, for putting it right",
+             "    lda #1              ; what the looks test the port with",
+             "    ldx #0",
+             "@hunt:                      ; the tests skip ahead while this sees mark",
+             "    bit JOY2", "    bne @first"]
+    for _ in range(CLOSE):
+        lines += ["    bit JOY2", "    bne @byte"]
+    lines += ["    dex", "    bne @hunt",
+              "    dec nesp_tries", "    bne @hunt", "    sec", "    rts",
+              "@byte:                      ; from a look 6 cycles after another"]
+    lines += delay(2, use_y=False)
+    lines += ["@first:"]
+    lines += delay(after_count, use_y=False) if after_count else []
+    for bit in range(8):
+        if bit and pad:
+            lines += delay(pad, use_y=False)
+        lines += ["    asl a", "    eor JOY2"]
+    lines += ["    sta a:nesp_rx,y", "    iny", "    cpy nesp_rx_end", "    beq @done",
+              "    lda #1"]
+    for _ in range(FAST_WINDOW):
+        lines += ["    bit JOY2", "    bne @byte"]
+    lines += ["    ldx #0              ; not where it was due: a gap",
+              "    jmp @hunt",
+              "@done:                      ; every byte of it put right",
+              "    dey", "    ldx nesp_rx,y", "    lda nesp_fold_table,x", "    sta nesp_rx,y",
+              "    cpy nesp_rx_data", "    bne @done",
+              "    clc", "    rts",
+              ".endproc", one_page("nesp_fast_rx_bytes")]
+    return lines
+
+
+def fold_table():
+    lines = ["", '.segment "RODATA"', "nesp_fold_table:   ; what a fold of eight samples was"]
+    values = [fold_value(raw) for raw in range(256)]
+    for row in range(0, 256, 16):
+        lines.append("    .byte " + ", ".join("$%02X" % value for value in values[row:row + 16]))
+    return lines
+
+
 def include(proto, timeout=False, pack=False, early=None, short_period=None):
     period = proto.NESP_PERIOD
     lines = ["; Generated by nes/lib/gen_link.py. Do not edit.", "",
@@ -413,10 +505,15 @@ def include(proto, timeout=False, pack=False, early=None, short_period=None):
             raise ValueError("a session's own rate is for the receiver that counts: --timeout")
         baud = (proto.NESP_CPU_HZ + short_period // 2) // short_period
         lines += ["", "NESP_SHORT_PERIOD = %d" % short_period]
-        lines += short_receiver(short_period, baud, proto.NESP_TO_NES_BITS, early)
+        if short_period < SAMPLE:
+            lines += fold_receiver(short_period, baud, proto.NESP_TO_NES_BITS, early)
+        else:
+            lines += short_receiver(short_period, baud, proto.NESP_TO_NES_BITS, early)
         lines += [FAST_ALIGN if line == ".align 256"
                   else line.replace("nesp_tx_byte", "nesp_fast_tx_byte")
                   for line in sender(short_period)]
+    if short_period and short_period < SAMPLE:
+        lines += fold_table() + ['.segment "RXTX"']
     if pack:
         lines = [line for line in lines if line != ".align 256"]
     lines += ["", ".ifdef NESP_CRC_TABLE", '.segment "RODATA"']

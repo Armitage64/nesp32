@@ -285,7 +285,18 @@ some 60 cycles a call, 1200 to 1400 a tick), and each object's movement
 ## The session's line
 
 A session's exchanges go at 14 cycles a bit, where the link's are at 21
-(`NET_RATE` in the Makefile). In its first NMI a session asks its nesp32
+(`NET_RATE` in the Makefile).
+
+10 was built and tried (`NET_RATE=10`): under 11 the reply is received by
+folding each sample into A, 6 cycles, and put right from a table after
+(nesp32's `nes/lib/gen_link.py`). On a StickC Plus2, level 4, the music
+playing (November 2026), the line held at 10, but 12% of its replies were
+misheard and asked for again, against 0.6% at 14: each one is a second
+exchange in its frame, and a frame with one is the frame that lags. 10 is
+no faster than 14 for Jackal. A stolen fetch of a sample is 40% of a bit
+at 10, and the look for a start bit 60%: there is no margin left for the
+samples. The simulation had it too (9%). A game with no samples might do
+better at 10. In its first NMI a session asks its nesp32
 for that rate, with PEER's RATE, at the link's rate (`net_rate`); once
 the answer says yes, its short frames go at it (nesp32's `nes/lib/nesp.inc`,
 `nesp_fast`, and `gen_link.py --short-period`), and everything else, the
@@ -394,13 +405,9 @@ exchange goes and the line's rate (tools as in "What has been learned"):
    after a lag, the cost would be only where the game stands still
    anyway. The game is the same: only when the buttons are read and the
    exchange made change.
-2. **The session's line at 10 cycles a bit**: some 380 cycles a tick
-   more, and the same for every netplay game that asks for it. Needs a
-   receiver that samples in 6 cycles (nes-throughput's: the byte kept in
-   A, the port folded into it, and unscrambled from a table after), which
-   counts on `$4017`'s other bits always reading `$40`. The samples' fetch
-   is 40% of a bit at 10, against 29% at 14; 14 has 0.6% to 0.7% misheard.
-   A trial on hardware with each board, the music playing.
+2. **The session's line at 10 cycles a bit**: tried, and no faster than
+   14 for Jackal: 12% of replies misheard ("The session's line"). Left
+   at 14.
 3. **The last boss**, if its fight plays badly in a session: its split by
    the MMC3's scanline IRQ, in place of a wait of some 10,000 cycles in
    every NMI, the exchange done before the IRQ's line. Its fight alone.
