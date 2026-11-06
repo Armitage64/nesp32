@@ -114,6 +114,16 @@ static void hear(const uart_event_t *event, int64_t arrived)
     if (count <= 0) {
         return;
     }
+    /* The line was quiet since the last byte: a console sends a request's
+     * bytes back to back, so none that came before is part of one with
+     * these (nesp_link_gap). An event comes for every byte, so the time
+     * this one is seen is near enough to when its byte came; seen late, a
+     * gap only looks shorter. */
+    static int64_t last_heard;
+    if (arrived - last_heard >= NESP_LINK_GAP_US) {
+        nesp_link_gap(&stick.link);
+    }
+    last_heard = arrived;
     /* Buttons pressed since the last request, for the services. */
     while (xQueueReceive(stick_events, pending, 0) == pdTRUE) {
         nesp_stick_event(&stick, pending[0], pending[1]);

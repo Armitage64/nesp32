@@ -8,6 +8,7 @@
 
 ### Firmware
 - PEER's RATE: a session's line at a faster rate when the console asks for it, for a shorter exchange each frame; a ROM that does not ask is not touched by it (#15)
+- No short request is put together across a quiet line: one that had lost a byte could pass its check with the next request's first byte, and two consoles' games go apart
 
 ### Games
 - Bubble Bobble, online co-op: a session lasts past a game over, and 2P CONTINUE goes on at the round the two reached; its busiest rounds kept at the game's own speed

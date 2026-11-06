@@ -746,3 +746,62 @@ def test_the_log_says_what_rate_the_line_is_at(pair):
     host.tick(3000 + p.NESP_PEER_RATE_QUIET_MS)
     assert host.watched == ("line at %d cycles a bit: the link's again, nothing heard at "
                               "the session's" % p.NESP_PERIOD)
+
+
+# --- a short request that lost a byte (nesp_link_gap) --------------------------------
+
+def damaged_then_whole(stick, gap):
+    """This console's buttons for tick 15, nothing pressed, as a short
+    request: its 0 lost on the line, and the request again once its wait
+    for a reply ran out. What the bytes left of the first and the first of
+    the second make passes the CRC."""
+    request = nesp.short_frame(1, bytes((0xFD, 0x00)))
+    assert request == bytes.fromhex("d1fd00fba5")
+    assert bytes(nesp.checks(bytes.fromhex("d1fdfb"))) == bytes.fromhex("a5d1")
+    stick.feed(request[:2] + request[3:])
+    if gap:
+        stick.gap()                     # the line quiet for the wait
+    stick.feed(request)
+
+
+def session_at_tick_15(pair):
+    host, guest = pair
+    connect(host, guest)
+    for tick in range(15):
+        quick(host, tick, 0, b"\x00")
+        quick(guest, tick, 0, b"\x00")
+        carry(host, guest)
+        carry(guest, host)
+    return host, guest
+
+
+def test_a_request_that_lost_a_byte_is_not_made_whole_by_the_next(pair):
+    host, guest = session_at_tick_15(pair)
+    damaged_then_whole(host, gap=True)
+    carry(host, guest)
+    for tick in range(15):
+        quick(guest, 15, tick, b"")
+    assert quick(guest, 15, 15, b"") == (0, b"\x00")    # nothing pressed, as sent
+
+
+def test_without_the_gap_the_damaged_request_passes(pair):
+    """What the gap is for: the bytes alone, with no gap between them, give
+    the other console a tick of buttons nobody pressed (the CRC's own first
+    byte)."""
+    host, guest = session_at_tick_15(pair)
+    damaged_then_whole(host, gap=False)
+    carry(host, guest)
+    for tick in range(15):
+        quick(guest, 15, tick, b"")
+    assert quick(guest, 15, 15, b"") == (0, b"\xfb")
+
+
+def test_a_gap_before_a_request_does_not_hide_it(pair):
+    """Noise from the controller's read, the line quiet, and the request:
+    the noise is passed over and the request answered."""
+    host, guest = pair
+    connect(host, guest)
+    host.feed(b"\xfe")
+    host.gap()
+    count, data = host.quick(1, bytes((0x00, 0x05)))
+    assert count == 0

@@ -829,6 +829,12 @@ size_t host_feed(host_t *host, const uint8_t *data, size_t len, uint8_t *out)
     return sent;
 }
 
+/* The line went quiet for NESP_LINK_GAP_US before what is fed next. */
+void host_gap(host_t *host)
+{
+    nesp_link_gap(&host->stick.link);
+}
+
 /* The clock, in milliseconds: what the services do between requests. */
 bool host_tick(host_t *host, uint32_t now_ms)
 {

@@ -100,6 +100,9 @@ typedef struct {
     bool attention;         /* sets NESP_ST_ATTENTION on every reply */
     uint8_t rx[NESP_RX_BUFFER];
     size_t rx_len;
+    /* Where in rx the line last went quiet (nesp_link_gap): bytes before it
+     * and bytes after it are never one short request. SIZE_MAX if none. */
+    size_t gap_at;
     nesp_counters_t counters;
 } nesp_link_t;
 
@@ -120,6 +123,16 @@ size_t nesp_link_feed(nesp_link_t *link, const uint8_t *data, size_t len, uint8_
  * missing, which must hold count bytes. Returns how many. */
 uint8_t nesp_link_hello(nesp_link_t *link, const uint8_t *ids, uint8_t count,
                         uint8_t reply_max, uint8_t *missing);
+
+/* The line has been quiet for NESP_LINK_GAP_US since the last byte fed: a
+ * console sends a request's bytes back to back, so none that came before
+ * is part of one with any that comes after. A short request is five bytes
+ * or six, with two of CRC, and one whose byte was lost on the line can be
+ * made whole, CRC and all, by the first byte of the console's next
+ * request, as often as one time in 256 where its lost byte was 0: what is
+ * held when the line goes quiet is not let begin a short request that
+ * ends after it. */
+void nesp_link_gap(nesp_link_t *link);
 
 /* Give every active service its tick. now_ms is any clock in milliseconds;
  * it may wrap. True if one of them wants another within a couple of

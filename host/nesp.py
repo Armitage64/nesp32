@@ -39,6 +39,8 @@ def library():
         lib.host_free.argtypes = [ctypes.c_void_p]
         lib.host_feed.restype = ctypes.c_size_t
         lib.host_feed.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t, _u8p]
+        lib.host_gap.restype = None
+        lib.host_gap.argtypes = [ctypes.c_void_p]
         lib.host_event.argtypes = [ctypes.c_void_p, ctypes.c_uint8, ctypes.c_uint8]
         lib.host_note_turnaround.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
         lib.host_set_wifi.argtypes = [ctypes.c_void_p, ctypes.c_uint8, ctypes.c_uint8,
@@ -436,12 +438,24 @@ class Stick:
         they do between requests, if the port has a clock. True if a reply
         went out."""
         heard = self.port.read()
+        if heard and hasattr(self.port, "now_ms"):
+            # The line quiet since the last byte, as the nesp32's link task
+            # sees it (firmware/main/link.c): no short request spans that.
+            now = self.port.now_ms()
+            if now - getattr(self, "_heard_ms", now) >= proto.NESP_LINK_GAP_US / 1000.0:
+                self.gap()
+            self._heard_ms = now
         reply = self.feed(heard) if heard else b""
         if reply:
             self.port.write(reply)
         if hasattr(self.port, "now_ms"):
             self.tick(self.port.now_ms())
         return bool(reply)
+
+    def gap(self):
+        """The line has been quiet for NESP_LINK_GAP_US before what is fed
+        next."""
+        self._lib.host_gap(self._host)
 
     def tick(self, now_ms):
         """What the services do by the clock. True if they want another

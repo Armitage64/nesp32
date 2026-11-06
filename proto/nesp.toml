@@ -17,6 +17,7 @@ CPU_HZ = 1789773        # NTSC: 21.477272 MHz / 12
 # ways with rates to spare.
 PERIOD = 21
 TO_NES_BITS = 11        # the Stick sends 8N2
+LINK_GAP_US = 3000      # the line quiet this long between two bytes: no short request spans it
 TO_STICK_BITS = 10      # the console sends 8N1
 REQUEST_MARKER = 0x4E   # 'N'
 REPLY_MARKER = 0xA5

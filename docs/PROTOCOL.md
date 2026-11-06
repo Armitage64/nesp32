@@ -113,6 +113,21 @@ the same request again harmless, as PEER does. Like any request it is
 found by its marker and its CRC, in whatever else is on the line, and of
 several requests waiting only the newest is acted on.
 
+**No short request spans a quiet line.** A short request is five bytes or
+six, two of them its CRC. One that loses a byte on the line, and is then
+made up to its length by the first byte of the console's next request, can
+pass that CRC far more often than one damaged at random: where the byte
+lost was 0, about one time in 256, and 0 is the commonest byte a game sends
+(no button down). Found in Jackal's simulation, at 10 cycles a bit with a
+nesp32 whose clock was 1.5% fast: the other console was given buttons
+nobody pressed, and the two games went apart. A console sends a request's
+bytes back to back, so the nesp32 marks where the line has been quiet for
+`LINK_GAP_US` (3 ms) between two bytes (`nesp_link_gap`, from its link
+task, which has an event for every byte), and a short request is never
+found across such a place. A console's next request comes 3 ms or more
+after its last: at the soonest, when its wait for a reply runs out (4.15
+ms). It is the nesp32's alone: no ROM changes for it.
+
 Only PEER has them so far. nes-contra's exchange was 10 bytes out and 11
 back as frames, and 6710 cycles of each frame on the simulated console; as
 short frames of 5 and 4 it is 3112.
