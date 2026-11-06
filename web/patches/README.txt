@@ -101,7 +101,13 @@ Playing
   8 KB of RAM; its patched ROM has an NES 2.0 header.
 - Family BASIC needs MMC1 with battery-backed memory, and a Bluetooth
   keyboard paired to the NESP32 (a StickS3).
-- For the online games, both players need the same patched game.
+- For the online games, both players need the same patched game, from
+  the same zip. The online games' patches from November 2026 on don't
+  play with earlier ones: a room then says NOT THIS GAME. Patch again
+  from this zip, both of you.
+- Contra, TMNT II and Jackal play a little faster online with firmware
+  newer than 0.2.0, which runs their link to the NESP32 faster. With
+  0.2.0 they play as before.
 
 The user guide tells you how to play each one:
 https://github.com/Armitage64/nesp32/blob/main/docs/USER_GUIDE.md
