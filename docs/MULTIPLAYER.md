@@ -1,13 +1,13 @@
 # Multiplayer: two consoles, one game
 
-Five of the apps are netplay builds of a two-player game:
+Six of the apps are netplay builds of a two-player game:
 [Contra](../apps/contra), [Dr. Mario](../apps/drmario),
-[Tetris](../apps/tetris), [TMNT II](../apps/tmnt2) and
-[Bubble Bobble](../apps/bubblebobble). Each is played on two consoles, each console
-with a nesp32 on controller port 2, the nesp32s joined over the network.
-The five work the same way, and this is that way: what the player sees,
-what a tick is, how the two games are kept the same, and what is still
-left to do in all five.
+[Tetris](../apps/tetris), [TMNT II](../apps/tmnt2),
+[Bubble Bobble](../apps/bubblebobble) and [Jackal](../apps/jackal). Each is
+played on two consoles, each console with a nesp32 on controller port 2,
+the nesp32s joined over the network. The six work the same way, and this
+is that way: what the player sees, what a tick is, how the two games are
+kept the same, and what is still left to do in all six.
 
 What the nesp32s do between them is the PEER service's, in
 [`PROTOCOL.md`](PROTOCOL.md): its lobby, its exchange of buttons, the
@@ -23,6 +23,7 @@ and from hardware) is in its own docs:
 | Tetris | [apps/tetris/README.md](../apps/tetris/README.md) | [apps/tetris/docs/PROTOCOL.md](../apps/tetris/docs/PROTOCOL.md) |
 | TMNT II | [apps/tmnt2/README.md](../apps/tmnt2/README.md) | its README, "How the netplay works" |
 | Bubble Bobble | [apps/bubblebobble/README.md](../apps/bubblebobble/README.md) | its README, "How the netplay works" |
+| Jackal | [apps/jackal/README.md](../apps/jackal/README.md) | its README, "How the netplay works" |
 
 ## Playing
 
@@ -54,7 +55,7 @@ left.
   Internet, for a nesp32 that has no rooms, and for two networks that
   rooms cannot get through.
 
-All five games' menus have both ways. Contra, TMNT II and Bubble Bobble
+All six games' menus have both ways. Contra, TMNT II and Bubble Bobble
 write the foot of the screen as `SELECT   BY IP`, their fonts having no
 dash.
 
@@ -65,6 +66,7 @@ dash.
 | Tetris | 2 PLAYERS, where the original says PUSH START | `TTRS` |
 | TMNT II | 2 TURTLES | `TMN2` |
 | Bubble Bobble | 2P START | `BUBL` |
+| Jackal | 2 PLAYERS | `JACK` |
 
 The console that hosted is player 1. When the two nesp32s are connected
 both consoles leave the menu and go straight into a game for two. Each
@@ -242,8 +244,8 @@ answer, or which exchanges failed. Dr. Mario's and Tetris's NMIs change
 the game's state (they draw the playfields, count the frames, step the
 random numbers), so an NMI that finds the main loop still at work does
 nothing at all. All of Contra's game runs inside its NMI, and all of
-TMNT II's, so there a tick is the NMI that runs the game, and a lag is
-the game's own lag frame, left as it was. All of Bubble Bobble's runs in
+TMNT II's and Jackal's, so there a tick is the NMI that runs the game, and
+a lag is the game's own lag frame, left as it was. All of Bubble Bobble's runs in
 its NMI too, which turns the NMI off while it works, so it has no lags:
 a frame that overruns has no NMI. The game turns it on again before the
 end once, after Start at its logo, and an NMI that then breaks into its
@@ -252,7 +254,7 @@ cycles.
 
 **The exchange is made where the game reads its controllers**, before the
 game's work: after the NMI's writes to the PPU, and before the main loop
-(or, in Contra, TMNT II and Bubble Bobble, the rest of the NMI) does the
+(or, in Contra, TMNT II, Bubble Bobble and Jackal, the rest of the NMI) does the
 frame's work.
 TMNT II's is made a little before its read, where the NMI has set up the
 counter for its splits of the screen and before it lets the IRQs in, so
@@ -442,7 +444,7 @@ passed over. With no session, the title passes over 2P CONTINUE.
 ## To do
 
 What is left on the nesp32 itself is in [`TODO.md`](TODO.md). In all
-five games:
+six games:
 
 
 - **Say why on the console** when a session ends (the other console left,
@@ -458,32 +460,75 @@ five games:
   Contra's would take its screen's tiles and its 8 KB of CHR RAM as well,
   about 12 KB, and going back to the title may well stay.
 - **A faster exchange: the line at 14 cycles a bit, then perhaps 10, in
-  a session.** On hold: some players' hardware cannot run the line at
-  either rate yet, and a session has to work on every console that can
-  play one today (issue #15). The exchange is 3112 cycles: its 5 bytes out at 210 cycles
-  each and 4 back at 231 are 1974 of them, and the rest is the nesp32's
-  turnaround, the CRCs and the session's own work, which the rate does
-  not change. At 14 cycles a bit the exchange would be some 2450 cycles,
-  and at 10 some 2080. In Contra's simulated play of stages 1, 4 and 6
-  (its `docs/Netplay.md`), the frames of play that stand still would go
-  from 0.74% to 0.41% at 14 and 0.26% at 10, and the worst second from
-  44 frames to 47 and 52. Every netplay game would gain the same cycles.
-  - *What it takes.* PEER's session changes rate: once a session begins
-    the nesp32's UART goes to the faster rate both ways, and back to the
-    link's at its end, as RAW already changes rate for a run. Each game's
-    netplay ROM has a second set of serial routines for it, which
-    `nes/lib/gen_link.py` writes for any rate; the menu and the hello stay
-    at 21 cycles a bit. The simulated line takes any rate already.
+  a session.** Built (November 2026), Jackal first, at 14; every player's
+  hardware runs those rates now. The exchange is 3112 cycles: its 5 bytes
+  out at 210 cycles each and 4 back at 231 are 1974 of them, and the rest
+  is the nesp32's turnaround, the CRCs and the session's own work, which
+  the rate does not change. At 14 cycles a bit the exchange would be some
+  2450 cycles, and at 10 some 2080. In Contra's simulated play of stages
+  1, 4 and 6 (its `docs/Netplay.md`), the frames of play that stand still
+  would go from 0.74% to 0.41% at 14 and 0.26% at 10. Every netplay game
+  would gain the same cycles.
+  - *It is asked for.* The firmware is one for every game, and a ROM's
+    serial routines are built for one rate: a nesp32 that went faster at
+    every session's start would no longer hear any netplay ROM built
+    before. So a console asks for it, with a new op of PEER's (RATE: the
+    rate in cycles a bit), once its session has begun; the nesp32
+    answers at the link's rate and then changes its UART, both ways, as
+    RAW already changes rate for a run. A ROM that does not ask is never
+    at another rate; a nesp32 whose firmware has no RATE answers that it
+    has no such op, and the console stays at 21. So each game takes it up
+    when it is next built, and none has to be built again for it.
+  - *Back to the link's rate.* At the session's end, as the nesp32 sees
+    it (the other console gone, the console's next hello, PEER no longer
+    asked for); and, since a console that is reset or switched off and on
+    begins again at 21 and says hello at 21, when the nesp32 has heard no
+    good frame for a while, or a few bad ones in a row. A console in a
+    session makes an exchange in every NMI but those of a scene's load,
+    which in Jackal can take some 11 frames: the while is longer than that.
+  - *On the console.* `nes/lib/gen_link.py --short-period=N` writes a
+    second pair of serial routines for the session's rate, under names of
+    their own (`nesp_fast_rx_bytes`, `nesp_fast_tx_byte`), and a short
+    frame (`nesp_short`) uses them while `nesp_fast` has bit 7 set: the
+    hello, the menu, RATE itself and every long frame stay at 21. The
+    counting receiver cannot be made faster: its samples are a loop of 16
+    cycles, and it has no room under 18 cycles a bit. A short reply is 4
+    or 5 bytes back to back, so the session's receiver writes each byte's
+    samples out (11 cycles each, the rest padding) and looks for the next
+    start bit in a window of looks at once: each byte is timed from its
+    own start bit, and a sample's fetch spoils one byte at the most. It
+    takes 13 and 14 cycles a bit. Under 11 a sample is 6 cycles, as
+    nes-throughput's fast receiver has it: the byte kept in A, the port
+    folded into it, put right from a table once the reply is in (the fold
+    receiver). Jackal tried 10 on hardware (a StickC Plus2, level 4, the
+    music playing): 12% of replies misheard, against 0.6% at 14, which
+    took back what the faster line gave. Its drum samples steal 40% of a
+    bit at 10, and the look for a start bit is 60%. Jackal asks for 14.
+  - *Falling back.* A console whose exchanges at the session's rate have
+    had no reply for half a second goes back to 21, and asks again 3/4 of
+    a second later, once its nesp32 has gone back too: three asks a
+    session at the most. The simulated line (each app's `tests/wire.py`)
+    sends replies at whatever rate the nesp32's UART is at.
+  - *Jackal, the first* (its README): an exchange went from some 3150
+    cycles to some 2500 at 14 cycles a bit. On hardware, with the music
+    playing (November 2026): sessions of levels 1 and 4 hosted by a
+    StickS3 and of level 2 by a StickC Plus2, each with the line at 14
+    throughout, and 0.6% to 0.7% of replies misheard and asked for again.
+    A session whose connection was lost had its line back at 21 half a
+    second later, and the next was at 14 again.
   - *What could stop it.* The drum samples. Each byte a sample fetches
     stops the CPU for up to 4 cycles, which the serial routines cannot
     see, and a real NES has misheard replies for it at 21 cycles a bit
     (Contra's `docs/Netplay.md`, "On hardware"). At 14 a fetch is under a
     third of a bit, at 10 two fifths. A misheard reply costs a whole
     second exchange, so a rate that is misheard often is slower than 21.
-    nes-throughput's rates were found with no samples playing (nesp32's
-    [`TODO.md`](TODO.md)); a trial of each rate with them playing, on a
-    real NES with each board, comes first. Both 14 and 10 are inside what
-    a real NES has passed both ways without samples; 8 is not.
+    Jackal plays samples all the time, so it is the trial: 14 first, on a
+    real NES with each board, then 10. Both are inside what a real NES
+    has passed both ways without samples; 8 is not.
+  - *Not worth it either:* the next tick's exchange made ahead, in the
+    wait at the end of a tick that lagged. Tried in Jackal (its README):
+    slower in a session, since the other console's buttons are seldom
+    there that early.
   - *Not worth it:* making no wait for a reply in a frame whose buttons
     from the other console are already here. A reply carries one tick of
     them and a tick uses one, so a console has to hear one nearly every

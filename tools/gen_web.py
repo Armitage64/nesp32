@@ -111,6 +111,7 @@ PATCHES = [("apps/drmario/dist/drmario_net.bps", "0.2.0"),
            ("apps/contra/dist/contra_net.bps", "0.2.0"),
            ("apps/tmnt2/dist/tmnt2_net.bps", "0.2.0"),
            ("apps/bubblebobble/dist/bubblebobble_net.bps", "0.2.0"),
+           ("apps/jackal/dist/jackal_net.bps", "0.2.0"),
            ("apps/family-basic/dist/fbasic.bps", "0.2.0")]
 
 

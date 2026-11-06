@@ -654,3 +654,154 @@ def test_a_console_that_does_not_know_its_delay_is_told_one(pair):
     host.tick(1000)
     assert tune(host, 0, 0, 0, delay=0)[1] == 3
     assert host.notes == 1                      # and that is no report to pass on
+
+
+# --- a session's line at a rate of its own (RATE) ---------------------------------
+
+RATE = p.NESP_PEER_RATE
+FAST = 14
+
+
+def rate(stick, period):
+    reply = stick.ask(PEER, RATE, bytes((period,)))
+    assert reply.ok and len(reply.payload) == 1
+    return reply.payload[0]
+
+
+def test_a_session_asks_for_a_faster_line_and_has_it_once_the_answer_has_gone(pair):
+    host, guest = pair
+    connect(host, guest)
+    host.line.busy = True               # the answer still on its way out
+    assert rate(host, FAST) == FAST
+    host.tick(10)
+    assert host.line.rates == []
+    host.line.busy = False
+    host.tick(11)
+    assert host.line.rates == [FAST]
+    assert guest.line.rates == []       # the other console's line is its own
+
+
+def test_the_faster_line_holds_while_frames_come_and_goes_back_when_they_stop(pair):
+    host, guest = pair
+    connect(host, guest)
+    assert rate(host, FAST) == FAST
+    host.tick(0)
+    for now in range(0, 3000, 17):      # an exchange a frame, the scene's loads between
+        host.tick(now)
+        if now % 340 < 170:
+            quick(host, 0, 0)
+    assert host.line.rates == [FAST]
+    host.tick(3000 + p.NESP_PEER_RATE_QUIET_MS)    # the console was reset: nothing heard
+    assert host.line.rates == [FAST, p.NESP_PERIOD]
+    assert host.hello(services=[PEER]).ok          # at the link's rate, heard again
+
+
+def test_with_no_session_the_line_stays_the_links(peer):
+    assert rate(peer, FAST) == 0
+    peer.tick(0)
+    assert peer.line.rates == []
+
+
+def test_a_rate_out_of_bounds_is_refused(pair):
+    host, guest = pair
+    connect(host, guest)
+    for payload in (b"", bytes((p.NESP_PEER_RATE_MIN - 1,)), bytes((p.NESP_PERIOD + 1,)),
+                    bytes((FAST, 0))):
+        assert host.ask(PEER, RATE, payload).status == p.NESP_ST_BAD_ARG
+    assert rate(host, p.NESP_PERIOD) == 0          # the link's own: no change
+    host.tick(0)
+    assert host.line.rates == []
+
+
+def test_a_session_that_does_not_ask_is_never_at_another_rate(pair):
+    """A netplay ROM built before RATE: its serial routines know one rate."""
+    host, guest = pair
+    connect(host, guest)
+    for now in range(0, 2000, 17):
+        host.tick(now)
+        quick(host, 0, 0)
+    assert host.line.rates == []
+
+
+def test_a_new_hello_puts_the_line_back(pair):
+    host, guest = pair
+    connect(host, guest)
+    assert rate(host, FAST) == FAST
+    host.tick(0)
+    assert host.hello(services=[]).ok              # another ROM, which wants no PEER
+    assert host.line.rates == [FAST, p.NESP_PERIOD]
+
+
+def test_the_log_says_what_rate_the_line_is_at(pair):
+    host, guest = pair
+    connect(host, guest)
+    host.tick(0)
+    assert rate(host, FAST) == FAST
+    host.tick(10)
+    assert host.watched == "line at %d cycles a bit: the session's, as its console asked" % FAST
+    for now in range(10, 2100, 17):     # an exchange a frame, to the session's next log
+        quick(host, 0, 0)
+        host.tick(now)
+    assert host.watched.startswith("player 1, line %d, delay" % FAST)
+    host.tick(3000 + p.NESP_PEER_RATE_QUIET_MS)
+    assert host.watched == ("line at %d cycles a bit: the link's again, nothing heard at "
+                              "the session's" % p.NESP_PERIOD)
+
+
+# --- a short request that lost a byte (nesp_link_gap) --------------------------------
+
+def damaged_then_whole(stick, gap):
+    """This console's buttons for tick 15, nothing pressed, as a short
+    request: its 0 lost on the line, and the request again once its wait
+    for a reply ran out. What the bytes left of the first and the first of
+    the second make passes the CRC."""
+    request = nesp.short_frame(1, bytes((0xFD, 0x00)))
+    assert request == bytes.fromhex("d1fd00fba5")
+    assert bytes(nesp.checks(bytes.fromhex("d1fdfb"))) == bytes.fromhex("a5d1")
+    stick.feed(request[:2] + request[3:])
+    if gap:
+        stick.gap()                     # the line quiet for the wait
+    stick.feed(request)
+
+
+def session_at_tick_15(pair):
+    host, guest = pair
+    connect(host, guest)
+    for tick in range(15):
+        quick(host, tick, 0, b"\x00")
+        quick(guest, tick, 0, b"\x00")
+        carry(host, guest)
+        carry(guest, host)
+    return host, guest
+
+
+def test_a_request_that_lost_a_byte_is_not_made_whole_by_the_next(pair):
+    host, guest = session_at_tick_15(pair)
+    damaged_then_whole(host, gap=True)
+    carry(host, guest)
+    for tick in range(15):
+        quick(guest, 15, tick, b"")
+    assert quick(guest, 15, 15, b"") == (0, b"\x00")    # nothing pressed, as sent
+
+
+def test_without_the_gap_the_damaged_request_passes(pair):
+    """What the gap is for: the bytes alone, with no gap between them, give
+    the other console a tick of buttons nobody pressed (the CRC's own first
+    byte)."""
+    host, guest = session_at_tick_15(pair)
+    damaged_then_whole(host, gap=False)
+    carry(host, guest)
+    for tick in range(15):
+        quick(guest, 15, tick, b"")
+    assert quick(guest, 15, 15, b"") == (0, b"\xfb")
+
+
+def test_a_gap_before_a_request_does_not_hide_it(pair):
+    """Noise from the controller's read, the line quiet, and the request:
+    the noise is passed over and the request answered."""
+    host, guest = pair
+    connect(host, guest)
+    host.feed(b"\xfe")
+    host.gap()
+    count, data = host.quick(1, bytes((0x00, 0x05)))
+    assert count == 0

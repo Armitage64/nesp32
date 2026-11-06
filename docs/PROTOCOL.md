@@ -113,6 +113,21 @@ the same request again harmless, as PEER does. Like any request it is
 found by its marker and its CRC, in whatever else is on the line, and of
 several requests waiting only the newest is acted on.
 
+**No short request spans a quiet line.** A short request is five bytes or
+six, two of them its CRC. One that loses a byte on the line, and is then
+made up to its length by the first byte of the console's next request, can
+pass that CRC far more often than one damaged at random: where the byte
+lost was 0, about one time in 256, and 0 is the commonest byte a game sends
+(no button down). Found in Jackal's simulation, at 10 cycles a bit with a
+nesp32 whose clock was 1.5% fast: the other console was given buttons
+nobody pressed, and the two games went apart. A console sends a request's
+bytes back to back, so the nesp32 marks where the line has been quiet for
+`LINK_GAP_US` (3 ms) between two bytes (`nesp_link_gap`, from its link
+task, which has an event for every byte), and a short request is never
+found across such a place. A console's next request comes 3 ms or more
+after its last: at the soonest, when its wait for a reply runs out (4.15
+ms). It is the nesp32's alone: no ROM changes for it.
+
 Only PEER has them so far. nes-contra's exchange was 10 bytes out and 11
 back as frames, and 6710 cycles of each frame on the simulated console; as
 short frames of 5 and 4 it is 3112.
@@ -320,11 +335,29 @@ Internet with no port forwarded, by a room's code at the rendezvous
 | `$06` | HOST_ROOM | | `STATE`, `ADDRESS[4]`, `DELAY`, `CODE[4]`, `WHY`: open a room, and wait in it |
 | `$07` | JOIN_ROOM | `CODE[4]` | the same: join the room of that code |
 | `$08` | ROOM | | the same, and nothing done |
+| `$09` | RATE | `PERIOD` | `PERIOD`: the session's line at that rate, both ways, or `0`: the link's |
 | short | TICKS again, in five bytes and four | `N` ticks: `FIRST` and `WANTED`, `BUTTONS[1 or 2]` | `N` ticks: `BUTTONS[1]` |
 
 In every reply but LAST's, `ADDRESS` is the nesp32's own IPv4 address.
 STATUS and the other first five keep their six bytes; only the three room
 ops have the room's.
+
+**RATE** runs a session's line faster than the link's, for a shorter
+exchange each tick ([`MULTIPLAYER.md`](MULTIPLAYER.md), "A faster
+exchange"). It is asked at the link's rate, once the session has begun:
+`PERIOD` is in CPU cycles a bit, from `PEER_RATE_MIN` (10) to the link's
+own (21), and anything else is `BAD_ARG`. The reply, at the link's rate,
+is the rate the line will be at: the one asked for, or `0` with no session
+(or with the link's own asked for), and the line stays the link's. Once
+the reply has gone the nesp32's UART changes, both ways, and from the next
+request on the console speaks at the new rate. It goes back to the link's
+when no good frame has come for `PEER_RATE_QUIET_MS` (500): a console that
+was reset, or whose session ended, begins again at the link's rate, and
+its hello is heard once that time is up. A new hello puts it back at once
+too, as do PEER's other ends. A console that asks for no rate is never at
+another, so a netplay ROM built before RATE is not touched by it; a
+nesp32 whose firmware has no RATE answers `NO_OP`, and its console stays
+at the link's rate.
 
 | `STATE` | Name | |
 |---|---|---|

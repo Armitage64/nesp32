@@ -64,15 +64,21 @@ its own list in its README.
   Rolling back, as newer games do, is not for any of the three: a
   cartridge with no RAM has nowhere to keep a copy of the game, and no
   frame has the time to run the game again.
-- **PEER's session at a faster rate**: the line at 14 cycles a bit, then
-  perhaps 10, from a session's start to its end, for a faster exchange in
-  every netplay game ([MULTIPLAYER.md](MULTIPLAYER.md), "To do", has what
-  it gains and what it takes). On hold until every player's hardware can
-  run the line at those rates: some cannot yet (issue #15). The nesp32's part is to change its UART's
-  rate both ways when the session begins and ends, as RAW does for a run.
-  First, nes-throughput's trial of each rate with the music's samples
-  playing, on a real NES with each board: the rates above were found with
-  none.
+- **PEER's session at a faster rate** (issue #15): built, November 2026.
+  PEER's RATE runs a session's line faster when its console asks
+  ([MULTIPLAYER.md](MULTIPLAYER.md), "A faster exchange"); Jackal asks for
+  14 cycles a bit, and the other netplay games can when they are next
+  built. Jackal's sessions at 14 have been played on a real NES with
+  each board, levels 1, 2 and 4, the music's samples playing: 0.6% to 0.7%
+  of replies misheard, and no fall back to 21 in play. 10 was built (the
+  fold receiver) and tried: 12% misheard with Jackal's samples, no faster
+  than 14, so Jackal asks for 14. A game with no samples might use it.
+- **The exchange ahead**: tried in Jackal and dropped (November 2026; its
+  README, "To do"). Made at the end of a tick that lagged, with the MMC3's
+  scanline IRQ as its deadline, it was slower in a two-console session
+  (46.6 frames a second against 48.2 in level 2), where a model of one
+  console had it faster: the early exchange seldom has the other
+  console's buttons.
 - **For [Family BASIC](../apps/family-basic):** TAPE, its SAVE and LOAD,
   is done. Left: the time a SAVE takes on hardware, a list of the files,
   and BG GRAPHIC's SAVE and LOAD tried. Its README, "Not done", has them.

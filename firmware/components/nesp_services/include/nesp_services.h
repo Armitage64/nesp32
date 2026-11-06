@@ -808,6 +808,12 @@ typedef struct {
     bool asking;                    /* a fetch is out, and has not been taken */
     uint32_t asked_at;
     uint8_t fails;                  /* of the host's asks, in a row */
+    /* A session's line at a rate of its own (RATE): the rate the console
+     * asked for, to be set once the answer has gone; the rate it is at, 0
+     * for the link's; and when a good frame was last heard at it. */
+    uint8_t rate_wanted;
+    uint8_t rate;
+    uint32_t rate_heard_at;
 } nesp_peer_t;
 
 /* TUNER: a radio station as sampled sound (tuner.c). */

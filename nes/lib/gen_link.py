@@ -2,6 +2,7 @@
 """Write the console's cycle-timed serial routines for the link's rate.
 
     nes/lib/gen_link.py build build/link.inc [--timeout] [--pack] [--early=N]
+                                             [--short-period=N]
 
 The first argument is where tools/gen_proto.py put nesp_proto.py. The link
 runs at NESP_PERIOD CPU cycles a bit, and the Stick's UART is set from the
@@ -15,6 +16,18 @@ same number. This writes, for that rate:
     nesp_tx_byte    send A as 8N1
     nesp_crc_table_hi, _lo      the CRC a byte at a time, for a ROM that
                                 defines NESP_CRC_TABLE
+
+With --short-period=N, for a PEER session's line at N cycles a bit (PEER's
+RATE, docs/PROTOCOL.md), and NESP_SHORT_PERIOD = N for nesp.inc to see:
+
+    nesp_fast_rx_bytes  a short reply, as nesp_rx_bytes with --timeout
+                        takes one, at N cycles a bit
+    nesp_fast_tx_byte   send A as 8N1 at N cycles a bit
+
+Under 11 cycles a bit the reply's samples are folded into A, 6 cycles each,
+and put right from nesp_fold_table after (the fold receiver).
+
+The link's own routines stay, at the link's rate, for everything else.
 
 Each routine sits on a page of its own and must end on it, so no branch pays
 the page-crossing cycle; tests/test_link_timing.py measures every read of
@@ -281,6 +294,78 @@ def timeout_receiver(period, baud, to_nes_bits, early=None):
 RX_BYTES = "nesp_rx_bytes = nesp_rx_frame + 4"
 
 
+# The short receiver, for a session's faster line. The counting receiver's
+# samples are a loop of 16 cycles, and the gap it leaves itself between a
+# byte's last sample and the next byte's start bit is too long for a bit
+# under 18 cycles. A short reply is 4 or 5 bytes, back to back from the
+# Stick's UART; so here each byte's samples are written out, 11 cycles each
+# and the rest padding, and the next byte's start bit is looked for at
+# once, with FAST_WINDOW looks 6 cycles apart. Each byte is timed from its
+# own start bit, so a sample's fetch that makes one late spoils one byte at
+# the most. Its first byte is hunted for by the loop that counts, as the
+# counting receiver's is.
+FAST_WINDOW = 6
+# Each on a page of its own even with --pack, which packs only the link's.
+FAST_ALIGN = ".align 256          ; a page of its own, even packed"
+# From a byte's last sample to the window's first look: the rest of the
+# lda, lsr, ror zp, lda zp, eor #, sta abs+y, iny, cpy zp, beq not taken,
+# lda #, and the look's own read.
+FAST_TAIL = 1 + 2 + 5 + 3 + 2 + 5 + 2 + 3 + 2 + 2 + READ_AT
+
+
+def short_receiver(period, baud, to_nes_bits, early=None):
+    early = EARLY if early is None else early
+    pad = period - SAMPLE
+    if pad < 0 or pad == 1:
+        raise ValueError("at %d cycles a bit a sample cannot be padded" % period)
+    # A look 6 cycles after another sees a start bit that fell 3 before on
+    # average; from there to the first sample's read: LOOK_TO_CODE, the
+    # delay, and the lda's read.
+    after_look = int(1.5 * period - early - LOOK / 2 - LOOK_TO_CODE - READ_AT + 0.5)
+    after_count = after_look - 2        # its start bit fell 5.5 before
+    if after_count < 2 or after_count == 3:
+        raise ValueError("at %d cycles a bit the short receiver has no room" % period)
+    edge = 0.5 * period + (to_nes_bits - 9) * period    # from a last sample on time
+    if FAST_TAIL > edge:
+        raise ValueError("at %d cycles a bit the short receiver's window opens late" % period)
+    if FAST_TAIL + (FAST_WINDOW - 1) * LOOK < edge + COUNTED / 2 + 4:
+        raise ValueError("at %d cycles a bit the short receiver's window closes early"
+                         % period)
+    lines = ["", FAST_ALIGN,
+             "; Receive a short reply into nesp_rx, from the place in it in Y up to",
+             "; the place in A, at %d cycles a bit, %d baud: a session's line at a"
+             % (period, baud),
+             "; rate of its own. nesp_tries is how long to wait for its first byte,",
+             "; as for nesp_rx_bytes. Carry clear if it came, set if the wait ran",
+             "; out. Destroys A, X and Y.",
+             ".proc nesp_fast_rx_bytes", "    sta nesp_rx_end",
+             "    lda #1              ; what the looks test the port with",
+             "    ldx #0",
+             "@hunt:                      ; the tests skip ahead while this sees mark",
+             "    bit JOY2", "    bne @first"]
+    for _ in range(CLOSE):
+        lines += ["    bit JOY2", "    bne @byte"]
+    lines += ["    dex", "    bne @hunt",
+              "    dec nesp_tries", "    bne @hunt", "    sec", "    rts",
+              "@byte:                      ; from a look 6 cycles after another"]
+    lines += delay(2, use_y=False)
+    lines += ["@first:"]
+    lines += delay(after_count, use_y=False)
+    for bit in range(8):
+        if bit:
+            lines += delay(pad, use_y=False) if pad else []
+        lines += ["    lda JOY2", "    lsr a", "    ror nesp_rx_data"]
+    lines += ["    lda nesp_rx_data", "    eor #$FF            ; the port inverts D0",
+              "    sta a:nesp_rx,y", "    iny", "    cpy nesp_rx_end", "    beq @done",
+              "    lda #1"]
+    for _ in range(FAST_WINDOW):
+        lines += ["    bit JOY2", "    bne @byte"]
+    lines += ["    ldx #0              ; not where it was due: a gap",
+              "    jmp @hunt", "@done:", "    clc", "    rts",
+              ".endproc", one_page("nesp_fast_rx_bytes")]
+    return lines
+
+
 def sender(period):
     lines = ["", ".align 256",
              "; Send A as 8N1, %d cycles a bit. OUT0 must be at mark, and is left"
@@ -317,7 +402,96 @@ def crc_table(poly):
     return entries
 
 
-def include(proto, timeout=False, pack=False, early=None):
+# The fold receiver, for a session's line under 11 cycles a bit, where a
+# sample of 11 cycles is too long: nes-throughput's. The byte is kept in A,
+# and each sample is asl a / eor JOY2, 6 cycles, which folds the port's
+# whole value in. With the port's other bits at $40 every time, as they
+# are on a console with nothing else on its port 2, the byte is the bits
+# backwards, inverted, and $C0 across the top: put right from a table once
+# the reply is all in (nesp_fold_table, NESP_FOLD). A console whose other
+# bits wander mishears every reply at this rate, and a session there goes
+# back to the link's rate (PEER's RATE). On hardware, with Jackal's drum
+# samples playing at 10 cycles a bit, 12% of replies were misheard, where
+# 0.6% were at 14 with the short receiver: no faster in all.
+FOLD_SAMPLE = 6
+# From a byte's last sample to the window's first look: the rest of the
+# eor, sta abs+y, iny, cpy zp, beq not taken, lda #, and the look's read.
+FOLD_TAIL = 1 + 5 + 2 + 3 + 2 + 2 + READ_AT
+
+
+def fold_value(raw):
+    """The byte a fold of eight samples left as raw."""
+    bits = raw ^ 0xC0
+    reverse = int("{:08b}".format(bits)[::-1], 2)
+    return reverse ^ 0xFF
+
+
+def fold_receiver(period, baud, to_nes_bits, early=None):
+    early = EARLY if early is None else early
+    pad = period - FOLD_SAMPLE
+    if pad < 0 or pad == 1:
+        raise ValueError("at %d cycles a bit a folded sample cannot be padded" % period)
+    # From a look 6 cycles after another (start bit 3 cycles before, on
+    # average) to the first sample's read: LOOK_TO_CODE, the delay, the
+    # asl, and the eor's read. A look after the count saw one 2.5 earlier.
+    ideal = 1.5 * period - early - LOOK / 2 - LOOK_TO_CODE - 2 - READ_AT
+    choices = [(abs(ideal - after_look) + abs(ideal - 2.5 - (after_look - 2)), after_look)
+               for after_look in range(2, 40)
+               if after_look not in (1, 3) and after_look - 2 not in (1,) and after_look - 2 >= 0]
+    after_look = min(choices)[1]
+    after_count = after_look - 2
+    edge = 0.5 * period + (to_nes_bits - 9) * period
+    if FOLD_TAIL > edge:
+        raise ValueError("at %d cycles a bit the fold receiver's window opens late" % period)
+    if FOLD_TAIL + (FAST_WINDOW - 1) * LOOK < edge + COUNTED / 2 + 4:
+        raise ValueError("at %d cycles a bit the fold receiver's window closes early" % period)
+    lines = ["", FAST_ALIGN,
+             "; Receive a short reply into nesp_rx, from the place in it in Y up to",
+             "; the place in A, at %d cycles a bit, %d baud, each sample folded into A"
+             % (period, baud),
+             "; (the fold receiver), and then put right. Otherwise as the short",
+             "; receiver. Destroys A, X, Y and nesp_rx_data.",
+             ".proc nesp_fast_rx_bytes", "    sta nesp_rx_end",
+             "    sty nesp_rx_data        ; where the reply begins, for putting it right",
+             "    lda #1              ; what the looks test the port with",
+             "    ldx #0",
+             "@hunt:                      ; the tests skip ahead while this sees mark",
+             "    bit JOY2", "    bne @first"]
+    for _ in range(CLOSE):
+        lines += ["    bit JOY2", "    bne @byte"]
+    lines += ["    dex", "    bne @hunt",
+              "    dec nesp_tries", "    bne @hunt", "    sec", "    rts",
+              "@byte:                      ; from a look 6 cycles after another"]
+    lines += delay(2, use_y=False)
+    lines += ["@first:"]
+    lines += delay(after_count, use_y=False) if after_count else []
+    for bit in range(8):
+        if bit and pad:
+            lines += delay(pad, use_y=False)
+        lines += ["    asl a", "    eor JOY2"]
+    lines += ["    sta a:nesp_rx,y", "    iny", "    cpy nesp_rx_end", "    beq @done",
+              "    lda #1"]
+    for _ in range(FAST_WINDOW):
+        lines += ["    bit JOY2", "    bne @byte"]
+    lines += ["    ldx #0              ; not where it was due: a gap",
+              "    jmp @hunt",
+              "@done:                      ; every byte of it put right",
+              "    dey", "    ldx nesp_rx,y", "    lda nesp_fold_table,x", "    sta nesp_rx,y",
+              "    cpy nesp_rx_data", "    bne @done",
+              "    clc", "    rts",
+              ".endproc", one_page("nesp_fast_rx_bytes")]
+    return lines
+
+
+def fold_table():
+    lines = ["", '.segment "RODATA"', "nesp_fold_table:   ; what a fold of eight samples was"]
+    values = [fold_value(raw) for raw in range(256)]
+    for row in range(0, 256, 16):
+        lines.append("    .byte " + ", ".join("$%02X" % value for value in values[row:row + 16]))
+    return lines
+
+
+def include(proto, timeout=False, pack=False, early=None, short_period=None):
     period = proto.NESP_PERIOD
     lines = ["; Generated by nes/lib/gen_link.py. Do not edit.", "",
              '.segment "RXTX"']
@@ -326,6 +500,20 @@ def include(proto, timeout=False, pack=False, early=None):
     else:
         lines += receiver(period, proto.NESP_BAUD, proto.NESP_TO_NES_BITS)
     lines += sender(period)
+    if short_period:
+        if not timeout:
+            raise ValueError("a session's own rate is for the receiver that counts: --timeout")
+        baud = (proto.NESP_CPU_HZ + short_period // 2) // short_period
+        lines += ["", "NESP_SHORT_PERIOD = %d" % short_period]
+        if short_period < SAMPLE:
+            lines += fold_receiver(short_period, baud, proto.NESP_TO_NES_BITS, early)
+        else:
+            lines += short_receiver(short_period, baud, proto.NESP_TO_NES_BITS, early)
+        lines += [FAST_ALIGN if line == ".align 256"
+                  else line.replace("nesp_tx_byte", "nesp_fast_tx_byte")
+                  for line in sender(short_period)]
+    if short_period and short_period < SAMPLE:
+        lines += fold_table() + ['.segment "RXTX"']
     if pack:
         lines = [line for line in lines if line != ".align 256"]
     lines += ["", ".ifdef NESP_CRC_TABLE", '.segment "RODATA"']
@@ -347,8 +535,11 @@ def main(argv):
     with open(argv[2], "w") as handle:
         early = [float(option.split("=")[1]) for option in argv[3:]
                  if option.startswith("--early=")]
+        short = [int(option.split("=")[1]) for option in argv[3:]
+                 if option.startswith("--short-period=")]
         handle.write(include(nesp_proto, timeout="--timeout" in argv[3:],
-                             pack="--pack" in argv[3:], early=early[0] if early else None))
+                             pack="--pack" in argv[3:], early=early[0] if early else None,
+                             short_period=short[0] if short else None))
     return 0
 
 

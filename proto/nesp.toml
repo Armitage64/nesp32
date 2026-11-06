@@ -17,6 +17,7 @@ CPU_HZ = 1789773        # NTSC: 21.477272 MHz / 12
 # ways with rates to spare.
 PERIOD = 21
 TO_NES_BITS = 11        # the Stick sends 8N2
+LINK_GAP_US = 3000      # the line quiet this long between two bytes: no short request spans it
 TO_STICK_BITS = 10      # the console sends 8N1
 REQUEST_MARKER = 0x4E   # 'N'
 REPLY_MARKER = 0xA5
@@ -104,6 +105,7 @@ TICKS = 0x05            # this console's buttons for some ticks, and the other's
 HOST_ROOM = 0x06        # open a room at the rendezvous, and wait in it for the other nesp32
 JOIN_ROOM = 0x07        # code (4): join the other nesp32's room
 ROOM = 0x08             # the lobby's state, with the room's code and why a meeting failed
+RATE = 0x09             # period: a session's line at that many cycles a bit, both ways
 
 [services.DIAG]
 id = 0x05
@@ -526,3 +528,5 @@ PEER_COVER = 90         # the share of the network's times, in percent, that the
 PEER_UP = 2             # reports in a row that call for a longer delay before it is advised
 PEER_CALM = 8           # and for a shorter one
 PEER_FEW = 20           # fewer measurements than this in a report say nothing
+PEER_RATE_MIN = 10      # the fastest a session's line may be asked for, in cycles a bit
+PEER_RATE_QUIET_MS = 500    # no good frame for this long at a session's rate, and the line is the link's again

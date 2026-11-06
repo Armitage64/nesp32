@@ -6,8 +6,13 @@
 - Setup, Weather, NESpedia and the Jukebox take 16 KB each, leaving four banks free for more programs (#5)
 - NES Radar 0.7.1 takes 16 KB too, leaving five banks free (#5)
 
+### Firmware
+- PEER's RATE: a session's line at a faster rate when the console asks for it, for a shorter exchange each frame; a ROM that does not ask is not touched by it (#15)
+- No short request is put together across a quiet line: one that had lost a byte could pass its check with the next request's first byte, and two consoles' games go apart
+
 ### Games
 - Bubble Bobble, online co-op: a session lasts past a game over, and 2P CONTINUE goes on at the round the two reached; its busiest rounds kept at the game's own speed
+- Jackal, online co-op: a new netplay game, on an MMC3; its sessions run the line at 14 cycles a bit (#15)
 
 ## 0.2.0 — 2026-11-04
 

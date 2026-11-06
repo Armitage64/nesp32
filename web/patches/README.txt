@@ -58,6 +58,13 @@ bubblebobble_net.bps  Bubble Bobble, online co-op
              SHA-1 0e40052299ada46f6c2d1172323366f872f90570
     Won't work with: the European release, or the Famicom Disk System's.
 
+jackal_net.bps     Jackal, online co-op
+    Needs:   Jackal (USA)
+             131088 bytes, CRC32 2E52D091
+             SHA-1 86c392a1d9a731fa48e148afbe60af75f918cb5a
+    Won't work with: the European release, or the Famicom Disk System's
+    Final Command: Akai Yousai.
+
 fbasic.bps         Family BASIC, typed on a Bluetooth keyboard
     Needs:   Family BASIC V3 (Japan)
              40976 bytes, CRC32 667F6EA6
@@ -90,6 +97,8 @@ Playing
   MMC3. Contra's patched ROM has an NES 2.0 header.
 - Bubble Bobble keeps its own cartridge type (MMC1), with 8 KB of RAM
   that the original has not; its patched ROM has an NES 2.0 header.
+- Jackal needs a flash cartridge or emulator that supports MMC3, with
+  8 KB of RAM; its patched ROM has an NES 2.0 header.
 - Family BASIC needs MMC1 with battery-backed memory, and a Bluetooth
   keyboard paired to the NESP32 (a StickS3).
 - For the online games, both players need the same patched game.

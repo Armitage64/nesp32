@@ -1,0 +1,72 @@
+--- a/src/bank7.asm
++++ b/src/bank7.asm
+@@ -114,0 +115,3 @@
++.ifdef NETPLAY
++	JSR net_cart_reset ;the netplay's code into the PRG RAM, and a session if one was asked for (net/cart.inc)
++.else
+@@ -115,0 +119 @@
++.endif
+@@ -159,0 +164,4 @@
++.ifdef NETPLAY
++	JSR net_read_input ;the same, or both consoles' buttons in a session, or the NMI ends here (net/net.inc)
++net_nmi_resume:
++.else
+@@ -160,0 +169 @@
++.endif
+@@ -164,0 +174,3 @@
++.ifdef NET_FAST
++	JSR net_sprites ;the same, faster, from the PRG RAM (net/fast.inc)
++.else
+@@ -165,0 +178 @@
++.endif
+@@ -183,0 +197,3 @@
++.ifdef NETPLAY
++	JMP net_lag_leave ;the same, and a bank switch broken into begun again (net/cart.inc)
++.else
+@@ -184,0 +201 @@
++.endif
+@@ -306 +323,6 @@
+-anon_back1_72:	LDA $8000,Y
++anon_back1_72:
++.ifdef NETPLAY
++	JMP net_set_bank ;on the netplay ROM's MMC3 (net/cart.inc)
++	.byte $FF,$FF,$FF,$FF,$FF,$FF
++.else
++	LDA $8000,Y
+@@ -308,0 +331 @@
++.endif
+@@ -337,0 +361,9 @@
++.ifdef NETPLAY
++	JSR net_set_bank_x ;on the netplay ROM's MMC3 (net/cart.inc)
++	NOP
++	NOP
++	NOP
++	NOP
++	NOP
++	NOP
++.else
+@@ -340,0 +373 @@
++.endif
+@@ -1321,0 +1355,5 @@
++.ifdef NETPLAY
++	JMP net_title_button ;the same, but 2 PLAYERS goes to the netplay's menu first (net/net.inc)
++	.byte $FF,$FF,$FF,$FF,$FF,$FF
++net_title_toggle:
++.else
+@@ -1325,0 +1364 @@
++.endif
+@@ -4547 +4586,5 @@
+-anon_back1_123:	SEC
++anon_back1_123:
++.ifdef NET_FAST
++	JMP net_collision_tail ;the same, faster, from the PRG RAM (net/fast.inc)
++.else
++	SEC
+@@ -4548,0 +4592 @@
++.endif
+@@ -8595,0 +8640,3 @@
++.ifdef NETPLAY
++	.include "jackal_net.inc" ;the netplay's, with its own vectors
++.else
+@@ -8602,0 +8650 @@
++.endif
