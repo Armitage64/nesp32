@@ -94,10 +94,10 @@ def run(rom, dbg, level, seed, ticks):
     return nes.ticks
 
 
-def summary(ticks):
+def summary(ticks, exchange=EXCHANGE):
     ticks = sorted(ticks)
     over = sum(1 for tick in ticks if tick > FRAME)
-    over_net = sum(1 for tick in ticks if tick > FRAME - EXCHANGE)
+    over_net = sum(1 for tick in ticks if tick > FRAME - exchange)
     return (len(ticks), int(statistics.median(ticks)), ticks[int(0.9 * (len(ticks) - 1))],
             100.0 * over / len(ticks), 100.0 * over_net / len(ticks))
 
@@ -110,21 +110,27 @@ def main():
     parser.add_argument("--seeds", type=int, default=3)
     parser.add_argument("--ticks", type=int, default=1500)
     parser.add_argument("--jobs", type=int, default=os.cpu_count())
+    parser.add_argument("--exchange", type=int, action="append",
+                        help="a session's exchange, less the game's own read, in cycles, "
+                        "as many as wanted (default %d)" % EXCHANGE)
     args = parser.parse_args()
     levels = [int(level) for level in args.levels.split(",")]
     jobs = [(level, seed) for level in levels for seed in range(1, args.seeds + 1)]
     with ProcessPoolExecutor(args.jobs) as pool:
         results = list(pool.map(run, *zip(*[(args.rom, args.dbg, level, seed, args.ticks)
                                              for level, seed in jobs])))
+    exchanges = args.exchange or [EXCHANGE]
     print("%s: ticks of play, two players, %d seeds" % (os.path.basename(args.rom), args.seeds))
-    print("level  ticks  median    90%%  over a frame  over a session's (-%d)" % EXCHANGE)
+    print("level  ticks  median    90%  over a frame" + "".join(
+        "  in a session (-%d)" % exchange for exchange in exchanges))
     for level in levels:
         ticks = [tick for (lv, _), result in zip(jobs, results) if lv == level for tick in result]
         if not ticks:
             print("%5d  none" % level)
             continue
-        count, median, p90, over, over_net = summary(ticks)
-        print("%5d  %5d  %6d  %5d  %11.1f%%  %21.1f%%" % (level, count, median, p90, over, over_net))
+        count, median, p90, over, _ = summary(ticks)
+        print("%5d  %5d  %6d  %5d  %11.1f%%" % (level, count, median, p90, over) + "".join(
+            "  %18.1f%%" % summary(ticks, exchange)[4] for exchange in exchanges))
 
 
 if __name__ == "__main__":
