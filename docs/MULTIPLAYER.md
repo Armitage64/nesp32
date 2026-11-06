@@ -326,7 +326,8 @@ not taken.
 ### What it costs a frame
 
 The exchange is made in the NMI and takes some 3100 cycles, a tenth of a
-frame, in every NMI that is not a lag. A game with that much to spare
+frame, in every NMI that is not a lag; some 2500 in Jackal, TMNT II and
+Contra, whose sessions run the line faster ("A faster exchange", To do). A game with that much to spare
 loses nothing. A game whose frames are nearly full already overruns more
 of them, and stands still for a frame each time: the same game, slower,
 and on both consoles, as the other waits for its buttons. Contra's
@@ -347,7 +348,8 @@ frames in 100, against 8 alone, and all 100 rounds 2.0 in 100, against
 apart faster, from the cartridge's PRG RAM, which brings all 100 rounds
 to 0.2 in 100 and round 66 to 5 (its README, "The frame rate"). A game's
 own work is the place to find the cycles; a faster exchange (To do)
-would give some back to every game.
+gives some back: TMNT II's level 7 overruns some 1.5 frames in 100 with
+it, against some 4 at the link's rate.
 
 ### The delay
 
@@ -377,6 +379,15 @@ What the digest covers is each game's own:
 | Tetris | the same as Dr. Mario's, less the session's one byte there too, and both playfields |
 | TMNT II | its zero page, less the link's bytes, the sound engine's, what its IRQs keep and the flag of a frame under way, and its sprites |
 | Bubble Bobble | its zero page, less its scratch, the link's bytes, the sound engine's, the NMI's stack pointer as the tasks saw it and the PPU's status as the NMI read it, and its sprites |
+
+Each byte goes into the digest with the digest rotated a place, its bits
+round, and EORed: a step that loses nothing, so one byte that differs
+always makes the two digests differ. Every game had a rotate through the
+carry and an ADC until November 2026,
+which lost what came early in the digest: a byte of the zero page that
+differed went unseen some 255 times in 256, and a test that changed a
+game's random number passed only by the luck of where the change went.
+Their builds since are a version on: Dr. Mario's 3, the others' 2.
 
 The two nesp32s also tell one build from another, by the name and version
 in its hello, and do not join the two: one might send buttons where the
@@ -516,6 +527,23 @@ six games:
     throughout, and 0.6% to 0.7% of replies misheard and asked for again.
     A session whose connection was lost had its line back at 21 half a
     second later, and the next was at 14 again.
+  - *TMNT II and Contra, next* (November 2026; each one's README or
+    `docs/Netplay.md`, "The session's line"): both ask for 14, built as
+    Jackal is. In the simulation an exchange is some 2510 cycles in
+    each, where it was 3150 and 3142. TMNT II's level 7 for two overruns
+    some 1.5 frames in 100, where it was some 4, and a reply misheard and
+    asked again in the same NMI now fits before the first split of the
+    screen (some 4800 cycles of the 5794 it waits at the least; at 21 the
+    two took some 6100, and the split came a few lines late). Contra's
+    stages 1, 4 and 6 stand still in 0.41% of frames of play, where it
+    was 0.74%. Neither has been played at 14 on hardware yet.
+  - *Not the others.* Dr. Mario's and Tetris's frames have room to spare
+    at 21 (Tetris's busiest is some 14800 cycles in a game for two, Dr.
+    Mario's 27400 with the exchange), and each asks for a misheard reply
+    again in the next frame, not the same one, so a faster line that is
+    misheard more often would make more frames wait. Bubble Bobble's
+    busiest rounds would gain a little (some 0.5 frames in 100 to 0.2);
+    it plays no samples, so it is the one game that might take 10.
   - *What could stop it.* The drum samples. Each byte a sample fetches
     stops the CPU for up to 4 cycles, which the serial routines cannot
     see, and a real NES has misheard replies for it at 21 cycles a bit

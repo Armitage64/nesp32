@@ -47,7 +47,7 @@ def test_any_sprites_make_the_same_oam_and_ram(console, net_console):
     bytes on in the netplay ROM, so the loop's pointers into it are held to
     that."""
     original, mine = console(), net_console()
-    mine.run(5)                 # past the reset, which puts the pass in the PRG RAM
+    mine.run(8)                 # past the reset, which puts the pass in the PRG RAM
     moved = mine.labels["sprite_ptr_tbl_0"] - original.labels["sprite_ptr_tbl_0"]
     rng = random.Random(5)
     for case in range(1500):
@@ -88,7 +88,7 @@ def test_the_bullets_test_on_any_memory_is_the_games(net_console, slow_console):
     game's, hits, lasers and near misses included."""
     fast, slow = net_console(), slow_console()
     for nes in (fast, slow):
-        nes.run(5)
+        nes.run(8)
     labels = slow.labels
     routine = labels["PLAYER_BULLET_ROUTINE"]
     rng = random.Random(9)

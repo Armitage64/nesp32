@@ -172,6 +172,32 @@ and past the end of its buffer of writes for the PPU.
 The exchange is the PEER service's TICKS as a *short frame*, five bytes out
 and four back, as in every netplay game.
 
+### The session's line
+
+A session's exchanges go at 14 cycles a bit, where the link's are at 21
+(`NET_RATE` in the Makefile), as Jackal's do (`apps/jackal/README.md`,
+"The session's line", has its trial on hardware). In its first NMI a
+session asks its nesp32 for that rate, with PEER's RATE, at the link's
+rate (`net_rate`), in place of that NMI's exchange; once the answer says
+yes, its short frames go at it (nesp32's `nes/lib/nesp.inc`, `nesp_fast`,
+and `gen_link.py --short-period`, whose second pair of serial routines is
+on pages of their own in the PRG RAM's image), and everything else, the
+menu and its hello first, stays at 21. A nesp32 whose firmware has no
+RATE says so, and the session stays at 21. Half a second of exchanges at
+14 with no reply, and the console goes back to 21, and asks again 3/4 of
+a second later, once its nesp32 has gone back too: three times a session
+at the most. nesp32's [`docs/MULTIPLAYER.md`](../../../docs/MULTIPLAYER.md),
+"A faster exchange", has the design; `tests/test_lockstep.py` its cases.
+
+In the simulation an exchange, from the request's first byte to the reply
+checked, is some 2505 cycles as a median, where it was 3142. In the play
+of stages 1, 4 and 6 below, the frames of play that would stand still go
+from 0.74% to some 0.41%. The music's drum samples steal cycles from the
+serial routines: Jackal misheard 0.6% to 0.7% of replies at 14 on
+hardware, each asked for again in the same NMI (`net_ask`), which costs
+that frame a second exchange. Contra at 14 is still to be played on
+hardware.
+
 ## What the simulation measured
 
 `tests/console.py` is the game on py65 with as much of an NES round it as
@@ -413,7 +439,8 @@ on and its own leavings in memory, which the handler acted on.
 
 - **The slowdown when the screen is crowded.** Less than it was, and
   still there: those are the frames with least to spare, where the
-  original overruns too, and the exchange takes a tenth of every frame.
+  original overruns too, and the exchange takes a twelfth of every frame
+  at the session's rate ("The session's line").
   The faster sprite passes, bank 1's first and now the PRG RAM's, and the
   bullets' test give back over half of it, net of the MMC3's switches
   ("The sprite pass"). What is left to try, if it is wanted: the tests of
@@ -425,6 +452,8 @@ on and its own leavings in memory, which the handler acted on.
   and leaving the reply's CRC at one byte. And to see how a local
   two-player game does in the same scenes, which is the least this can
   come to.
+- **The session's line at 14 on hardware**, the music playing: how many
+  replies are misheard (the nesp32's log), and that the line stays at 14.
 - **Player 2 cannot pause.** The game reads only player 1's Start.
 - **Probotector**, the PAL release.
 

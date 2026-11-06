@@ -118,8 +118,10 @@ fixed bank in the 187 bytes the game leaves at the end of bank 31, and the
 - **The exchange, and the controller read with it**, where the NMI has set
   up the scanline counter (`net_nmi_irq`), before the IRQs are let in: the
   setup's `CLI` comes after them. The first split is never sooner than
-  5794 cycles after, and the exchange takes some 3100, so no IRQ breaks
-  into the serial routines and no split comes late. The digest, once in
+  5794 cycles after, and the exchange takes some 2500 at the session's
+  rate ("The session's line"), and some 4800 when a reply is misheard and
+  asked for again, so no IRQ breaks into the serial routines and no split
+  comes late. The digest, once in
   256 ticks, takes some 5800 more, and is taken with the IRQs let in
   (`net_digest_irqs`): held off for it, the first split came 28 lines late
   and put the rest of the screen out with it, a frame wrong every five
@@ -238,6 +240,44 @@ same build, but a sprite out of place would change the digest.
 The original game is left as it was, its slowdown too: it has no PRG RAM
 to run the loop from.
 
+## The session's line
+
+A session's exchanges go at 14 cycles a bit, where the link's are at 21
+(`NET_RATE` in the Makefile), as Jackal's do (its README, "The session's
+line", has the trial on hardware). In its first NMI a session asks its
+nesp32 for that rate, with PEER's RATE, at the link's rate (`net_rate`),
+where the exchange would be; once the answer says yes, its short frames go
+at it (nesp32's `nes/lib/nesp.inc`, `nesp_fast`, and `gen_link.py
+--short-period`), and everything else, the menu and its hello first, stays
+at 21. A nesp32 whose firmware has no RATE says so, and the session stays
+at 21: the patch plays with any firmware that has PEER. Half a second of
+exchanges at 14 with no reply, and the console goes back to 21, and asks
+again 3/4 of a second later, once its nesp32 has gone back too: three
+times a session at the most. nesp32's
+[`docs/MULTIPLAYER.md`](../../docs/MULTIPLAYER.md), "A faster exchange",
+has the design; `tests/test_lockstep.py` its cases.
+
+What it buys, in the simulation (November 2026):
+
+- **The exchange**, from the request's first byte to the reply checked:
+  some 2510 cycles as a median, where it was 3150.
+- **The frames of level 7 for two that overrun**, and so stand still in a
+  session: about 1.5 in 100, where they were about 4 (each frame's NMI
+  with the exchange's cost added, two runs of 1300 frames). Level 3 goes
+  from 1.8 to 1.4; the others were next to none already.
+- **The splits when a reply is misheard.** The reply is asked for again in
+  the same NMI, before the IRQs are let in. At 21 the two exchanges took
+  some 6100 cycles, past the 5794 the first split waits at the least, and
+  it came 1 to 7 lines late in that frame: the status bar's foot out of
+  place for a frame. At 14 the two take 4830 at the most, and every split
+  is on its line (`test_a_reply_misheard_and_asked_again_leaves_the_splits_on_their_lines`,
+  one reply in ten spoiled).
+
+The game plays the music's drums as samples, whose fetches steal cycles
+from the serial routines, as Jackal's do: Jackal misheard 0.6% to 0.7% of
+replies at 14 on hardware, each asked for again in the same NMI. TMNT II
+at 14 is still to be played on hardware (To do).
+
 ## The simulation
 
 `tests/console.py` is Contra's console on py65 with TMNT II's cartridge:
@@ -283,8 +323,8 @@ splits stay where they are.
 so stand still, with an exchange of 3112 cycles added: level 7 34 in
 100, against 4 in the original; levels 5 and
 10 4 and 5; the others 2 at the most. Level 7 would play slowly, which
-the faster sprite pass mends ("The frame rate"). A faster exchange
-(nesp32's `docs/MULTIPLAYER.md`, To do) would help as well.
+the faster sprite pass mends ("The frame rate"). The session's faster
+line takes some 640 cycles more off ("The session's line").
 
 **Free RAM.** Bytes no level wrote, from the reset on: $0385 to $03BF
 (59 bytes, past the end of the PPU's buffer of writes at $0300, whose
@@ -333,3 +373,6 @@ the one picked.
 2. **The original game's slowdown**, if it is wanted: the faster sprite
    pass needs somewhere to run, and the original has no PRG RAM. A build
    of the original with PRG RAM asked for in its header would do.
+3. **The session's line at 14 on hardware**, the music playing: how many
+   replies are misheard (the nesp32's log), that the line stays at 14, and
+   level 7's frame rate in a session against 21's.

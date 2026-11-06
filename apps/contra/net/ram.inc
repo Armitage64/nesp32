@@ -82,7 +82,16 @@ nesp_attention  = NET_RAM + 39
 nesp_rng        = NET_RAM + 40  ; 2
 nesp_rx         = NET_RAM + 42
 nesp_tx         = nesp_rx + NESP_RX_MASK + 1 + 7
-NET_RAM_END     = nesp_tx + NESP_TX_MAX + 7
+; A session's line at its own rate (net_rate, net/net.inc).
+nesp_fast       = nesp_tx + NESP_TX_MAX + 7 ; bit 7: a session's exchanges at its own rate
+net_rate_ask    = nesp_fast + 1 ; not 00: ask for it this many NMIs of the session on, less one
+net_rate_tries  = nesp_fast + 2 ; times it has been asked for in this session
+net_rate_misses = nesp_fast + 3 ; exchanges in a row that had no reply, at it
+NET_RAM_END     = nesp_fast + 4
+NET_RATE_TRIES  = 3
+NET_RATE_MISSES = 30            ; half a second: and the line is the link's again
+NET_RATE_WAIT   = 46            ; and asked for again after 3/4 of a second, once the nesp32
+                                ; has gone back to the link's (PEER_RATE_QUIET_MS)
 
 .assert NET_RAM_END <= $07C0, error, "netplay's memory runs into the palettes"
 
