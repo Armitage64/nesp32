@@ -100,6 +100,11 @@ $(NESP): FORCE | $(BUILD)
 # (PEER's RATE): its exchanges at that rate, and everything else at the
 # link's own, 21.
 NET_RATE ?= 14
+# For trying a level: every game, with a session or not, begins at level n
+# (1 to 6). Not for a release: build it apart, e.g.
+#   make BUILD=build-level4 NET_START_LEVEL=4
+NET_START_LEVEL ?=
+NET_DEFINES := -D NET_FAST $(if $(NET_START_LEVEL),-D NET_START_LEVEL=$(NET_START_LEVEL))
 
 # The library's serial routines: the receiver that gives up by counting,
 # since every exchange is made in an NMI, and both routines on the one page
@@ -117,7 +122,7 @@ $(BUILD)/orig/jackal.o: $(SOURCES) | $(BUILD)/orig
 	ca65 --debug-info --bin-include-dir $(BIN_DIR) -I $(SRC) -o $@ $(SRC)/jackal.asm
 
 $(BUILD)/net/jackal.o: $(SOURCES) $(NET_SOURCES) | $(BUILD)/net
-	ca65 -D NETPLAY -D NET_FAST --debug-info --bin-include-dir $(BIN_DIR) -I $(SRC) $(NET_INCLUDES) -o $@ $(SRC)/jackal.asm
+	ca65 -D NETPLAY $(NET_DEFINES) --debug-info --bin-include-dir $(BIN_DIR) -I $(SRC) $(NET_INCLUDES) -o $@ $(SRC)/jackal.asm
 
 $(BUILD)/slow/jackal.o: $(SOURCES) $(NET_SOURCES) | $(BUILD)/slow
 	ca65 -D NETPLAY -D NET_SLOW --debug-info --bin-include-dir $(BIN_DIR) -I $(SRC) $(NET_INCLUDES) -o $@ $(SRC)/jackal.asm

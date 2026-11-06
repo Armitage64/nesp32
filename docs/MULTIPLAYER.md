@@ -506,10 +506,12 @@ six games:
     session at the most. The simulated line (each app's `tests/wire.py`)
     sends replies at whatever rate the nesp32's UART is at.
   - *Jackal, the first* (its README): an exchange went from some 3150
-    cycles to some 2500 at 14 cycles a bit. On hardware, a StickS3 and a
-    session of level 1 with the music playing: the line at 14 throughout,
-    and 0.6% of replies misheard and asked for again (November 2026). A
-    StickC Plus2, and a busier level, are still to be tried.
+    cycles to some 2500 at 14 cycles a bit. On hardware, with the music
+    playing (November 2026): sessions of levels 1 and 4 hosted by a
+    StickS3 and of level 2 by a StickC Plus2, each with the line at 14
+    throughout, and 0.6% to 0.7% of replies misheard and asked for again.
+    A session whose connection was lost had its line back at 21 half a
+    second later, and the next was at 14 again.
   - *What could stop it.* The drum samples. Each byte a sample fetches
     stops the CPU for up to 4 cycles, which the serial routines cannot
     see, and a real NES has misheard replies for it at 21 cycles a bit

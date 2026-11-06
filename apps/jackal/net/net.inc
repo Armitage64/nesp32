@@ -255,6 +255,17 @@ net_nmi_stalled:
 ; for this tick if they are here, as the game's read gives them. If they
 ; are not, it ends the NMI there: the game is not run.
 net_read_input:
+.ifdef NET_START_LEVEL
+    ; A ROM for trying a level (make NET_START_LEVEL=n): each game begins at
+    ; level n, written as the game sets up its players (GameControlState 4),
+    ; in the same tick on both consoles of a session.
+    lda GameControlState
+    cmp #$04
+    bne :+
+    lda #NET_START_LEVEL - 1
+    sta CurrentLevel
+:
+.endif
     lda net_mode
     bne @session
     jsr subProcessControllerInputs

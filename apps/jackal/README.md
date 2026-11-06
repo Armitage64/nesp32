@@ -12,8 +12,10 @@ the title with 2 PLAYERS chosen is the menu, HOST GAME and JOIN GAME meet
 by a room's code or by an address, and the two consoles play one game,
 kept the same by their buttons. A session lasts past a game over: its
 continue screen and the title are part of it, and player 1's Start there
-begins another game for two. On hardware (November 2026): a session on two consoles connects, starts
-in the game for two and plays level 1 well, its line at 14 cycles a bit.
+begins another game for two. On hardware (November 2026): sessions on two consoles connect, start in
+the game for two, and play levels 1, 2 and 4, their line at 14 cycles a
+bit, with a StickS3 or a StickC Plus2. Level 4 slows in its busiest
+moments ("The frame rate").
 The first ROM had the music and no picture in a session ("What had to
 change in the game", the reset).
 
@@ -56,7 +58,15 @@ make test       # the simulation's tests (needs requirements-dev.txt)
 make bench      # how long the frames of the game take, each ROM and level
 make patches    # patches/ again, from what has been changed in build/src
 make bps        # dist/'s patch again, for players
+make BUILD=build-level4 NET_START_LEVEL=4   # a netplay ROM whose every game begins
+                # at level 4, for trying a level on hardware; not for players
 ```
+
+The game has no level select and no passwords: a new game begins at level
+1, and only a cleared level, or a continue, leads anywhere else. A ROM made
+with `NET_START_LEVEL` writes the level as each game sets up its players,
+in the same tick on both consoles, so a session of it is one game as any
+is; both consoles have to have the same ROM.
 
 Needs cc65 (`ca65`, `ld65`), Python 3, `patch`, and a C compiler: the
 tests run the ROM against nesp32's firmware built for this computer.
@@ -287,11 +297,22 @@ heard nothing it could make out for half a second): three times a session
 at the most. nesp32's [`docs/MULTIPLAYER.md`](../../docs/MULTIPLAYER.md),
 "A faster exchange", has the design; `tests/test_lockstep.py` its cases.
 
-On hardware (November 2026, a StickS3 hosting, level 1, the music
-playing): the nesp32's log had the line at 14 from the session's start to
-its end, never back at 21, with 14 replies misheard and asked for again in
-2376 frames (0.6%); a delay of 1 tick, and 4 frames that waited, all as
-the session began, at the network's one spike of 141 ms.
+On hardware (November 2026), each session's nesp32 log, the music
+playing:
+
+| | Board that hosted | Frames | Misheard, asked again | Line |
+|---|---|---|---|---|
+| Level 1 | StickS3 | 2376 | 0.6% | 14 throughout |
+| Level 4 | StickS3 | 3663 | 0.7% | 14 throughout |
+| Level 2 | StickC Plus2 | 2495 | 0.6% | 14 throughout |
+
+A delay of 1 tick in each, and next to no frame that waited, but as a
+session began and at the network's spikes (to 141 ms). In level 4 the
+exchanges came at half the frame rate for some ten seconds of its busiest
+play: the game's own slowdown, with the exchange's cycles on top. One
+session before it ended with the connection lost; its nesp32 put the line
+back at 21 half a second later, as it should, and the next session was at
+14 again.
 
 An exchange is some 2500 cycles at 14, against some 3150 at 21. 10 would
 be some 2100, but needs a receiver that samples in 6 cycles, which is to
@@ -347,10 +368,9 @@ make test
 1. **Hardware**: levels 2 and 4 in a session, the music through stalls,
    the last boss's tank, and a long session with the pad log for presses
    nobody made.
-2. **The session's line at 14 on hardware**: done on a StickS3, level 1
-   (0.6% misheard, no fall-back). Left: a StickC Plus2 on one end, and
-   level 2 or 4, the busiest. Then perhaps 10, with a receiver that
-   samples in 6 cycles (nes-throughput's): some 380 cycles a tick more.
+2. **The session's line at 10 cycles a bit**, perhaps: 14 is done on
+   both boards, in levels 1, 2 and 4. 10 needs a receiver that samples in
+   6 cycles (nes-throughput's): some 380 cycles a tick more.
 3. **The last boss**, if its fight plays badly in a session: its split by
    the MMC3's scanline IRQ, in place of the wait, the exchange done before
    the IRQ's line.

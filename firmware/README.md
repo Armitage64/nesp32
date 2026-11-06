@@ -351,9 +351,9 @@ A session's line at its own rate (PEER's RATE): the log says when it
 changes and why (`peer: line at 14 cycles a bit: the session's, as its
 console asked`, and back to 21 when nothing is heard at it, or at the
 session's end), and each `peer:` line has `line 14` or `line 21`. Jackal's
-netplay ROM asks for 14: on a StickS3, a session of level 1 with the
-music playing stayed at 14 throughout, with 0.6% of its replies misheard
-and asked for again (November 2026).
+netplay ROM asks for 14: on a StickS3 and on a StickC Plus2, sessions
+with the music playing stayed at 14 throughout, with 0.6% to 0.7% of
+their replies misheard and asked for again (November 2026).
 
 What `conn.c` leans on: lwIP's sockets from a task on the Wi-Fi's core, a
 non-blocking `connect` waited for with `select`, and a look for received
