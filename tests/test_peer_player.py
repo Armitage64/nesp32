@@ -6,7 +6,7 @@ import random
 
 import pytest
 from nesp import CONN_LOST, Stick
-from peer_player import CHECK_TICK, COPY_LAG, LEAD, Player
+from peer_player import CHECK_TICK, COPY_LAG, LEAD, VERSIONS, Player
 from test_peer import AWAY, HOME, carry, connect, online, ticks
 
 APP = b"TMN2"
@@ -81,3 +81,22 @@ def test_the_player_stops_when_the_console_goes():
     player_stick.conn = CONN_LOST
     player_stick.tick(0)
     assert not player.exchange(player_stick)
+
+
+def test_each_games_version_is_the_one_its_builds_say():
+    """A room is met only by the same game at the same version, so the
+    player says hello with each game's NESP_APP_VERSION as its source has
+    it today."""
+    import glob
+    import os
+    import re
+    root = os.path.join(os.path.dirname(__file__), "..", "apps")
+    found = {}
+    for path in glob.glob(os.path.join(root, "*", "net", "*")):
+        with open(path, errors="replace") as handle:
+            text = handle.read()
+        app = re.search(r'^\.define NESP_APP "(\w{4})"', text, re.M)
+        version = re.search(r"^NESP_APP_VERSION = (\d+)", text, re.M)
+        if app and version:
+            found[app.group(1)] = int(version.group(1))
+    assert found == VERSIONS

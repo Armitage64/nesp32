@@ -6,7 +6,7 @@ nesp32 and the console behind it, for trying a netplay ROM on one NES.
     host/peer_player.py HOST                    open a room, for the console to join
     host/peer_player.py JOIN 192.168.1.23       or meet by address: call the console's nesp32
     host/peer_player.py HOST --by-address       or wait for its call
-    host/peer_player.py JOIN K7QF --app CNTR    another game (TMN2 by default)
+    host/peer_player.py JOIN K7QF --app CNTR    another game (TMN2 by default), at its version (VERSIONS)
 
 The nesp32 is the firmware's own code (build/libnesp_host, from `make
 host`) on this computer's sockets (peer_net.py), so a room is met at the
@@ -54,6 +54,10 @@ STATES = {p.NESP_LOBBY_NO_WIFI: "no network", p.NESP_LOBBY_IDLE: "idle",
           p.NESP_LOBBY_HOSTING: "waiting", p.NESP_LOBBY_CONNECTING: "calling",
           p.NESP_LOBBY_HOST: "connected, player 1", p.NESP_LOBBY_GUEST: "connected, player 2",
           p.NESP_LOBBY_FAILED: "failed", p.NESP_LOBBY_MEETING: "meeting"}
+# Each game's NESP_APP_VERSION as its builds now say it: a room is met only
+# by the same game at the same version.
+VERSIONS = {"TMN2": 2, "CNTR": 2, "DRMA": 3, "TTRS": 2, "BUBL": 2, "JACK": 2}
+
 WHYS = {p.NESP_MEET_NO_SERVER: "the rendezvous could not be asked",
         p.NESP_MEET_NO_ROOM: "there is no room of that code",
         p.NESP_MEET_MISMATCH: "the room is another game's, or another version's",
@@ -123,8 +127,10 @@ def main(argv=None):
                         help="JOIN: the room's code, or the console's nesp32's address")
     parser.add_argument("--by-address", action="store_true",
                         help="HOST: wait for a call to this computer's address, not in a room")
-    parser.add_argument("--app", default="TMN2", help="the game's id (TMN2, CNTR, DRMA, TTRS, BUBL)")
-    parser.add_argument("--version", type=int, default=1, help="the game's version (DRMA is 2)")
+    parser.add_argument("--app", default="TMN2",
+                        help="the game's id (%s)" % ", ".join(sorted(VERSIONS)))
+    parser.add_argument("--version", type=int,
+                        help="the game's version, if not the one its builds now say (VERSIONS)")
     parser.add_argument("--play", choices=("copy", "still", "random"), default="copy")
     parser.add_argument("--rendezvous", metavar="URL",
                         help="where rooms are met in place of the firmware's own")
@@ -144,6 +150,8 @@ def main(argv=None):
     if args.rendezvous:
         stick.set_rendezvous(args.rendezvous)
     app = args.app.upper().encode("ascii")
+    if args.version is None:
+        args.version = VERSIONS.get(args.app.upper(), 1)
     if not stick.hello(app=app, version=args.version, services=[PEER]).ok:
         parser.error("the nesp32's code would not take the hello")
 
