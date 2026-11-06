@@ -39,7 +39,7 @@
 ; The link's library, before the font below is in force: its hello carries
 ; the name as it is written here.
 .define NESP_APP "TTRS"
-NESP_APP_VERSION = 1
+NESP_APP_VERSION = 2            ; 2: the check tick's digest loses nothing
 .include "nesp.inc"
 
 ; The font, in the CHR page the game's title and menus use. By number: a

@@ -59,7 +59,7 @@
 .segment "NETCODE"
 
 .define NESP_APP "JACK"
-NESP_APP_VERSION = 1
+NESP_APP_VERSION = 2
 
 .pushseg
 .include "nesp.inc"
@@ -420,39 +420,49 @@ net_store:
 ; the game's bytes in page 1 ($0110-$011F); and every object's kind and
 ; place on the screen ($0500-$057F). Both consoles work it out at the start
 ; of the same tick, CHECK_AT.
+; Each byte goes in with A rotated, its bits round and not through the
+; carry, and EORed: a step that loses nothing, so that one byte that
+; differs always makes the digest differ. (A rotate through the carry and
+; an ADC, as it was, lost what came early: a byte of the zero page that
+; differed went unseen some 255 times in 256.)
 net_digest:
     lda #$00
     clc
     ldx #$10
 @low:
+    cmp #$80                    ; bit 7 into carry: a rotate of A alone
     rol a
-    adc $00,x
+    eor $00,x
     inx
     cpx #$E0
     bne @low
     ldx #$F1
 @high:
+    cmp #$80                    ; bit 7 into carry: a rotate of A alone
     rol a
-    adc $00,x
+    eor $00,x
     inx
     cpx #nesp_rx_data
     bne @high
     ldx #$FC
 @top:
+    cmp #$80                    ; bit 7 into carry: a rotate of A alone
     rol a
-    adc $00,x
+    eor $00,x
     inx
     bne @top
     ldx #$0F
 @page1:
+    cmp #$80                    ; bit 7 into carry: a rotate of A alone
     rol a
-    adc $0110,x
+    eor $0110,x
     dex
     bpl @page1
     ldx #$7F
 @objects:
+    cmp #$80                    ; bit 7 into carry: a rotate of A alone
     rol a
-    adc $0500,x
+    eor $0500,x
     dex
     bpl @objects
     rts

@@ -109,7 +109,7 @@ def test_the_menu_says_hello_and_shows_the_nesp32s_address(net_console):
     console, stick = table.consoles[0], table.sticks[0]
     assert screen_row(console, 18).strip() == "THIS NESP32 IS AT"
     assert screen_row(console, OWN_ROW).strip() == "192.168.001.023"
-    assert stick.app == (APP, 1) and stick.active(p.NESP_SVC_PEER)
+    assert stick.app == (APP, 2) and stick.active(p.NESP_SVC_PEER)
     assert stick.hellos == 1
     # It goes on asking, and nothing is asked twice or missed.
     table.run(4 * STATUS_POLL)
