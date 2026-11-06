@@ -78,7 +78,7 @@ net_entries_hi:
 .assert NET_CURSOR = 4 && NET_SELECT = 5, error, "net_entries' order"
 
 .define NESP_APP "BUBL"
-NESP_APP_VERSION = 1
+NESP_APP_VERSION = 2
 
 .include "nesp.inc"
 
@@ -415,6 +415,11 @@ net_store:
 ; it ($20, for the sprites' flicker), the link's own bytes, and the sound
 ; engine's ($CA-$F0), which runs in every NMI, a stall's too. Both
 ; consoles work it out at the start of the same tick, CHECK_AT.
+; Each byte goes in with A rotated, its bits round and not through the
+; carry, and EORed: a step that loses nothing, so that one byte that
+; differs always makes the digest differ. (A rotate through the carry and
+; an ADC, as it was, lost what came early: a byte of the zero page that
+; differed went unseen some 255 times in 256.)
 net_digest:
     lda #$00
     clc
@@ -424,8 +429,9 @@ net_digest:
     stx net_temp                ; where it ends
     ldx net_digest_ranges,y
 @zero:
+    cmp #$80                    ; bit 7 into carry: a rotate of A alone
     rol a
-    adc $00,x
+    eor $00,x
     inx
     cpx net_temp
     bne @zero
@@ -435,8 +441,9 @@ net_digest:
     bne @range
     ldx #$00
 @sprites:
+    cmp #$80                    ; bit 7 into carry: a rotate of A alone
     rol a
-    adc SPRITES,x
+    eor SPRITES,x
     inx
     bne @sprites
     rts

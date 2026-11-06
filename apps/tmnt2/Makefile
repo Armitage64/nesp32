@@ -105,11 +105,19 @@ $(NESP): FORCE | $(BUILD)
 	$(MAKE) -s -C $(NESP32) BUILD=$(NESP_BUILD) proto host
 	@test -f $@ || touch $@
 
+# A session's line, in CPU cycles a bit, once the nesp32 has agreed to it
+# (PEER's RATE): its exchanges at that rate, and everything else at the
+# link's own, 21. Jackal has played at 14 on hardware with its samples on,
+# 0.6% of replies misheard (README, "The session's line").
+NET_RATE ?= 14
+
 # The library's serial routines: the receiver that gives up by counting,
 # since every exchange is made in an NMI, and both routines on the one page
-# net/tmnt2_net.cfg has for them.
-$(BUILD)/link.inc: $(NESP_LIB) $(NESP)
-	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $@ --timeout --pack $(LINK_OPTIONS)
+# net/tmnt2_net.cfg has for them; and the session's pair at NET_RATE, on
+# pages of their own.
+$(BUILD)/link.inc: $(NESP_LIB) $(NESP) Makefile
+	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $@ --timeout --pack \
+		--short-period=$(NET_RATE) $(LINK_OPTIONS)
 
 # Each ROM is assembled from the same sources: the original as it is, and
 # the netplay one with NETPLAY defined, which brings in net/.

@@ -94,7 +94,7 @@ def test_the_menu_says_hello_and_shows_the_nesp32s_address(net_console):
     console, stick = table.consoles[0], table.sticks[0]
     assert screen_row(console, 18).strip() == "THIS NESP32 IS AT"
     assert screen_row(console, OWN_ROW).strip() == "192.168.001.023"
-    assert stick.app == (APP, 1) and stick.active(p.NESP_SVC_PEER)
+    assert stick.app == (APP, 2) and stick.active(p.NESP_SVC_PEER)
     assert stick.hellos == 1
     # It goes on asking, and nothing is asked twice or missed.
     table.run(4 * STATUS_POLL)
@@ -396,7 +396,7 @@ def test_two_that_cannot_reach_each_other_are_told(net_console):
 def test_another_versions_room_is_not_joined(net_console):
     table = Table(net_console)
     table.boot()
-    status, line = table.lan.rooms.answer("/v1/host?app=CNTR&ver=2&c=192.168.1.23:6502")
+    status, line = table.lan.rooms.answer("/v1/host?app=CNTR&ver=1&c=192.168.1.23:6502")
     join_room(table, 1, line.split()[1])
     table.run(4 * STATUS_POLL)
     assert screen_row(table.consoles[1], STATUS_ROW).strip() == "NOT THIS GAME"

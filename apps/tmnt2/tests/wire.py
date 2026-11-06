@@ -160,7 +160,9 @@ class Port:
         delay = self.turnaround() if callable(self.turnaround) else self.turnaround
         at = max(self.heard_at + delay, self.console.now)
         self.sent.append((at, data))
-        self.wire.send(data, at, self.bit)
+        # At the UART's rate as it now is: the link's, or a PEER session's
+        # own (PEER's RATE).
+        self.wire.send(data, at, self.rate_bit)
 
     # --- the line with framing off, and the clock (host/nesp.py's Stick) ---------
 

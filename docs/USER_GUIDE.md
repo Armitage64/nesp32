@@ -706,7 +706,11 @@ be handed out ready-made. Instead, you patch your own copy of each game:
 | Jackal | `jackal_net.bps` | Jackal (USA) | 131088 bytes, `2E52D091` |
 
 Both players need the same patched game. Use the patches from the same
-release as your NESP32's firmware. Ask on the
+release as your NESP32's firmware. The online games' patches from November
+2026 on don't play with earlier ones, and a room says `NOT THIS GAME`:
+both players patch again from the same download. Contra, TMNT II and
+Jackal play a little faster online with firmware newer than 0.2.0, which
+runs their link to the NESP32 faster; with 0.2.0 they play as before. Ask on the
 [Discord](https://discord.gg/kwSC7pwtmb) if you need help.
 
 Contra, TMNT II and Jackal need a flash cartridge or emulator that supports

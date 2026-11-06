@@ -13,6 +13,8 @@
 ### Games
 - Bubble Bobble, online co-op: a session lasts past a game over, and 2P CONTINUE goes on at the round the two reached; its busiest rounds kept at the game's own speed
 - Jackal, online co-op: a new netplay game, on an MMC3; its sessions run the line at 14 cycles a bit (#15)
+- Every netplay game: the session's check that both games are alike now sees any one byte that differs (it missed most before); each game's version goes up by one, so a new patch does not join an old one (host/peer_player.py knows each one's)
+- TMNT II and Contra: sessions run the line at 14 cycles a bit with a firmware that has PEER's RATE, for a shorter exchange each frame; TMNT II's busiest level drops fewer frames, and a misheard reply no longer puts its status bar's split out for a frame (#15)
 
 ## 0.2.0 — 2026-11-04
 
