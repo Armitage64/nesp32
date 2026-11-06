@@ -384,27 +384,29 @@ exchange goes and the line's rate (tools as in "What has been learned"):
 |---|---|---|---|
 | One console, no session | 57.7 | 50.5 | 44.5 |
 | A session at 14 (now) | 56.8 | 43.7 | 41.7 |
-| At 14, the exchange ahead | 57.4 | 46.8 | 43.3 |
-| At 10 | 57.0 | 45.3 | 42.4 |
-| At 10, the exchange ahead | 57.5 | 47.8 | 43.6 |
+| At 14, the exchange ahead (model) | 57.4 | 46.8 | 43.3 |
+| At 10 (model) | 57.0 | 45.3 | 42.4 |
 
-1. **The exchange ahead.** Being tried. A tick's exchange is made at the
-   start of its NMI, where a busy tick has no room for it; a tick that
-   ends early leaves the CPU waiting for the next vblank. The next tick's
-   exchange made in that wait takes it off the busy tick: most of all
-   after a lag, whose second frame is mostly waiting. What it takes: a
-   deadline, so that an exchange (some 2500 cycles, 22 lines) is never
-   begun where it would run into the vblank: the MMC3's scanline IRQ at
-   about line 180, which sets a flag, and the exchange made with the IRQ
-   off only while the flag is clear (the counter can miss a line where
-   all eight sprites are the score's, from the other pattern table, but
-   those are at line 200 and lower, and a missed count only makes the
-   deadline late; the picture has to be on). What it costs: this
-   console's buttons are read when the tick before ends, not at the
-   vblank, so a press in the wait between is seen a tick later; made only
-   after a lag, the cost would be only where the game stands still
-   anyway. The game is the same: only when the buttons are read and the
-   exchange made change.
+A model of each console alone, from `make bench`'s ticks; what was tried
+of it in full did worse (below).
+
+1. **The exchange ahead**: tried, and dropped (November 2026). After a
+   tick that lagged, the next tick's read and exchange were made at its
+   end, in the wait for the vblank, so that the busy tick after did not
+   pay for them: the MMC3's scanline IRQ, at line 180, as the deadline
+   after which none was begun, let in for a moment at the tick's end
+   (the game runs with IRQs off), and the next NMI made its exchange
+   again if the early one had not brought the other console's buttons.
+   The table above is a model: one console's ticks, the exchange a cost
+   that moves. Two simulated consoles in a session, the same 900 ticks of
+   level 2 on three seeds, took 1149, 1169 and 1155 frames with it (46.6
+   frames a second) and 1130, 1161 and 1069 without (48.2): slower, the
+   games alike throughout. The early exchange seldom has the other
+   console's buttons, which it is made too soon for, and costs the next
+   NMI's anyway; what else it cost was not found. Measure a change to the
+   exchange with two consoles, and by the frames a fixed run of ticks
+   takes: ticks in a fixed run of frames compare different stretches of
+   the game.
 2. **The session's line at 10 cycles a bit**: tried, and no faster than
    14 for Jackal: 12% of replies misheard ("The session's line"). Left
    at 14.

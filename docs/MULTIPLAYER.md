@@ -525,6 +525,10 @@ six games:
     Jackal plays samples all the time, so it is the trial: 14 first, on a
     real NES with each board, then 10. Both are inside what a real NES
     has passed both ways without samples; 8 is not.
+  - *Not worth it either:* the next tick's exchange made ahead, in the
+    wait at the end of a tick that lagged. Tried in Jackal (its README):
+    slower in a session, since the other console's buttons are seldom
+    there that early.
   - *Not worth it:* making no wait for a reply in a frame whose buttons
     from the other console are already here. A reply carries one tick of
     them and a tick uses one, so a console has to hear one nearly every
