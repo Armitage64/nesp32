@@ -127,8 +127,8 @@ def main(argv=None):
                         help="JOIN: the room's code, or the console's nesp32's address")
     parser.add_argument("--by-address", action="store_true",
                         help="HOST: wait for a call to this computer's address, not in a room")
-    parser.add_argument("--app", default="TMN2",
-                        help="the game's id (%s)" % ", ".join(sorted(VERSIONS)))
+    parser.add_argument("--app", default="TMN2", type=str.upper, choices=sorted(VERSIONS),
+                        help="the game's id: TMNT II is TMN2 (the default)")
     parser.add_argument("--version", type=int,
                         help="the game's version, if not the one its builds now say (VERSIONS)")
     parser.add_argument("--play", choices=("copy", "still", "random"), default="copy")
