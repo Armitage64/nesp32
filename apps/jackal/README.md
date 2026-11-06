@@ -410,9 +410,13 @@ of it in full did worse (below).
 2. **The session's line at 10 cycles a bit**: tried, and no faster than
    14 for Jackal: 12% of replies misheard ("The session's line"). Left
    at 14.
-3. **The last boss**, if its fight plays badly in a session: its split by
-   the MMC3's scanline IRQ, in place of a wait of some 10,000 cycles in
-   every NMI, the exchange done before the IRQ's line. Its fight alone.
+3. **The last boss**: left as it is, by choice. Its split is a wait of
+   some 10,000 cycles in every NMI, which the original pays as well; a
+   session adds to it only the exchange, as anywhere else, and the split
+   stays where it was (the exchange is after it, and a stall makes it
+   too). The MMC3's scanline IRQ could make the split in place of the
+   wait, but that would make the fight run faster than the original
+   does, not mend anything the netplay did.
 4. **The bullets' and the weapons' tests** (`Label1001`, `Label996`),
    unrolled and otherwise the game's: some 200 to 300 cycles a tick. The
    jump table (`subExecuteCodeViaIndirectJump`) and each object's
