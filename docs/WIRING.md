@@ -4,13 +4,14 @@ This is the hat every nesp32 uses, between an M5StickS3 or an M5StickC Plus2
 and controller port 2: its circuit, its pins, and why it is needed. The
 board itself, with its parts and pictures, is in
 [`hardware/`](../hardware/); this page also has how to wire the same
-circuit by hand on M5Stack's proto hat, and two other level shifters that
-would do. The circuit was first worked out for nes-radar.
+circuit by hand on M5Stack's proto hat, two other level shifters that
+would do, and three resistors that do without one. The circuit was first
+worked out for nes-radar.
 
 Whether the link is inverted is `BOARD_LINK_INVERTED` in
 [`firmware/main/board.h`](../firmware/main/board.h): 1 for the NPN
 shifter and the SN74LV1T04 alternative, which both invert, and 0 for the
-single‑gate buffers, which do not.
+single‑gate buffers and the resistor network, which do not.
 
 The ESP32‑S3 is a 3.3 V part and **not 5 V tolerant**, and a 3.3 V high is not
 guaranteed to register on the NES. Each direction goes through one NPN
@@ -366,6 +367,99 @@ adapter. Build the firmware with **`BOARD_LINK_INVERTED` 0**.
 It only guarantees a high if OUT0 stays **at or above 3.7 V** under that
 1.7 mA load, which is undocumented.
 
+## Alternative: three resistors (no level shifter)
+
+No transistors and no chips: a divider takes OUT0 down to the Stick's
+level, and G8 drives D0 straight, through a resistor. Neither direction
+inverts, so build the firmware with **`BOARD_LINK_INVERTED` 0**.
+
+```
+ TX (Stick → NES)                      RX (NES → Stick)
+
+ Stick G8 ──[1 kΩ]──► NES D0 (pin 4)   NES OUT0 ──[47 kΩ]──┬──► Stick G1
+                                       (pin 3)             │
+                                                        [100 kΩ]
+                                                           │
+                                                          GND
+
+ Stick GND ── NES GND (pin 1)
+ NES +5 V, 3V3_L2, EXT_5V, 5V_IN, BAT, G0 ── not connected
+```
+
+**Parts:** one 1 kΩ, one 47 kΩ and one 100 kΩ resistor.
+
+| From | Through | To |
+|---|---|---|
+| Stick G8 | 1 kΩ | NES pin 4 (D0) |
+| NES pin 3 (OUT0) | 47 kΩ | Stick G1 |
+| Stick G1 | 100 kΩ | GND |
+| Stick GND | – | NES pin 1 (GND) |
+
+**What each resistor is for:**
+- **47 kΩ and 100 kΩ, the RX divider.** Together they take OUT0's 5 V to
+  5 × 100 / 147 ≈ 3.4 V at G1, inside the 3.6 V the ESP32‑S3 takes on a
+  pin and above the 2.48 V it needs for a high. The ratio sets the level,
+  and the values are high so that the divider loads OUT0 lightly: about
+  34 µA, as the NPN shifter's 100 kΩ base resistor does. OUT0 is the strobe
+  both controllers share, and a MiSTer SNAC adapter pulls it high through
+  only 10 kΩ; with this load it still reaches about 4.7 V there. The 47 kΩ
+  also limits the current into G1 when the Stick is off, to under 0.1 mA.
+  Higher values would slow G1's edges: the divider's 32 kΩ into a pin's
+  few picofarads is about 0.3 µs, half a CPU cycle (estimated, not
+  measured).
+- **100 kΩ, also:** it holds G1 low when the NES is off, so G1 reads a
+  break, which the decoder ignores.
+- **1 kΩ on D0.** The same fault‑current limiter the FTDI cable and the
+  NPN shifter use. G8 drives both ways, so D0 rises as fast as it falls
+  and no pull‑up is needed; 470 Ω did no better on the NPN shifter.
+
+**Results.** Tested with [the throughput test](../apps/throughput/README.md)
+on an ESP32‑S3 dev board wired straight to the controller port, on the
+same G1 and G8 the StickS3 uses, on the MiSTer through
+a SNAC adapter and on a real NES‑001.
+- **NES to nesp32:** 298296 baud on the MiSTer, the fastest rate the test
+  has, where the NPN shifter stops at 223722.
+- **nesp32 to NES, real NES:** five climbs, all to 298296 baud.
+- **nesp32 to NES, MiSTer:** of 18 climbs after a night powered off, 8
+  reached 298296, 6 stopped at 255682, 1 at 223722 and 3 at 178977.
+  Nothing about it changed as the hardware warmed up. Every rate a program
+  uses passed every time but 7 cycles a bit, the jukebox's and NPR's
+  fastest sound, which failed once in 15 trials. The faster rates failed
+  in two ways: at 6 cycles, in 6 trials of 14, a whole block came wrong
+  (246–248 of its 248 bytes) from its first byte, which points at the
+  console's tracking receiver settling on the block's start rather than at
+  the line; at 9, a rate no program uses, one byte now and then. The real
+  NES showed neither.
+
+**Risks:**
+- **D0's high is only 3.3 V.** The NES‑001's 74HC368 is guaranteed to read
+  a high only from about 3.5 V ([why](#why-a-level-shifter)). One
+  front‑loader read it at every rate, but that is typical behaviour, not
+  the datasheet's; other consoles, the top‑loader, the Famicom and PAL
+  consoles have not been tried.
+- **G1 is guaranteed a high only while OUT0 is 3.64 V or more**, and how
+  high the 2A03's OUT0 stays is not documented. It reached about 4.6 V
+  under the NPN shifter's similar load.
+- **G8 drives a console that is off.** It idles high, so with the NES off
+  it pushes up to about 2.7 mA through the 1 kΩ into the console, as the
+  FTDI cable does. The shifters take their power from the side they drive
+  and do not.
+- **D0 is not held at idle while the Stick is off or booting.** G8 floats
+  then, and D0 rests wherever the console leaves it. The NPN shifter's
+  pull‑up holds it high.
+- **Not for a StickC Plus2.** Its TX is G0, the boot‑mode pin, and the
+  1 kΩ ties it to D0: a low there at power‑up would start the board in
+  firmware‑download mode. Not tried.
+
+**Benefits over the shifters:**
+- Three resistors: nothing to orient, no lead order to check, nothing to
+  go wrong with a transistor's make, and no surface‑mount parts.
+- Three wires to the controller plug (GND, OUT0, D0), and no supply wiring:
+  neither the NES's +5 V nor the Stick's 3.3 V.
+- No transistor storage time and no slow pull‑up: it carries 298296 baud
+  from the console, where the NPN shifter stops at 223722, and its edges
+  do not depend on which 2N3904s were fitted.
+
 ## Why a level shifter
 
 **Stick → NES (D0).** On an NES‑001 front‑loader, D0 goes into a 74HC368
@@ -375,8 +469,9 @@ the NES's 5 V. The ESP32‑S3 drives about 3.3 V (guaranteed only
 0.8 × 3.3 V ≈ 2.64 V). Straight 3.3 V would probably work, because HC gates
 typically switch near 2.5 V, but it would rely on typical behaviour rather than
 the datasheet. A marginal level shows up as bad samples in the ROM's
-cycle‑timed receiver. The top‑loader, Famicom, and PAL consoles have not been
-checked.
+cycle‑timed receiver. One NES‑001 took it at every rate the throughput test
+has ([the resistor network](#alternative-three-resistors-no-level-shifter)).
+The top‑loader, Famicom, and PAL consoles have not been checked.
 
 **NES → Stick (OUT0).** OUT0 comes straight from the NES's 2A03 CPU with no
 buffer, and how high that NMOS output stays under load is not documented. The
