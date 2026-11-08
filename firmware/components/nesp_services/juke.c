@@ -372,6 +372,7 @@ struct nesp_juke_pal {
     uint8_t in_at;
     uint8_t in_len;
     uint32_t tail;              /* samples of silence fed after the file's last */
+    uint8_t period;             /* the rate the filter was worked out for; 0: none */
 };
 
 static uint8_t mirror(uint8_t byte)
@@ -409,26 +410,41 @@ static bool resampled(const nesp_juke_t *juke)
     return juke->pal != NULL && juke->link->region == NESP_REGION_PAL;
 }
 
-/* A PAL console is about to be sent a sound from where it is: its
- * resampler, made if it has to be, and started afresh. No memory for one
- * and the sound goes as it is, slow and low. */
-static void resample_from_here(nesp_juke_t *juke)
+/* A PAL console's resampler for the sound of the track being sent: made,
+ * and its filter worked out, which takes milliseconds. So this is done in
+ * tick, from when the track is opened, long before the run: a run at the
+ * fastest rates begins with a lead the console's receiver settles on, and
+ * a pause after it, while this was done, lost the console its place.
+ * False: no memory for one, and the sound goes as it is, slow and low. */
+static bool resample_ready(nesp_juke_t *juke)
 {
-    if (juke->link->region != NESP_REGION_PAL) {
-        return;
-    }
     if (juke->pal == NULL) {
         juke->pal = juke->hal->alloc(juke->hal->ctx, sizeof(*juke->pal));
         if (juke->pal == NULL) {
-            return;
+            return false;
         }
         nesp_dac_levels(juke->pal->level);
         juke->pal->loudest = nesp_dac_out(NESP_DAC_LEVELS - 1);
+        juke->pal->period = 0;
     }
-    uint32_t from = made_baud(juke->sound_period);
-    uint32_t to = nesp_link_baud(juke->link, juke->sound_period);
-    nesp_resample_init(&juke->pal->resample, (float)to / (float)from,
-                       (uint32_t)((uint64_t)from * NESP_RESAMPLE_ONE / to));
+    if (juke->pal->period != juke->sound_period) {
+        uint32_t from = made_baud(juke->sound_period);
+        uint32_t to = nesp_link_baud(juke->link, juke->sound_period);
+        nesp_resample_init(&juke->pal->resample, (float)to / (float)from,
+                           (uint32_t)((uint64_t)from * NESP_RESAMPLE_ONE / to));
+        juke->pal->period = juke->sound_period;
+    }
+    return true;
+}
+
+/* A PAL console is about to be sent a sound from where it is: its
+ * resampler started afresh, which takes nothing if tick has readied it. */
+static void resample_from_here(nesp_juke_t *juke)
+{
+    if (juke->link->region != NESP_REGION_PAL || !resample_ready(juke)) {
+        return;
+    }
+    nesp_resample_restart(&juke->pal->resample);
     juke->pal->in_at = juke->pal->in_len = 0;
     juke->pal->tail = 0;
 }
@@ -758,6 +774,10 @@ static bool tick(void *ctx, uint32_t now)
     nesp_juke_t *juke = ctx;
     bool soon = false;
     juke->now = now;
+    if (juke->sound_period != 0 && juke->link->region == NESP_REGION_PAL
+        && (juke->pal == NULL || juke->pal->period != juke->sound_period)) {
+        resample_ready(juke);       /* before its run, which cannot wait for it */
+    }
     if (juke->sound_fresh) {
         juke->sound_fresh = false;
         juke->sound_began = now;    /* RAW's tick, which sent them, was this one */

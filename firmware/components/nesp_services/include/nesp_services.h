@@ -690,6 +690,9 @@ typedef struct {
  * out, in NESP_RESAMPLE_ONEths. Two figures for one thing, so that each
  * caller can work out both as exactly as its rates allow. */
 void nesp_resample_init(nesp_resample_t *resample, float ratio, uint32_t step);
+/* Start afresh as init does, with the filter it worked out: init takes a
+ * few thousand sines, and this nothing. */
+void nesp_resample_restart(nesp_resample_t *resample);
 /* One sample in, and then every one it lets out, a take at a time until
  * there are none. */
 void nesp_resample_put(nesp_resample_t *resample, float sample);

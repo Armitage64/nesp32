@@ -45,6 +45,11 @@ void nesp_resample_init(nesp_resample_t *resample, float ratio, uint32_t step)
     }
     resample->reach = reach;
     resample->step = step;
+    nesp_resample_restart(resample);
+}
+
+void nesp_resample_restart(nesp_resample_t *resample)
+{
     resample->lag = 0;
     resample->newest = 0;
     memset(resample->history, 0, sizeof(resample->history));
