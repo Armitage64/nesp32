@@ -795,6 +795,31 @@ def test_on_a_pal_console_a_sound_plays_at_its_own_pitch_and_length(stick):
     assert abs(pitch([held(byte) & 0x7F for byte in TONE], NTSC_RATE) - TONE_HZ) < 2
 
 
+def test_on_a_pal_console_a_sound_s_run_begins_with_no_read_of_its_file(stick):
+    """At the fastest rates the console's receiver settles on the lead and
+    then goes by the clock, so the first samples must follow it at once: a
+    read of the file there, or the filter worked out, and the sound began
+    with a pop and was left. They are made before the run."""
+    deck = pal_deck(stick, (pcm(b"Tone", TONE, 7),))
+    deck.pull(len(intro(b"Tone", 0)) + 3)
+    assert deck.sound(PERIODS.index(7)) == GO
+    stick.line.room = 10                        # the UART takes a little at a time
+    for _ in range(400):
+        reads = stick.track_reads
+        deck.wait(1)
+        if stick.line.sent:
+            break
+    sent = bytes(stick.line.sent)
+    assert sent[:p.NESP_SOUND_LEAD] == b"\xff" * p.NESP_SOUND_LEAD and len(sent) > p.NESP_SOUND_LEAD
+    assert stick.track_reads == reads
+    stick.line.room = None
+    rest = deck.hear()
+    levels = [held(byte) & 0x7F for byte in sent[p.NESP_SOUND_LEAD:] + rest[:-1]]
+    # The tone was made for 16 cycles a bit: at 7 it is higher, as on NTSC.
+    rate, made = baud(p.NESP_PAL_CPU_HZ, 7) / 11, baud(p.NESP_CPU_HZ, 7) / 11
+    assert abs(pitch(levels, rate) - TONE_HZ * made / NTSC_RATE) < 3
+
+
 def test_on_an_ntsc_console_a_sound_is_the_file_s_bytes(stick):
     deck = Deck(stick, (pcm(b"Tone", TONE, TONE_PERIOD),))
     deck.press(PLAY)
