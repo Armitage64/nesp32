@@ -7,6 +7,7 @@ byte once and in order whatever is lost on the way, a new epoch for
 everything that should be heard at once, and a sound handed to RAW.
 """
 
+import math
 import struct
 
 import nesp_proto as p
@@ -730,6 +731,92 @@ def test_the_screen_keeps_the_track_while_the_line_is_the_sounds(tape):
     assert tape.sound(1) == GO
     tape.wait(p.NESP_RAW_START_MS + 600)
     assert (tape.stick.shown(0), tape.stick.shown(1)) == ("2/3 Tape - Speech", "")
+
+
+# --- sampled sound on a PAL console -------------------------------------------------------
+#
+# A .pcm file's samples are at an NTSC console's rate for their period. A
+# PAL console plays the same period 7.6% slower, so the nesp32 resamples
+# them to its rate, and they play as long and as high (docs/PAL.md).
+
+def baud(hz, period):
+    return (hz + period // 2) // period
+
+
+def wire(level):
+    """The byte on the wire for a level, as tools/pcm.py makes it."""
+    return int("{:08b}".format((level | 0x80) ^ 0x3F)[::-1], 2)
+
+
+def held(byte):
+    """What the console's receiver holds of a byte: the level, and MORE."""
+    return (int("{:08b}".format(byte)[::-1], 2) ^ 0x3F) & 0xFF
+
+
+MORE = 0x80                     # held for every sample but the last
+TONE_HZ, TONE_PERIOD = 440, 16
+NTSC_RATE = baud(p.NESP_CPU_HZ, TONE_PERIOD) / 11
+PAL_RATE = baud(p.NESP_PAL_CPU_HZ, TONE_PERIOD) / 11
+TONE = bytes(wire(round(64 + 40 * math.sin(2 * math.pi * TONE_HZ * index / NTSC_RATE)))
+             for index in range(5000))
+
+
+def pitch(levels, rate):
+    """The tone's frequency, from its rises through the middle, away from
+    both ends."""
+    middle = levels[len(levels) // 10:-len(levels) // 10]
+    rises = [at for at in range(1, len(middle)) if middle[at - 1] < 64 <= middle[at]]
+    return (len(rises) - 1) / ((rises[-1] - rises[0]) / rate)
+
+
+def pal_deck(stick, tracks):
+    stick.region = p.NESP_REGION_PAL
+    deck = Deck(stick, tracks)
+    deck.press(PLAY)
+    return deck
+
+
+def test_on_a_pal_console_a_sound_plays_at_its_own_pitch_and_length(stick):
+    deck = pal_deck(stick, (pcm(b"Tone", TONE, TONE_PERIOD),))
+    # Its length on the screen is the file's, as on NTSC.
+    frames = len(TONE) * 60 * 11 // baud(p.NESP_CPU_HZ, TONE_PERIOD)
+    record = intro(b"Tone", frames) + b"\x80\x05\x01"
+    assert deck.pull(len(record)) == record
+    assert deck.sound(1) == GO
+    sent = deck.hear()
+    assert stick.line.rates == [TONE_PERIOD, p.NESP_PERIOD]
+    assert sent[-1:] == LAST
+    assert all(held(byte) & MORE for byte in sent[:-1])     # none ends it early
+    # 7.1% fewer samples, at the PAL rate: as long.
+    assert abs(len(sent) - 1 - len(TONE) * PAL_RATE / NTSC_RATE) <= 30
+    levels = [held(byte) & 0x7F for byte in sent[:-1]]
+    assert abs(pitch(levels, PAL_RATE) - TONE_HZ) < TONE_HZ * 0.005
+    # As the file would have played on NTSC; sent as it is, it would be low.
+    assert abs(pitch([held(byte) & 0x7F for byte in TONE], NTSC_RATE) - TONE_HZ) < 2
+
+
+def test_on_an_ntsc_console_a_sound_is_the_file_s_bytes(stick):
+    deck = Deck(stick, (pcm(b"Tone", TONE, TONE_PERIOD),))
+    deck.press(PLAY)
+    deck.pull(len(intro(b"Tone", 0)) + 3)
+    assert deck.sound(1) == GO
+    assert deck.hear() == TONE + LAST
+
+
+def test_on_a_pal_console_a_sound_left_goes_on_from_where_it_was(stick):
+    deck = pal_deck(stick, (THREE, NOISE, ONE))
+    assert deck.pull(len(THREE_STREAM + NOISE_STREAM)) == THREE_STREAM + NOISE_STREAM
+    # The first byte comes 14 ms later on PAL (test_region.py): 30 ms of it.
+    sent = hush(deck, after=30 + 189 - p.NESP_RAW_START_MS)
+    assert sent[-1:] == LAST and len(sent) < len(SAMPLES)
+    assert deck.press(PLAY) == PLAYING
+    deck.ask()
+    assert deck.sound(1) == GO
+    rest = deck.hear()
+    # 30 ms in, at the PAL rate's 9447 samples a second, is 305 of the
+    # file's at its 10170: the rest of it, resampled, and the last byte.
+    left = (len(rest) - 1) * NTSC_RATE / PAL_RATE
+    assert abs(len(SAMPLES) - left - 305) <= 25
 
 
 # --- the console's menu -------------------------------------------------------------

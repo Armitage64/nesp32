@@ -47,7 +47,6 @@
  * its alone. The ring, and which fetch is wanted (`generation`), are both
  * tasks', under the hal's lock.
  */
-#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -73,19 +72,7 @@
 #define TRAIL_SAMPLES 4             /* after the character that ends a run: the console is a sample behind */
 #define SHOW_MS 1000
 
-/* The resampler: a sinc under a Hann window, cut off below the lower of
- * the two rates' Nyquist, as tools/wav2pcm.py's is; worked out once for
- * PHASES places between two samples, and the nearest used. */
-#define PHASES 64
-#define TAPS_MAX 48
-#define HISTORY 64                  /* samples kept: a power of two, and TAPS_MAX at least */
-#define ZEROS 8                     /* zero crossings each side of the middle */
-#define PASSBAND 0.92f
-#define ONE 65536u                  /* a sample, where parts of one are counted */
-#define PI 3.14159265f
-
-#define LEVELS 128                  /* the DAC takes 7 bits */
-#define STEPS 1024                  /* places between silence's two ends a sample is rounded to */
+#define STEPS NESP_DAC_STEPS       /* places between silence's two ends a sample is rounded to */
 #define MORE 0x80                   /* in what the console holds for every byte but the last */
 #define OUT 256
 #define META_MAX 512                /* of a block of titles: the title is at its start */
@@ -106,13 +93,8 @@ struct nesp_tuner_work {
     bool begun;
     bool levelled;                  /* level[] has been worked out */
     nesp_mp3_t mp3;
-    int hz;                         /* the stream's rate, which the kernel is for; 0: none yet */
-    uint32_t reach;                 /* samples each side of the middle that the kernel takes */
-    uint32_t step;                  /* samples in for one out, in ONEths */
-    int32_t lag;                    /* from the next sample out back to the newest in, likewise */
-    uint32_t newest;                /* the count of samples in */
-    float history[HISTORY];
-    float kernel[PHASES][TAPS_MAX];
+    int hz;                         /* the stream's rate, which the resampler is for; 0: none yet */
+    nesp_resample_t resample;       /* to the wire's rate (resample.c) */
     uint8_t level[STEPS];           /* the DAC's level for each place */
     uint8_t out[OUT];               /* levels on their way to the ring */
     size_t out_len;
@@ -143,62 +125,21 @@ static void unlock(nesp_tuner_t *tuner)
 
 /* --- the fetch's task ---------------------------------------------------------- */
 
-/* The DAC is not a straight line: the console's mixer squeezes the top of
- * its range. Each place between the two ends gets the level whose output
- * is nearest, as wav2pcm.nearest_level has it. */
+/* The level whose output is nearest each place between the DAC's two
+ * ends, as wav2pcm.nearest_level has it (resample.c). */
 static void make_levels(struct nesp_tuner_work *work)
 {
-    double dac[LEVELS];
-    dac[0] = 0.0;
-    for (int level = 1; level < LEVELS; level++) {
-        dac[level] = 159.79 / (22638.0 / level + 100.0);
-    }
-    int above = 0;
-    for (int place = 0; place < STEPS; place++) {
-        double target = (double)place / (STEPS - 1) * dac[LEVELS - 1];
-        while (above < LEVELS - 1 && dac[above] < target) {
-            above++;
-        }
-        int below = above > 0 ? above - 1 : 0;
-        work->level[place] = (uint8_t)(target - dac[below] <= dac[above] - target ? below : above);
-    }
+    nesp_dac_levels(work->level);
     work->levelled = true;
 }
 
-/* The kernel for a stream at this rate. */
+/* The resampler for a stream at this rate. */
 static void make_kernel(struct nesp_tuner_work *work, int hz)
 {
-    float ratio = (float)RATE(work->tuner) / (float)hz;
-    float cutoff = PASSBAND * (ratio < 1.0f ? ratio : 1.0f) / 2.0f;     /* cycles a sample in */
-    float half = (float)ZEROS / (2.0f * cutoff);
-    uint32_t reach = (uint32_t)ceilf(half);
-    if (reach > TAPS_MAX / 2) {
-        reach = TAPS_MAX / 2;       /* a rate above any a station has: a narrower window */
-        half = (float)reach;
-    }
-    for (int phase = 0; phase < PHASES; phase++) {
-        float sum = 0.0f;
-        for (uint32_t tap = 0; tap < 2 * reach; tap++) {
-            float t = (float)((int)tap - (int)reach + 1) - (float)phase / (float)PHASES;
-            float weight = 0.0f;
-            if (fabsf(t) < half) {
-                float x = 2.0f * PI * cutoff * t;
-                weight = (x != 0.0f ? sinf(x) / x : 1.0f)
-                         * (0.5f + 0.5f * cosf(PI * t / half));
-            }
-            work->kernel[phase][tap] = weight;
-            sum += weight;
-        }
-        for (uint32_t tap = 0; tap < 2 * reach; tap++) {
-            work->kernel[phase][tap] /= sum;
-        }
-    }
+    nesp_resample_init(&work->resample, (float)RATE(work->tuner) / (float)hz,
+                       (uint32_t)((uint64_t)hz * NESP_RESAMPLE_ONE * NESP_TO_NES_BITS
+                                  / BAUD(work->tuner)));
     work->hz = hz;
-    work->reach = reach;
-    work->step = (uint32_t)((uint64_t)hz * ONE * NESP_TO_NES_BITS / BAUD(work->tuner));
-    work->lag = 0;
-    work->newest = 0;
-    memset(work->history, 0, sizeof(work->history));
 }
 
 /* The levels worked out so far into the ring, if this fetch is still the
@@ -231,30 +172,9 @@ static void flush(struct nesp_tuner_work *work)
  * completes. */
 static void put(struct nesp_tuner_work *work, float sample)
 {
-    work->newest++;
-    work->history[work->newest % HISTORY] = sample;
-    work->lag += (int32_t)ONE;
-    while (work->lag >= (int32_t)(work->reach * ONE)) {
-        /* The next sample out lies `lag` behind the newest in: between
-         * `base` and the one after it, at the nearest of the PHASES. */
-        uint32_t whole = (uint32_t)work->lag / ONE;
-        uint32_t part = (uint32_t)work->lag % ONE;
-        uint32_t base = work->newest - whole;
-        uint32_t phase = 0;
-        if (part != 0) {
-            base--;
-            phase = ((ONE - part) * PHASES + ONE / 2) / ONE;
-            if (phase == PHASES) {
-                phase = 0;
-                base++;
-            }
-        }
-        const float *weights = work->kernel[phase];
-        uint32_t first = base - work->reach + 1;
-        float sum = 0.0f;
-        for (uint32_t tap = 0; tap < 2 * work->reach; tap++) {
-            sum += weights[tap] * work->history[(first + tap) % HISTORY];
-        }
+    float sum;
+    nesp_resample_put(&work->resample, sample);
+    while (nesp_resample_take(&work->resample, &sum)) {
         float place = (sum / 32768.0f + 1.0f) * 0.5f * (float)(STEPS - 1) + 0.5f;
         if (place < 0.0f) {
             place = 0.0f;
@@ -265,7 +185,6 @@ static void put(struct nesp_tuner_work *work, float sample)
         if (work->out_len == OUT) {
             flush(work);
         }
-        work->lag -= (int32_t)work->step;
     }
 }
 
