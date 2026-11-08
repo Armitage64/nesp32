@@ -1,7 +1,8 @@
 # PAL consoles: the plan
 
-**Status: not started, as of 2026-11-08.** Nothing here has been tried on
-a PAL console. This replaces the plans of 2026-10-16 and of earlier on
+**Status: step 1 written and tested on the host, as of 2026-11-08.**
+Nothing here has been tried on a PAL console, nor on the MiSTer's PAL
+setting. This replaces the plans of 2026-10-16 and of earlier on
 2026-11-08.
 
 A PAL NES's CPU runs at 1662607 Hz, where an NTSC one runs at 1789773, and
@@ -89,25 +90,40 @@ shared by both clocks, each change every ROM, and are out under the rule.
 
 In the order to do them.
 
-### 1. The firmware: about 2 days
+### 1. The firmware: done, but for the hardware
+
+Written, and tested on the host (`tests/test_region.py`, with a model of a
+UART hearing the other clock's rate); all three firmwares build. Not yet
+run on a console of either region.
 
 - The clock per session in place of `NESP_CPU_HZ` in `link.c`, `tuner.c`,
   `juke.c` and `raw.c`. `NESP_CPU_HZ` stays for what is built into a ROM.
 - The hunt, the settling and the remembering, above, in `link.c` and
   `nesp_core` (which counts what was heard and what was good), with host
-  tests of each.
-- The region on the nesp32's screen.
+  tests of each. A miss is four bytes or more with no good request:
+  the controller read is one or two a frame. One miss changes the clock
+  until a request has been good at it, eight in a row after that. The
+  link task changes it as soon as the line goes quiet after a miss, so a
+  console's next try, a frame later, is heard.
+  Misses count only while the line is at the link's own rate: at a
+  session's faster one, a console that has gone back to 21 before its
+  nesp32 has is heard as noise, and that is PEER's to mend (Contra's
+  `test_a_line_no_good_at_its_rate_goes_back_to_the_links` found it).
+- The region on the nesp32's screen: "PAL:" in place of "NES:".
 - **RAW's start on PAL.** The console's settle (`SOUND_SETTLE` in the
   jukebox and NESradio, `SETTLE_LOOPS` in the throughput test) is cycles
   worked out from `NESP_CPU_HZ` when the ROM is built, so on PAL it ends
   at about 161 ms in place of 150, and the nesp32's first byte at
   `RAW_START_MS`, 175, leaves 14 ms where it left 25. The nesp32 scales
-  `RAW_SETTLE_MS` and `RAW_START_MS` by the clock on PAL, and the margin
-  is what it was.
+  `RAW_START_MS` by the clock on PAL, to 189 ms, and the margin is what
+  it was. Nothing else of a run's times wants it: the nesp32 changes its
+  rate at `RAW_LISTEN_MS`, while the console is silent either way.
 - **The region in PEER's meeting.** The two nesp32s already tell each
-  other the game and its version when they meet (`peer.c`); each tells its
-  console's region too, and a session between regions is let in or
-  refused as step 4 decides.
+  other the game and its version when they meet (`peer.c`); a PAL
+  console's sets bit 7 of the version (`PEER_PAL`), so an NTSC one's
+  greeting is as it was. Greetings that differ are refused, so for now
+  two PAL consoles play and a PAL one and an NTSC one do not, until step
+  4 says which games hold between them.
 
 ### 2. The simulators: about a day
 

@@ -61,7 +61,7 @@
 
 /* Samples a second, on the wire: the UART is the clock, a byte a sample.
  * The rate is the mode's, which PLAY chose. */
-#define BAUD(tuner) ((NESP_CPU_HZ + (tuner)->period / 2u) / (tuner)->period)
+#define BAUD(tuner) nesp_link_baud((tuner)->raw->link, (tuner)->period)
 #define RATE(tuner) (BAUD(tuner) / NESP_TO_NES_BITS)
 #define READY_SAMPLES(tuner) (RATE(tuner) * NESP_TUNER_READY_MS / 1000u)
 #define RESUME_SAMPLES(tuner) RATE(tuner)   /* held again before a ring that ran dry is played */

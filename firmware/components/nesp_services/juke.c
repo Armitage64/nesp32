@@ -155,7 +155,7 @@ static bool look(nesp_juke_t *juke, uint16_t index, track_t *track)
         track->rate = rate;
         track->data_end = size;
         /* A byte is a sample, and the nesp32 sends it as 11 bits. */
-        uint32_t baud = (NESP_CPU_HZ + head[5] / 2u) / head[5];
+        uint32_t baud = nesp_link_baud(juke->link, head[5]);
         track->frames = (uint32_t)((uint64_t)(size - track->data_at) * FRAMES_PER_SECOND
                                    * NESP_TO_NES_BITS / baud);
         return true;
@@ -375,7 +375,7 @@ static uint8_t sound_lead(uint8_t period)
 /* Samples a second at the sound's rate: the nesp32 sends a byte as 11 bits. */
 static uint32_t sound_hz(const nesp_juke_t *juke)
 {
-    return (NESP_CPU_HZ + juke->sound_period / 2u) / juke->sound_period / NESP_TO_NES_BITS;
+    return nesp_link_baud(juke->link, juke->sound_period) / NESP_TO_NES_BITS;
 }
 
 /* A file is already what goes on the wire, a byte a sample. A button on

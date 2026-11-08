@@ -742,7 +742,8 @@ typedef struct {
 
 /* PEER: two consoles playing one game, each with a nesp32 (peer.c). What
  * two nesp32s say first, each to the other: who they are, the version of
- * what follows, and the application on their console with its version. */
+ * what follows (with NESP_PEER_PAL for a PAL console), and the application
+ * on their console with its version. */
 #define NESP_PEER_GREETING (4 + 1 + NESP_APP_ID + 1)
 #define NESP_PEER_HELD 64
 #define NESP_PEER_PADS 10           /* changes in a console's buttons kept for a line of the log */

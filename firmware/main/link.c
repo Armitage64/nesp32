@@ -65,6 +65,9 @@ static TaskHandle_t link_handle;
 static QueueHandle_t uart_events;
 static QueueHandle_t stick_events;
 static size_t tx_empty;             /* what the driver says is free with nothing waiting */
+static uint8_t start_region;        /* the console's clock to begin at: the one last settled on */
+static uint8_t line_period = NESP_PERIOD;   /* the line's rate, in the console's cycles a bit */
+static int64_t last_heard;          /* when the UART last had a byte */
 static portMUX_TYPE stats_lock = portMUX_INITIALIZER_UNLOCKED;
 static link_stats_t shared_stats;
 
@@ -77,12 +80,39 @@ static void publish_stats(bool heard)
     shared_stats.noise = counters->noise;
     shared_stats.turnaround_us = counters->turnaround_us;
     shared_stats.turnaround_max_us = counters->turnaround_max_us;
+    shared_stats.hunts = counters->hunts;
+    shared_stats.region = stick.link.region;
+    shared_stats.settled = stick.link.settled;
     /* A console in a run says nothing for as long as the run lasts, which
      * for a radio station is until it is turned off: it is there. */
     if (heard || nesp_raw_owns_line(&stick.raw)) {
         shared_stats.last_request_ms = (uint32_t)(esp_timer_get_time() / 1000);
     }
     portEXIT_CRITICAL(&stats_lock);
+}
+
+/* The UART at the line's rate, at the console's clock as the link has it.
+ * Whatever its receiver held is dropped: what was heard at the old rate is
+ * of no use at the new. */
+static void set_rate(void)
+{
+    uart_set_baudrate(LINK_UART, nesp_link_baud(&stick.link, line_period));
+    uart_flush_input(LINK_UART);
+    xQueueReset(uart_events);
+}
+
+/* The line has gone quiet: and if what came before was heard at the wrong
+ * clock, the UART is set for the other (nesp_link_gap). True if it was. */
+static bool quiet(void)
+{
+    if (nesp_raw_owns_line(&stick.raw) || !nesp_link_gap(&stick.link)) {
+        return false;
+    }
+    set_rate();
+    ESP_LOGI(TAG, "listening for a%s console", stick.link.region == NESP_REGION_PAL ? " PAL"
+                                                                                  : "n NTSC");
+    publish_stats(false);
+    return true;
 }
 
 /* What the UART has heard: to the nesp32, and its reply back. */
@@ -118,12 +148,13 @@ static void hear(const uart_event_t *event, int64_t arrived)
      * bytes back to back, so none that came before is part of one with
      * these (nesp_link_gap). An event comes for every byte, so the time
      * this one is seen is near enough to when its byte came; seen late, a
-     * gap only looks shorter. */
-    static int64_t last_heard;
-    if (arrived - last_heard >= NESP_LINK_GAP_US) {
-        nesp_link_gap(&stick.link);
-    }
+     * gap only looks shorter. If the clock is changed there, these bytes
+     * came at the old rate, and go with the rest. */
+    bool gap = arrived - last_heard >= NESP_LINK_GAP_US;
     last_heard = arrived;
+    if (gap && quiet()) {
+        return;
+    }
     /* Buttons pressed since the last request, for the services. */
     while (xQueueReceive(stick_events, pending, 0) == pdTRUE) {
         nesp_stick_event(&stick, pending[0], pending[1]);
@@ -166,6 +197,13 @@ static void link_task(void *arg)
                 wait = pdMS_TO_TICKS(BUSY_WAIT_MS);
                 continue;
             }
+        } else if (stick.link.burst != 0
+                   && esp_timer_get_time() - last_heard >= NESP_LINK_GAP_US) {
+            /* Bytes came and the line has gone quiet: if there was no
+             * request in them, the clock may be the wrong one, and is
+             * better changed before the console tries again than as it
+             * does. */
+            quiet();
         } else {
             /* Nothing from the console: a button still does what it does,
              * for a service that takes them (the jukebox's, in a sound). */
@@ -175,15 +213,20 @@ static void link_task(void *arg)
             publish_stats(false);
         }
         bool soon = nesp_stick_tick(&stick, (uint32_t)(esp_timer_get_time() / 1000));
+        /* Bytes with no request in them yet: look again once the line has
+         * had time to go quiet. */
+        soon = soon || (stick.link.burst != 0 && !stick.link.burst_good);
         wait = pdMS_TO_TICKS(soon ? BUSY_WAIT_MS : IDLE_WAIT_MS);
     }
 }
 
-void link_open(void)
+void link_open(uint8_t region)
 {
     /* 2 stop bits out: the second is the console's time to store a byte. */
+    start_region = region == NESP_REGION_PAL ? NESP_REGION_PAL : NESP_REGION_NTSC;
+    uint32_t hz = start_region == NESP_REGION_PAL ? NESP_PAL_CPU_HZ : NESP_CPU_HZ;
     const uart_config_t config = {
-        .baud_rate = NESP_BAUD,
+        .baud_rate = (int)((hz + NESP_PERIOD / 2u) / NESP_PERIOD),
         .data_bits = UART_DATA_8_BITS,
         .parity = UART_PARITY_DISABLE,
         .stop_bits = UART_STOP_BITS_2,
@@ -215,14 +258,16 @@ void link_open(void)
     ESP_ERROR_CHECK(uart_set_rx_timeout(LINK_UART, 1));
     ESP_ERROR_CHECK(uart_get_tx_buffer_free_size(LINK_UART, &tx_empty));
     uart_write_bytes(LINK_UART, filler, sizeof(filler));
-    ESP_LOGI(TAG, "%s: TX G%d, RX G%d, %d baud, %s", BOARD_NAME, BOARD_LINK_TX, BOARD_LINK_RX,
-             NESP_BAUD, BOARD_LINK_INVERTED ? "inverted" : "not inverted");
+    ESP_LOGI(TAG, "%s: TX G%d, RX G%d, %d baud (%s), %s", BOARD_NAME, BOARD_LINK_TX,
+             BOARD_LINK_RX, config.baud_rate, start_region == NESP_REGION_PAL ? "PAL" : "NTSC",
+             BOARD_LINK_INVERTED ? "inverted" : "not inverted");
 }
 
 void link_start(const nesp_hal_t *hal)
 {
     stick_events = xQueueCreate(EVENT_QUEUE, 2);
     nesp_stick_init(&stick, hal);
+    nesp_link_set_region(&stick.link, start_region);
     xTaskCreatePinnedToCore(link_task, "link", LINK_STACK, NULL, LINK_PRIORITY, &link_handle,
                             LINK_CORE);
 }
@@ -252,11 +297,10 @@ uint32_t link_stack_left(void)
 void link_line_rate(void *ctx, uint8_t period)
 {
     (void)ctx;
-    uart_set_baudrate(LINK_UART, (NESP_CPU_HZ + period / 2u) / period);
-    /* A change of rate leaves junk in the receiver, and what was heard at
-     * the old one is of no use at the new. */
-    uart_flush_input(LINK_UART);
-    xQueueReset(uart_events);
+    /* A change of rate leaves junk in the receiver too. */
+    line_period = period;
+    nesp_link_line_period(&stick.link, period);
+    set_rate();
 }
 
 /* The UART's stop bits are one setting for both ways. The console needs

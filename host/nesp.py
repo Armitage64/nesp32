@@ -39,8 +39,13 @@ def library():
         lib.host_free.argtypes = [ctypes.c_void_p]
         lib.host_feed.restype = ctypes.c_size_t
         lib.host_feed.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t, _u8p]
-        lib.host_gap.restype = None
+        lib.host_gap.restype = ctypes.c_bool
         lib.host_gap.argtypes = [ctypes.c_void_p]
+        lib.host_region.restype = ctypes.c_uint8
+        lib.host_region.argtypes = [ctypes.c_void_p]
+        lib.host_settled.restype = ctypes.c_bool
+        lib.host_settled.argtypes = [ctypes.c_void_p]
+        lib.host_set_region.argtypes = [ctypes.c_void_p, ctypes.c_uint8]
         lib.host_event.argtypes = [ctypes.c_void_p, ctypes.c_uint8, ctypes.c_uint8]
         lib.host_note_turnaround.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
         lib.host_set_wifi.argtypes = [ctypes.c_void_p, ctypes.c_uint8, ctypes.c_uint8,
@@ -443,7 +448,8 @@ class Stick:
             # sees it (firmware/main/link.c): no short request spans that.
             now = self.port.now_ms()
             if now - getattr(self, "_heard_ms", now) >= proto.NESP_LINK_GAP_US / 1000.0:
-                self.gap()
+                if self.gap():
+                    heard = b""     # at the old clock's rate, as the firmware drops them
             self._heard_ms = now
         reply = self.feed(heard) if heard else b""
         if reply:
@@ -454,8 +460,24 @@ class Stick:
 
     def gap(self):
         """The line has been quiet for NESP_LINK_GAP_US before what is fed
-        next."""
-        self._lib.host_gap(self._host)
+        next. True if the console's clock was changed for the other there
+        (docs/PAL.md)."""
+        return self._lib.host_gap(self._host)
+
+    @property
+    def region(self):
+        """The console's clock as the nesp32 hears it: NESP_REGION_*."""
+        return self._lib.host_region(self._host)
+
+    @region.setter
+    def region(self, region):
+        """The one to start at, as the firmware's kept one is."""
+        self._lib.host_set_region(self._host, region)
+
+    @property
+    def settled(self):
+        """A request has been good at the clock."""
+        return self._lib.host_settled(self._host)
 
     def tick(self, now_ms):
         """What the services do by the clock. True if they want another
@@ -1066,6 +1088,10 @@ class Stick:
     @property
     def noise(self):
         return self._lib.host_counter(self._host, 3)
+
+    @property
+    def hunts(self):
+        return self._lib.host_counter(self._host, 4)
 
 
 ARQ_NOTE = 4
