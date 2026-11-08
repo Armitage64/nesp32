@@ -30,6 +30,12 @@
  * (SOUND); the samples then go as a run of RAW's, and the music after them
  * begins a new epoch.
  *
+ * A .pcm file's samples are at an NTSC console's rates: its period's
+ * cycles a bit of the NTSC clock. On a PAL console the same period is
+ * 7.6% slower, so the nesp32 resamples them to the PAL rate (resample.c),
+ * and a sound plays as long, and as high, as on NTSC (docs/PAL.md). Its
+ * length on the screen is the file's own, either way.
+ *
  * A console can leave a sound: button A of its controller, which is all of
  * it that it looks at then. It says so on a line that is the run's, where
  * nothing it sends can be read, so any NESP_JUKE_HEARD bytes heard in a
@@ -109,6 +115,13 @@ static uint32_t get32(const uint8_t *data)
            | (uint32_t)data[3] << 24;
 }
 
+/* A sound's rate at its period, in baud, as its file was made: an NTSC
+ * console's. */
+static uint32_t made_baud(uint8_t period)
+{
+    return (NESP_CPU_HZ + period / 2u) / period;
+}
+
 /* A track's header and title. False if the file is not one, or is cut
  * short. */
 static bool look(nesp_juke_t *juke, uint16_t index, track_t *track)
@@ -154,8 +167,10 @@ static bool look(nesp_juke_t *juke, uint16_t index, track_t *track)
         track->sound = true;
         track->rate = rate;
         track->data_end = size;
-        /* A byte is a sample, and the nesp32 sends it as 11 bits. */
-        uint32_t baud = (NESP_CPU_HZ + head[5] / 2u) / head[5];
+        /* A byte is a sample, and the nesp32 sends it as 11 bits, at the
+         * rate it was made for: on a PAL console it is resampled, and
+         * plays as long. */
+        uint32_t baud = made_baud(head[5]);
         track->frames = (uint32_t)((uint64_t)(size - track->data_at) * FRAMES_PER_SECOND
                                    * NESP_TO_NES_BITS / baud);
         return true;
@@ -346,6 +361,30 @@ static void press(nesp_juke_t *juke, uint8_t buttons)
 
 /* --- a sound, as a run of RAW's ------------------------------------------------ */
 
+/* A sound's samples on their way from an NTSC rate to the PAL one: from
+ * the hal's memory, the first time a PAL console plays a sound. */
+#define PAL_IN 128              /* bytes of the file read at a time */
+#define PAL_READY 512           /* samples made before a run: 24 ms at the fastest rate */
+struct nesp_juke_pal {
+    nesp_resample_t resample;
+    uint8_t level[NESP_DAC_STEPS];
+    float loudest;              /* what the DAC puts out at its top level */
+    uint8_t in[PAL_IN];         /* read from the file, and not yet resampled */
+    uint8_t in_at;
+    uint8_t in_len;
+    uint32_t tail;              /* samples of silence fed after the file's last */
+    uint8_t period;             /* the rate the filter was worked out for; 0: none */
+    /* The run's first samples, made in tick once the console has been told
+     * to expect it (S_ARMED): the run then begins with no read of the file
+     * and no work, which a console at the fastest rates cannot wait for. */
+    bool primed;
+    uint32_t primed_from;       /* the file's place they were made from, */
+    uint32_t primed_to;         /* and the place after what they took */
+    uint16_t ready_at;
+    uint16_t ready_len;
+    uint8_t ready[PAL_READY];
+};
+
 static uint8_t mirror(uint8_t byte)
 {
     uint8_t out = 0;
@@ -355,13 +394,163 @@ static uint8_t mirror(uint8_t byte)
     return out;
 }
 
-/* A sample on the wire, less loud. The console's receiver ends up with a
- * byte's bits reversed and inverted, and with the $40 its port's unused
- * bits read left in from its last two reads (the jukebox's tools/pcm.py). */
+/* A sample on the wire and its level for the DAC, each way. The console's
+ * receiver ends up with a byte's bits reversed and inverted, and with the
+ * $40 its port's unused bits read left in from its last two reads (the
+ * jukebox's tools/pcm.py). Every sample's has MORE: the one without it
+ * ends the sound. */
+static uint8_t sample_level(uint8_t byte)
+{
+    return (uint8_t)((mirror(byte) ^ 0x3F) & 0x7F);
+}
+
+static uint8_t sample_byte(uint8_t level)
+{
+    return mirror((uint8_t)((level | MORE) ^ 0x3F));
+}
+
+/* A sample on the wire, less loud. */
 static uint8_t quieter(uint8_t byte, uint32_t part, uint32_t whole)
 {
-    uint32_t level = (uint32_t)((mirror(byte) ^ 0x3F) & 0x7F) * part / whole;
-    return mirror((uint8_t)((level | MORE) ^ 0x3F));
+    return sample_byte((uint8_t)((uint32_t)sample_level(byte) * part / whole));
+}
+
+static bool resampled(const nesp_juke_t *juke)
+{
+    return juke->pal != NULL && juke->link->region == NESP_REGION_PAL;
+}
+
+/* A PAL console's resampler for the sound of the track being sent: made,
+ * and its filter worked out, which takes milliseconds. So this is done in
+ * tick, from when the track is opened, long before the run: a run at the
+ * fastest rates begins with a lead the console's receiver settles on, and
+ * a pause after it, while this was done, lost the console its place.
+ * False: no memory for one, and the sound goes as it is, slow and low. */
+static bool resample_ready(nesp_juke_t *juke)
+{
+    if (juke->pal == NULL) {
+        juke->pal = juke->hal->alloc(juke->hal->ctx, sizeof(*juke->pal));
+        if (juke->pal == NULL) {
+            return false;
+        }
+        nesp_dac_levels(juke->pal->level);
+        juke->pal->loudest = nesp_dac_out(NESP_DAC_LEVELS - 1);
+        juke->pal->period = 0;
+    }
+    if (juke->pal->period != juke->sound_period) {
+        uint32_t from = made_baud(juke->sound_period);
+        uint32_t to = nesp_link_baud(juke->link, juke->sound_period);
+        nesp_resample_init(&juke->pal->resample, (float)to / (float)from,
+                           (uint32_t)((uint64_t)from * NESP_RESAMPLE_ONE / to));
+        juke->pal->period = juke->sound_period;
+    }
+    return true;
+}
+
+static void resample_restart(struct nesp_juke_pal *pal)
+{
+    nesp_resample_restart(&pal->resample);
+    pal->in_at = pal->in_len = 0;
+    pal->tail = 0;
+    pal->ready_at = pal->ready_len = 0;
+}
+
+/* Samples at the PAL rate from the file's place *at, which moves on with
+ * what is read: up to max, and fewer rather than read the file again once
+ * there are some. None only at the sound's end, after the file's last and
+ * the filter's own reach of silence, which lets out what it still holds. */
+static size_t resample_read(nesp_juke_t *juke, uint32_t *at, uint8_t *out, size_t max)
+{
+    struct nesp_juke_pal *pal = juke->pal;
+    const nesp_hal_t *hal = juke->hal;
+    size_t made = 0;
+    while (made < max) {
+        float value;
+        if (nesp_resample_take(&pal->resample, &value)) {
+            float place = value / pal->loudest * (float)(NESP_DAC_STEPS - 1) + 0.5f;
+            if (place < 0.0f) {
+                place = 0.0f;
+            } else if (place > (float)(NESP_DAC_STEPS - 1)) {
+                place = (float)(NESP_DAC_STEPS - 1);
+            }
+            out[made++] = sample_byte(pal->level[(int)place]);
+            continue;
+        }
+        if (pal->in_at == pal->in_len) {
+            if (made != 0) {
+                break;                  /* what there is, now */
+            }
+            size_t got = 0;
+            if (*at < juke->sound_end) {
+                size_t want = juke->sound_end - *at;
+                got = hal->track_read(hal->ctx, juke->index, *at, pal->in,
+                                      want < PAL_IN ? want : PAL_IN);
+            }
+            if (got == 0) {
+                if (pal->tail == 2 * pal->resample.reach) {
+                    break;
+                }
+                pal->tail++;
+                nesp_resample_put(&pal->resample, 0.0f);
+                continue;
+            }
+            *at += (uint32_t)got;
+            pal->in_at = 0;
+            pal->in_len = (uint8_t)got;
+        }
+        nesp_resample_put(&pal->resample, nesp_dac_out(sample_level(pal->in[pal->in_at++])));
+    }
+    return made;
+}
+
+/* The run's first samples, from the file's place now, made ahead of it. */
+static void resample_prime(nesp_juke_t *juke)
+{
+    struct nesp_juke_pal *pal = juke->pal;
+    uint32_t at = juke->sound_at;
+    resample_restart(pal);
+    size_t made = 0;
+    while (made < PAL_READY) {
+        size_t got = resample_read(juke, &at, pal->ready + made, PAL_READY - made);
+        if (got == 0) {
+            break;
+        }
+        made += got;
+    }
+    pal->ready_len = (uint16_t)made;
+    pal->primed = true;
+    pal->primed_from = juke->sound_at;
+    pal->primed_to = at;
+}
+
+/* A PAL console is about to be sent a sound from where it is: from what
+ * was made ahead of the run if it is from here, or started afresh. */
+static void resample_from_here(nesp_juke_t *juke)
+{
+    if (juke->link->region != NESP_REGION_PAL || !resample_ready(juke)) {
+        return;
+    }
+    struct nesp_juke_pal *pal = juke->pal;
+    if (pal->primed && pal->primed_from == juke->sound_at) {
+        juke->sound_at = pal->primed_to;
+    } else {
+        resample_restart(pal);
+    }
+    pal->primed = false;
+}
+
+/* Samples for the run: what was made ahead of it first. */
+static size_t resample_send(nesp_juke_t *juke, uint8_t *out, size_t max)
+{
+    struct nesp_juke_pal *pal = juke->pal;
+    if (pal->ready_at < pal->ready_len) {
+        size_t left = (size_t)(pal->ready_len - pal->ready_at);
+        size_t count = left < max ? left : max;
+        memcpy(out, pal->ready + pal->ready_at, count);
+        pal->ready_at = (uint16_t)(pal->ready_at + count);
+        return count;
+    }
+    return resample_read(juke, &juke->sound_at, out, max);
 }
 
 /* The bytes of $FF a sound at this rate begins with: the console's routine
@@ -375,11 +564,23 @@ static uint8_t sound_lead(uint8_t period)
 /* Samples a second at the sound's rate: the nesp32 sends a byte as 11 bits. */
 static uint32_t sound_hz(const nesp_juke_t *juke)
 {
-    return (NESP_CPU_HZ + juke->sound_period / 2u) / juke->sound_period / NESP_TO_NES_BITS;
+    return nesp_link_baud(juke->link, juke->sound_period) / NESP_TO_NES_BITS;
 }
 
-/* A file is already what goes on the wire, a byte a sample. A button on
- * the nesp32 ends it early, and so does a console that is heard, which is
+/* Samples of the file in so many sent: as many, unless they are being
+ * resampled. */
+static uint32_t file_samples(const nesp_juke_t *juke, uint32_t sent)
+{
+    if (!resampled(juke)) {
+        return sent;
+    }
+    return (uint32_t)((uint64_t)sent * made_baud(juke->sound_period)
+                      / nesp_link_baud(juke->link, juke->sound_period));
+}
+
+/* A file is already what goes on the wire, a byte a sample, to an NTSC
+ * console; a PAL one's are resampled. A button on the nesp32 ends it
+ * early, and so does a console that is heard, which is
  * then not listening; either way it ends with the byte that leaves the
  * console's DAC at 0. A sound that was paused begins again from the DAC's
  * rest, where the console left it. */
@@ -390,6 +591,7 @@ static size_t sound_read(void *ctx, uint8_t *out, size_t max)
     if (juke->sound != S_PLAYING) {
         juke->sound_from = juke->sound_at;
         juke->sound_fresh = true;
+        resample_from_here(juke);
     }
     juke->sound = S_PLAYING;
     if (juke->sound_ended) {
@@ -398,17 +600,22 @@ static size_t sound_read(void *ctx, uint8_t *out, size_t max)
     if (juke->sound_spoke >= NESP_JUKE_HEARD) {
         juke->sound_hushed = true;
     }
-    if (juke->sound_press == 0 && !juke->sound_hushed && juke->sound_at < juke->sound_end) {
-        size_t want = juke->sound_end - juke->sound_at;
-        if (want > max) {
-            want = max;
+    if (juke->sound_press == 0 && !juke->sound_hushed) {
+        size_t got = 0;
+        if (resampled(juke)) {
+            got = resample_send(juke, out, max);
+        } else if (juke->sound_at < juke->sound_end) {
+            size_t want = juke->sound_end - juke->sound_at;
+            if (want > max) {
+                want = max;
+            }
+            got = hal->track_read(hal->ctx, juke->index, juke->sound_at, out, want);
+            juke->sound_at += (uint32_t)got;
         }
-        size_t got = hal->track_read(hal->ctx, juke->index, juke->sound_at, out, want);
         if (got != 0) {
             for (size_t index = 0; index < got && juke->sound_rise < juke->sound_ramp; index++) {
                 out[index] = quieter(out[index], juke->sound_rise++, juke->sound_ramp);
             }
-            juke->sound_at += (uint32_t)got;
             return got;
         }
     }
@@ -435,6 +642,7 @@ static uint32_t hushed_at(const nesp_juke_t *juke)
     uint32_t played = (uint32_t)((uint64_t)(juke->sound_spoke_ms - juke->sound_began)
                                  * sound_hz(juke) / 1000u);
     played = played > juke->run.lead ? played - juke->run.lead : 0;     /* not samples */
+    played = file_samples(juke, played);
     uint32_t read = juke->sound_at - juke->sound_from;
     return juke->sound_from + (played < read ? played : read);
 }
@@ -627,6 +835,15 @@ static bool tick(void *ctx, uint32_t now)
     nesp_juke_t *juke = ctx;
     bool soon = false;
     juke->now = now;
+    if (juke->sound_period != 0 && juke->link->region == NESP_REGION_PAL
+        && (juke->pal == NULL || juke->pal->period != juke->sound_period)) {
+        resample_ready(juke);       /* before its run, which cannot wait for it */
+    }
+    if (juke->sound == S_ARMED && juke->link->region == NESP_REGION_PAL && juke->pal != NULL
+        && juke->pal->period == juke->sound_period
+        && !(juke->pal->primed && juke->pal->primed_from == juke->sound_at)) {
+        resample_prime(juke);       /* and its first samples, likewise */
+    }
     if (juke->sound_fresh) {
         juke->sound_fresh = false;
         juke->sound_began = now;    /* RAW's tick, which sent them, was this one */
@@ -907,6 +1124,10 @@ static void deactivate(void *ctx)
     nesp_juke_t *juke = ctx;
     juke->state = NESP_PLAYER_STOPPED;
     rewind_track(juke);
+    if (juke->pal != NULL) {
+        juke->hal->release(juke->hal->ctx, juke->pal);
+        juke->pal = NULL;
+    }
     if (juke->hal->show != NULL) {
         juke->hal->show(juke->hal->ctx, 0, "");
         juke->hal->show(juke->hal->ctx, 1, "");

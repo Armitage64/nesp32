@@ -91,7 +91,18 @@ typedef struct {
     uint32_t noise;         /* bytes that were part of no request */
     uint32_t turnaround_us; /* the port's time to answer the last request */
     uint32_t turnaround_max_us;
+    uint32_t hunts;         /* times the clock was changed for the other (nesp_link_gap) */
 } nesp_counters_t;
+
+/* The hunt for the console's clock (nesp_link_gap). At least this many
+ * bytes between two quiet lines, and no good request in them, is a miss:
+ * the console's controller read comes through as a byte or two a frame,
+ * and the shortest request is five. */
+#define NESP_HUNT_BYTES 4
+/* Misses in a row before the clock is changed, once a request has been
+ * good at it: a request lost on the line now and then is not a console
+ * of the other region. Before that, one. */
+#define NESP_HUNT_MISSES 8
 
 typedef struct {
     nesp_slot_t slots[NESP_SERVICES_MAX];
@@ -103,6 +114,14 @@ typedef struct {
     /* Where in rx the line last went quiet (nesp_link_gap): bytes before it
      * and bytes after it are never one short request. SIZE_MAX if none. */
     size_t gap_at;
+    /* The console's clock (NESP_REGION_*): the one its requests are heard
+     * at. Its rate is the port's to set (nesp_link_baud). */
+    uint8_t region;
+    bool settled;           /* a good request has come at it */
+    bool hunting;           /* the line is at the link's own rate: misses are the clock's */
+    uint8_t misses;         /* in a row */
+    uint32_t burst;         /* bytes fed since the line last went quiet */
+    bool burst_good;        /* and a good request among them */
     nesp_counters_t counters;
 } nesp_link_t;
 
@@ -131,8 +150,35 @@ uint8_t nesp_link_hello(nesp_link_t *link, const uint8_t *ids, uint8_t count,
  * made whole, CRC and all, by the first byte of the console's next
  * request, as often as one time in 256 where its lost byte was 0: what is
  * held when the line goes quiet is not let begin a short request that
- * ends after it. */
-void nesp_link_gap(nesp_link_t *link);
+ * ends after it.
+ *
+ * It is also where the console's clock is found (docs/PAL.md). An NTSC
+ * console's rate and a PAL one's are 7.6% apart, so a request at the other
+ * rate never passes its CRC: bytes that came since the line last went
+ * quiet with no good request in them are a miss, and enough misses in a
+ * row (NESP_HUNT_*) change the clock for the other. True if it changed:
+ * the port then sets its UART's rate again and drops whatever it holds
+ * that it has not fed, which was heard at the old one. Calling it again
+ * with nothing fed since does nothing more. */
+bool nesp_link_gap(nesp_link_t *link);
+
+/* The clock to start at, the one last settled on: not settled until a
+ * request is good at it. */
+void nesp_link_set_region(nesp_link_t *link, uint8_t region);
+
+/* The port has set the line's rate, in the console's cycles a bit. The
+ * clock is hunted only at the link's own, NESP_PERIOD: at another, set by
+ * a service (PEER's RATE), what is not heard is that rate's to answer for,
+ * and the service that set it puts it back. */
+void nesp_link_line_period(nesp_link_t *link, uint8_t period);
+
+/* The console's CPU clock, in Hz, and a rate in cycles a bit at it. */
+uint32_t nesp_link_cpu_hz(const nesp_link_t *link);
+uint32_t nesp_link_baud(const nesp_link_t *link, uint8_t period);
+
+/* A wait the console counts in its own cycles, built into a ROM as this
+ * many milliseconds of an NTSC console's: how many it is on this one. */
+uint32_t nesp_link_console_ms(const nesp_link_t *link, uint32_t ms);
 
 /* Give every active service its tick. now_ms is any clock in milliseconds;
  * it may wrap. True if one of them wants another within a couple of

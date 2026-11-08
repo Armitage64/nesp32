@@ -19,6 +19,9 @@ Time is in CPU cycles; a dot is a third of one. Dots are counted from the
 vblank, which is taken to start at dot 0 of scanline 241, so scanline n of
 the picture starts (21 + n) * 341 dots later.
 
+pal = True makes it a PAL console (docs/PAL.md): a dot is 1/3.2 of a cycle,
+the vblank is 70 lines, and a frame is 312 lines, 33247.5 cycles.
+
 Loops that only pass time are skipped rather than stepped, with the cycles
 and the counts they would have used: main_wait until the next vblank, the
 split's two waits on PPUSTATUS, and its delay loop. skip_waits = False
@@ -37,6 +40,9 @@ DOTS_PER_LINE = 341
 VBLANK_LINES = 20
 FIRST_LINE = VBLANK_LINES + 1   # scanlines from the vblank to the picture's first
 VBLANK_CYCLES = VBLANK_LINES * DOTS_PER_LINE / 3    # 2273: PPU writes must be over
+PAL_DOTS_PER_CYCLE = 3.2
+PAL_VBLANK_LINES = 70
+PAL_FRAME_CYCLES = 312 * DOTS_PER_LINE / PAL_DOTS_PER_CYCLE    # 33247.5
 PRG_START = 0x8000
 PRG_SIZE = 0x8000
 BANK_SIZE = 0x4000              # of PRG, as the header counts it
@@ -109,7 +115,7 @@ class Frame:
 
 
 class Console:
-    def __init__(self, rom_path, labels_path, skip_waits=True, nmi_delay=0):
+    def __init__(self, rom_path, labels_path, skip_waits=True, nmi_delay=0, pal=False):
         with open(rom_path, "rb") as handle:
             rom = handle.read()
         self.labels = load_labels(labels_path)
@@ -123,6 +129,11 @@ class Console:
             self.memory[PRG_START + offset] = byte
         self.skip_waits = skip_waits
         self.nmi_delay = nmi_delay
+        self.frame_cycles = PAL_FRAME_CYCLES if pal else FRAME_CYCLES
+        self.dots_per_cycle = PAL_DOTS_PER_CYCLE if pal else 3
+        vblank_lines = PAL_VBLANK_LINES if pal else VBLANK_LINES
+        self.first_line = vblank_lines + 1
+        self.vblank_cycles = vblank_lines * DOTS_PER_LINE / self.dots_per_cycle
         self.vram = bytearray(0x4000)
         self.oam = bytearray(256)
         self.ctrl = self.mask = 0
@@ -133,7 +144,7 @@ class Console:
         self._strobe = 0
         self.frames = []
         self.frame = Frame(0.0)     # the time before the first vblank
-        self.next_vblank = FRAME_CYCLES
+        self.next_vblank = self.frame_cycles
         self.in_nmi = False
         self.on_line = None         # called at link_line; True makes it fail
         # The link ROM's serial line (wire.py): the level of D0 at a cycle,
@@ -168,10 +179,10 @@ class Console:
 
     def _dots(self, cycle):
         """Dots from this frame's vblank to a cycle."""
-        return (cycle - self.frame.start) * 3
+        return (cycle - self.frame.start) * self.dots_per_cycle
 
     def _picture_began(self, cycle):
-        return self._dots(cycle) >= FIRST_LINE * DOTS_PER_LINE
+        return self._dots(cycle) >= self.first_line * DOTS_PER_LINE
 
     def _hit_cycle(self):
         """When sprite 0 is hit in this frame, or None if it is not."""
@@ -186,11 +197,11 @@ class Console:
         header = self.frame.header if self.frame.header is not None else self.t
         if not self.background_pixel(header, x, line):
             return None
-        return self.frame.start + ((FIRST_LINE + line) * DOTS_PER_LINE + x + 2) / 3
+        return self.frame.start + ((self.first_line + line) * DOTS_PER_LINE + x + 2) / self.dots_per_cycle
 
     def _hit_clears(self):
         """The pre-render line of the next frame, where the hit flag falls."""
-        return self.next_vblank + VBLANK_CYCLES
+        return self.next_vblank + self.vblank_cycles
 
     # --- PPU registers ---------------------------------------------------------
 
@@ -209,13 +220,13 @@ class Console:
     def _read_status(self, address):
         cycle = self.now + 3
         value = 0
-        if self.vblank_unread and cycle < self.frame.start + VBLANK_CYCLES:
+        if self.vblank_unread and cycle < self.frame.start + self.vblank_cycles:
             value |= VBLANK_FLAG
         self.vblank_unread = False
         # The hit of the frame before stands through this frame's vblank.
         previous = self.frames[-1] if self.frames else None
         if (previous is not None and previous.hit_at is not None
-                and cycle < self.frame.start + VBLANK_CYCLES):
+                and cycle < self.frame.start + self.vblank_cycles):
             value |= HIT_FLAG
         hit = self._hit_cycle()
         if hit is not None and cycle >= hit:
@@ -243,7 +254,7 @@ class Console:
             if not self.in_nmi and self._picture_began(cycle):
                 dots = int(self._dots(cycle))
                 self.frame.split = self.v
-                self.frame.split_line = dots // DOTS_PER_LINE - FIRST_LINE
+                self.frame.split_line = dots // DOTS_PER_LINE - self.first_line
                 self.frame.split_dot = dots % DOTS_PER_LINE
                 self.frame.top = self.word("top")
                 self.frame.fine = self.byte("fine")
@@ -420,7 +431,7 @@ class Console:
         self.frame.lines = self.window(self.frame)  # before the next NMI draws
         self.frames.append(self.frame)
         self.frame = Frame(self.next_vblank)
-        self.next_vblank += FRAME_CYCLES
+        self.next_vblank += self.frame_cycles
         self.vblank_unread = True
         if not self.ctrl & PPUCTRL_NMI:
             return
@@ -465,7 +476,7 @@ class Console:
             previous = self.frames[-1] if self.frames else None
             if previous is None or previous.hit_at is None:
                 return False
-            return self._skip_looks(self.frame.start + VBLANK_CYCLES)
+            return self._skip_looks(self.frame.start + self.vblank_cycles)
         if code == WAIT_HIT:
             hit = self._hit_cycle()
             return hit is not None and self._skip_looks(hit)

@@ -1,8 +1,11 @@
-# PAL consoles: the plan
+# PAL consoles
 
-**Status: not started, as of 2026-11-08.** Nothing here has been tried on
-a PAL console. This replaces the plans of 2026-10-16 and of earlier on
-2026-11-08.
+**Status, 2026-11-08: PAL consoles are supported**, and every program on
+the cartridge runs on the MiSTer's PAL setting. Not yet merged: the work is
+on `pal-firmware` (pushed, no pull request) and `pal-pcm` (on top of it,
+not pushed). Nothing has been tried on a real PAL console. What remains is
+at the end: the netplay games on two PAL consoles, the simulators, a real
+console, and the merge.
 
 A PAL NES's CPU runs at 1662607 Hz, where an NTSC one runs at 1789773, and
 its frame is 312 lines, 50 a second, where an NTSC one is 262, 60 a
@@ -15,256 +18,243 @@ nesp32's own programs and the netplay games alike, runs on a PAL console
 as it is built for NTSC. Where that makes a program run slower, as a game
 or a song played at 50 frames a second in place of 60, that is accepted.
 Where something would need a ROM to know its region, it is left as it is
-and written down here as a known difference, not fixed.
+and listed under "Known differences", not fixed.
+
+One exception was made: NESpedia's split (below), changed so that it works
+on both clocks without knowing which it has.
 
 So a PAL console plays the netplay builds of the US releases (Dr. Mario,
 Tetris, Contra, Bubble Bobble, Jackal, TMNT II) at 5/6 of their speed,
 their music 5/6 of its tempo and about 1.3 semitones flat: as any US game
 plays on a PAL console from a flash cart. Contra Force's faster 1P ROM
-does not talk to the nesp32, and is no different.
+does not talk to the nesp32, and is no different. Family BASIC is a
+Famicom program, typed on through the nesp32 in place of the Famicom's
+keyboard, so it is no different either.
 
-Not in it:
+Games made from PAL releases (Contra's is *Probotector*, another program)
+are work for later, and on their own.
 
-- **Family BASIC**, whose keyboard goes in the Famicom's expansion port,
-  which a PAL NES does not have.
-- **Games made from PAL releases** (Contra's is *Probotector*, another
-  program): work for later, and on their own.
-
-## Why it is less than it looks
+## Why the firmware is enough
 
 The link's rate is a whole number of the console's CPU cycles a bit
 (`PERIOD` in [`proto/nesp.toml`](../proto/nesp.toml), and 14 for a PEER
 session's faster line), and the console's routines in [`nes/lib`](../nes/lib)
 count those cycles. On a PAL CPU the same code, unchanged, sends and hears
 21 cycles a bit; that is 79172 baud there, where it is 85227 on NTSC.
-Nothing on the console has to know.
+Nothing on the console has to know. The nesp32 is what turns cycles into
+a baud rate, and it did that from one constant, `NESP_CPU_HZ`: the work
+was the nesp32 learning which clock the console has, and using that.
 
-The nesp32 is what turns cycles into a baud rate, and it does it from one
-constant, `NESP_CPU_HZ`:
+## What was built
 
-- `firmware/main/link.c`, the link's rate (`NESP_BAUD` at the start, and
-  `link_line_rate`, which PEER's RATE and RAW's runs set)
-- `firmware/components/nesp_services/tuner.c` (`BAUD`), the radio's rates
-- `firmware/components/nesp_services/juke.c`, a sound's rate and its
-  samples a second
-- `firmware/components/nesp_services/raw.c`, through the HAL's
-  `line_rate`, which comes back to `link.c`
+### The region, heard from the line (`pal-firmware`)
 
-So the core of it is the nesp32 learning which clock the console has, and
-using that in place of the constant.
+- **The hunt** (`nesp_link_gap` in `firmware/components/nesp_core`, and
+  `link.c`). The two rates are 7.6% apart, so a request at the other one
+  never passes its CRC. Four bytes or more between two quiet lines with
+  no good request in them are a miss; the controller read is one or two
+  a frame. One miss changes the clock until a request has been good at
+  it, eight in a row after that. The link task changes the UART as soon as
+  the line goes quiet after a miss, so the console's next try, a frame
+  later, is heard. Misses count only while the line is at the link's own
+  rate (below, "Lessons").
+- **Remembered.** The clock settled on is kept in flash (`radio.c`,
+  setting `region`) and the UART opens at it, so a PAL console is usually
+  heard at its first request. Checked: after a reboot the log says "PAL
+  console, 0 hunts".
+- **Every rate from it.** `NESP_CPU_HZ` gave way to `nesp_link_baud` and
+  `nesp_link_cpu_hz` in `link.c`, `tuner.c`, `juke.c` and `raw.c`: the
+  link, RAW's runs, PEER's faster line, NESradio's and the jukebox's
+  sample rates.
+- **RAW's first byte.** A console counts its 150 ms settle in cycles, so
+  on PAL it ends at about 161 ms; the nesp32's first byte waits as much
+  longer, 189 ms in place of 175 (`nesp_link_console_ms`), and the margin
+  is the 25 ms it was.
+- **PEER.** A PAL console's nesp32 sets bit 7 of the version in its
+  greeting (`PEER_PAL`); an NTSC one's greeting is as before, so older
+  firmware still plays newer. Greetings that differ are refused: two PAL
+  consoles play, a PAL one and an NTSC one do not (decided 2026-11-08:
+  the NTSC console would stand still one frame in six).
+- **The screen** says "PAL:" in place of "NES:", and the log the region
+  and its hunts.
+- **Tests:** `tests/test_region.py`, with a model of a UART hearing bytes
+  sent at the other clock's rate.
 
-## How the nesp32 learns the clock: from the line
+### NESpedia's split (`pal-firmware`)
 
-A ROM cannot be asked to say its region, so the nesp32 finds it out: the
-rate a request is heard at is the region.
+The article screen's split waited 969 cycles from a sprite 0 hit on the
+title, eight lines up. On PAL a cycle is 3.2 dots in place of 3, and the
+write landed halfway along the article's first line, which showed torn.
+Sprite 0 is now on the header's last line, black over a pixel put there
+for it, and the write comes 39 cycles after the hit: in the hblank on
+either console (`apps/wiki/tools/gen_screen.py` works out where, for both
+clocks). Its test console can be a PAL one, and `tests/test_split.py` runs
+on both.
 
-- **The nesp32 listens at one rate.** 85227 and 79172 baud are 7.6% apart,
-  so a request at the other rate is past what a UART takes, and never
-  passes its CRC.
-- **Heard, but nothing in it, it tries the other.** Bytes came, the line
-  went quiet for `LINK_GAP_US`, and no frame in them was good: the nesp32
-  changes to the other clock, and the console's next try is heard. A
-  framing error is not the sign: `link.c` already sees one at every
-  controller read (`hear`), at either rate.
-- **A good frame settles it.** From then the nesp32 keeps that clock, and
-  hunts again only once the line has been quiet long enough for the
-  console to have been turned off or changed.
-- **It remembers.** The clock last settled on is kept in the nesp32's
-  flash, so a PAL console's first request is usually heard the first time.
-- **The nesp32's screen says PAL** when that is the clock it settled on.
+### Sampled sound (`pal-pcm`)
 
-A Dendy (below) is 0.9% from NTSC, near enough for the link to work at the
-NTSC rate, so this takes it for NTSC.
+A `.pcm` track's samples are at an NTSC console's rate for its period, and
+the console plays each as it arrives, so on PAL a sound was 7.6% slow and
+low. The period cannot change (the console's receivers are built for
+seven), so the nesp32 resamples: `juke.c` turns each file byte into its
+level, puts it through the DAC's curve and a windowed-sinc filter to the
+PAL rate, and back into a wire byte with bit 7 set. The filter is the
+tuner's, moved into `resample.c` for both. A sound's length on the screen
+is the file's own, and one left and taken up again goes on from its place
+in the file. An NTSC console gets the file's bytes as they are. At 7 cycles
+a bit a PAL console now gets 21593 samples a second against 23244, so
+sound above 10.8 kHz, in place of 11.6, is filtered out. Tests:
+`tests/test_juke.py`, a tone at its own pitch and length on PAL.
 
-Kept in reserve, if the hunt proves unreliable on hardware: the RMT can
-read the RX pin beside the UART and time the request marker's low run (its
-start bit and bit 0), about 23.5 µs on NTSC and 25.3 on PAL. Exact, but new
-code on each of the three boards. A setting on the nesp32 is trivial and
-easy to get wrong; worth having only as an override of the hunt.
+### The rest
 
-The first plan's other ways, a region flag in HELLO and a hello at a rate
-shared by both clocks, each change every ROM, and are out under the rule.
+- `host/peer_player.py --pal`, to be a PAL console's second player.
+- The README, the user guide and the product page say NTSC and PAL are
+  both supported, with the differences.
 
-## What changes
+## What was checked
 
-In the order to do them.
+On a StickS3 and the MiSTer's NES core through SNAC, 2026-11-08:
 
-### 1. The firmware: about 2 days
+- the throughput test in NTSC, and in PAL: one hunt, then the link held
+  at every rate up to 6 cycles a bit both ways (shown as 298296 baud,
+  NTSC's figure; 277101 at the PAL clock). So the core does run its CPU at
+  the PAL clock.
+- every program on the cartridge in PAL; NESpedia again after its fix, in
+  both regions; NESradio with its ring never dry
+- sampled sound at 7 cycles a bit, at its speed and pitch, in both regions
+- the hunt from PAL back to NTSC, and the region kept over a reboot
 
-- The clock per session in place of `NESP_CPU_HZ` in `link.c`, `tuner.c`,
-  `juke.c` and `raw.c`. `NESP_CPU_HZ` stays for what is built into a ROM.
-- The hunt, the settling and the remembering, above, in `link.c` and
-  `nesp_core` (which counts what was heard and what was good), with host
-  tests of each.
-- The region on the nesp32's screen.
-- **RAW's start on PAL.** The console's settle (`SOUND_SETTLE` in the
-  jukebox and NESradio, `SETTLE_LOOPS` in the throughput test) is cycles
-  worked out from `NESP_CPU_HZ` when the ROM is built, so on PAL it ends
-  at about 161 ms in place of 150, and the nesp32's first byte at
-  `RAW_START_MS`, 175, leaves 14 ms where it left 25. The nesp32 scales
-  `RAW_SETTLE_MS` and `RAW_START_MS` by the clock on PAL, and the margin
-  is what it was.
-- **The region in PEER's meeting.** The two nesp32s already tell each
-  other the game and its version when they meet (`peer.c`); each tells its
-  console's region too, and a session between regions is let in or
-  refused as step 4 decides.
+And on the host: the root suite and every app's (the six netplay games',
+the jukebox's, NESradio's, NESpedia's), and all three firmwares building
+with no warnings.
 
-### 2. The simulators: about a day
+## Lessons
 
-Each wants a region: a PAL frame of 33247.5 cycles, a vblank of 70 lines
-(about 7459 cycles, where NTSC's is 2273), and a link at the PAL rate. The
-NTSC frame is written in:
+- **Hunt only at the link's own rate.** The first build counted misses
+  at PEER's faster line too. Contra's `test_a_line_no_good_at_its_rate_
+  goes_back_to_the_links` loses every reply at 14 cycles a bit, so the
+  console goes back to 21 before its nesp32: the nesp32 heard noise,
+  changed to PAL, and the session never came back. At another rate, what
+  is not heard is that rate's, and the service that set it puts it back.
+- **At 7 and 8 cycles a bit nothing may wait after the lead.** The
+  console's tracking receiver settles on the lead's $FF and then goes by
+  the clock. The first PAL sound popped and was left: the run's first
+  read worked out the filter (a few thousand sines) and read the file
+  three times, with only the lead's 0.34 ms queued. The filter is now
+  worked out when the track opens, and the first 512 samples are made in
+  tick once the console has been told GO. Anything a run needs at its
+  start is made before it.
+- **Cycle-counted waits move on PAL.** A raster effect timed in CPU
+  cycles is 3.2 dots a cycle there, not 3: keep a timed wait short, close
+  to the event it counts from (NESpedia). The netplay games are to be
+  looked at for the same (below).
+- **The MiSTer's PAL setting is a real PAL clock**, and enough to test
+  all but a real console's voltages and sound chip.
+- **One stick, one file.** A hitch at the start of `01 Diablo - Town.pcm`,
+  on a StickS3 only, in both regions and on main too, was a damaged copy
+  of the file on that stick: copied again, it played. Two changes made
+  for it before that was found were taken out. Check the file, and the
+  same firmware on both boards, before the code.
+- **Watch long suites by test.** The six netplay suites take 12 to 23
+  minutes each; the first run, quiet behind `tail`, sat an hour on the
+  Contra failure above. Run them verbose to a log.
+- **Figures worked out when a ROM is built are NTSC's** (the throughput
+  test's rates), and read 7.6% high on PAL.
 
-- `tests/console.py` (`FRAME_CYCLES`), the shared console of the setup
-  ROM's and the services' tests
-- `apps/jukebox/tests/nes_harness.py` (`NTSC_FRAME_CYCLES`), which
-  `apps/npr/tests/radio.py` uses too
-- `apps/throughput/tests/thru_sim.py` and `apps/throughput/tools/gen_rates.py`
-  (`FRAME_CYCLES`)
-- each netplay game's `tests/console.py` (`FRAME_CYCLES`), and its
-  `tests/wire.py` and `tests/netplay.py`, which take the link's rate and
-  the network's times from `NESP_CPU_HZ`
+Kept in reserve, if the hunt ever proves unreliable on hardware: the RMT
+can time the request marker's low run on the RX pin beside the UART
+(about 23.5 µs on NTSC, 25.3 on PAL). A setting on the nesp32 would only
+be worth having as an override.
 
-Then the suites can run both, and the hunt can be tested against a console
-that speaks either.
+## What remains
 
-### 3. The nesp32's own programs: about 2 days
+### 1. The netplay games on two PAL consoles: a few days each
 
-**Setup, NESpedia, weather, nes-radar and Bluesky** only show things, so
-with the rate right they should work as they are. Times they count in
-frames run 20% longer (nes-radar's `POLL_FRAMES`, `ANSWER_FRAMES` and
-`RECALL_FRAMES`, in `third_party/nes-radar/nes_radar/nes/radar_link.inc`,
-and their like in the others); a wait the nesp32's side also times should
-be checked against it. `NESP_TIMEOUT`'s passes of 4.15 ms become 4.47 ms;
-the NMI ends a wait in any case. Chat ([its plan](../apps/chat/PLAN.md))
-should be written to work on either from the start.
+The firmware lets two PAL consoles play; no game has been played so. Both
+have the same clock, and the lockstep is as on NTSC. Some of it is easier:
+a PAL frame is 33247 cycles where an NTSC one is 29780, more than Contra's
+exchange of about 3100, so the frames a session overruns should mostly
+go; and a tick is 20 ms in place of 16.7, so the same input delay covers
+more of the network. To look at, in each of the six:
 
-**NESradio.** The two qualities, 23244 and 11622 samples a second, become
-about 21540 and 10770 on PAL. The tuner's decoder resamples to whatever
-rate it is told, so this is giving it the PAL one, and checking that the
-ring still never runs dry and that the news's turns of
-`TUNER_NEWS_TURN_MS` still fit.
-
-**The jukebox.** The console plays one frame of a track at each vblank,
-and that stays so.
-
-- **Pitch, in the nesp32.** Every period of an NTSC rip is 7.6% flat on a
-  PAL console. The nesp32 rewrites them for the clock it settled on.
-  `vgm.c` already does this one way, a PAL rip's periods for an NTSC
-  console (`add_pal`); this makes the clock it converts to the session's,
-  so that a PAL rip on a PAL console then needs nothing.
-- **Tempo, in the nesp32.** An NTSC rip at one frame a vblank plays at
-  5/6 of its speed. The nesp32 retimes the stream from 60 frames a second
-  to 50, merging register writes across frames, and a PAL rip again needs
-  nothing.
-- **Sampled sound, in the nesp32.** A sound's rate is a period in cycles,
-  so on PAL a `.pcm` track plays 7.6% slow and low. The nesp32 resamples
-  it to the rate the PAL console will play.
-- **The clock on the screen: a known difference.** The console counts
-  `FRAMES_PER_SECOND = 60` (`apps/jukebox/nes/ui.inc`) of the stream's
-  frames to a second, and on PAL it plays 50, so its clock runs at 5/6.
-  The length the nesp32 puts in a track's intro is its own, and right.
-
-**The throughput test: a known difference.** The rates it shows are worked
-out for NTSC when it is built (`apps/throughput/tools/rates.py`), so on
-PAL they read 7.6% high. Which rates pass is what it is for, and that it
-shows rightly.
-
-A PAL vblank is three times as long as an NTSC one, so nothing that fits
-an NTSC NMI will stop fitting.
-
-### 4. The netplay games: a few days each
-
-Each game, as it is, on two PAL consoles, and then on one of each.
-
-**Two PAL consoles.** Both have the same clock, and the lockstep is as it
-is on NTSC. Some of it is easier: a PAL frame is 33247 cycles where an
-NTSC one is 29780, and the 3467 more are more than Contra's exchange
-(about 3100), so the frames a session overruns should mostly go; and a
-tick is 20 ms in place of 16.7, so the same input delay takes more of the
-network. To look at, in each game:
-
-- **Splits timed by counting cycles.** A PAL line is about 106.6 CPU
-  cycles where an NTSC one is 113.7. A split placed by sprite 0 or the
-  MMC3's line counter is where it was; one placed by a loop of counted
-  cycles after it comes some lines off.
+- **Splits timed by counting cycles,** as NESpedia's was. A PAL line is
+  about 106.6 CPU cycles where an NTSC one is 113.7. A split placed by
+  sprite 0 or the MMC3's line counter is where it was; one placed by a
+  loop of counted cycles after it comes some lines off.
 - **The drums.** PAL's sample channel has another table of rates. What
   the [Phantom Right](PHANTOM-RIGHT.md)'s fix (Dr. Mario) and the real
   NES mishearing its nesp32 while the drums play (Contra's
   [Netplay.md](../apps/contra/docs/Netplay.md)) depend on is where a
   sample's fetches land, worked out on NTSC.
 
-**One of each.** The game stays one game: a tick runs only with both
-players' buttons, and each build already took out what made a frame's
-result depend on its cycles (Contra's random number, stirred in the idle
-loop). Each game's tests already play the same game with one console's
-frames shorter (0.93 in Contra and Jackal, 0.8 in Bubble Bobble). What has
-not been tried:
+A game broken on PAL in a way only its ROM could mend is refused by PEER
+on PAL. It needs two PAL consoles: the MiSTer and another, or the MiSTer
+against `host/peer_player.py --pal`, which keeps no game of its own but
+plays the session.
 
-- a PAL frame, 1.116 of an NTSC one, longer than any tested (1.03)
-- a clock 17% apart for a whole session: `drift` in each game's
-  `test_lockstep.py` is 0.05%, a crystal's
-- how the input delay follows a console that is always behind
+### 2. The simulators: about a day
 
-If the game holds, the NTSC console stalls about one frame in six: its
-picture stands still for a frame while its music goes on, and the game on
-both runs at 50 ticks a second.
+Only NESpedia's test console can be a PAL one (`pal=True`). Each of these
+wants the same: a frame of 33247.5 cycles, a vblank of 70 lines (about
+7459 cycles, where NTSC's is 2273), and a link at the PAL rate.
 
-**What is decided from it.** For each game, from the simulator and then
-the MiSTer:
+- each netplay game's `tests/console.py` (`FRAME_CYCLES`), and its
+  `tests/wire.py` and `tests/netplay.py`, which take the link's rate and
+  the network's times from `NESP_CPU_HZ`: first, for the netplay games
+  above, to try each in the simulator before the MiSTer
+- `tests/console.py`, the setup ROM's and the services'
+- `apps/jukebox/tests/nes_harness.py` (`NTSC_FRAME_CYCLES`), which
+  `apps/npr/tests/radio.py` uses too
+- `apps/throughput/tests/thru_sim.py` and `apps/throughput/tools/gen_rates.py`
 
-- two PAL consoles: let in, unless a split or the drums break the game in
-  a way only the ROM could mend, and then PEER refuses that game on PAL
-- one of each: let in if the game stays one game, refused at the meeting
-  (step 1) if not
+### 3. A real PAL console: whenever there is one
 
-The faster line (PEER's RATE, 14 cycles a bit) is 118758 baud on PAL, and
-works as the rest of the link does once the clock is the session's.
+For what the MiSTer cannot say. [The wiring](WIRING.md) was worked out
+from an NTSC NES-001's parts, and a PAL console's levels have not been
+checked: whether D0 still goes into a 74HC368 at 5 V, and how OUT0
+behaves, with the StickS3 hat's link and the generic S3's three
+resistors. The drums' timing on a real sample channel is the other thing.
+A US cartridge does not start on a PAL NES, so the games are played from
+a flash cart.
 
-### 5. The hardware: the MiSTer now, a PAL console later
+### 4. Smaller
 
-There is no need to wait for a PAL console to start. The MiSTer's NES core
-has a region setting, and a StickS3 already runs on it through SNAC:
+- **Family BASIC** has not been tried on PAL.
+- **`host/serial_host.py`**, a computer standing in for a nesp32 over a
+  USB serial adapter, runs at the NTSC rate only.
+- **Chat** ([its plan](../apps/chat/PLAN.md)) is to be written to work on
+  either from the start.
+- **Times the ROMs count in frames** run 20% longer on PAL (nes-radar's
+  `POLL_FRAMES`, `ANSWER_FRAMES` and `RECALL_FRAMES` among them). All the
+  programs worked; a wait the nesp32 also times would be the one to
+  check if one ever does not.
 
-- **First, the throughput test** on the core set to PAL. One run says
-  whether the core changes the CPU's clock as a PAL console's, and whether
-  every rate the link uses holds at the PAL clock, sound's 7 cycles a bit
-  among them.
-- **Then each program** of steps 3 and 4, as each had on NTSC. A session
-  of one of each needs a second console: the MiSTer against a real NTSC
-  NES.
+### 5. The merge
 
-A real PAL console is then for what the MiSTer cannot say. [The
-wiring](WIRING.md) was worked out from an NTSC NES-001's parts, and the PAL
-consoles' levels have not been checked: whether D0 still goes into a
-74HC368 at 5 V, and how OUT0 behaves, with the StickS3 hat's link and the
-generic S3's three resistors. The drums' timing on the sample channel is
-also the real console's to say. A US cartridge does not start on a PAL
-NES, so the games are played from a flash cart.
-
-## In all
-
-About a week for the firmware, the simulators and the nesp32's own
-programs, and a few days for each netplay game, with the hardware's runs
-on the MiSTer.
+`pal-firmware` and then `pal-pcm`, one pull request or two. The product
+page goes up as soon as `web/` changes on main, but the firmware its
+flash page offers only with a release: merge the documentation with, or
+just before, the release that carries the firmware, or the page says PAL
+works while the firmware it offers does not.
 
 ## Known differences on PAL
 
 All from the ROMs being NTSC's, and kept so:
 
 - the netplay games, and any NTSC game, at 5/6 of their speed, and their
-  music flat
-- in a session of one of each, if let in, the NTSC console's picture
-  standing still one frame in six
+  music flat; and the jukebox's NTSC rips likewise
+- no netplay session between a PAL console and an NTSC one
 - the jukebox's clock on the screen at 5/6
 - the throughput test's rates reading 7.6% high
 - times the ROMs count in frames 20% longer
+- sampled sound filtered at 10.8 kHz in place of 11.6
 
 ## Not in this plan
 
 - **Games for PAL consoles**, from PAL releases: later, and on their own.
 - **The Dendy** and the other Famicom clones of the former Soviet Union
   are a third timing: a CPU at 1773448 Hz and frames of 312 lines, 50 a
-  second. The link takes them for NTSC (above), and the jukebox's tempo
-  is the one thing that would want a third answer. The MiSTer's core has
-  a Dendy setting to try them on.
+  second. The link takes them for NTSC (0.9% apart), so they should work
+  as an NTSC console does but for the jukebox's music, at 5/6. The
+  MiSTer's core has a Dendy setting to try them on.

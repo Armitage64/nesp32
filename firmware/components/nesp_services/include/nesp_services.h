@@ -670,7 +670,44 @@ typedef struct {
     uint8_t lead_left;
 } nesp_raw_t;
 
+/* Sound from one rate to another (resample.c), for the sample channel. */
+#define NESP_RESAMPLE_PHASES 64
+#define NESP_RESAMPLE_TAPS 48
+#define NESP_RESAMPLE_HISTORY 64    /* samples kept: a power of two, and TAPS at least */
+#define NESP_RESAMPLE_ONE 65536u    /* a sample, where parts of one are counted */
+
+typedef struct {
+    uint32_t reach;                 /* samples each side of the middle that the kernel takes */
+    uint32_t step;                  /* samples in for one out, in ONEths */
+    int32_t lag;                    /* from the next sample out back to the newest in, likewise */
+    uint32_t newest;                /* the count of samples in */
+    float history[NESP_RESAMPLE_HISTORY];
+    float kernel[NESP_RESAMPLE_PHASES][NESP_RESAMPLE_TAPS];
+} nesp_resample_t;
+
+/* Start afresh, with nothing before: ratio is the rate out over the rate
+ * in, which the filter's cutoff is from, and step the samples in for each
+ * out, in NESP_RESAMPLE_ONEths. Two figures for one thing, so that each
+ * caller can work out both as exactly as its rates allow. */
+void nesp_resample_init(nesp_resample_t *resample, float ratio, uint32_t step);
+/* Start afresh as init does, with the filter it worked out: init takes a
+ * few thousand sines, and this nothing. */
+void nesp_resample_restart(nesp_resample_t *resample);
+/* One sample in, and then every one it lets out, a take at a time until
+ * there are none. */
+void nesp_resample_put(nesp_resample_t *resample, float sample);
+bool nesp_resample_take(nesp_resample_t *resample, float *out);
+
+/* The sample channel's DAC: what a level (0-127) puts out, and for each of
+ * NESP_DAC_STEPS places evenly from silence to the loudest, the level
+ * nearest it, into level. */
+#define NESP_DAC_LEVELS 128
+#define NESP_DAC_STEPS 1024
+float nesp_dac_out(uint8_t level);
+void nesp_dac_levels(uint8_t *level);
+
 /* JUKE: the jukebox's playlist as a stream of bytes (juke.c). */
+struct nesp_juke_pal;
 #define NESP_JUKE_PENDING 128
 #define NESP_JUKE_INTRO (2 * (3 + NESP_JUKE_TITLE_MAX) + 2 + 5)
 #define NESP_JUKE_NAME 64
@@ -718,6 +755,7 @@ typedef struct {
     bool sound_hushed;              /* enough of them: the console has left it */
     uint32_t sound_ramp;            /* samples a sound that was paused rises over, */
     uint32_t sound_rise;            /* and how many of them have gone */
+    struct nesp_juke_pal *pal;      /* its resampler for a PAL console (juke.c); NULL: none yet */
     uint32_t now;                   /* tick's last */
     nesp_run_t run;
     /* A track's names for the console's menu (NAME): the one it asked for,
@@ -742,7 +780,8 @@ typedef struct {
 
 /* PEER: two consoles playing one game, each with a nesp32 (peer.c). What
  * two nesp32s say first, each to the other: who they are, the version of
- * what follows, and the application on their console with its version. */
+ * what follows (with NESP_PEER_PAL for a PAL console), and the application
+ * on their console with its version. */
 #define NESP_PEER_GREETING (4 + 1 + NESP_APP_ID + 1)
 #define NESP_PEER_HELD 64
 #define NESP_PEER_PADS 10           /* changes in a console's buttons kept for a line of the log */

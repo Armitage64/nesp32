@@ -186,10 +186,12 @@ void draw()
 
     line(0, "NESP32 " NESP_FIRMWARE_TEXT);
     if (console) {
-        std::snprintf(text, sizeof(text), "NES: %s v%u", app, version);
+        // A PAL console says so in place of "NES".
+        const char *kind = stats.region == NESP_REGION_PAL ? "PAL" : "NES";
+        std::snprintf(text, sizeof(text), "%s: %s v%u", kind, app, version);
         for (const auto &known : APP_NAMES) {
             if (std::strcmp(app, known.id) == 0) {
-                std::snprintf(text, sizeof(text), "NES: %s", known.name);
+                std::snprintf(text, sizeof(text), "%s: %s", kind, known.name);
             }
         }
     } else {
@@ -268,7 +270,7 @@ extern "C" void app_main(void)
     // The UART first, before anything slow, so that TX rests at mark. The
     // files next: a ROM that asks for them is not answered until they are
     // there to be listed.
-    link_open();
+    link_open(radio_region());
     store_start(converting);
     link_start(radio_hal());
     radio_start();
@@ -320,9 +322,12 @@ extern "C" void app_main(void)
             report_at = now;
             link_stats_t stats;
             link_stats(&stats);
-            ESP_LOGI(TAG, "%lu requests, %lu again, %lu noise; reply %lu us, slowest %lu; "
+            ESP_LOGI(TAG, "%s console, %lu hunts; %lu requests, %lu again, %lu noise; "
+                     "reply %lu us, slowest %lu; "
                      "stack left: link %lu, fetch %lu, conn %lu; free: %u internal, %u PSRAM; "
                      "keyboard %s",
+                     stats.region == NESP_REGION_PAL ? "PAL" : "NTSC",
+                     (unsigned long)stats.hunts,
                      (unsigned long)stats.requests, (unsigned long)stats.repeats,
                      (unsigned long)stats.noise, (unsigned long)stats.turnaround_us,
                      (unsigned long)stats.turnaround_max_us,
@@ -366,6 +371,13 @@ extern "C" void app_main(void)
             }
         }
         if (now - screen_at >= SCREEN_MS) {
+            // The console's clock, once a request has been heard at it, is
+            // the one to start at next time.
+            link_stats_t stats;
+            link_stats(&stats);
+            if (stats.settled) {
+                radio_keep_region(stats.region);
+            }
             screen_at = now;
             turn(false);
             draw();

@@ -163,7 +163,11 @@ static void drop(nesp_peer_t *peer)
 static void greeting(const nesp_peer_t *peer, uint8_t *out)
 {
     memcpy(out, greeting_mark, sizeof(greeting_mark));
-    out[4] = NESP_PEER_VERSION;
+    /* A PAL console runs the game at 50 ticks a second, and an NTSC one
+     * at 60: two of a region play, and only two of a region (docs/PAL.md).
+     * An NTSC one's greeting is as it was before there were PAL ones. */
+    out[4] = (uint8_t)(NESP_PEER_VERSION
+                       | (peer->sys->link->region == NESP_REGION_PAL ? NESP_PEER_PAL : 0));
     memcpy(out + 5, peer->sys->app, NESP_APP_ID);
     out[5 + NESP_APP_ID] = peer->sys->app_version;
 }

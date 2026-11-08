@@ -49,12 +49,13 @@
 static const char *TAG = "radio";
 
 typedef enum { ORDER_SCAN, ORDER_JOIN, ORDER_FORGET, ORDER_AIRPORT, ORDER_ZIP,
-               ORDER_SCREEN, ORDER_FAVORITES } order_kind_t;
+               ORDER_SCREEN, ORDER_FAVORITES, ORDER_REGION } order_kind_t;
 #define SETTINGS "nesp32"           /* conn.c's too */
 #define SETTING_AIRPORT "airport"
 #define SETTING_ZIP "zip"
 #define SETTING_FAVORITES "bsky"    /* BSKY's favorites, a nesp_bsky_favorites_t */
 #define SETTING_SCREEN "screen"     /* NESP_SCREEN_UPRIGHT or _FLIPPED */
+#define SETTING_REGION "region"     /* NESP_REGION_*: the console's clock last settled on */
 
 typedef struct {
     order_kind_t kind;
@@ -91,6 +92,7 @@ static bool have_favorites;                 /* under lock */
 /* Which way up the screen is: the build's, until the console chooses. */
 static uint8_t screen = CONFIG_NESP_DISPLAY_FLIPPED ? NESP_SCREEN_FLIPPED
                                                     : NESP_SCREEN_UPRIGHT;  /* under lock */
+static uint8_t region = NESP_REGION_NTSC;   /* under lock */
 static nesp_wifi_t wifi;                    /* under lock */
 static uint8_t scan_state = NESP_SCAN_IDLE; /* under lock */
 static uint8_t scan_count;                  /* under lock */
@@ -551,6 +553,18 @@ static void do_order(order_t *order)
         }
         break;
     }
+    case ORDER_REGION: {
+        nvs_handle_t settings;
+        portENTER_CRITICAL(&lock);
+        uint8_t kept = region;
+        portEXIT_CRITICAL(&lock);
+        if (nvs_open(SETTINGS, NVS_READWRITE, &settings) == ESP_OK) {
+            nvs_set_u8(settings, SETTING_REGION, kept);
+            nvs_commit(settings);
+            nvs_close(settings);
+        }
+        break;
+    }
     case ORDER_ZIP: {
         zip_t kept;
         nvs_handle_t settings;
@@ -690,6 +704,10 @@ void radio_settings(void)
             && (kept == NESP_SCREEN_UPRIGHT || kept == NESP_SCREEN_FLIPPED)) {
             screen = kept;
         }
+        if (nvs_get_u8(settings, SETTING_REGION, &kept) == ESP_OK
+            && (kept == NESP_REGION_NTSC || kept == NESP_REGION_PAL)) {
+            region = kept;
+        }
         nvs_close(settings);
     }
 }
@@ -814,6 +832,26 @@ bool radio_screen_flipped(void)
     bool flipped = screen == NESP_SCREEN_FLIPPED;
     portEXIT_CRITICAL(&lock);
     return flipped;
+}
+
+uint8_t radio_region(void)
+{
+    portENTER_CRITICAL(&lock);
+    uint8_t kept = region;
+    portEXIT_CRITICAL(&lock);
+    return kept;
+}
+
+void radio_keep_region(uint8_t settled)
+{
+    portENTER_CRITICAL(&lock);
+    bool changed = settled != region;
+    region = settled;
+    portEXIT_CRITICAL(&lock);
+    if (changed && orders != NULL) {
+        order_t order = {.kind = ORDER_REGION};
+        xQueueSend(orders, &order, 0);  /* the flash is the worker's to write */
+    }
 }
 
 void radio_set_battery(uint8_t percent)

@@ -7,6 +7,7 @@ nesp32 and the console behind it, for trying a netplay ROM on one NES.
     host/peer_player.py JOIN 192.168.1.23       or meet by address: call the console's nesp32
     host/peer_player.py HOST --by-address       or wait for its call
     host/peer_player.py JOIN K7QF --app CNTR    another game (TMN2 by default), at its version (VERSIONS)
+    host/peer_player.py JOIN K7QF --pal         to a PAL console: two of a region play (docs/PAL.md)
 
 The nesp32 is the firmware's own code (build/libnesp_host, from `make
 host`) on this computer's sockets (peer_net.py), so a room is met at the
@@ -60,7 +61,8 @@ VERSIONS = {"TMN2": 2, "CNTR": 2, "DRMA": 3, "TTRS": 2, "BUBL": 2, "JACK": 2}
 
 WHYS = {p.NESP_MEET_NO_SERVER: "the rendezvous could not be asked",
         p.NESP_MEET_NO_ROOM: "there is no room of that code",
-        p.NESP_MEET_MISMATCH: "the room is another game's, or another version's",
+        p.NESP_MEET_MISMATCH: "the room is another game's, or another version's,"
+                              " or a console of the other region's (--pal)",
         p.NESP_MEET_FULL: "player 2 is already in the room",
         p.NESP_MEET_UNREACHABLE: "the two could not reach each other",
         p.NESP_MEET_GONE: "the room was given up"}
@@ -132,6 +134,9 @@ def main(argv=None):
     parser.add_argument("--version", type=int,
                         help="the game's version, if not the one its builds now say (VERSIONS)")
     parser.add_argument("--play", choices=("copy", "still", "random"), default="copy")
+    parser.add_argument("--pal", action="store_true",
+                        help="be the nesp32 of a PAL console, for one: a PAL console's and an"
+                             " NTSC one's are not let play each other")
     parser.add_argument("--rendezvous", metavar="URL",
                         help="where rooms are met in place of the firmware's own")
     parser.add_argument("--port", type=int,
@@ -144,6 +149,8 @@ def main(argv=None):
         parser.error("this computer is on no network")
 
     stick = nesp.Stick()
+    # Its console is no console, and is never heard: the region is said.
+    stick.region = p.NESP_REGION_PAL if args.pal else p.NESP_REGION_NTSC
     stick.set_saved(b"This computer")
     stick.set_wifi(p.NESP_WIFI_JOINED, rssi=-50, address=address)
     network = peer_net.SocketNetwork(stick, port=args.port)
@@ -167,8 +174,8 @@ def main(argv=None):
     else:
         order, payload = p.NESP_PEER_JOIN, socket.inet_aton(args.where)
     status = p.NESP_PEER_ROOM if room else p.NESP_PEER_STATUS
-    print("%s v%d at %s, as %s" % (args.app.upper(), args.version, socket.inet_ntoa(address),
-                                   "a room" if room else "an address"))
+    print("%s v%d%s at %s, as %s" % (args.app.upper(), args.version, " PAL" if args.pal else "",
+                                     socket.inet_ntoa(address), "a room" if room else "an address"))
 
     player = Player(args.play)
     said = None

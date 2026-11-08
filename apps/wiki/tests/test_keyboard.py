@@ -122,7 +122,9 @@ def test_the_logo_and_the_name_are_the_header(console):
     rows = [header[32 * row:32 * row + 32] for row in range(gen_screen.HEADER_ROWS)]
     used = [row for row, tiles in enumerate(rows) if any(tiles)]
     logo_rows = list(range(gen_screen.LOGO_ROW, gen_screen.LOGO_ROW + gen_screen.LOGO_ROWS))
-    assert used == logo_rows + [gen_screen.TITLE_ROW]
+    # And the last row has sprite 0's mark (test_split.py), and nothing else.
+    assert used == logo_rows + [gen_screen.TITLE_ROW, gen_screen.HEADER_ROWS - 1]
+    assert sum(map(bool, rows[gen_screen.HEADER_ROWS - 1])) == 1
     assert sum(map(bool, rows[gen_screen.LOGO_ROW + 2])) >= 11     # the port and the word
     name = rows[gen_screen.TITLE_ROW]
     assert name[:12] == bytes(12) and name[20:] == bytes(12) and all(name[12:20])    # centered

@@ -11,6 +11,7 @@
 [link]
 PROTOCOL = 1            # what a hello says it speaks
 CPU_HZ = 1789773        # NTSC: 21.477272 MHz / 12
+PAL_CPU_HZ = 1662607    # PAL: 26.601712 MHz / 16. The nesp32 hears which (docs/PAL.md)
 # A rate is a whole number of CPU cycles a bit, so the console's bit-banged
 # routines hit every bit exactly. 21 is 85227 baud: nes-wiki and nes-drmario
 # ran at it on hardware, and nes-throughput's test passed it both
@@ -370,6 +371,10 @@ NONE = 0                # this firmware cannot turn it
 UPRIGHT = 1
 FLIPPED = 2
 
+[enums.REGION]          # the console's clock, as the nesp32 hears it (docs/PAL.md)
+NTSC = 0
+PAL = 1
+
 [enums.EVENT]
 NONE = 0
 BUTTON_A = 1
@@ -513,6 +518,7 @@ TAPE_DATA_MAX = 4096    # the longest data block kept: all of BASIC's memory
 TAPE_PAIRS_MAX = 8      # pairs in one file
 PEER_PORT = 6502        # UDP, on the nesp32 that hosts
 PEER_VERSION = 1        # of what two nesp32s say to each other
+PEER_PAL = 0x80         # in the version a nesp32 greets with, for a PAL console: only another is let in
 PEER_PER_FRAME = 2      # ticks of buttons a TICKS frame may carry, each way
 PEER_GREET_MS = 2000    # how long the other nesp32 has to say what it is
 PEER_CODE = 4           # letters of a room's code

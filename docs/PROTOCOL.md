@@ -23,7 +23,7 @@ writes), which rests at mark.
 
 | | |
 |---|---|
-| Rate | 21 NES CPU cycles a bit, 85227 baud, both ways |
+| Rate | 21 NES CPU cycles a bit, both ways: 85227 baud on an NTSC console, 79172 on a PAL one |
 | Console to nesp32 | 8N1 |
 | nesp32 to console | 8N2: the second stop bit is the console's time to store a byte |
 | CRC | CRC-16/CCITT-FALSE (polynomial `$1021`, start `$FFFF`), high byte first |
@@ -32,6 +32,19 @@ The console bit-bangs both directions by counting CPU cycles
 (`nes/lib/gen_link.py`). Once a frame it also reads its controller, which
 holds OUT0 low for 94 cycles; the nesp32's UART takes that for a byte, and
 the nesp32's decoder passes over it.
+
+**The nesp32 hears which console it has.** The console's routines count
+its own cycles, so the same ROM's rate is a PAL console's on a PAL one,
+7.6% slower, and nothing on the console knows or says so. The two rates
+are too far apart for a UART to hear one at the other, and the nesp32
+finds the console's from that ([`PAL.md`](PAL.md)): bytes of four or more
+between two quiet lines, with no good request in them, are a miss. The
+first miss changes its UART to the other clock, until a request has been
+good at one; after that it takes eight in a row. Only at the link's own
+rate: at a session's (PEER's RATE) what is not heard is that rate's, and
+PEER puts the line back. The clock last settled on is kept over power-off
+and tried first. Every rate the nesp32 sets is then
+that clock's, a run's and PEER's RATE as much as the link's.
 
 ## 2. Frames
 
@@ -479,10 +492,13 @@ a stream of bytes each way, in order and all of it. Each nesp32 says what
 it is in that stream before either calls it a game:
 
 ```text
-'N', 'E', 'S', 'P', 1, APP[4], APP_VERSION
+'N', 'E', 'S', 'P', VERSION, APP[4], APP_VERSION
 ```
 
-the application and its version being its console's, from the hello. One
+`VERSION` being 1, with bit 7 set for a PAL console, and the application
+and its version being its console's, from the hello. A PAL console runs a
+game at 50 ticks a second and an NTSC one at 60, so the two do not play
+each other: the greetings differ. One
 that hears anything else within two seconds, or nothing, hangs up: so
 something else that finds the port is not taken for a console, and neither
 is another game, or another version of this one. A nesp32 that hosts goes
@@ -680,6 +696,10 @@ from the reply that agreed to it:
 | at 150 | | listens for the run, or begins to send it |
 | at 175 | sends its first byte, if the run is its own | |
 | at the end | puts its UART's rate back | waits 30 ms, then asks for whatever is next |
+
+The console counts its 150 and its 30 in its own cycles, so on a PAL
+console they are 161 and 32, and the nesp32's first byte comes at 189 in
+place of 175.
 
 **The nesp32 cannot see that the console heard the reply**, and must not
 change its rate under one that did not. So it listens first. A console that

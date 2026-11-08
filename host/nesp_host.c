@@ -317,6 +317,7 @@ static void hal_unlock(void *ctx)
 static void hal_line_rate(void *ctx, uint8_t period)
 {
     host_t *host = ctx;
+    nesp_link_line_period(&host->stick.link, period);     /* as firmware/main/link.c does */
     if (host->line_rate != NULL) {
         host->line_rate(period);
     }
@@ -829,10 +830,28 @@ size_t host_feed(host_t *host, const uint8_t *data, size_t len, uint8_t *out)
     return sent;
 }
 
-/* The line went quiet for NESP_LINK_GAP_US before what is fed next. */
-void host_gap(host_t *host)
+/* The line went quiet for NESP_LINK_GAP_US before what is fed next. True
+ * if the console's clock was changed for the other there. */
+bool host_gap(host_t *host)
 {
-    nesp_link_gap(&host->stick.link);
+    return nesp_link_gap(&host->stick.link);
+}
+
+/* The console's clock (NESP_REGION_*), and whether a request has been good
+ * at it; and the one to start at, as the firmware's kept one is. */
+uint8_t host_region(const host_t *host)
+{
+    return host->stick.link.region;
+}
+
+bool host_settled(const host_t *host)
+{
+    return host->stick.link.settled;
+}
+
+void host_set_region(host_t *host, uint8_t region)
+{
+    nesp_link_set_region(&host->stick.link, region);
 }
 
 /* The clock, in milliseconds: what the services do between requests. */
@@ -1345,7 +1364,7 @@ bool host_active(const host_t *host, uint8_t service)
     return nesp_link_active(&host->stick.link, service);
 }
 
-/* 0 requests, 1 repeats, 2 dropped, 3 noise. */
+/* 0 requests, 1 repeats, 2 dropped, 3 noise, 4 hunts. */
 uint32_t host_counter(const host_t *host, int which)
 {
     const nesp_counters_t *counters = &host->stick.link.counters;
@@ -1354,6 +1373,7 @@ uint32_t host_counter(const host_t *host, int which)
     case 1: return counters->repeats;
     case 2: return counters->dropped;
     case 3: return counters->noise;
+    case 4: return counters->hunts;
     default: return 0;
     }
 }
