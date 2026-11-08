@@ -383,26 +383,25 @@ inverts, so use the generic ESP32‑S3 firmware, which has
 `firmware/deploy.sh --generic`.
 
 ```
- TX (Stick → NES)                      RX (NES → Stick)
+ TX (ESP32 → NES)                      RX (NES → ESP32)
 
- Stick G8 ──[1 kΩ]──► NES D0 (pin 4)   NES OUT0 ──[47 kΩ]──┬──► Stick G1
+ GPIO8 ──[1 kΩ]──► NES D0 (pin 4)      NES OUT0 ──[47 kΩ]──┬──► GPIO1
                                        (pin 3)             │
                                                         [100 kΩ]
                                                            │
                                                           GND
 
- Stick GND ── NES GND (pin 1)
- NES +5 V, 3V3_L2, EXT_5V, 5V_IN, BAT, G0 ── not connected
+ ESP32 GND ── NES GND (pin 1)
 ```
 
 **Parts:** one 1 kΩ, one 47 kΩ and one 100 kΩ resistor.
 
 | From | Through | To |
 |---|---|---|
-| Stick G8 | 1 kΩ | NES pin 4 (D0) |
-| NES pin 3 (OUT0) | 47 kΩ | Stick G1 |
-| Stick G1 | 100 kΩ | GND |
-| Stick GND | – | NES pin 1 (GND) |
+| ESP32 GPIO8 | 1 kΩ | NES pin 4 (D0) |
+| NES pin 3 (OUT0) | 47 kΩ | ESP32 GPIO1 |
+| ESP32 GPIO1 | 100 kΩ | GND |
+| ESP32 GND | – | NES pin 1 (GND) |
 
 **What each resistor is for:**
 - **47 kΩ and 100 kΩ, the RX divider.** Together they take OUT0's 5 V to
