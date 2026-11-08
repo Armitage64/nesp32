@@ -3,19 +3,18 @@
 ## Unreleased
 
 ### Cartridge
-- Setup, Weather, NESpedia and the Jukebox take 16 KB each, leaving four banks free for more programs (#5)
-- NES Radar 0.7.1 takes 16 KB too, leaving five banks free (#5)
+- Setup, Weather, NESpedia, Radar, and Jukebox reduced to 16 KB ROMs, freeing up four banks for new programs (#5, #61, #62)
 
 ### Firmware
-- PEER's RATE: a session's line at a faster rate when the console asks for it, for a shorter exchange each frame; a ROM that does not ask is not touched by it (#15)
-- No short request is put together across a quiet line: one that had lost a byte could pass its check with the next request's first byte, and two consoles' games go apart
-- A firmware for a generic ESP32-S3 board wired to the controller port with three resistors (a link that does not invert); the online installer asks how the NESP32 is wired
+- Support for PAL consoles (#72)
+- Support for generic ESP32-S3 boards wired with a non-inverting resistor network. The online update tool now provides multiple options (#70)
+- Use faster link speed when a game requests it, reducing CPU overhead (#15)
+- Bugfix for short requests that still passed validation check
 
 ### Games
-- Bubble Bobble, online co-op: a session lasts past a game over, and 2P CONTINUE goes on at the round the two reached; its busiest rounds kept at the game's own speed
-- Jackal, online co-op: a new netplay game, on an MMC3; its sessions run the line at 14 cycles a bit (#15)
-- Every netplay game: the session's check that both games are alike now sees any one byte that differs (it missed most before); each game's version goes up by one, so a new patch does not join an old one (host/peer_player.py knows each one's)
-- TMNT II and Contra: sessions run the line at 14 cycles a bit with a firmware that has PEER's RATE, for a shorter exchange each frame; TMNT II's busiest level drops fewer frames, and a misheard reply no longer puts its status bar's split out for a frame (#15)
+- Bubble Bobble online co-op added (#64)
+- Jackal online co-op added with optimizations and faster link speed (#66, #15)
+- TMNT II and Contra run at faster link speed (#15, #67)
 
 ## 0.2.0 — 2026-11-04
 
