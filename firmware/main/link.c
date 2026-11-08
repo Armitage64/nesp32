@@ -29,6 +29,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 
 #include "board.h"
@@ -40,6 +41,7 @@
  * address on it: 4096 was enough for the setup ROM and not for NESpedia.
  * The jukebox reads its files from here, through the filing system. */
 #define LINK_STACK 12288
+#define INSTALL_STACK 4096          /* the task that opens the UART on LINK_CORE */
 /* The ESP32's UART driver refuses a transmit buffer that is not larger than
  * its 128-byte FIFO (nes-drmario found this on a Plus2). A run of sampled
  * sound leaves at up to 20 KB a second, and this is topped up every
@@ -179,6 +181,36 @@ static void link_task(void *arg)
     }
 }
 
+/* The UART's interrupt is bound to the core its driver is installed from,
+ * and app_main runs on core 0, with Wi-Fi: there each of the console's bytes
+ * waited behind Wi-Fi's interrupts and those of its task, and woke the link
+ * task on the other core. Installed from here, on LINK_CORE, the interrupt
+ * and the task it wakes share the core that is the link's alone. */
+static SemaphoreHandle_t installed;
+static esp_err_t install_result;
+
+static void install_task(void *arg)
+{
+    (void)arg;
+    install_result = uart_driver_install(LINK_UART, RX_BUFFER, TX_BUFFER, UART_EVENTS,
+                                         &uart_events, 0);
+    xSemaphoreGive(installed);
+    vTaskDelete(NULL);
+}
+
+static void install_on_link_core(void)
+{
+    installed = xSemaphoreCreateBinary();
+    ESP_ERROR_CHECK(installed != NULL ? ESP_OK : ESP_ERR_NO_MEM);
+    ESP_ERROR_CHECK(xTaskCreatePinnedToCore(install_task, "link open", INSTALL_STACK, NULL,
+                                            LINK_PRIORITY, NULL, LINK_CORE) == pdPASS
+                        ? ESP_OK : ESP_ERR_NO_MEM);
+    xSemaphoreTake(installed, portMAX_DELAY);
+    vSemaphoreDelete(installed);
+    installed = NULL;
+    ESP_ERROR_CHECK(install_result);
+}
+
 void link_open(void)
 {
     /* 2 stop bits out: the second is the console's time to store a byte. */
@@ -198,8 +230,7 @@ void link_open(void)
      * any other console they are noise. */
     static const uint8_t filler[12] = {0};
 
-    ESP_ERROR_CHECK(uart_driver_install(LINK_UART, RX_BUFFER, TX_BUFFER, UART_EVENTS,
-                                        &uart_events, 0));
+    install_on_link_core();
     ESP_ERROR_CHECK(uart_param_config(LINK_UART, &config));
 #if BOARD_LINK_INVERTED
     /* Before the pins are attached, so that TX never rests at the wrong
