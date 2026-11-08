@@ -176,8 +176,13 @@ and that stays so.
   console plays at 5/6 of its speed and 7.6% flat, as the game itself
   would there, and is left so. A PAL rip plays on a PAL console as it
   should. (The first plan had the nesp32 retune and retime NTSC rips.)
-- **Sampled sound, in the nesp32: done, 2026-11-08**, tested on the host,
-  not yet on the MiSTer. A `.pcm` track is made for NTSC: its
+- **Sampled sound, in the nesp32: done, 2026-11-08**, and played at the
+  right speed and pitch on the MiSTer's PAL setting, at 7 cycles a bit.
+  The first build popped and stopped there: the console's tracking
+  receiver settles on the lead and cannot wait after it, and the run's
+  first read worked out the filter and read the file three times. The
+  filter is now worked out when the track opens, and the first 512
+  samples are made in tick once the console has been told GO. A `.pcm` track is made for NTSC: its
   bytes are samples at a rate of the NTSC clock over its period
   (`apps/jukebox/tools/pcm.py`), and the console plays each as it
   arrives, so the UART is the clock. On PAL the same period is 7.6%
