@@ -172,18 +172,40 @@ ring still never runs dry and that the news's turns of
 **The jukebox.** The console plays one frame of a track at each vblank,
 and that stays so.
 
-- **Pitch, in the nesp32.** Every period of an NTSC rip is 7.6% flat on a
-  PAL console. The nesp32 rewrites them for the clock it settled on.
-  `vgm.c` already does this one way, a PAL rip's periods for an NTSC
-  console (`add_pal`); this makes the clock it converts to the session's,
-  so that a PAL rip on a PAL console then needs nothing.
-- **Tempo, in the nesp32.** An NTSC rip at one frame a vblank plays at
-  5/6 of its speed. The nesp32 retimes the stream from 60 frames a second
-  to 50, merging register writes across frames, and a PAL rip again needs
-  nothing.
-- **Sampled sound, in the nesp32.** A sound's rate is a period in cycles,
-  so on PAL a `.pcm` track plays 7.6% slow and low. The nesp32 resamples
-  it to the rate the PAL console will play.
+- **Music: a known difference, decided 2026-11-08.** An NTSC rip on a PAL
+  console plays at 5/6 of its speed and 7.6% flat, as the game itself
+  would there, and is left so. A PAL rip plays on a PAL console as it
+  should. (The first plan had the nesp32 retune and retime NTSC rips.)
+- **Sampled sound, in the nesp32.** A `.pcm` track is made for NTSC: its
+  bytes are samples at a rate of the NTSC clock over its period
+  (`apps/jukebox/tools/pcm.py`), and the console plays each as it
+  arrives, so the UART is the clock. On PAL the same period is 7.6%
+  slower: 23244 samples a second at 7 cycles a bit becomes 21593, and the
+  sound plays slow and low. The period cannot change, since the console's
+  receivers are built for the seven of them, so the nesp32 resamples:
+  - **What.** For every sample it sends at the PAL rate it steps 1.0765
+    (1789773 / 1662607) of the file's samples, and works the level out
+    from the file's around that place, with a windowed-sinc filter cut
+    off below the PAL rate's Nyquist, as the tuner's decoder does for a
+    station (`tuner.c`). The tuner's filter is the one to share, made its
+    own file for both.
+  - **The bytes.** A file's bytes are not levels: each is the wire byte
+    the console's receiver turns into its level with bit 7 set
+    (`pcm.py`'s `raw_byte`, `wire_byte`). The nesp32 turns them into
+    levels, resamples, and turns the results back, bit 7 set on every one,
+    so that none ends the sound early; `JUKE_SOUND_LAST` and a tracked
+    rate's lead of $FF go as they are.
+  - **Where.** In `juke.c`'s `sound_read`, between the file and the run,
+    on PAL only: an NTSC console's bytes are the file's, as now.
+  - **Its time.** A sound plays as long on PAL as on NTSC, so the length
+    in its intro is the file's own rate's, not the PAL one's. A sound left
+    and taken up again (`hushed_at`) counts the samples sent at the PAL
+    rate and turns them back into a place in the file.
+  - **Cost.** 21593 samples a second at most, a few dozen taps each, in
+    the link task's tick: well within an ESP32's time.
+  - **Tests.** A tone in a `.pcm`, sent to a PAL nesp32 (`tests/test_juke.py`):
+    7.1% fewer bytes, every one with bit 7, and the tone at its own pitch
+    when they are played at the PAL rate.
 - **The clock on the screen: a known difference.** The console counts
   `FRAMES_PER_SECOND = 60` (`apps/jukebox/nes/ui.inc`) of the stream's
   frames to a second, and on PAL it plays 50, so its clock runs at 5/6.
@@ -218,29 +240,15 @@ network. To look at, in each game:
   [Netplay.md](../apps/contra/docs/Netplay.md)) depend on is where a
   sample's fetches land, worked out on NTSC.
 
-**One of each.** The game stays one game: a tick runs only with both
-players' buttons, and each build already took out what made a frame's
-result depend on its cycles (Contra's random number, stirred in the idle
-loop). Each game's tests already play the same game with one console's
-frames shorter (0.93 in Contra and Jackal, 0.8 in Bubble Bobble). What has
-not been tried:
-
-- a PAL frame, 1.116 of an NTSC one, longer than any tested (1.03)
-- a clock 17% apart for a whole session: `drift` in each game's
-  `test_lockstep.py` is 0.05%, a crystal's
-- how the input delay follows a console that is always behind
-
-If the game holds, the NTSC console stalls about one frame in six: its
-picture stands still for a frame while its music goes on, and the game on
-both runs at 50 ticks a second.
+**One of each: not supported, decided 2026-11-08.** Such a game would
+likely stay one game, but the NTSC console would stand still one frame in
+six to wait for the PAL one. Step 1's greeting refuses the session, and
+that stays.
 
 **What is decided from it.** For each game, from the simulator and then
-the MiSTer:
-
-- two PAL consoles: let in, unless a split or the drums break the game in
-  a way only the ROM could mend, and then PEER refuses that game on PAL
-- one of each: let in if the game stays one game, refused at the meeting
-  (step 1) if not
+the MiSTer: two PAL consoles are let in, unless a split or the drums break
+the game in a way only the ROM could mend, and then PEER refuses that game
+on PAL.
 
 The faster line (PEER's RATE, 14 cycles a bit) is 118758 baud on PAL, and
 works as the rest of the link does once the clock is the session's.
@@ -281,9 +289,8 @@ on the MiSTer.
 All from the ROMs being NTSC's, and kept so:
 
 - the netplay games, and any NTSC game, at 5/6 of their speed, and their
-  music flat
-- in a session of one of each, if let in, the NTSC console's picture
-  standing still one frame in six
+  music flat; and the jukebox's NTSC rips likewise
+- no netplay session between a PAL console and an NTSC one
 - the jukebox's clock on the screen at 5/6
 - the throughput test's rates reading 7.6% high
 - times the ROMs count in frames 20% longer
