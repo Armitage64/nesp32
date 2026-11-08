@@ -32,7 +32,7 @@ to be configured from the NES itself.
 
 - The NESP32 grew out of [NES Radar](https://github.com/k6lcm/nes-radar) and [connectedNES](https://github.com/hxlnt/connectedNES), projects that first explored the use of the NES controller port as a data link.
 
-- NTSC-only for now. PAL support is planned.
+- Works with NTSC and PAL consoles: the NESP32 tells which it is plugged into by itself. On a PAL console, games made for NTSC (the online games, and NTSC music in the jukebox) run at 5/6 of their speed, as they would on PAL without a NESP32, and online play is between two consoles of the same kind ([docs/PAL.md](docs/PAL.md)).
 
 ## Quick Links
 

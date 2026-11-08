@@ -56,8 +56,17 @@ The older **M5Stack StickC Plus2** works too, with two limits:
 
 This guide describes the StickS3 and points out where the Plus2 differs.
 
-> **Note:** the NESP32 is for **NTSC** consoles (North American and
-> Japanese) for now. PAL support is planned.
+> **Note:** the NESP32 works with both **NTSC** consoles (North American
+> and Japanese) and **PAL** consoles (European and Australian). It tells
+> which one it is plugged into by itself, and the Stick's screen shows
+> **PAL:** in place of **NES:** for a PAL console. On a PAL console:
+>
+> - Games made for NTSC consoles, which include the online games, run at
+>   5/6 of their speed and their music a little lower, as any NTSC game
+>   does on a PAL console. The jukebox's NTSC music does the same.
+>   Recorded (sampled) sound plays at its proper speed.
+> - Online play is between two consoles of the same kind: two NTSC or
+>   two PAL.
 
 > **Note:** the NESP32 is a hobby project that's still growing, not a
 > finished store-bought product. A few features are marked as
@@ -79,7 +88,7 @@ This guide describes the StickS3 and points out where the Plus2 differs.
 
 | Item | Notes |
 |---|---|
-| An NES | NTSC. A MiSTer FPGA running the NES core with a SNAC adapter also works |
+| An NES | NTSC or PAL. A MiSTer FPGA running the NES core with a SNAC adapter also works, in either region |
 | An M5Stack StickS3 | [Buy one here](https://amzn.to/3TVUV0y). The StickC Plus2 also works, without Bluetooth or the USB drive |
 | The NESP32 hat, with its cable | Build it with the [Build Guide](BUILD_GUIDE.md), or get one already built and tested |
 | A way to run a ROM file on the NES | A flash cartridge such as an Everdrive, or a MiSTer |
@@ -683,6 +692,8 @@ two-console versions.
 Each player needs:
 
 - their own NES, with a NESP32 in port 2 and a controller in port 1,
+  both NTSC or both PAL (an NTSC console and a PAL one can't play
+  together),
 - the same version of the online game on their flash cartridge,
 - working Wi-Fi.
 

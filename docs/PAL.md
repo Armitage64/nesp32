@@ -23,10 +23,14 @@ their music 5/6 of its tempo and about 1.3 semitones flat: as any US game
 plays on a PAL console from a flash cart. Contra Force's faster 1P ROM
 does not talk to the nesp32, and is no different.
 
+Family BASIC is a Famicom program, run from a flash cart and typed on
+through the nesp32 in place of the Famicom's keyboard, so it is no
+different: on a PAL console it runs at 5/6 of its speed. (The plan of
+earlier on 2026-11-08 left it out, wrongly, for a keyboard port a PAL NES
+lacks: the nesp32 is its keyboard.) It has not been tried on PAL.
+
 Not in it:
 
-- **Family BASIC**, whose keyboard goes in the Famicom's expansion port,
-  which a PAL NES does not have.
 - **Games made from PAL releases** (Contra's is *Probotector*, another
   program): work for later, and on their own.
 
