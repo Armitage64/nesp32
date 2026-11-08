@@ -1,8 +1,7 @@
 # PAL consoles: the plan
 
-**Status: step 1 written and tested on the host, as of 2026-11-08.**
-Nothing here has been tried on a PAL console, nor on the MiSTer's PAL
-setting. This replaces the plans of 2026-10-16 and of earlier on
+**Status: step 1 done, as of 2026-11-08**, and the throughput test passed
+on the MiSTer's PAL setting. Nothing here has been tried on a PAL console. This replaces the plans of 2026-10-16 and of earlier on
 2026-11-08.
 
 A PAL NES's CPU runs at 1662607 Hz, where an NTSC one runs at 1789773, and
@@ -93,8 +92,9 @@ In the order to do them.
 ### 1. The firmware: done, but for the hardware
 
 Written, and tested on the host (`tests/test_region.py`, with a model of a
-UART hearing the other clock's rate); all three firmwares build. Not yet
-run on a console of either region.
+UART hearing the other clock's rate); all three firmwares build. On a
+StickS3 and the MiSTer (step 5) the throughput test passes as it did in
+NTSC, and in PAL.
 
 - The clock per session in place of `NESP_CPU_HZ` in `link.c`, `tuner.c`,
   `juke.c` and `raw.c`. `NESP_CPU_HZ` stays for what is built into a ROM.
@@ -242,10 +242,14 @@ works as the rest of the link does once the clock is the session's.
 There is no need to wait for a PAL console to start. The MiSTer's NES core
 has a region setting, and a StickS3 already runs on it through SNAC:
 
-- **First, the throughput test** on the core set to PAL. One run says
-  whether the core changes the CPU's clock as a PAL console's, and whether
-  every rate the link uses holds at the PAL clock, sound's 7 cycles a bit
-  among them.
+- **First, the throughput test** on the core set to PAL. Done on
+  2026-11-08, on a StickS3 that had settled on NTSC: when the core was
+  set to PAL the nesp32 hunted once ("listening for a PAL console") and
+  answered from then on. The test climbed to 6 cycles a bit both ways, as
+  on NTSC, which it shows as 298296 baud: that is NTSC's figure for 6, and
+  at the PAL clock it is 277101 (step 3's known difference). So the core
+  does run the CPU at the PAL clock (the NTSC rate would not have been
+  heard), and the link holds at every rate up to the fastest.
 - **Then each program** of steps 3 and 4, as each had on NTSC. A session
   of one of each needs a second console: the MiSTer against a real NTSC
   NES.
