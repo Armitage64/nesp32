@@ -2,9 +2,9 @@
 # when VERSION changes on main, which only a release's own pull request
 # does (tools/release.py), and by hand from the Actions tab to try again.
 #
-# It tags the commit v and VERSION's number, builds both Sticks' firmware
-# and the cartridge from it (so each says it is that release, not -dev),
-# attaches them to a GitHub release with CHANGELOG.md's notes for it, and
+# It tags the commit v and VERSION's number, builds the three firmwares
+# (the two Sticks' and a generic ESP32-S3's) and the cartridge from it (so
+# each says it is that release, not -dev), attaches them to a GitHub release with CHANGELOG.md's notes for it, and
 # then puts them on the web site (web.yml). A version such as 0.3.0-rc.1
 # is a pre-release: it is built and attached, and the site keeps the last
 # release.
@@ -95,11 +95,20 @@ jobs:
           path: firmware
           command: idf.py -B build-esp32 -D SDKCONFIG=build-esp32/sdkconfig -D IDF_TARGET=esp32 build
 
+      # An ESP32-S3 board wired with resistors, whose link does not invert.
+      - name: Build the generic ESP32-S3's firmware
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.5.5
+          target: esp32s3
+          path: firmware
+          command: idf.py -B build-esp32s3-generic -D SDKCONFIG=build-esp32s3-generic/sdkconfig -D IDF_TARGET=esp32s3 -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.defaults.generic" build
+
       - name: Check the firmware says it is the release
         run: |
-          for target in esp32s3 esp32; do
+          for build in esp32s3 esp32 esp32s3-generic; do
             grep -F "\"${{ steps.version.outputs.number }}\"" \
-              "firmware/build-$target/esp-idf/nesp_services/nesp_version.h"
+              "firmware/build-$build/esp-idf/nesp_services/nesp_version.h"
           done
 
       - name: Install cc65

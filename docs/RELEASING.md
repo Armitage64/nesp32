@@ -58,11 +58,13 @@ authors. It is short on purpose:
 4. Merge it. That's the release. `.github/workflows/release.yml` sees
    VERSION change on main and:
    - tags the merged commit `v0.3.0`;
-   - builds both Sticks' firmware (and checks that they say 0.3.0), runs
-     the tests, and builds the cartridge;
+   - builds the three firmwares, the two Sticks' and the generic
+     ESP32-S3's (and checks that they say 0.3.0), runs the tests, and
+     builds the cartridge;
    - makes the GitHub release *nesp32 0.3.0*, with CHANGELOG.md's section
-     as its notes. It attaches `nesp32-0.3.0.nes`, `nesp32-s3-0.3.0.zip`
-     and `nesp32-plus2-0.3.0.zip` (`tools/release.py pack`);
+     as its notes. It attaches `nesp32-0.3.0.nes`, `nesp32-s3-0.3.0.zip`,
+     `nesp32-plus2-0.3.0.zip` and `nesp32-s3-generic-0.3.0.zip`
+     (`tools/release.py pack`);
    - runs `web.yml`, which puts them on the site.
 
 If a run fails, fix the cause on main and run *Release* again from the
@@ -76,7 +78,11 @@ a fix is the next patch version.
 
 `.github/workflows/web.yml` builds nothing. It downloads the latest
 release's files from GitHub (`gh release download`) and makes the site
-with `tools/gen_web.py --release`. It runs:
+with `tools/gen_web.py --release`. The flash page's two manifests are the
+hat's (`manifest.json`, both Sticks) and the resistors'
+(`manifest-generic.json`, the generic ESP32-S3). A release from before the
+generic firmware has no zip for it: the site is made without
+`manifest-generic.json`, and the page offers only the hat. It runs:
 
 - when a release is made;
 - when the pages, the pictures or the ROM patches change on main

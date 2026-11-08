@@ -1,0 +1,11 @@
+# An ESP32-S3 board wired to the console with three resistors, which do not
+# invert (docs/WIRING.md), on the StickS3's pins. Read after
+# sdkconfig.defaults and sdkconfig.defaults.esp32s3, for a build of its own:
+#
+#   idf.py -B build-esp32s3-generic -D SDKCONFIG=build-esp32s3-generic/sdkconfig \
+#          -D IDF_TARGET=esp32s3 \
+#          -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.defaults.generic" build
+#
+# The board needs 8 MB of flash or more and 8 MB of octal PSRAM, as the
+# StickS3 has.
+CONFIG_NESP_LINK_INVERTED=n

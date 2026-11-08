@@ -9,8 +9,9 @@
                                     the GitHub release
     tools/release.py pack OUT       what the GitHub release holds, from this
                                     tree's builds: nesp32-0.2.0.nes, and each
-                                    board's firmware as nesp32-s3-0.2.0.zip
-                                    and nesp32-plus2-0.2.0.zip (its files and
+                                    firmware as nesp32-s3-0.2.0.zip,
+                                    nesp32-plus2-0.2.0.zip and
+                                    nesp32-s3-generic-0.2.0.zip (its files and
                                     flasher_args.json, which say where each
                                     goes), as tools/gen_web.py --release reads
                                     them
@@ -54,8 +55,9 @@ def pack(out):
     os.makedirs(out, exist_ok=True)
     shutil.copyfile(os.path.join(version.ROOT, "build", "nesp32.nes"),
                     os.path.join(out, "nesp32-%s.nes" % number))
-    for target, prefix in (("esp32s3", "s3"), ("esp32", "plus2")):
-        directory = os.path.join(version.ROOT, "firmware", "build-" + target)
+    for build, prefix in (("esp32s3", "s3"), ("esp32", "plus2"),
+                          ("esp32s3-generic", "s3-generic")):
+        directory = os.path.join(version.ROOT, "firmware", "build-" + build)
         with open(os.path.join(directory, "flasher_args.json")) as f:
             files = json.load(f)["flash_files"].values()
         with zipfile.ZipFile(os.path.join(out, "nesp32-%s-%s.zip" % (prefix, number)), "w",

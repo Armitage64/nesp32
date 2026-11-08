@@ -8,8 +8,8 @@ flashes a nesp32 from a browser.
 
 The site's firmware and cartridge are the latest release's, from its GitHub
 release: DIR holds what release.yml attached to it (nesp32-X.Y.Z.nes,
-nesp32-s3-X.Y.Z.zip, nesp32-plus2-X.Y.Z.zip) and release.json, which
-web.yml writes (gh release view --json tagName,publishedAt,url). The pages
+nesp32-s3-X.Y.Z.zip, nesp32-plus2-X.Y.Z.zip, nesp32-s3-generic-X.Y.Z.zip)
+and release.json, which web.yml writes (gh release view --json tagName,publishedAt,url). The pages
 and the ROM patches are this tree's, so they go up without a release.
 
     index.html            web/product/index.html, as it is
@@ -21,9 +21,13 @@ and the ROM patches are this tree's, so they go up without a release.
                           img/logo.png and img/logo-dark.png, the header's logo
                           (nes/lib/logo.py) for a light page and a dark one
     flash/index.html      web/flash/index.html, as it is
-    flash/manifest.json   what ESP Web Tools is to write, and where
+    flash/manifest.json   what ESP Web Tools is to write for the nesp32 hat,
+                          and where
+    flash/manifest-generic.json  and for an ESP32-S3 wired with resistors
     flash/s3-*.bin        the StickS3's firmware, from firmware/build-esp32s3
     flash/plus2-*.bin     the StickC Plus2's, from firmware/build-esp32
+    flash/s3-generic-*.bin  the generic ESP32-S3's, from
+                          firmware/build-esp32s3-generic
 
 The firmware's pieces go as they are, each to its own offset, and are not
 merged into one image: an image from 0 to the end of the firmware would
@@ -78,11 +82,18 @@ PICTURES = [("cart-menu.png", "docs/cart-menu.png"),
             ("radar.png", "apps/nes-radar/docs/scope.png"),
             ("bluesky.png", "apps/bluesky/docs/screen-splash.png")]
 
-# (ESP Web Tools' name for the chip, the build's directory, a prefix for its
-# files). ESP Web Tools asks the chip what it is and writes the build for it:
-# the StickS3's ESP32-S3, or the StickC Plus2's ESP32.
-BOARDS = [("ESP32-S3", os.path.join(ROOT, "firmware", "build-esp32s3"), "s3"),
-          ("ESP32", os.path.join(ROOT, "firmware", "build-esp32"), "plus2")]
+# (the manifest it is in, ESP Web Tools' name for the chip, the build's
+# directory, a prefix for its files). The flash page asks how the nesp32 is
+# wired and gives ESP Web Tools that manifest, which asks the chip what it
+# is and writes the build for it. The nesp32 hat's, manifest.json, has the
+# StickS3's ESP32-S3 and the StickC Plus2's ESP32; the resistors',
+# manifest-generic.json, has only the ESP32-S3.
+HAT = "manifest.json"
+GENERIC = "manifest-generic.json"
+BOARDS = [(HAT, "ESP32-S3", os.path.join(ROOT, "firmware", "build-esp32s3"), "s3"),
+          (HAT, "ESP32", os.path.join(ROOT, "firmware", "build-esp32"), "plus2"),
+          (GENERIC, "ESP32-S3", os.path.join(ROOT, "firmware", "build-esp32s3-generic"),
+           "s3-generic")]
 
 
 def date(*paths):
@@ -217,11 +228,17 @@ def released(directory, unpacked):
     number = about["tagName"].lstrip("v")
     cart = os.path.join(directory, "nesp32-%s.nes" % number)
     builds = []
-    for family, _, prefix in BOARDS:
+    for manifest, family, _, prefix in BOARDS:
         place = os.path.join(unpacked, prefix)
-        with zipfile.ZipFile(os.path.join(directory, "nesp32-%s-%s.zip" % (prefix, number))) as z:
+        packed = os.path.join(directory, "nesp32-%s-%s.zip" % (prefix, number))
+        # Releases before the generic firmware have none: the flash page
+        # then offers only the hat.
+        if manifest == GENERIC and not os.path.exists(packed):
+            print("%s has no generic ESP32-S3 firmware: no %s" % (about["tagName"], GENERIC))
+            continue
+        with zipfile.ZipFile(packed) as z:
             z.extractall(place)
-        builds.append((family, place, prefix))
+        builds.append((manifest, family, place, prefix))
     return cart, builds, {"version": number, "date": about["publishedAt"][:10],
                           "notes": about["url"]}
 
@@ -239,26 +256,27 @@ def main(out, cart=None, release=None):
     flash = os.path.join(out, "flash")
     os.makedirs(flash, exist_ok=True)
     os.makedirs(os.path.join(out, "img"), exist_ok=True)
-    builds = []
-    for family, directory, prefix in boards:
+    builds = {}
+    for name, family, directory, prefix in boards:
         if not os.path.exists(os.path.join(directory, "flasher_args.json")):
             sys.exit("No firmware in %s: run firmware/deploy.sh build first."
                      % os.path.relpath(directory))
-        builds.append(build(family, directory, prefix, flash))
-    manifest = {
-        "name": "nesp32",
-        "version": about["version"],
-        # Not ESP Web Tools': the flash page shows them beside the version.
-        "date": about["date"],
-        "notes": about["notes"],
-        # The browser asks whether to erase first. Not erasing keeps the
-        # saved networks and the music.
-        "new_install_prompt_erase": True,
-        "builds": builds,
-    }
-    with open(os.path.join(flash, "manifest.json"), "w") as f:
-        json.dump(manifest, f, indent=2)
-        f.write("\n")
+        builds.setdefault(name, []).append(build(family, directory, prefix, flash))
+    for name, its in builds.items():
+        manifest = {
+            "name": "nesp32",
+            "version": about["version"],
+            # Not ESP Web Tools': the flash page shows them beside the version.
+            "date": about["date"],
+            "notes": about["notes"],
+            # The browser asks whether to erase first. Not erasing keeps the
+            # saved networks and the music.
+            "new_install_prompt_erase": True,
+            "builds": its,
+        }
+        with open(os.path.join(flash, name), "w") as f:
+            json.dump(manifest, f, indent=2)
+            f.write("\n")
     shutil.copyfile(os.path.join(WEB, "style.css"), os.path.join(out, "style.css"))
     shutil.copyfile(cart, os.path.join(out, "nesp32.nes"))
     write_patches(os.path.join(out, "nesp32-rom-patches.zip"), about["version"], release)

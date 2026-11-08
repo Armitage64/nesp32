@@ -11,6 +11,18 @@
     --esp-tools-button-text-color: #fff;
     --esp-tools-button-border-radius: 8px;
   }
+  /* The lead's list of devices, close under it, with the lead's gap below. */
+  p.lead.devices { margin-bottom: 4px; }
+  ul.devices { font-size: 15px; margin: 0 0 32px; }
+  ul.devices li { margin: 2px 0; }
+  /* The choice of wiring, which picks the manifest. */
+  fieldset { border: 0; padding: 0; margin: 0 0 24px; }
+  legend { font-weight: 600; padding: 0; margin: 0 0 8px; }
+  label.choice { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 10px;
+                 cursor: pointer; }
+  label.choice input { margin: 5px 0 0; accent-color: var(--accent); }
+  label.choice span { display: block; color: var(--dim); }
+  label.choice strong { display: block; color: var(--fg); }
 </style>
 <script type="module"
   src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
@@ -19,13 +31,32 @@
 <main>
   <nav><a href="../">&larr; NESP32</a></nav>
   <h1><picture><source srcset="../img/logo-dark.png" media="(prefers-color-scheme: dark)"><img class="logo" src="../img/logo.png" alt="NESP32" width="360" height="128"></picture></h1>
-  <p class="lead">Install NESP32 firmware on an M5Stack
-    StickS3 or StickC Plus2 from your browser.</p>
+  <p class="lead devices">Install NESP32 firmware from your browser. Devices supported:</p>
+  <ul class="devices">
+    <li>M5Stick S3</li>
+    <li>M5StickC Plus2</li>
+    <li>Generic ESP32&#8209;S3 development board with at least 8MB flash and 8MB PSRAM</li>
+  </ul>
 
   <div class="card">
-    <p>Connect your Stick to this computer with a USB data cable
-       and press Connect. The right firmware for your Stick is chosen
-       for you.</p>
+    <!-- Hidden until manifest-generic.json is found: a release from before
+         the generic firmware has only the hat's. -->
+    <fieldset id="wiring" hidden>
+      <legend>1. How is your device wired to the NES?</legend>
+      <label class="choice">
+        <input type="radio" name="wiring" value="hat" checked>
+        <span><strong>NESP32 level-shifter hat (inverting)</strong>
+          A StickS3 or StickC Plus2 with the NESP32 hat.</span>
+      </label>
+      <label class="choice">
+        <input type="radio" name="wiring" value="generic">
+        <span><strong>Resistor network (non&#8209;inverting)</strong>
+          An ESP32&#8209;S3 board wired to the controller port with a 
+          resistor network.</span>
+      </label>
+    </fieldset>
+    <p><strong><span class="step" hidden>2. </span>Connect your device to this
+       computer with a USB data cable and press Connect.</strong></p> 
     <esp-web-install-button manifest="manifest.json">
       <span slot="unsupported" class="note">This browser cannot reach a
         USB serial port. Use Chrome, Edge or Opera on a computer.</span>
@@ -37,17 +68,25 @@
 
   <h2>Note</h2>
   <ul>
-    <li><strong>Installing firmware replaces what is current on the Stick</strong>, including UIFlow</li>
-    <li><strong>If this is the first time installing on a StickS3</strong>, put the device in boot mode. Push and hold the power button on the side until the green light flashes. A StickC Plus2 needs no button.</li>
-    <li><strong>On Windows, a StickC Plus2</strong> may need the driver for its USB serial chip (CH9102) before the browser can see it.</li>
+    <li data-wiring="hat"><strong>Installing firmware replaces what is currently on the Stick</strong>, including UIFlow.</li>
+    <li data-wiring="hat"><strong>If this is the first time installing on a StickS3</strong>, put the device in boot mode. Push and hold the power button on the side until the green light flashes. A StickC Plus2 needs no button.</li>
+    <li data-wiring="hat"><strong>On Windows, a StickC Plus2</strong> may need the driver for its USB serial chip (CH9102) before the browser can see it.</li>
+    <li data-wiring="generic" hidden><strong>Installing firmware replaces what is currently on the board.</strong></li>
+    <li data-wiring="generic" hidden><strong>ESP32&#8209;S3 only.</strong> A StickC Plus2 or another ESP32 board is refused.</li>
+    <li data-wiring="generic" hidden><strong>If the board doesn't appear when you press Connect</strong>, hold its BOOT button, press and release RESET, then release BOOT, and try again.</li>
     <li>The browser asks whether to erase first. Answer no when updating
       an existing NESP32 install to retain Wi-Fi and stored files.</li>
   </ul>
 
   <h2>After Installation</h2>
-  <ol>
+  <ol data-wiring="hat">
     <li>Fit the hat and plug the NESP32 into controller port 2.</li>
     <li>Ensure the Stick is powered on.</li>
+    <li>Boot the NESP32 cartridge ROM and run the Setup utility to join a Wi-Fi network.</li>
+  </ol>
+  <ol data-wiring="generic" hidden>
+    <li>Connect your adapter to controller port 2.</li>
+    <li>Ensure the board is powered over USB.</li>
     <li>Boot the NESP32 cartridge ROM and run the Setup utility to join a Wi-Fi network.</li>
   </ol>
 
@@ -60,12 +99,31 @@
   fetch("manifest.json").then(r => r.json()).then(m => {
     const version = document.getElementById("version");
     version.textContent = "Firmware " + m.version + (m.date ? ", " + m.date : "") +
-      (m.notes ? " \u00b7 " : "");
+      (m.notes ? " · " : "");
     if (m.notes) {
       const notes = version.appendChild(document.createElement("a"));
       notes.href = m.notes;
       notes.textContent = "What's new";
     }
+  }).catch(() => {});
+
+  // The wiring picks the manifest, and the notes and steps that go with it.
+  const manifests = {hat: "manifest.json", generic: "manifest-generic.json"};
+  function choose(wiring) {
+    document.querySelector("esp-web-install-button").setAttribute("manifest", manifests[wiring]);
+    document.querySelectorAll("[data-wiring]").forEach(e => {
+      e.hidden = e.dataset.wiring != wiring;
+    });
+  }
+  document.querySelectorAll("input[name=wiring]").forEach(input => {
+    input.addEventListener("change", () => choose(input.value));
+  });
+  fetch(manifests.generic, {method: "HEAD"}).then(r => {
+    if (!r.ok) return;
+    document.getElementById("wiring").hidden = false;
+    document.querySelector(".step").hidden = false;
+    // A choice the browser kept from before a reload.
+    choose(document.querySelector("input[name=wiring]:checked").value);
   }).catch(() => {});
 </script>
 </body>

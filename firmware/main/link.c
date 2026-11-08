@@ -215,8 +215,8 @@ void link_open(void)
     ESP_ERROR_CHECK(uart_set_rx_timeout(LINK_UART, 1));
     ESP_ERROR_CHECK(uart_get_tx_buffer_free_size(LINK_UART, &tx_empty));
     uart_write_bytes(LINK_UART, filler, sizeof(filler));
-    ESP_LOGI(TAG, "%s: TX G%d, RX G%d, %d baud", BOARD_NAME, BOARD_LINK_TX, BOARD_LINK_RX,
-             NESP_BAUD);
+    ESP_LOGI(TAG, "%s: TX G%d, RX G%d, %d baud, %s", BOARD_NAME, BOARD_LINK_TX, BOARD_LINK_RX,
+             NESP_BAUD, BOARD_LINK_INVERTED ? "inverted" : "not inverted");
 }
 
 void link_start(const nesp_hal_t *hal)

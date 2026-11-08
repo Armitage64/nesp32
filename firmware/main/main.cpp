@@ -274,7 +274,7 @@ extern "C" void app_main(void)
     radio_start();
     keyboard_start();
     // The version, and the commit it was built from (PROJECT_VER).
-    ESP_LOGI(TAG, "nesp32 %s (%s) on a %s", NESP_FIRMWARE_TEXT, esp_app_get_description()->version,
+    ESP_LOGI(TAG, "nesp32 %s (%s) on %s", NESP_FIRMWARE_TEXT, esp_app_get_description()->version,
              BOARD_NAME);
 
     uint32_t screen_at = 0;

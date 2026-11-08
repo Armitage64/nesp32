@@ -9,4 +9,14 @@ config NESP_DISPLAY_FLIPPED
         This is the way up until a console chooses one (Flip LCD in
         Setup, SYS SCREEN), which the nesp32 then keeps in NVS.
 
+config NESP_LINK_INVERTED
+    bool "The link to the console inverts"
+    default y
+    help
+        On for the nesp32 hat, whose NPN stages each invert (or the
+        SN74LV1T04 inverters in their place): the UART inverts TX and RX to
+        cancel them. Off for a link that does not invert, such as the three
+        resistors on an ESP32-S3 board; sdkconfig.defaults.generic turns it
+        off. docs/WIRING.md has each circuit.
+
 endmenu
