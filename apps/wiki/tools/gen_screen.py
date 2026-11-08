@@ -25,9 +25,13 @@ Tiles:
 
 The reader shows the header from nametable 1 and the article from nametable
 0 under it, changing the scroll where sprite 0 is hit (nes/split.inc).
-Sprite 0 is one pixel in the name's own colour, on top of one of its
-pixels, so it cannot be seen. SPLIT_DELAY is worked out here from where
-that pixel is.
+Sprite 0 is one pixel on the header's last line, over a pixel of the
+background put there for it (the mark), and black, so neither is seen. It
+is there and not higher up so that the split's last write comes a few dozen
+cycles after the hit: the same cycles are 3 dots each on an NTSC console
+and 3.2 on a PAL one, and the further apart the two, the further apart
+they land (docs/PAL.md). Where along the line it is, and SPLIT_DELAY, are
+worked out here so that both land in the hblank.
 """
 
 import argparse
@@ -107,7 +111,7 @@ PULSE = (0x30, 0x31, 0x21, 0x12, 0x21, 0x31)
 PULSE_ADDRESS = 0x3F00 + 4 * PALETTE_CURSOR + 1
 ATTRIBUTES = 0x27C0                 # nametable 1's
 TITLE_COLOR = logo.CYAN             # of the logo's palette
-SPRITE_PALETTE = (logo.PALETTE[TITLE_COLOR - 1], 0x10, 0x30)    # colour 1 is the name's
+SPRITE_PALETTE = (BACKDROP, 0x10, 0x30)     # colour 1 is sprite 0's: as the backdrop, unseen
 
 # A 5 x 7 font, one row per byte, bit 4 leftmost.
 FONT = {
@@ -319,6 +323,15 @@ def box_pixels():
     return pixels
 
 
+def mark_pixels():
+    """The background's pixel under sprite 0, in a strip the screen's width
+    and one tile high: lit, for the hit, and under the sprite's black."""
+    pixels = [[0] * (8 * SCREEN_COLUMNS) for _ in range(8)]
+    x, y = sprite0_position()
+    pixels[y % 8][x] = 1
+    return pixels
+
+
 def build_screen(query=""):
     """The search screen as it is at power-on, with its field empty: the ROM
     puts DEFAULT_QUERY in it unless a Bluetooth keyboard is paired. The
@@ -326,6 +339,7 @@ def build_screen(query=""):
     screen = Screen()
     screen.picture(0, LOGO_ROW, logo.pixels(8 * SCREEN_COLUMNS))
     screen.picture(0, TITLE_ROW, title_pixels())
+    screen.picture(0, HEADER_ROWS - 1, mark_pixels())
     screen.header()
     screen.text(FIELD_COLUMN, PROMPT_ROW, PROMPT_TEXT)
     screen.picture(0, FIELD_ROW - 1, box_pixels())
@@ -348,29 +362,38 @@ HBLANK_FIRST, HBLANK_LAST = 257, 340    # where the last scroll write may land
 SPLIT_POLL = 11                     # cycles from one look for the hit to the next
 SPLIT_POLL_SLOW = 15                # the look after the loop's counter wraps
 SPLIT_FIXED = 34                    # split.inc: cycles from the look to the last write, less 5 a loop
+SPLIT_LOOPS = 1                     # of its delay: the fewest, so that the hit is as near as can be
+DOTS_PER_CYCLE = (3, 3.2)           # an NTSC console's PPU, and a PAL one's
+
+
+def landing(x):
+    """The first and last dots of SPLIT_Y's line the split's last write can
+    land on, on either console, for sprite 0 over pixel x of that line:
+    from the hit seen at once on the faster PPU to it seen a slow look late
+    on the slower."""
+    cycles = 5 * SPLIT_LOOPS + SPLIT_FIXED
+    hit_dot = x + 2                 # the dot after the pixel, and one to be seen
+    return (hit_dot + cycles * min(DOTS_PER_CYCLE),
+            hit_dot + (cycles + SPLIT_POLL_SLOW) * max(DOTS_PER_CYCLE))
 
 
 def sprite0_position():
-    """(x, y) of the pixel sprite 0 covers: the leftmost pixel of the
-    name's lowest row."""
-    pixels = title_pixels()
-    y = max(row for row in range(8) if any(pixels[row]))
-    x = min(column for column in range(len(pixels[y])) if pixels[y][column])
-    return x, 8 * TITLE_ROW + y
+    """(x, y) of the pixel sprite 0 covers: on the line above the article,
+    as far along it as puts every landing in the middle of the hblank."""
+    first, last = landing(0)
+    room = HBLANK_LAST + 1 - HBLANK_FIRST - (last - first)
+    if room < 0:
+        raise ValueError("the split cannot land in the hblank on both consoles")
+    return round(HBLANK_FIRST + room / 2 - first), SPLIT_LINE - 1
 
 
 def split_delay():
     """Loops of split.inc's delay that put the last scroll write in the
-    middle of the hblank before SPLIT_LINE, whenever the hit is seen."""
-    x, y = sprite0_position()
-    hit_dot = x + 2                 # the dot after the pixel, and one to be seen
-    spread = 3 * SPLIT_POLL_SLOW
-    first = HBLANK_FIRST + (HBLANK_LAST + 1 - HBLANK_FIRST - spread) // 2
-    dots = (SPLIT_LINE - 1 - y) * DOTS_PER_LINE + first - hit_dot
-    loops = round((dots / 3 - SPLIT_FIXED) / 5)
-    if not 1 <= loops <= 255:
-        raise ValueError("the split's delay does not fit one loop")
-    return loops
+    hblank before SPLIT_LINE, whenever the hit is seen."""
+    first, last = landing(sprite0_position()[0])
+    if not HBLANK_FIRST <= first and last <= HBLANK_LAST:
+        raise ValueError("the split's write lands outside the hblank")
+    return SPLIT_LOOPS
 
 
 def attribute_cell(column, row):
@@ -514,6 +537,8 @@ def render(chr_data, nametable, palettes=PALETTES, backdrop=BACKDROP):
                 for x in range(8):
                     index = ((planes[y] >> (7 - x)) & 1) | (((planes[8 + y] >> (7 - x)) & 1) << 1)
                     rows[8 * row + y][8 * column + x] = NES_RGB.get(colors[index], (255, 0, 255))
+    x, y = sprite0_position()           # sprite 0, over its mark
+    rows[y][x] = NES_RGB[SPRITE_PALETTE[0]]
     return rows
 
 

@@ -4,19 +4,24 @@ The split's last write must land in the hblank before the article's first
 scanline, whichever of its looks at PPUSTATUS sees the sprite 0 hit. A
 frame is 29780.5 cycles, so the phase between the ROM's polling and the
 picture is different every frame, and a few hundred frames try them all.
+
+And on a PAL console as on an NTSC one: the same ROM, whose cycles are 3.2
+dots each there in place of 3 (docs/PAL.md).
 """
 
 import gen_screen
+import pytest
 from console import PAD_A, PAD_DOWN, VBLANK_CYCLES
 from drive import HBLANK, HEADER_SCROLL, SPLIT_LINE, open_reader
 
 MARGIN = 12                     # dots to spare each side: what the model may be out by
 
 
-def test_the_last_write_lands_in_the_hblank_above_the_article(console):
+@pytest.mark.parametrize("pal", [False, True], ids=["ntsc", "pal"])
+def test_the_last_write_lands_in_the_hblank_above_the_article(console, pal):
     dots = []
     for delay in range(2 * gen_screen.SPLIT_POLL):  # every phase of the polling, twice
-        c = console(nmi_delay=delay)
+        c = console(nmi_delay=delay, pal=pal)
         open_reader(c)
         since = len(c.frames)
         c.run(30, pad=PAD_DOWN)
@@ -27,9 +32,10 @@ def test_the_last_write_lands_in_the_hblank_above_the_article(console):
         assert all(frame.hit_at is not None and frame.header == HEADER_SCROLL for frame in frames)
         dots += [frame.split_dot for frame in frames]
     assert HBLANK[0] + MARGIN <= min(dots) and max(dots) <= HBLANK[-1] - MARGIN, (min(dots), max(dots))
-    # Looks come 11 cycles apart, 33 dots, or 15 when the loop's counter
-    # wraps: the spread is between the two.
-    assert 3 * gen_screen.SPLIT_POLL - 3 <= max(dots) - min(dots) <= 3 * gen_screen.SPLIT_POLL_SLOW
+    # Looks come 11 cycles apart, 33 dots (35 on PAL), or 15 when the loop's
+    # counter wraps: the spread is between the two.
+    per = c.dots_per_cycle
+    assert per * gen_screen.SPLIT_POLL - 3 <= max(dots) - min(dots) <= per * gen_screen.SPLIT_POLL_SLOW
 
 
 def test_stepping_the_waits_lands_where_skipping_them_does(console):
@@ -48,17 +54,17 @@ def test_stepping_the_waits_lands_where_skipping_them_does(console):
             assert slow.split_dot == fast.split_dot
 
 
-def test_sprite_0_sits_on_a_pixel_of_the_name(console, build):
+def test_sprite_0_sits_on_its_mark_on_the_header_s_last_line(console, build):
     c = console()
     c.run(3)
     x, y = gen_screen.sprite0_position()
     assert c.oam[0:4] == bytes((y - 1, gen_screen.TILE_SPRITE0, 0, x))
-    assert c.background_pixel(HEADER_SCROLL, x, y) == gen_screen.TITLE_COLOR
-    assert y < 8 * gen_screen.HEADER_ROWS - 4      # lines to spare for the delay
-    # Its colour is the name's, so it does not show.
-    assert gen_screen.SPRITE_PALETTE[0] == gen_screen.PALETTES[gen_screen.PALETTE_LOGO][
-        gen_screen.TITLE_COLOR - 1]
-    assert c.vram[0x3F11] == c.vram[0x3F0E]         # sprite colour 1, logo colour 2
+    assert y == SPLIT_LINE                          # the hit is a few dozen cycles from the write
+    assert c.background_pixel(HEADER_SCROLL, x, y) != 0
+    # The mark is the one pixel lit on that line, and the sprite over it
+    # is the backdrop's black, so neither shows.
+    assert [column for column in range(256) if c.background_pixel(HEADER_SCROLL, column, y)] == [x]
+    assert c.vram[0x3F11] == c.vram[0x3F00]         # sprite colour 1, the backdrop
 
 
 def test_no_split_on_the_search_screen(console):

@@ -147,7 +147,15 @@ that speaks either.
 ### 3. The nesp32's own programs: about 2 days
 
 **Setup, NESpedia, weather, nes-radar and Bluesky** only show things, so
-with the rate right they should work as they are. Times they count in
+with the rate right they should work as they are. All of them did, on the
+MiSTer's PAL setting (2026-11-08), but NESpedia's article screen: its
+split between the header and the article waited 969 cycles from a sprite
+0 hit eight lines up, which on PAL's 3.2 dots a cycle lands halfway along
+the article's first line, which showed torn. The one exception made to the
+rule: sprite 0 is now on the header's last line, over a pixel put there for
+it, and the write comes 39 cycles after the hit, in the hblank on either
+console (`apps/wiki/tools/gen_screen.py`, and `tests/test_split.py` on
+both). It knows nothing of the region. Times they count in
 frames run 20% longer (nes-radar's `POLL_FRAMES`, `ANSWER_FRAMES` and
 `RECALL_FRAMES`, in `third_party/nes-radar/nes_radar/nes/radar_link.inc`,
 and their like in the others); a wait the nesp32's side also times should
