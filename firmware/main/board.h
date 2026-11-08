@@ -21,6 +21,10 @@
  *
  * The two boards have different chips, so the board is the target the
  * firmware was built for (idf.py set-target esp32, or esp32s3).
+ *
+ * An ESP32-S3 board wired with three resistors instead of the hat uses the
+ * StickS3's pins, and a link that does not invert (CONFIG_NESP_LINK_INVERTED
+ * off, as sdkconfig.defaults.generic has it). It is named for its chip.
  */
 #ifndef BOARD_H
 #define BOARD_H
@@ -30,7 +34,11 @@
 
 #if CONFIG_IDF_TARGET_ESP32S3
 #define BOARD_ID NESP_BOARD_S3
+#if CONFIG_NESP_LINK_INVERTED
 #define BOARD_NAME "StickS3"
+#else
+#define BOARD_NAME "ESP32-S3"
+#endif
 #define BOARD_LINK_TX 8
 #define BOARD_LINK_RX 1
 #elif CONFIG_IDF_TARGET_ESP32
@@ -43,7 +51,11 @@
 #endif
 
 /* Each NPN stage inverts, so the UART inverts TX and RX in hardware to
- * cancel it. A hat with a non-inverting shifter needs 0 here. */
+ * cancel it. A link that does not invert has CONFIG_NESP_LINK_INVERTED off. */
+#if CONFIG_NESP_LINK_INVERTED
 #define BOARD_LINK_INVERTED 1
+#else
+#define BOARD_LINK_INVERTED 0
+#endif
 
 #endif

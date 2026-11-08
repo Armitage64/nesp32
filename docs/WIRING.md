@@ -8,10 +8,15 @@ circuit by hand on M5Stack's proto hat, two other level shifters that
 would do, and three resistors that do without one. The circuit was first
 worked out for nes-radar.
 
-Whether the link is inverted is `BOARD_LINK_INVERTED` in
-[`firmware/main/board.h`](../firmware/main/board.h): 1 for the NPN
-shifter and the SN74LV1T04 alternative, which both invert, and 0 for the
-single‑gate buffers and the resistor network, which do not.
+Whether the link is inverted is `CONFIG_NESP_LINK_INVERTED`
+([`firmware/main/Kconfig.projbuild`](../firmware/main/Kconfig.projbuild)):
+on for the NPN shifter and the SN74LV1T04 alternative, which both invert,
+and off for the single‑gate buffers and the resistor network, which do
+not. The firmware for the hat has it on. The generic ESP32‑S3 firmware
+(`firmware/sdkconfig.defaults.generic`, built in `build-esp32s3-generic`)
+has it off, and is the one the [installer](https://nesp32.retrobits.tv/flash/)
+writes when **Resistors (non‑inverting)** is chosen. It is ESP32‑S3 only,
+on the StickS3's pins, G1 and G8.
 
 The ESP32‑S3 is a 3.3 V part and **not 5 V tolerant**, and a 3.3 V high is not
 guaranteed to register on the NES. Each direction goes through one NPN
@@ -154,7 +159,7 @@ order, which differs between parts and makers.
 | Stick GND | – | NES pin 1 (GND) |
 
 **How it works.** Each stage inverts, and the ESP32 UART inverts TX and RX in
-hardware to cancel it (`BOARD_LINK_INVERTED` 1, the default).
+hardware to cancel it (`CONFIG_NESP_LINK_INVERTED` on, the default).
 
 - **TX:** the UART idles with G8 low, so the transistor is off and the
   3.3 kΩ pull‑up holds D0 at the NES's own 5 V, which is idle (mark). A space
@@ -236,8 +241,8 @@ hardware to cancel it (`BOARD_LINK_INVERTED` 1, the default).
 
 Two TI SN74LV1T04 single inverters (`SN74LV1T04DBVR`, SOT‑23‑5, 0.95 mm
 pitch), one per direction, each on its own SOT‑23‑5‑to‑DIP adapter. Each
-stage inverts, as the NPN stages do, so this uses the same firmware:
-**`BOARD_LINK_INVERTED` 1**. Only the supply differs between the two: the TX
+stage inverts, as the NPN stages do, so this uses the same firmware: the
+hat's, with **`CONFIG_NESP_LINK_INVERTED` on**. Only the supply differs between the two: the TX
 part is powered by the NES and the RX part by the Stick.
 
 ```
@@ -345,7 +350,8 @@ capacitor right at its part's pins 5 and 3.
 ## Alternative: two single‑gate buffers (surface mount, non‑inverting)
 
 Two SOT‑23‑5 (0.95 mm pitch) buffers, each on its own SOT‑23‑5/6‑to‑DIP
-adapter. Build the firmware with **`BOARD_LINK_INVERTED` 0**.
+adapter. Use the generic ESP32‑S3 firmware, which has
+**`CONFIG_NESP_LINK_INVERTED` off** (untried with these parts).
 
 | Pin | TX: 74AHCT1G125, powered from NES pin 5 | RX: 74LVC1G125, powered from Stick 3V3_L2 |
 |---|---|---|
@@ -371,7 +377,10 @@ It only guarantees a high if OUT0 stays **at or above 3.7 V** under that
 
 No transistors and no chips: a divider takes OUT0 down to the Stick's
 level, and G8 drives D0 straight, through a resistor. Neither direction
-inverts, so build the firmware with **`BOARD_LINK_INVERTED` 0**.
+inverts, so use the generic ESP32‑S3 firmware, which has
+**`CONFIG_NESP_LINK_INVERTED` off**: **Resistors (non‑inverting)** in the
+[installer](https://nesp32.retrobits.tv/flash/), or
+`firmware/deploy.sh --generic`.
 
 ```
  TX (Stick → NES)                      RX (NES → Stick)

@@ -25,7 +25,16 @@ idf.py -B build-esp32 -D SDKCONFIG=build-esp32/sdkconfig -D IDF_TARGET=esp32 bui
 idf.py -B build-esp32 -p /dev/cu.usbserial-XXXX flash monitor
 # a StickS3
 idf.py -B build-esp32s3 -D SDKCONFIG=build-esp32s3/sdkconfig -D IDF_TARGET=esp32s3 build
+# an ESP32-S3 board wired with three resistors (a link that does not invert)
+idf.py -B build-esp32s3-generic -D SDKCONFIG=build-esp32s3-generic/sdkconfig -D IDF_TARGET=esp32s3 \
+       -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.defaults.generic" build
 ```
+
+The generic ESP32-S3 firmware is the StickS3's with
+`CONFIG_NESP_LINK_INVERTED` off, for the resistors in
+[`../docs/WIRING.md`](../docs/WIRING.md), on the same pins (G1 and G8). It
+calls itself an ESP32-S3, and needs 8 MB of flash or more and 8 MB of
+octal PSRAM, as the StickS3 has.
 
 A StickS3 build directory made before the nesp32 had Bluetooth has an
 `sdkconfig` with it off, which the defaults do not change: the build stops
@@ -35,7 +44,9 @@ defaults have it).
 
 `firmware/deploy.sh` does both for whichever boards are on this computer's
 USB, telling a StickS3 from a StickC Plus2 by the name of its port, and
-`firmware/deploy.sh watch` prints their logs without restarting them.
+`firmware/deploy.sh watch` prints their logs without restarting them. An
+ESP32-S3 board's port looks like a StickS3's: `firmware/deploy.sh
+--generic` flashes it the generic firmware instead.
 
 The screen is drawn upside down from M5Stack's landscape. Flip LCD in
 [Setup](../apps/setup)'s menu turns it the other way up, and the nesp32

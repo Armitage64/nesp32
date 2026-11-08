@@ -122,18 +122,22 @@ need to download or build anything.
 1. Open the **[Online Firmware Installer](https://nesp32.retrobits.tv/flash/)**
    in **Chrome, Edge or Opera** on a computer. Safari and Firefox can't
    reach USB devices.
-2. Connect the Stick to the computer with a USB data cable.
-3. **The first time on a StickS3 only:** put it in "boot mode". Press and
+2. Choose **NESP32 hat (inverting)**, for a Stick with the NESP32 hat.
+   (**Resistors (non‑inverting)** is for an ESP32‑S3 board wired to the
+   controller port with three resistors instead, as in
+   [WIRING.md](WIRING.md#alternative-three-resistors-no-level-shifter).)
+3. Connect the Stick to the computer with a USB data cable.
+4. **The first time on a StickS3 only:** put it in "boot mode". Press and
    hold the **power button** on its side until the **green light
    flashes**. The StickC Plus2 doesn't need this.
-4. Press **Connect** and choose the Stick from the list. The right
+5. Press **Connect** and choose the Stick from the list. The right
    firmware for your Stick is picked for you.
-5. The browser asks whether to **erase** the Stick first:
+6. The browser asks whether to **erase** the Stick first:
    - **First install:** either answer is fine.
    - **Updating an existing NESP32:** answer **No**. Answering Yes wipes
      your saved Wi-Fi, your paired keyboard, your settings and your
      music.
-6. Wait for the installation to finish, then unplug the Stick.
+7. Wait for the installation to finish, then unplug the Stick.
 
 > **Good to know:** installing the firmware replaces whatever was on the
 > Stick before, including M5Stack's own UIFlow software. M5Stack's
