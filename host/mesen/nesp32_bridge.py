@@ -47,6 +47,7 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 KEYBOARD_NAME = b"Mesen PC keyboard"
+PC_ADDRESS = "PC"               # the computer's keyboard, in a real scan's list too
 KEYBOARD_SIGNAL = -40           # dBm, as a scan finds it
 SCAN_MS = 1000                  # a scan takes this long, in the console's time
 PAIR_MS = 500                   # and a pairing this
@@ -402,10 +403,14 @@ class BluetoothKeyboard:
                 and stick.kbd_unread < HELD:
             stick.kbd_type(bytes((key,)))
 
+    def pc_paired(self):
+        """True if the keyboard paired is the computer's own."""
+        return self.helper is None or self.memory.address == PC_ADDRESS
+
     def report(self, modifiers, keys, now):
-        """Keys down on the computer's keyboard. With a helper, they are not
-        the nesp32's: its real keyboard's come from the helper."""
-        if self.helper is None:
+        """Keys down on the computer's keyboard. With a helper, they are the
+        nesp32's only when the computer's keyboard is the one paired."""
+        if self.pc_paired():
             self.keyboard.report(modifiers, keys, now)
 
     def update_helper(self, now):
@@ -416,6 +421,8 @@ class BluetoothKeyboard:
             if not words:
                 continue
             if words[0] == "K" and len(words) > 1:
+                if self.pc_paired():
+                    continue
                 words = line.split()
                 self.keyboard.report(int(words[1]), [int(w) for w in words[2:]], now)
             elif words[0] == "D" and len(words) == 4 and self.asked_at is not None \
@@ -438,7 +445,7 @@ class BluetoothKeyboard:
                 log("keyboard pairing failed: %s" % " ".join(words[1:]))
         if stick.kbd_forgets != self.forgets:
             self.forgets = stick.kbd_forgets
-            if self.memory.address:
+            if self.memory.address and self.memory.address != PC_ADDRESS:
                 helper.send("FORGET " + self.memory.address)
             self.memory.set_paired(False)
             self.asked_at = None
@@ -455,7 +462,12 @@ class BluetoothKeyboard:
             self.pairs = stick.kbd_pairs
             index = stick.kbd_pair_index
             found = self.heard[:FOUND_MAX]
-            if index < len(found) and helper.send("PAIR " + found[index][0]):
+            if index < len(found) and found[index][0] == PC_ADDRESS:
+                stick.kbd_paired(KEYBOARD_NAME)
+                stick.kbd_state = proto.NESP_KEYBOARD_CONNECTED
+                self.memory.set_paired(True, PC_ADDRESS, KEYBOARD_NAME.decode())
+                log("keyboard paired: %s" % KEYBOARD_NAME.decode())
+            elif index < len(found) and helper.send("PAIR " + found[index][0]):
                 self.pairing = found[index][0]
                 self.asked_at = now
             else:
@@ -472,7 +484,7 @@ class BluetoothKeyboard:
         """The helper has said what it heard (or nothing is to be heard)."""
         self.asked_at = None
         self.heard.sort(key=lambda d: -d[2])
-        self.heard = self.heard[:FOUND_MAX]
+        self.heard = [(PC_ADDRESS, KEYBOARD_NAME, KEYBOARD_SIGNAL)] + self.heard[:FOUND_MAX - 1]
         self.stick.kbd_found([(name, rssi) for _, name, rssi in self.heard])
         self.stick.kbd_state = proto.NESP_KEYBOARD_SCANNED
 

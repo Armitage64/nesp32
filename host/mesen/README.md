@@ -133,8 +133,9 @@ There are two keyboard modes.
 2. **Real Bluetooth.** A machine with a Bluetooth radio, such as a Raspberry
    Pi, runs `nesp32_bt_helper.py`. Setup's scan then lists the real keyboards
    near it, and it pairs the one you choose. What is typed on that keyboard
-   is what the nesp32 gets. The computer's keyboard (Mesen's `K` reports) is
-   ignored in this mode, not merged.
+   is what the nesp32 gets. `Mesen PC keyboard` stays first on the list, so
+   the computer's own keyboard can still be paired in this mode; whichever
+   keyboard is paired is the only one that types.
 
 On the Pi (BlueZ running, `sudo apt-get install python3-evdev`):
 
@@ -144,8 +145,8 @@ On the bridge's machine, add `--bt-helper PI_ADDRESS:7980`. Without the flag
 nothing changes.
 
 What it does: a scan listens for 6 seconds and lists the devices with a name,
-strongest first, as the firmware keeps them: 8 at most, names cut to 24
-bytes. Any device with a name is listed, keyboard or not. A pairing pairs,
+strongest first, after `Mesen PC keyboard`, as the firmware keeps them: 8
+at most, names cut to 24 bytes. Any device with a name is listed, keyboard or not. A pairing pairs,
 trusts and connects the one chosen. If it shows a passkey, the helper
 confirms it and the bridge logs it (the nesp32 has no screen for it). Forget
 removes it. The keyboard's address is kept in the helper's `~/.nesp32-bt`

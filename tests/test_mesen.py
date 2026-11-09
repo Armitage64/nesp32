@@ -412,11 +412,12 @@ def test_a_helper_scan_finds_what_it_heard_strongest_first(stick, helped):
     bt, helper = helped
     scan_with_helper(stick, bt, helper, [("AA:BB:CC:00:00:01", -80, "Far one"),
                                          ("AA:BB:CC:00:00:02", -40, "Near keyboard")])
-    assert state(stick)[:2] == (p.NESP_KEYBOARD_SCANNED, 2)
-    first = stick.ask(KBD, p.NESP_KBD_FOUND, b"\x00")
-    assert first.payload[3:] == b"Near keyboard"
-    assert first.payload[1] == -40 & 0xFF
-    assert stick.ask(KBD, p.NESP_KBD_FOUND, b"\x01").payload[3:] == b"Far one"
+    assert state(stick)[:2] == (p.NESP_KEYBOARD_SCANNED, 3)
+    assert stick.ask(KBD, p.NESP_KBD_FOUND, b"\x00").payload[3:] == b"Mesen PC keyboard"
+    near = stick.ask(KBD, p.NESP_KBD_FOUND, b"\x01")
+    assert near.payload[3:] == b"Near keyboard"
+    assert near.payload[1] == -40 & 0xFF
+    assert stick.ask(KBD, p.NESP_KBD_FOUND, b"\x02").payload[3:] == b"Far one"
 
 
 def test_a_long_name_is_cut_and_no_more_than_eight_are_kept(stick, helped):
@@ -425,7 +426,7 @@ def test_a_long_name_is_cut_and_no_more_than_eight_are_kept(stick, helped):
                for i in range(11)]
     scan_with_helper(stick, bt, helper, devices)
     assert state(stick)[:2] == (p.NESP_KEYBOARD_SCANNED, 8)
-    assert stick.ask(KBD, p.NESP_KBD_FOUND, b"\x00").payload[3:] == b"n" * 24
+    assert stick.ask(KBD, p.NESP_KBD_FOUND, b"\x01").payload[3:] == b"n" * 24
 
 
 def test_a_helper_that_is_not_there_is_a_scan_that_finds_nothing(stick):
@@ -433,14 +434,15 @@ def test_a_helper_that_is_not_there_is_a_scan_that_finds_nothing(stick):
     bt = bridge.BluetoothKeyboard(stick, bridge.Memory(), FakeHelper(up=False))
     assert stick.ask(KBD, p.NESP_KBD_SCAN).ok
     bt.update(0)
-    assert state(stick)[:2] == (p.NESP_KEYBOARD_SCANNED, 0)
+    assert state(stick)[:2] == (p.NESP_KEYBOARD_SCANNED, 1)
+    assert stick.ask(KBD, p.NESP_KBD_FOUND, b"\x00").payload[3:] == b"Mesen PC keyboard"
 
 
 def test_the_keyboard_chosen_is_the_one_paired(stick, helped):
     bt, helper = helped
     scan_with_helper(stick, bt, helper, [("AA:BB:CC:00:00:01", -80, "Far one"),
                                          ("AA:BB:CC:00:00:02", -40, "Near keyboard")])
-    assert stick.ask(KBD, p.NESP_KBD_PAIR, b"\x01").ok
+    assert stick.ask(KBD, p.NESP_KBD_PAIR, b"\x02").ok
     bt.update(20)
     assert helper.sent[-1] == "PAIR AA:BB:CC:00:00:01"
     assert state(stick)[0] == p.NESP_KEYBOARD_PAIRING
@@ -453,7 +455,7 @@ def test_the_keyboard_chosen_is_the_one_paired(stick, helped):
 def test_a_pairing_that_fails_is_failed(stick, helped):
     bt, helper = helped
     scan_with_helper(stick, bt, helper, [("AA:BB:CC:00:00:01", -80, "Far one")])
-    assert stick.ask(KBD, p.NESP_KBD_PAIR, b"\x00").ok
+    assert stick.ask(KBD, p.NESP_KBD_PAIR, b"\x01").ok
     bt.update(20)
     helper.incoming = ["PAIRFAIL AuthenticationFailed"]
     bt.update(30)
@@ -464,7 +466,7 @@ def test_a_pairing_that_fails_is_failed(stick, helped):
 def test_the_helpers_keys_are_typed_and_the_computers_are_not(stick, helped):
     bt, helper = helped
     scan_with_helper(stick, bt, helper, [("AA:BB:CC:00:00:01", -80, "Far one")])
-    assert stick.ask(KBD, p.NESP_KBD_PAIR, b"\x00").ok
+    assert stick.ask(KBD, p.NESP_KBD_PAIR, b"\x01").ok
     bt.update(20)
     helper.incoming = ["PAIRED AA:BB:CC:00:00:01 Far one"]
     bt.update(30)
@@ -474,6 +476,26 @@ def test_the_helpers_keys_are_typed_and_the_computers_are_not(stick, helped):
     helper.incoming = ["K 2 %d" % letter("o"), "K 0 %d" % letter("k"), "K 0"]
     bt.update(50)
     assert keys(stick) == b"Ok"
+
+
+def test_with_a_helper_the_computers_keyboard_can_still_be_paired(stick, helped):
+    bt, helper = helped
+    scan_with_helper(stick, bt, helper, [("AA:BB:CC:00:00:01", -40, "Near keyboard")])
+    sent = len(helper.sent)
+    assert stick.ask(KBD, p.NESP_KBD_PAIR, b"\x00").ok
+    bt.update(20)
+    assert len(helper.sent) == sent
+    assert state(stick) == (p.NESP_KEYBOARD_CONNECTED, 0, b"Mesen PC keyboard")
+    helper.incoming = ["K 0 %d" % letter("z"), "K 0"]
+    bt.update(30)
+    bt.report(2, [letter("o")], 40)
+    bt.report(0, [letter("k")], 41)
+    bt.report(0, [], 42)
+    assert keys(stick) == b"Ok"
+    assert stick.ask(KBD, p.NESP_KBD_FORGET).ok
+    bt.update(50)
+    assert len(helper.sent) == sent
+    assert not bt.memory.paired
 
 
 def test_forget_tells_the_helper(stick, helped):
