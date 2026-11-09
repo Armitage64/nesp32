@@ -14,7 +14,7 @@ the computer's own (what Mesen's window is typed on, in typing mode), and
 the files a ROM keeps (Family BASIC's SAVE), in a directory if one is given.
 
     nesp32_bridge.py [--host 0.0.0.0] [--port 7878] [--nesp32 /path/to/nesp32]
-                     [--data DIR]
+                     [--data DIR] [--bt-helper HOST:PORT]
 
 Protocol, one line each way, ASCII:
   Mesen -> bridge   S <cycle> <n> <c1> <l1> ... <cn> <ln>
@@ -51,6 +51,11 @@ KEYBOARD_SIGNAL = -40           # dBm, as a scan finds it
 SCAN_MS = 1000                  # a scan takes this long, in the console's time
 PAIR_MS = 500                   # and a pairing this
 HELD = 64                       # keys typed and not yet taken (the firmware's HELD)
+NAME_MAX = 24                   # bytes of a keyboard's name (proto's KBD_NAME_MAX)
+FOUND_MAX = 8                   # keyboards a scan keeps (KBD_FOUND_MAX)
+HELPER_SCAN = 6                 # seconds a real scan listens for
+HELPER_WAIT_MS = 30000          # what the helper gets to scan, and 75 s to pair
+HELPER_PAIR_MS = 75000
 FETCH_TIMEOUT = 10              # seconds, as the firmware's TIMEOUT_MS
 
 
@@ -250,10 +255,17 @@ class Memory:
     def __init__(self, directory=None):
         self.directory = directory
         self.paired = False
+        self.address = None             # of a real keyboard (--bt-helper), and its name
+        self.name = None
         self.files = {}                 # name: bytes, in the order first written
         if directory is not None:
             os.makedirs(os.path.join(directory, "files"), exist_ok=True)
             self.paired = os.path.exists(self.paired_path())
+            if self.paired:
+                with open(self.paired_path(), errors="replace") as f:
+                    lines = f.read().splitlines()
+                if len(lines) >= 2 and lines[0]:
+                    self.address, self.name = lines[0], lines[1] or None
             folder = os.path.join(directory, "files")
             names = sorted(os.listdir(folder),
                            key=lambda name: os.path.getmtime(os.path.join(folder, name)))
@@ -265,11 +277,16 @@ class Memory:
     def paired_path(self):
         return os.path.join(self.directory, "keyboard-paired")
 
-    def set_paired(self, paired):
+    def set_paired(self, paired, address=None, name=None):
+        """address and name (of a real keyboard) are kept in the file's two lines."""
         self.paired = paired
+        self.address = address if paired else None
+        self.name = name if paired else None
         if self.directory is not None:
             if paired:
-                open(self.paired_path(), "w").close()
+                with open(self.paired_path(), "w") as f:
+                    if address:
+                        f.write("%s\n%s\n" % (address, name or ""))
             elif os.path.exists(self.paired_path()):
                 os.remove(self.paired_path())
 
@@ -287,21 +304,91 @@ def safe_name(name):
     return bool(name) and name not in (".", "..") and "/" not in name and "\\" not in name
 
 
+class HelperLink:
+    """The connection to nesp32_bt_helper.py, on a machine with a Bluetooth
+    radio. Lines it sends are queued for whoever polls; one is made when a
+    request is sent and there is none, so the helper may start after the
+    bridge, or restart."""
+
+    def __init__(self, address):
+        host, _, port = address.rpartition(":")
+        self.address = (host, int(port))
+        self.lines = queue.Queue()
+        self.conn = None
+        self.lock = threading.Lock()
+
+    def send(self, line):
+        """True if the helper took the line."""
+        with self.lock:
+            if self.conn is None:
+                try:
+                    conn = socket.create_connection(self.address, timeout=5)
+                except OSError as e:
+                    log("Bluetooth helper %s:%d: %s" % (self.address + (e,)))
+                    return False
+                conn.settimeout(None)
+                conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                self.conn = conn
+                threading.Thread(target=self.read, args=(conn,), daemon=True).start()
+                log("Bluetooth helper connected")
+            try:
+                self.conn.sendall((line + "\n").encode())
+                return True
+            except OSError:
+                self.conn = None
+                return False
+
+    def read(self, conn):
+        try:
+            for raw in conn.makefile("r", errors="replace"):
+                self.lines.put(raw.strip())
+        except OSError:
+            pass
+        with self.lock:
+            if self.conn is conn:
+                self.conn = None
+        conn.close()
+        log("Bluetooth helper gone")
+
+    def poll(self):
+        """The lines that have come since the last poll."""
+        got = []
+        while True:
+            try:
+                got.append(self.lines.get_nowait())
+            except queue.Empty:
+                return got
+
+
+def short(name):
+    """A device's name as the firmware holds one: up to NAME_MAX bytes, whole characters."""
+    data = name.encode("utf-8")[:NAME_MAX]
+    return data.decode("utf-8", "ignore").encode("utf-8")
+
+
 class BluetoothKeyboard:
     """The nesp32's Bluetooth, with one keyboard about: the computer's own.
     A scan finds it, a pairing pairs it, and once paired it is connected
     whenever a ROM has KBD in use. What is typed on it (report) is typed on
     the nesp32 only then, as on a StickS3."""
 
-    def __init__(self, stick, memory):
+    def __init__(self, stick, memory, helper=None):
         self.stick = stick
         self.memory = memory
+        self.helper = helper
+        self.heard = []                 # (address, name, rssi) of a real scan
+        self.asked_at = None            # the helper's scan or pairing under way
+        self.pairing = None
         self.keyboard = Keyboard(self.keep)
         self.scans = stick.kbd_scans
         self.pairs = stick.kbd_pairs
         self.forgets = stick.kbd_forgets
         self.done_at = None             # when the scan or the pairing under way is over
-        if memory.paired:
+        if helper is not None:
+            if memory.paired and memory.address:
+                stick.kbd_paired(short(memory.name or memory.address))
+                stick.kbd_state = proto.NESP_KEYBOARD_CONNECTED
+        elif memory.paired:
             stick.kbd_paired(KEYBOARD_NAME)
             stick.kbd_state = proto.NESP_KEYBOARD_CONNECTED
 
@@ -316,11 +403,84 @@ class BluetoothKeyboard:
             stick.kbd_type(bytes((key,)))
 
     def report(self, modifiers, keys, now):
-        self.keyboard.report(modifiers, keys, now)
+        """Keys down on the computer's keyboard. With a helper, they are not
+        the nesp32's: its real keyboard's come from the helper."""
+        if self.helper is None:
+            self.keyboard.report(modifiers, keys, now)
+
+    def update_helper(self, now):
+        """update, with a real radio: what the helper says is what happens."""
+        stick, helper = self.stick, self.helper
+        for line in helper.poll():
+            words = line.split(None, 3)
+            if not words:
+                continue
+            if words[0] == "K" and len(words) > 1:
+                words = line.split()
+                self.keyboard.report(int(words[1]), [int(w) for w in words[2:]], now)
+            elif words[0] == "D" and len(words) == 4 and self.asked_at is not None \
+                    and stick.kbd_state == proto.NESP_KEYBOARD_SCANNING:
+                self.heard.append((words[1], short(words[3]), max(-128, min(127, int(words[2])))))
+            elif words[0] == "SCANDONE" and stick.kbd_state == proto.NESP_KEYBOARD_SCANNING:
+                self.finish_scan()
+            elif words[0] == "PASSKEY":
+                log("keyboard passkey %s (confirmed for it)" % words[1])
+            elif words[0] == "PAIRED" and stick.kbd_state == proto.NESP_KEYBOARD_PAIRING:
+                name = short(line.split(None, 2)[2] if len(words) > 2 else self.pairing)
+                stick.kbd_paired(name)
+                stick.kbd_state = proto.NESP_KEYBOARD_CONNECTED
+                self.memory.set_paired(True, self.pairing, name.decode("utf-8", "replace"))
+                self.asked_at = None
+                log("keyboard paired: %s %s" % (self.pairing, name.decode("utf-8", "replace")))
+            elif words[0] == "PAIRFAIL" and stick.kbd_state == proto.NESP_KEYBOARD_PAIRING:
+                stick.kbd_state = proto.NESP_KEYBOARD_FAILED
+                self.asked_at = None
+                log("keyboard pairing failed: %s" % " ".join(words[1:]))
+        if stick.kbd_forgets != self.forgets:
+            self.forgets = stick.kbd_forgets
+            if self.memory.address:
+                helper.send("FORGET " + self.memory.address)
+            self.memory.set_paired(False)
+            self.asked_at = None
+            log("keyboard forgotten")
+        if stick.kbd_scans != self.scans:
+            self.scans = stick.kbd_scans
+            self.heard = []
+            log("keyboard scan")
+            if helper.send("SCAN %d" % HELPER_SCAN):
+                self.asked_at = now
+            else:
+                self.finish_scan()
+        if stick.kbd_pairs != self.pairs:
+            self.pairs = stick.kbd_pairs
+            index = stick.kbd_pair_index
+            found = self.heard[:FOUND_MAX]
+            if index < len(found) and helper.send("PAIR " + found[index][0]):
+                self.pairing = found[index][0]
+                self.asked_at = now
+            else:
+                stick.kbd_state = proto.NESP_KEYBOARD_FAILED
+        if self.asked_at is not None:
+            if stick.kbd_state == proto.NESP_KEYBOARD_SCANNING and now - self.asked_at > HELPER_WAIT_MS:
+                self.finish_scan()
+            elif stick.kbd_state == proto.NESP_KEYBOARD_PAIRING and now - self.asked_at > HELPER_PAIR_MS:
+                stick.kbd_state = proto.NESP_KEYBOARD_FAILED
+                self.asked_at = None
+        self.keyboard.tick(now, lambda: stick.kbd_unread != 0)
+
+    def finish_scan(self):
+        """The helper has said what it heard (or nothing is to be heard)."""
+        self.asked_at = None
+        self.heard.sort(key=lambda d: -d[2])
+        self.heard = self.heard[:FOUND_MAX]
+        self.stick.kbd_found([(name, rssi) for _, name, rssi in self.heard])
+        self.stick.kbd_state = proto.NESP_KEYBOARD_SCANNED
 
     def update(self, now):
         """What the Bluetooth does by now (ms): a scan or a pairing the
         console started comes to its end, and a key held down repeats."""
+        if self.helper is not None:
+            return self.update_helper(now)
         stick = self.stick
         if stick.kbd_forgets != self.forgets:
             self.forgets = stick.kbd_forgets
@@ -411,7 +571,7 @@ class Console:
 class Board:
     """One NESP32, for one Mesen."""
 
-    def __init__(self, memory=None):
+    def __init__(self, memory=None, helper=None):
         self.memory = memory if memory is not None else Memory()
         self.console = Console()
         self.port = wire.Port(self.console, turnaround=wire.ms(0.1))
@@ -422,7 +582,7 @@ class Board:
         for name, data in self.memory.files.items():
             self.stick.put_file(name, data)
         self.file_writes = self.stick.file_writes
-        self.bluetooth = BluetoothKeyboard(self.stick, self.memory)
+        self.bluetooth = BluetoothKeyboard(self.stick, self.memory, helper)
         self.sent = 0               # how many of the wire's bytes Mesen has been told of
         self.scans = 0
         self.joins = 0
@@ -604,10 +764,10 @@ class Board:
         self.bluetooth.report(modifiers, usages, self.now_ms())
 
 
-def serve(conn, address, memory):
+def serve(conn, address, memory, helper=None):
     log("Mesen connected from %s" % (address,))
     conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-    board = Board(memory)
+    board = Board(memory, helper)
     last = 0
     buffered = conn.makefile("rb")
     try:
@@ -620,7 +780,7 @@ def serve(conn, address, memory):
                 if cycle < last:
                     log("console reset: a new board")
                     board.cancel()
-                    board = Board(memory)
+                    board = Board(memory, helper)
                 last = cycle
                 count = int(words[2])
                 changes = [(int(words[3 + 2 * i]), int(words[4 + 2 * i])) for i in range(count)]
@@ -647,9 +807,14 @@ def main():
                         help="a directory to keep the keyboard's pairing and a ROM's files in "
                              "over restarts of the bridge (by default they last as long as "
                              "it runs)")
+    parser.add_argument("--bt-helper", default=None, metavar="HOST:PORT",
+                        help="real Bluetooth: scan, pair and type with nesp32_bt_helper.py "
+                             "running there, instead of the computer's keyboard as a "
+                             "pretend Bluetooth one")
     args = parser.parse_args()
     load_nesp32(os.path.abspath(args.nesp32))
     memory = Memory(args.data)
+    helper = HelperLink(args.bt_helper) if args.bt_helper else None
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind((args.host, args.port))
@@ -657,7 +822,7 @@ def main():
     print("NESP32 bridge listening on %s:%d" % (args.host, args.port), flush=True)
     while True:
         conn, address = server.accept()
-        threading.Thread(target=serve, args=(conn, address, memory), daemon=True).start()
+        threading.Thread(target=serve, args=(conn, address, memory, helper), daemon=True).start()
 
 
 if __name__ == "__main__":

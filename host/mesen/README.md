@@ -123,6 +123,41 @@ The script reads the keys once a frame, so a key must be down for a frame
 program that types for you (a macro) may need to hold each key longer.
 Mesen hears the keyboard only while its game window has focus.
 
+## Real Bluetooth (Raspberry Pi)
+
+There are two keyboard modes.
+
+1. **Pretend Bluetooth** (the default, above). The computer's own physical
+   keyboard acts as the nesp32's Bluetooth keyboard. No Bluetooth hardware is
+   needed, anywhere.
+2. **Real Bluetooth.** A machine with a Bluetooth radio, such as a Raspberry
+   Pi, runs `nesp32_bt_helper.py`. Setup's scan then lists the real keyboards
+   near it, and it pairs the one you choose. What is typed on that keyboard
+   is what the nesp32 gets. The computer's keyboard (Mesen's `K` reports) is
+   ignored in this mode, not merged.
+
+On the Pi (BlueZ running, `sudo apt-get install python3-evdev`):
+
+    nice python3 nesp32_bt_helper.py --port 7980
+
+On the bridge's machine, add `--bt-helper PI_ADDRESS:7980`. Without the flag
+nothing changes.
+
+What it does: a scan listens for 6 seconds and lists the devices with a name,
+strongest first, as the firmware keeps them: 8 at most, names cut to 24
+bytes. Any device with a name is listed, keyboard or not. A pairing pairs,
+trusts and connects the one chosen. If it shows a passkey, the helper
+confirms it and the bridge logs it (the nesp32 has no screen for it). Forget
+removes it. The keyboard's address is kept in the helper's `~/.nesp32-bt`
+and in the bridge's `--data` directory, and only that keyboard is read. The
+helper grabs it, so it types nothing on the Pi. It has no loops that spin:
+it waits on its sockets and the keyboard, and looks for a missing keyboard
+every 10 seconds.
+
+Not done: the helper is not a service (start it by hand, or write the unit),
+there is no encryption or authentication on its port (keep it on your LAN),
+and one paired keyboard at a time.
+
 ## Known limits
 
 - **PEER** (the online games for two) is not emulated yet.
@@ -141,6 +176,6 @@ Mesen hears the keyboard only while its game window has focus.
 ## Tests
 
 `tests/test_mesen.py`, in `make test`: the keyboard's reports to
-characters, held to `keyboard.c`; pairing, forgetting and typing through
+characters, held to `keyboard.c`; real Bluetooth with a fake helper; pairing, forgetting and typing through
 the firmware's own KBD; a ROM's files kept and loaded again; and fetches,
 with the test as the site.

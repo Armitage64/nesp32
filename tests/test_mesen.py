@@ -370,3 +370,141 @@ def test_a_site_that_is_not_there_did_not_answer():
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
     assert fetched("http://127.0.0.1:%d/" % port) == [("done", False, b"THE SITE DID NOT ANSWER")]
+
+
+# --- the Bluetooth keyboard, with a helper (real Bluetooth, here a fake one) ----
+
+class FakeHelper:
+    """What bridge.HelperLink is to the bridge: lines sent, lines to poll."""
+
+    def __init__(self, up=True):
+        self.up = up
+        self.sent = []
+        self.incoming = []
+
+    def send(self, line):
+        if self.up:
+            self.sent.append(line)
+        return self.up
+
+    def poll(self):
+        got, self.incoming = self.incoming, []
+        return got
+
+
+@pytest.fixture
+def helped(stick):
+    assert stick.hello(services=[KBD]).ok
+    helper = FakeHelper()
+    return bridge.BluetoothKeyboard(stick, bridge.Memory(), helper), helper
+
+
+def scan_with_helper(stick, bt, helper, devices):
+    assert stick.ask(KBD, p.NESP_KBD_SCAN).ok
+    bt.update(0)
+    assert helper.sent[-1].startswith("SCAN ")
+    assert state(stick)[0] == p.NESP_KEYBOARD_SCANNING
+    helper.incoming = ["D %s %d %s" % d for d in devices] + ["SCANDONE"]
+    bt.update(10)
+
+
+def test_a_helper_scan_finds_what_it_heard_strongest_first(stick, helped):
+    bt, helper = helped
+    scan_with_helper(stick, bt, helper, [("AA:BB:CC:00:00:01", -80, "Far one"),
+                                         ("AA:BB:CC:00:00:02", -40, "Near keyboard")])
+    assert state(stick)[:2] == (p.NESP_KEYBOARD_SCANNED, 2)
+    first = stick.ask(KBD, p.NESP_KBD_FOUND, b"\x00")
+    assert first.payload[3:] == b"Near keyboard"
+    assert first.payload[1] == -40 & 0xFF
+    assert stick.ask(KBD, p.NESP_KBD_FOUND, b"\x01").payload[3:] == b"Far one"
+
+
+def test_a_long_name_is_cut_and_no_more_than_eight_are_kept(stick, helped):
+    bt, helper = helped
+    devices = [("AA:BB:CC:00:00:%02X" % i, -50 - i, "n" * 40 if i == 0 else "k%d" % i)
+               for i in range(11)]
+    scan_with_helper(stick, bt, helper, devices)
+    assert state(stick)[:2] == (p.NESP_KEYBOARD_SCANNED, 8)
+    assert stick.ask(KBD, p.NESP_KBD_FOUND, b"\x00").payload[3:] == b"n" * 24
+
+
+def test_a_helper_that_is_not_there_is_a_scan_that_finds_nothing(stick):
+    assert stick.hello(services=[KBD]).ok
+    bt = bridge.BluetoothKeyboard(stick, bridge.Memory(), FakeHelper(up=False))
+    assert stick.ask(KBD, p.NESP_KBD_SCAN).ok
+    bt.update(0)
+    assert state(stick)[:2] == (p.NESP_KEYBOARD_SCANNED, 0)
+
+
+def test_the_keyboard_chosen_is_the_one_paired(stick, helped):
+    bt, helper = helped
+    scan_with_helper(stick, bt, helper, [("AA:BB:CC:00:00:01", -80, "Far one"),
+                                         ("AA:BB:CC:00:00:02", -40, "Near keyboard")])
+    assert stick.ask(KBD, p.NESP_KBD_PAIR, b"\x01").ok
+    bt.update(20)
+    assert helper.sent[-1] == "PAIR AA:BB:CC:00:00:01"
+    assert state(stick)[0] == p.NESP_KEYBOARD_PAIRING
+    helper.incoming = ["PASSKEY 123456", "PAIRED AA:BB:CC:00:00:01 Far one"]
+    bt.update(30)
+    assert state(stick) == (p.NESP_KEYBOARD_CONNECTED, 0, b"Far one")
+    assert bt.memory.paired and bt.memory.address == "AA:BB:CC:00:00:01"
+
+
+def test_a_pairing_that_fails_is_failed(stick, helped):
+    bt, helper = helped
+    scan_with_helper(stick, bt, helper, [("AA:BB:CC:00:00:01", -80, "Far one")])
+    assert stick.ask(KBD, p.NESP_KBD_PAIR, b"\x00").ok
+    bt.update(20)
+    helper.incoming = ["PAIRFAIL AuthenticationFailed"]
+    bt.update(30)
+    assert state(stick)[0] == p.NESP_KEYBOARD_FAILED
+    assert not bt.memory.paired
+
+
+def test_the_helpers_keys_are_typed_and_the_computers_are_not(stick, helped):
+    bt, helper = helped
+    scan_with_helper(stick, bt, helper, [("AA:BB:CC:00:00:01", -80, "Far one")])
+    assert stick.ask(KBD, p.NESP_KBD_PAIR, b"\x00").ok
+    bt.update(20)
+    helper.incoming = ["PAIRED AA:BB:CC:00:00:01 Far one"]
+    bt.update(30)
+    bt.report(0, [letter("z")], 40)
+    bt.report(0, [], 41)
+    assert keys(stick) == b""
+    helper.incoming = ["K 2 %d" % letter("o"), "K 0 %d" % letter("k"), "K 0"]
+    bt.update(50)
+    assert keys(stick) == b"Ok"
+
+
+def test_forget_tells_the_helper(stick, helped):
+    bt, helper = helped
+    bt.memory.set_paired(True, "AA:BB:CC:00:00:01", "Far one")
+    assert stick.ask(KBD, p.NESP_KBD_FORGET).ok
+    bt.update(0)
+    assert helper.sent[-1] == "FORGET AA:BB:CC:00:00:01"
+    assert state(stick)[0] == p.NESP_KEYBOARD_UNPAIRED
+    assert not bt.memory.paired
+
+
+def test_a_board_after_a_reset_has_the_real_keyboard_paired_before(stick, tmp_path):
+    memory = bridge.Memory(str(tmp_path))
+    memory.set_paired(True, "AA:BB:CC:00:00:01", "Far one")
+    memory = bridge.Memory(str(tmp_path))
+    bridge.BluetoothKeyboard(stick, memory, FakeHelper())
+    assert stick.hello(services=[KBD]).ok
+    assert state(stick) == (p.NESP_KEYBOARD_CONNECTED, 0, b"Far one")
+
+
+def test_the_helpers_evdev_keys_make_hid_reports():
+    sys.path.insert(0, os.path.join(HERE, "..", "host", "mesen"))
+    helper = pytest.importorskip("nesp32_bt_helper")
+    pytest.importorskip("evdev")
+    usages, mods = helper.keycodes()
+    k = helper.Keys(usages, mods)
+    from evdev import ecodes as e
+    assert k.event(e.KEY_LEFTSHIFT, 1) == "K 2"
+    assert k.event(e.KEY_A, 1) == "K 2 4"
+    assert k.event(e.KEY_A, 2) is None
+    assert k.event(e.KEY_A, 0) == "K 2"
+    assert k.event(e.KEY_LEFTSHIFT, 0) == "K 0"
+    assert k.event(e.KEY_ENTER, 1) == "K 0 40"
