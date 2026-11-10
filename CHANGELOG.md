@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Other
+- Mesen emulator support for NESP32 added for local testing and development (#74)
+
 ## 0.3.0 — 2026-11-08
 
 ### Cartridge
