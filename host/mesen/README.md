@@ -111,16 +111,23 @@ down typed again after half a second and 25 times a second, at the ROM's
 pace. Where the keyboard comes from does not matter: a laptop's own, or
 one paired with the computer over Bluetooth.
 
+**Pair it first.** The keyboard is pretend, but it starts unpaired, as a
+real keyboard does with a new nesp32: until Setup has paired it, typing
+mode says `No keyboard paired: Setup > Bluetooth` and nothing typed
+reaches the nesp32. To pair, out of typing mode: Setup's **BLUETOOTH**,
+then **PAIR DEVICE**, and A on `Mesen PC keyboard`. The pairing lasts as
+long as the bridge runs, or over restarts with `--data DIR`.
+
 **Scroll Lock** or **End** turns typing mode on and off (`TYPING_KEYS`).
-Mesen shows it at the bottom of the screen, with a word when no keyboard
-is paired or the program asks for none. In typing mode every key goes to
+On a Mac, which has neither, **Fn and Right Arrow** is End. Mesen shows
+typing mode at the bottom of the screen, with a word when no keyboard is
+paired or the program asks for none. In typing mode every key goes to
 the nesp32, and none to controller 1 or to the nesp32's buttons; the
 cartridge's programs take the arrows, Enter and Escape as the
 controller's buttons anyway (PROTOCOL.md, KBD). `PAD_WHILE_TYPING = true`
 leaves controller 1 its keys as well.
 
-To pair: Setup's **BLUETOOTH**, then **PAIR DEVICE**, and A on
-`Mesen PC keyboard`. To try it: typing mode, and type on Setup's
+To try it, once paired: typing mode, and type on Setup's
 **TYPE HERE** line, in Weather's zip code, NESpedia's search, or
 `samplecode/keyboard`.
 

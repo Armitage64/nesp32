@@ -12,7 +12,9 @@
 -- from that.
 --
 -- The computer's keyboard is the NESP32's Bluetooth keyboard in typing
--- mode, which Scroll Lock or End turns on and off (TYPING_KEYS below). In
+-- mode, which Scroll Lock or End (on a Mac, Fn and Right Arrow) turns on
+-- and off (TYPING_KEYS below), once Setup has paired it (Setup > Bluetooth
+-- > Pair device > Mesen PC keyboard), as a real one is paired. In
 -- typing mode every key goes to the NESP32, and none to controller 1 or to
 -- the NESP32's own buttons.
 --
