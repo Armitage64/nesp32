@@ -42,6 +42,8 @@ to be configured from the NES itself.
 
 - [Build Guide](docs/BUILD_GUIDE.md): building and checking the hat
 
+- [Mesen](host/mesen/): a nesp32 in the emulator, for running its programs and trying a ROM with no hardware
+
 - [Purchase the M5 StickS3](https://amzn.to/3TVUV0y)*
 
 - [Order Hat from PCBWay](https://www.pcbway.com/project/shareproject/NESP32_Hat_for_M5_StickS3_d23db4e5.html)
