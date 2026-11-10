@@ -13,8 +13,8 @@ time, a Wi-Fi network that is always there, a Bluetooth keyboard that is
 the computer's own (what Mesen's window is typed on, in typing mode), and
 the files a ROM keeps (Family BASIC's SAVE), in a directory if one is given.
 
-    nesp32_bridge.py [--host 0.0.0.0] [--port 7878] [--nesp32 /path/to/nesp32]
-                     [--data DIR] [--bt-helper HOST:PORT]
+    nesp32_bridge.py [--host 127.0.0.1] [--port 7878] [--nesp32 /path/to/nesp32]
+                     [--data DIR] [--bt-helper HOST:PORT --bt-key KEY]
 
 Protocol, one line each way, ASCII:
   Mesen -> bridge   S <cycle> <n> <c1> <l1> ... <cn> <ln>
@@ -42,6 +42,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -309,11 +310,13 @@ class HelperLink:
     """The connection to nesp32_bt_helper.py, on a machine with a Bluetooth
     radio. Lines it sends are queued for whoever polls; one is made when a
     request is sent and there is none, so the helper may start after the
-    bridge, or restart."""
+    bridge, or restart. Each connection starts with HELLO and the helper's
+    key, without which the helper says nothing and takes no request."""
 
-    def __init__(self, address):
+    def __init__(self, address, key):
         host, _, port = address.rpartition(":")
         self.address = (host, int(port))
+        self.key = key
         self.lines = queue.Queue()
         self.conn = None
         self.lock = threading.Lock()
@@ -329,6 +332,11 @@ class HelperLink:
                     return False
                 conn.settimeout(None)
                 conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                try:
+                    conn.sendall(("HELLO %s\n" % self.key).encode())
+                except OSError:
+                    conn.close()
+                    return False
                 self.conn = conn
                 threading.Thread(target=self.read, args=(conn,), daemon=True).start()
                 log("Bluetooth helper connected")
@@ -521,6 +529,43 @@ class BluetoothKeyboard:
 
 # --- the Internet ---------------------------------------------------------------
 
+REDIRECTS_MAX = 5                   # as the firmware's fetch.c follows
+
+
+def web_address(url):
+    """True for an http or https address, all that the firmware fetches."""
+    try:
+        return urllib.parse.urlsplit(url).scheme.lower() in ("http", "https")
+    except ValueError:
+        return False
+
+
+class Redirects(urllib.request.HTTPRedirectHandler):
+    """A redirect is followed only to http or https, and only so far."""
+
+    max_redirections = REDIRECTS_MAX
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not web_address(newurl):
+            raise urllib.error.HTTPError(newurl, code, "redirect to a scheme not fetched",
+                                         headers, fp)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def web_opener():
+    """urllib with http and https alone: no file:, ftp: or data: handler, so
+    a ROM's address can reach nothing on this computer's disk."""
+    opener = urllib.request.OpenerDirector()
+    for handler in (urllib.request.ProxyHandler(), urllib.request.UnknownHandler(),
+                    urllib.request.HTTPHandler(), urllib.request.HTTPSHandler(),
+                    urllib.request.HTTPDefaultErrorHandler(), Redirects(),
+                    urllib.request.HTTPErrorProcessor()):
+        opener.add_handler(handler)
+    return opener
+
+
+OPENER = web_opener()
+
 class Fetcher:
     """A fetch on a thread of its own, as the firmware's fetch.c makes one.
     What it gets is queued, and handed to the firmware's sink from the main
@@ -540,10 +585,16 @@ class Fetcher:
         headers = {"User-Agent": agent or "nesp32", "Accept-Encoding": "identity"}
         if icy:
             headers["Icy-MetaData"] = "1"
+        if not web_address(url):
+            # The firmware's client speaks http and https alone; urllib would
+            # also open file:, ftp: and data:, which would hand a ROM this
+            # computer's files.
+            self.items.put(("done", False, b"THE SITE DID NOT ANSWER"))
+            return
         try:
             try:
-                reply = urllib.request.urlopen(urllib.request.Request(url, headers=headers),
-                                               timeout=FETCH_TIMEOUT)
+                reply = OPENER.open(urllib.request.Request(url, headers=headers),
+                                    timeout=FETCH_TIMEOUT)
             except urllib.error.HTTPError as error:
                 if not head:
                     self.items.put(("done", False, b"THE SITE SAID %d" % error.code))
@@ -811,7 +862,10 @@ def serve(conn, address, memory, helper=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--host", default="0.0.0.0")
+    parser.add_argument("--host", default="127.0.0.1",
+                        help="the address to listen on: 127.0.0.1 (the default) for a Mesen on "
+                             "this computer, 0.0.0.0 for one on another (anyone who can reach "
+                             "the port can then use this bridge)")
     parser.add_argument("--port", type=int, default=7878)
     parser.add_argument("--nesp32", default=default_nesp32(),
                         help="a checkout of github.com/Armitage64/nesp32 with `make host` done")
@@ -823,10 +877,16 @@ def main():
                         help="real Bluetooth: scan, pair and type with nesp32_bt_helper.py "
                              "running there, instead of the computer's keyboard as a "
                              "pretend Bluetooth one")
+    parser.add_argument("--bt-key", default=os.environ.get("NESP32_BT_KEY"), metavar="KEY",
+                        help="the key nesp32_bt_helper.py prints when it starts (or "
+                             "$NESP32_BT_KEY); needed with --bt-helper")
     args = parser.parse_args()
+    if args.bt_helper and not args.bt_key:
+        parser.error("--bt-helper needs --bt-key (or $NESP32_BT_KEY): the key the helper "
+                     "prints when it starts")
     load_nesp32(os.path.abspath(args.nesp32))
     memory = Memory(args.data)
-    helper = HelperLink(args.bt_helper) if args.bt_helper else None
+    helper = HelperLink(args.bt_helper, args.bt_key) if args.bt_helper else None
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind((args.host, args.port))

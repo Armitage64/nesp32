@@ -8,14 +8,20 @@ running and `sudo apt-get install python3-evdev` done.
 
     nesp32_bt_helper.py [--host 0.0.0.0] [--port 7980] [--state DIR]
 
-Protocol, one line each way, ASCII. A bridge -> helper:
+It prints its key when it starts; the bridge needs it (--bt-key).
+
+Protocol, one line each way, ASCII. A bridge -> helper, first:
+  HELLO <key>      the key this helper prints when it starts (kept in
+                   DIR/key). A connection that does not start with it is
+                   closed, and hears nothing: not a key typed, not a scan.
+Then:
   SCAN <seconds>   D <address> <rssi> <name>, one for each named device heard,
                    then SCANDONE
   PAIR <address>   pair, trust and connect it. PASSKEY <digits> if the keyboard
                    is to show one (it is confirmed for it), then PAIRED
                    <address> <name> or PAIRFAIL <why>
   FORGET <address> remove it, then FORGOTTEN
-Any time, to every bridge:
+Any time, to every bridge that has said HELLO:
   K <modifiers> [<usage>...]   the keys down on the keyboard paired, as a
                    Bluetooth keyboard's report has them (HID's modifier bits
                    and up to 6 usages, the keyboard page)
@@ -27,8 +33,10 @@ blocking reads and a slow retry, no busy loop.
 """
 
 import argparse
+import hmac
 import os
 import re
+import secrets
 import select
 import socket
 import subprocess
@@ -46,6 +54,7 @@ except ImportError:             # the tests, and a machine without it
 ADDRESS = re.compile(r"^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$")
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|[\r\x01\x02]")
 RETRY = 10                      # seconds between looks for the keyboard
+HELLO_WAIT = 10                 # seconds a connection has to say HELLO
 MODIFIERS = {"KEY_LEFTCTRL": 0x01, "KEY_LEFTSHIFT": 0x02, "KEY_LEFTALT": 0x04,
              "KEY_LEFTMETA": 0x08, "KEY_RIGHTCTRL": 0x10, "KEY_RIGHTSHIFT": 0x20,
              "KEY_RIGHTALT": 0x40, "KEY_RIGHTMETA": 0x80}
@@ -234,6 +243,42 @@ class Helper:
         self.lock = threading.Lock()
         self.wake = threading.Event()
         self.pairing = threading.Lock()
+        self.key = self.load_key()
+
+    def load_key(self):
+        """The key a bridge says HELLO with: made at random the first time,
+        then kept in DIR/key, readable by this user alone."""
+        path = os.path.join(self.state, "key")
+        try:
+            with open(path) as f:
+                key = f.read().strip()
+            if key:
+                return key
+        except OSError:
+            pass
+        key = secrets.token_hex(16)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(key + "\n")
+        return key
+
+    def hello(self, conn):
+        """True if the connection's first line is HELLO with the key. It has
+        HELLO_WAIT seconds to say it."""
+        conn.settimeout(HELLO_WAIT)
+        line = b""
+        try:
+            while not line.endswith(b"\n") and len(line) < 128:
+                got = conn.recv(1)
+                if not got:
+                    return False
+                line += got
+        except OSError:
+            return False
+        conn.settimeout(None)
+        words = line.decode("ascii", "replace").split()
+        return (len(words) == 2 and words[0] == "HELLO"
+                and hmac.compare_digest(words[1].encode(), self.key.encode()))
 
     def path(self):
         return os.path.join(self.state, "keyboard")
@@ -292,6 +337,10 @@ class Helper:
             say("ERR " + line[:40])
 
     def serve(self, conn):
+        if not self.hello(conn):
+            print("a connection without the key, closed", flush=True)
+            conn.close()
+            return
         with self.lock:
             self.clients.append(conn)
         if self.address():
@@ -374,6 +423,7 @@ def main():
     server.bind((args.host, args.port))
     server.listen(4)
     print("NESP32 Bluetooth helper listening on %s:%d" % (args.host, args.port), flush=True)
+    print("its key (the bridge's --bt-key): %s" % helper.key, flush=True)
     threading.Thread(target=helper.keys, daemon=True).start()
     while True:
         conn, _ = server.accept()

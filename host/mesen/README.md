@@ -48,10 +48,16 @@ make host                    # on Linux: make host CC=clang
 python3 host/mesen/nesp32_bridge.py
 ```
 
-It listens on port 7878 (`--port`), on every address of the computer. Run
-it on the computer Mesen is on, or on another on the network; then set
-`BRIDGE_HOST` at the top of `nesp32.lua` to that computer's address. In
-WSL 2 the bridge is reached from Windows at `127.0.0.1` as it is.
+It listens on port 7878 (`--port`), on this computer alone (`127.0.0.1`).
+In WSL 2 the bridge is reached from Windows at `127.0.0.1` as it is. To run
+it on another computer on the network, start it with `--host 0.0.0.0` and
+set `BRIDGE_HOST` at the top of `nesp32.lua` to that computer's address;
+anyone who can reach the port can then use the bridge, and have it fetch
+for them, so do that only on a network you trust.
+
+The bridge fetches `http` and `https` addresses alone, as the firmware
+does, and follows a redirect only to one of those: a ROM cannot have it
+open a file on this computer.
 
 `--data DIR` keeps what a nesp32 keeps over power-off in that directory:
 which keyboard is paired, and a ROM's files (Family BASIC's SAVE). Without
@@ -141,8 +147,15 @@ On the Pi (BlueZ running, `sudo apt-get install python3-evdev`):
 
     nice python3 nesp32_bt_helper.py --port 7980
 
-On the bridge's machine, add `--bt-helper PI_ADDRESS:7980`. Without the flag
-nothing changes.
+It prints its key, made at random the first time and kept in
+`~/.nesp32-bt/key` (readable by its user alone). On the bridge's machine,
+add `--bt-helper PI_ADDRESS:7980 --bt-key KEY` (or set `NESP32_BT_KEY`).
+Without `--bt-helper` nothing changes.
+
+The helper takes a connection only if it starts with that key: one without
+it is closed, and hears neither the keys typed nor anything else. The key
+and the keys typed still cross the network unencrypted, so keep the helper
+on a network you trust.
 
 What it does: a scan listens for 6 seconds and lists the devices with a name,
 strongest first, after `Mesen PC keyboard`, as the firmware keeps them: 8
@@ -156,8 +169,8 @@ it waits on its sockets and the keyboard, and looks for a missing keyboard
 every 10 seconds.
 
 Not done: the helper is not a service (start it by hand, or write the unit),
-there is no encryption or authentication on its port (keep it on your LAN),
-and one paired keyboard at a time.
+its port has a key but no encryption (keep it on your LAN), and one paired
+keyboard at a time.
 
 ## Known limits
 

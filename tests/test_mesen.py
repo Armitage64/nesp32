@@ -4,8 +4,10 @@ ROM's files kept, and fetches as the firmware makes them."""
 
 import http.server
 import os
+import socket
 import sys
 import threading
+import time
 
 import nesp_proto as p
 import pytest
@@ -321,6 +323,18 @@ def test_secrets_in_an_address_are_not_logged():
 
 class Site(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path == "/to-a-file":
+            self.send_response(302)
+            self.send_header("Location", "file:///etc/hosts")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if self.path == "/moved":
+            self.send_response(302)
+            self.send_header("Location", "/there")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         if self.path == "/there":
             body, code = b"hello", 200
         else:
@@ -370,6 +384,24 @@ def test_a_site_that_is_not_there_did_not_answer():
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
     assert fetched("http://127.0.0.1:%d/" % port) == [("done", False, b"THE SITE DID NOT ANSWER")]
+
+
+@pytest.mark.parametrize("url", ["file:///etc/hosts", "FILE:///etc/hosts",
+                                 "data:text/plain,secret", "ftp://127.0.0.1/x", "/etc/hosts"])
+def test_only_http_and_https_are_fetched_as_the_firmware_does(url):
+    for head in (False, True):
+        assert fetched(url, head=head) == [("done", False, b"THE SITE DID NOT ANSWER")]
+
+
+def test_a_redirect_is_followed_to_http(site):
+    assert fetched(site + "/moved") == [("body", b"hello"), ("done", True, b"")]
+
+
+def test_a_redirect_to_a_file_is_not_followed(site):
+    assert fetched(site + "/to-a-file") == [("done", False, b"THE SITE SAID 302")]
+    items = fetched(site + "/to-a-file", head=True)
+    assert items[0][:2] == ("head", 302)
+    assert b"localhost" not in b"".join(i[1] for i in items if i[0] == "body")
 
 
 # --- the Bluetooth keyboard, with a helper (real Bluetooth, here a fake one) ----
@@ -530,3 +562,68 @@ def test_the_helpers_evdev_keys_make_hid_reports():
     assert k.event(e.KEY_A, 0) == "K 2"
     assert k.event(e.KEY_LEFTSHIFT, 0) == "K 0"
     assert k.event(e.KEY_ENTER, 1) == "K 0 40"
+
+
+# --- the helper's key -----------------------------------------------------------
+
+def helper_module():
+    sys.path.insert(0, os.path.join(HERE, "..", "host", "mesen"))
+    import nesp32_bt_helper
+    return nesp32_bt_helper
+
+
+def test_the_helpers_key_is_made_once_and_kept_for_its_user_alone(tmp_path):
+    h = helper_module()
+    key = h.Helper(str(tmp_path)).key
+    assert len(key) == 32
+    assert h.Helper(str(tmp_path)).key == key
+    assert os.stat(tmp_path / "key").st_mode & 0o077 == 0
+
+
+def connected(helper, first_line):
+    """A bridge's end of a connection to the helper that starts with first_line."""
+    ours, theirs = socket.socketpair()
+    threading.Thread(target=helper.serve, args=(theirs,), daemon=True).start()
+    ours.sendall(first_line)
+    ours.settimeout(5)
+    return ours
+
+
+def wait_for_clients(helper, count):
+    for _ in range(500):
+        if len(helper.clients) == count:
+            return
+        time.sleep(0.01)
+    assert len(helper.clients) == count
+
+
+@pytest.mark.parametrize("first_line", [b"HELLO wrong\n", b"SCAN 6\n", b"HELLO\n"])
+def test_a_connection_without_the_key_is_closed_and_hears_no_keys(tmp_path, first_line):
+    helper = helper_module().Helper(str(tmp_path))
+    conn = connected(helper, first_line)
+    assert conn.recv(100) == b""                    # closed, with nothing said
+    helper.tell("K 0 4")
+    assert helper.clients == []
+
+
+def test_a_connection_with_the_key_hears_the_keys(tmp_path):
+    helper = helper_module().Helper(str(tmp_path))
+    conn = connected(helper, b"HELLO %s\n" % helper.key.encode())
+    wait_for_clients(helper, 1)
+    helper.tell("K 2 4")
+    assert conn.recv(100) == b"K 2 4\n"
+    conn.close()
+
+
+def test_the_bridge_says_hello_with_the_key_before_anything_else():
+    server = socket.create_server(("127.0.0.1", 0))
+    link = bridge.HelperLink("127.0.0.1:%d" % server.getsockname()[1], "abc123")
+    assert link.send("SCAN 6")
+    conn, _ = server.accept()
+    conn.settimeout(5)
+    got = b""
+    while got.count(b"\n") < 2:
+        got += conn.recv(100)
+    assert got == b"HELLO abc123\nSCAN 6\n"
+    conn.close()
+    server.close()
