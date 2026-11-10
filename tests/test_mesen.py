@@ -627,3 +627,66 @@ def test_the_bridge_says_hello_with_the_key_before_anything_else():
     assert got == b"HELLO abc123\nSCAN 6\n"
     conn.close()
     server.close()
+
+
+# --- lines that make no sense ---------------------------------------------------
+
+def test_an_s_line_is_its_cycle_and_out0s_changes():
+    assert bridge.parse_sync(b"S 100 2 10 0 20 1".split()) == (100, [(10, 0), (20, 1)])
+    assert bridge.parse_sync(b"S 100 0".split()) == (100, [])
+
+
+@pytest.mark.parametrize("line", [b"S", b"S 100", b"S x 0", b"S 100 2 10 0", b"S 100 1 10 0 7",
+                                  b"S 100 -1", b"S 100 1 10 y"])
+def test_an_s_line_that_is_not_one_is_a_value_error(line):
+    with pytest.raises(ValueError):
+        bridge.parse_sync(line.split())
+
+
+def test_a_line_from_mesen_that_makes_no_sense_is_passed_over(tmp_path):
+    server = socket.create_server(("127.0.0.1", 0))
+    ours = socket.create_connection(server.getsockname())
+    theirs, _ = server.accept()
+    server.close()
+    threading.Thread(target=bridge.serve, args=(theirs, "test", bridge.Memory()),
+                     daemon=True).start()
+    ours.settimeout(5)
+    replies = ours.makefile("rb")
+    # Each S is answered, the one that is not one too, as the script waits.
+    ours.sendall(b"S 100 1 50\nB\nB x\nK\nK 2 x\nQ 1\nS 200 0\n")
+    assert replies.readline().startswith(b"R ")
+    assert replies.readline().startswith(b"R ")
+    ours.sendall(b"S 300 0\n")
+    assert replies.readline().startswith(b"R ")    # still up
+    ours.close()
+
+
+def test_a_line_from_the_helper_that_makes_no_sense_is_passed_over(stick, helped):
+    bt, helper = helped
+    assert stick.ask(KBD, p.NESP_KBD_SCAN).ok
+    bt.update(0)
+    helper.incoming = ["D AA:BB:CC:00:00:01 loud Bad one", "PASSKEY", "K", "K x 4",
+                       "D AA:BB:CC:00:00:02 -40 Near keyboard", "SCANDONE"]
+    bt.update(10)
+    assert state(stick)[:2] == (p.NESP_KEYBOARD_SCANNED, 2)
+    assert stick.ask(KBD, p.NESP_KBD_FOUND, b"\x01").payload[3:] == b"Near keyboard"
+
+
+@pytest.mark.parametrize("line", ["SCAN x", "SCAN ²"])
+def test_a_scan_of_no_number_is_an_error_at_the_helper(tmp_path, monkeypatch, line):
+    h = helper_module()
+    monkeypatch.setattr(h, "scan", lambda seconds: pytest.fail("scanned"))
+    helper = h.Helper(str(tmp_path))
+    ours, theirs = socket.socketpair()
+    ours.settimeout(5)
+    helper.handle(theirs, line)
+    assert ours.recv(100).startswith(b"ERR ")
+
+
+# --- the UART's buffer ----------------------------------------------------------
+
+def test_the_bridges_uart_holds_what_the_boards_does_and_the_tests_model_is_untouched():
+    import wire
+    assert bridge.Board().port.tx_buffer == bridge.UART_BUFFER == 2048
+    assert wire.TX_BUFFER == 256
+    assert wire.Port(bridge.Console()).tx_buffer == 256

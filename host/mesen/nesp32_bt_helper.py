@@ -313,7 +313,9 @@ class Helper:
         if not words:
             return
         say = lambda text: self.tell(text, conn)
-        if words[0] == "SCAN":
+        if words[0] == "SCAN" and len(words) > 1 and not words[1].isdecimal():
+            say("ERR " + line[:40])
+        elif words[0] == "SCAN":
             for address, rssi, name in scan(words[1] if len(words) > 1 else 8):
                 say("D %s %d %s" % (address, rssi, name))
             say("SCANDONE")
@@ -347,7 +349,10 @@ class Helper:
             self.wake.set()
         try:
             for raw in conn.makefile("r", errors="replace"):
-                self.handle(conn, raw.strip())
+                try:
+                    self.handle(conn, raw.strip())
+                except ValueError:
+                    self.tell("ERR " + raw.strip()[:40], conn)
         except OSError:
             pass
         finally:

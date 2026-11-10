@@ -119,11 +119,14 @@ class Port:
     number or a function returning one. to_console, if given, sees every
     reply and returns what really goes on the wire (or None for nothing),
     to stage lost and damaged bytes. clock_error runs the Stick's baud
-    clock fast (+) or slow (-).
+    clock fast (+) or slow (-). tx_buffer: bytes the UART holds of a run
+    (TX_BUFFER's 256 by default; the board's own holds 2048).
     """
 
-    def __init__(self, console, turnaround=ms(0.2), to_console=None, clock_error=0.0):
+    def __init__(self, console, turnaround=ms(0.2), to_console=None, clock_error=0.0,
+                 tx_buffer=TX_BUFFER):
         self.console = console
+        self.tx_buffer = tx_buffer
         self.wire = Wire()
         self.tap = Tap()
         self.turnaround = turnaround
@@ -179,7 +182,7 @@ class Port:
         now = self.console.now
         byte = self.rate_bit * NESP_TO_NES_BITS
         waiting = math.ceil(max(0.0, self.wire.busy_until - now) / byte)
-        count = min(len(data), max(0, TX_BUFFER - waiting))
+        count = min(len(data), max(0, self.tx_buffer - waiting))
         if count:
             if not self.in_run:     # a run's rate may be the link's own
                 self.in_run = True

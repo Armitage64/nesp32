@@ -59,6 +59,8 @@ HELPER_SCAN = 6                 # seconds a real scan listens for
 HELPER_WAIT_MS = 30000          # what the helper gets to scan, and 75 s to pair
 HELPER_PAIR_MS = 75000
 FETCH_TIMEOUT = 10              # seconds, as the firmware's TIMEOUT_MS
+UART_BUFFER = 2048              # bytes the board's UART holds; the tests' model holds
+                                # 256, less than a frame of a radio station's sound
 
 
 def log(text):
@@ -91,9 +93,6 @@ def load_nesp32(root=None):
     import nesp_proto as proto
     import nesp
     import wire
-    # The board's UART holds 2048 bytes; the tests' model holds 256, which
-    # is less than a frame of a radio station's sound.
-    wire.TX_BUFFER = 2048
 
 
 # --- the keyboard ---------------------------------------------------------------
@@ -425,32 +424,10 @@ class BluetoothKeyboard:
         """update, with a real radio: what the helper says is what happens."""
         stick, helper = self.stick, self.helper
         for line in helper.poll():
-            words = line.split(None, 3)
-            if not words:
-                continue
-            if words[0] == "K" and len(words) > 1:
-                if self.pc_paired():
-                    continue
-                words = line.split()
-                self.keyboard.report(int(words[1]), [int(w) for w in words[2:]], now)
-            elif words[0] == "D" and len(words) == 4 and self.asked_at is not None \
-                    and stick.kbd_state == proto.NESP_KEYBOARD_SCANNING:
-                self.heard.append((words[1], short(words[3]), max(-128, min(127, int(words[2])))))
-            elif words[0] == "SCANDONE" and stick.kbd_state == proto.NESP_KEYBOARD_SCANNING:
-                self.finish_scan()
-            elif words[0] == "PASSKEY":
-                log("keyboard passkey %s (confirmed for it)" % words[1])
-            elif words[0] == "PAIRED" and stick.kbd_state == proto.NESP_KEYBOARD_PAIRING:
-                name = short(line.split(None, 2)[2] if len(words) > 2 else self.pairing)
-                stick.kbd_paired(name)
-                stick.kbd_state = proto.NESP_KEYBOARD_CONNECTED
-                self.memory.set_paired(True, self.pairing, name.decode("utf-8", "replace"))
-                self.asked_at = None
-                log("keyboard paired: %s %s" % (self.pairing, name.decode("utf-8", "replace")))
-            elif words[0] == "PAIRFAIL" and stick.kbd_state == proto.NESP_KEYBOARD_PAIRING:
-                stick.kbd_state = proto.NESP_KEYBOARD_FAILED
-                self.asked_at = None
-                log("keyboard pairing failed: %s" % " ".join(words[1:]))
+            try:
+                self.helper_said(line, now)
+            except ValueError:
+                log("a line from the Bluetooth helper that makes no sense: %r" % line[:60])
         if stick.kbd_forgets != self.forgets:
             self.forgets = stick.kbd_forgets
             if self.memory.address and self.memory.address != PC_ADDRESS:
@@ -487,6 +464,38 @@ class BluetoothKeyboard:
                 stick.kbd_state = proto.NESP_KEYBOARD_FAILED
                 self.asked_at = None
         self.keyboard.tick(now, lambda: stick.kbd_unread != 0)
+
+    def helper_said(self, line, now):
+        """One line from the helper; ValueError if it makes no sense, and
+        then nothing has changed."""
+        stick = self.stick
+        words = line.split(None, 3)
+        if not words:
+            return
+        if words[0] == "K" and len(words) > 1:
+            if self.pc_paired():
+                return
+            numbers = [int(w) for w in line.split()[1:]]
+            self.keyboard.report(numbers[0], numbers[1:], now)
+        elif words[0] == "D" and len(words) == 4 and self.asked_at is not None \
+                and stick.kbd_state == proto.NESP_KEYBOARD_SCANNING:
+            rssi = max(-128, min(127, int(words[2])))
+            self.heard.append((words[1], short(words[3]), rssi))
+        elif words[0] == "SCANDONE" and stick.kbd_state == proto.NESP_KEYBOARD_SCANNING:
+            self.finish_scan()
+        elif words[0] == "PASSKEY":
+            log("keyboard passkey %s (confirmed for it)" % " ".join(words[1:2]))
+        elif words[0] == "PAIRED" and stick.kbd_state == proto.NESP_KEYBOARD_PAIRING:
+            name = short(line.split(None, 2)[2] if len(words) > 2 else self.pairing)
+            stick.kbd_paired(name)
+            stick.kbd_state = proto.NESP_KEYBOARD_CONNECTED
+            self.memory.set_paired(True, self.pairing, name.decode("utf-8", "replace"))
+            self.asked_at = None
+            log("keyboard paired: %s %s" % (self.pairing, name.decode("utf-8", "replace")))
+        elif words[0] == "PAIRFAIL" and stick.kbd_state == proto.NESP_KEYBOARD_PAIRING:
+            stick.kbd_state = proto.NESP_KEYBOARD_FAILED
+            self.asked_at = None
+            log("keyboard pairing failed: %s" % " ".join(words[1:]))
 
     def finish_scan(self):
         """The helper has said what it heard (or nothing is to be heard)."""
@@ -637,7 +646,7 @@ class Board:
     def __init__(self, memory=None, helper=None):
         self.memory = memory if memory is not None else Memory()
         self.console = Console()
-        self.port = wire.Port(self.console, turnaround=wire.ms(0.1))
+        self.port = wire.Port(self.console, turnaround=wire.ms(0.1), tx_buffer=UART_BUFFER)
         self.stick = nesp.Stick(self.port)
         self.stick.set_wifi(proto.NESP_WIFI_JOINED, rssi=-45, address=(192, 168, 0, 32))
         self.stick.set_saved(b"Mesen")
@@ -827,6 +836,17 @@ class Board:
         self.bluetooth.report(modifiers, usages, self.now_ms())
 
 
+def parse_sync(words):
+    """An S line's cycle and OUT0's changes; ValueError if it is not one."""
+    if len(words) < 3:
+        raise ValueError("too short")
+    cycle, count = int(words[1]), int(words[2])
+    if count < 0 or len(words) != 3 + 2 * count:
+        raise ValueError("%d changes said, %d words" % (count, len(words) - 3))
+    numbers = [int(word) for word in words[3:]]
+    return cycle, list(zip(numbers[0::2], numbers[1::2]))
+
+
 def serve(conn, address, memory, helper=None):
     log("Mesen connected from %s" % (address,))
     conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -839,19 +859,32 @@ def serve(conn, address, memory, helper=None):
             if not words:
                 continue
             if words[0] == b"S":
-                cycle = int(words[1])
+                try:
+                    cycle, changes = parse_sync(words)
+                except ValueError as e:
+                    # Answered all the same: the script waits for a reply.
+                    log("a line from Mesen that is no S (%s): %r" % (e, raw[:60]))
+                    conn.sendall(board.report().encode())
+                    continue
                 if cycle < last:
                     log("console reset: a new board")
                     board.cancel()
                     board = Board(memory, helper)
                 last = cycle
-                count = int(words[2])
-                changes = [(int(words[3 + 2 * i]), int(words[4 + 2 * i])) for i in range(count)]
                 conn.sendall(board.sync(cycle, changes).encode())
-            elif words[0] == b"B":
-                board.button(int(words[1]))
-            elif words[0] == b"K":
-                board.keys(int(words[1]), [int(word) for word in words[2:]])
+            elif words[0] in (b"B", b"K"):
+                try:
+                    numbers = [int(word) for word in words[1:]]
+                    if not numbers:
+                        raise ValueError("nothing after it")
+                except ValueError as e:
+                    log("a line from Mesen that is no %s (%s): %r"
+                        % (words[0].decode(), e, raw[:60]))
+                    continue
+                if words[0] == b"B":
+                    board.button(numbers[0])
+                else:
+                    board.keys(numbers[0], numbers[1:])
     except (ConnectionError, OSError):
         pass
     finally:
