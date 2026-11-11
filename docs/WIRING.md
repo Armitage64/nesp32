@@ -4,15 +4,30 @@ This is the hat every nesp32 uses, between an M5StickS3 or an M5StickC Plus2
 and controller port 2: its circuit, its pins, and why it is needed. The
 board itself, with its parts and pictures, is in
 [`hardware/`](../hardware/); this page also has how to wire the same
-circuit by hand on M5Stack's proto hat, two other level shifters that
-would do, and three resistors that do without one. The circuit was first
-worked out for nes-radar.
+circuit by hand on M5Stack's proto hat, another level shifter that does
+the same job with two chips, and three resistors that do without one. The
+circuit was first worked out for nes-radar.
+
+**Contents.** Three circuits, each tested with
+[the throughput test](../apps/throughput/README.md) on a real NES:
+
+| Circuit | Parts | Firmware | Fastest on a real NES, to it / from it |
+|---|---|---|---|
+| [NPN shifter](#npn-shifter-default-through-hole) (default, the hat's board) | two 2N3904, five resistors; through‑hole | the hat's (inverted) | 298296 / 223722 baud |
+| [SN74LV1T04](#alternative-sn74lv1t04-surface-mount-inverting) | two SOT‑23‑5 chips on breakout boards, six passives | the hat's (inverted) | 298296 / 298296 baud |
+| [Three resistors](#alternative-three-resistors-no-level-shifter) | three resistors, no level shifter | generic ESP32‑S3 (not inverted) | 298296 baud to it; 298296 from it on the MiSTer |
+
+And for every circuit:
+- [The NES controller plug](#the-nes-controller-plug): which pin is which,
+  and how to find each wire.
+- [Why a level shifter](#why-a-level-shifter): the voltages on each side,
+  and why NPN rather than MOSFET.
 
 Whether the link is inverted is `CONFIG_NESP_LINK_INVERTED`
 ([`firmware/main/Kconfig.projbuild`](../firmware/main/Kconfig.projbuild)):
 on for the NPN shifter and the SN74LV1T04 alternative, which both invert,
-and off for the single‑gate buffers and the resistor network, which do
-not. The firmware for the hat has it on. The generic ESP32‑S3 firmware
+and off for the resistor network, which does not. The firmware for the
+hat has it on. The generic ESP32‑S3 firmware
 (`firmware/sdkconfig.defaults.generic`, built in `build-esp32s3-generic`)
 has it off, and is the one the [installer](https://nesp32.retrobits.tv/flash/)
 writes when **Resistors (non‑inverting)** is chosen. It is ESP32‑S3 only,
@@ -119,7 +134,7 @@ cables often use others. With the cable unplugged, set the meter to
 continuity, hold one probe on a pin of the plug and touch the other to each
 bare wire until it beeps. Mark each wire as you find it.
 
-## NPN shifter (default, through‑hole)
+## NPN shifter (default, through-hole)
 
 This is the circuit on the hat's board in [`hardware/`](../hardware/),
 which has the parts to buy.
@@ -364,7 +379,7 @@ capacitor right at its part's pins 5 and 3.
   gate without hysteresis can make its output glitch. OUT0 comes from the
   2A03, an NMOS part, and drives the cable and both controllers; how fast
   its edges are has not been measured. The RX stage carried 298296 baud
-  from the console on one NES‑001 and on the MiSTer, so there it needed
+  from the console on one real NES and on the MiSTer, so there it needed
   no hysteresis. Other consoles have not been tried. If one's OUT0 is too
   slow, fit a Schmitt‑trigger
   SN74LVC1G14 for RX: it has the same SOT‑23‑5 footprint and pinout,
@@ -373,32 +388,6 @@ capacitor right at its part's pins 5 and 3.
   cannot do TX: at a 5 V supply its rising threshold can be about 3.0 V,
   too close to G8's 3.3 V. The SN74LV1T14 would do both, but TI publishes
   no datasheet for it and no distributor lists it.
-
-## Alternative: two single‑gate buffers (surface mount, non‑inverting)
-
-Two SOT‑23‑5 (0.95 mm pitch) buffers, each on its own SOT‑23‑5/6‑to‑DIP
-adapter. Use the generic ESP32‑S3 firmware, which has
-**`CONFIG_NESP_LINK_INVERTED` off** (untried with these parts).
-
-| Pin | TX: 74AHCT1G125, powered from NES pin 5 | RX: 74LVC1G125, powered from Stick 3V3_L2 |
-|---|---|---|
-| 1 OE (active low) | GND | GND |
-| 2 A | Stick G8 | 1 kΩ from NES OUT0, plus 100 kΩ to GND |
-| 3 GND | common GND | common GND |
-| 4 Y | 1 kΩ, then NES D0 | Stick G1 |
-| 5 VCC | NES pin 5, with 0.1 µF to GND | Stick 3V3_L2, with 0.1 µF to GND |
-
-- Pinouts are for TI's `DBV` package, SN74AHCT1G125DBVR and SN74LVC1G125DBVR.
-- The AHCT input needs only 2.0 V for a high, and its output swings to 5 V.
-  Powered from the NES, it switches off with the console.
-- LVC inputs tolerate 5.5 V even when unpowered and need only 2.0 V for a high
-  at a 3.3 V supply. The 100 kΩ holds the input low when the NES is off.
-- The DIP‑14 SN74AHCT125N can replace the TX part: use one gate, tie its OE
-  low, and tie each unused gate's input to GND and its OE high.
-
-**Not recommended:** a 1 kΩ series resistor plus 2 kΩ to GND on the RX side.
-It only guarantees a high if OUT0 stays **at or above 3.7 V** under that
-1.7 mA load, which is undocumented.
 
 ## Alternative: three resistors (no level shifter)
 
@@ -485,6 +474,13 @@ a SNAC adapter and on a real NES‑001.
 - **Not for a StickC Plus2.** Its TX is G0, the boot‑mode pin, and the
   1 kΩ ties it to D0: a low there at power‑up would start the board in
   firmware‑download mode. Not tried.
+
+**For full 5 V levels with this firmware**, a non‑inverting shifter would
+do: a 74AHCT1G125 for TX, powered from NES pin 5, with a 100 kΩ pull‑down
+on its input and the 1 kΩ after its output; and a 74LVC1G125 for RX,
+powered from the Stick's 3.3 V, with the RX side of the SN74LV1T04 build's
+1 kΩ and 100 kΩ in front of it. Tie each part's OE (pin 1) to GND. This
+has not been tried.
 
 **Benefits over the shifters:**
 - Three resistors: nothing to orient, no lead order to check, nothing to
