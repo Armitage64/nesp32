@@ -311,10 +311,34 @@ capacitor right at its part's pins 5 and 3.
     the NES CPU's unbuffered OUT0 goes matters even less than with the NPN.
 - **Speed:** propagation delay is 7 ns or less into 30 pF, and the output
   drives D0 both ways, so its rising edge no longer waits on a pull‑up as
-  the NPN stage's does. The RX stage has no transistor storage time. Both
-  directions should carry the NPN board's 298296 baud or better, but this
-  has not been tested; run [the throughput test](../apps/throughput/README.md)
-  on a real NES to confirm.
+  the NPN stage's does. The RX stage has no transistor storage time.
+- **Results.** Tested with [the throughput test](../apps/throughput/README.md)
+  on a breadboard wired to a StickS3, each part on its own SOT‑23‑5
+  breakout board.
+  - **Real NES:** 298296 baud both ways, over several climbs. That is the
+    fastest rate the test has in each direction. From the console the NPN
+    board stops at 223722.
+  - **MiSTer, through a SNAC adapter:** 298296 baud from the console and
+    255682 to it. That was with the first build, before the fault below
+    was found, and has not been run again since.
+  - **A bad breadboard contact looked like a slow line.** The first build
+    reached only 149148 baud to a real NES. Its sweep was the same every
+    time: 10, 7 and 6 cycles a bit failed, with about 100, 260 and 400 of
+    1024 bytes wrong; 8 cycles was always clean; 11 and 9 changed from
+    run to run. The throughput test's simulator gives that pattern when
+    D0's falling edges arrive about 2–2.5 CPU cycles (1.1–1.4 µs) late,
+    which shortens every low bit. The gate itself switches in
+    nanoseconds. The TX side was rebuilt from the same parts, with nothing
+    changed, and passed 298296 every time after that. The likely cause is
+    a high‑resistance contact in the TX gate's ground: pin 3, its rail,
+    or the ground wire to the console. The gate pulls D0 and the cable
+    low through that path, so only falling edges slow. A bad contact on
+    VCC would slow the rising edges instead, and lengthen the lows, as the
+    NPN stage's pull‑up does. If a breadboard build's sweep shows this
+    pattern, measure from the TX gate's pin 3 to the console's GND pin
+    with everything on; it should read a few millivolts. The MiSTer did
+    not show the fault, perhaps because the SNAC adapter's 10 kΩ pull‑up
+    slows the rising edges and makes up for it.
 - **Why the 100 kΩ pull‑downs:** a CMOS input must not float. On TX it holds
   G8's input low while the Stick is off or booting, so D0 rests high, the
   correct idle level. On RX it holds the input low while the NES is off, so
@@ -335,11 +359,14 @@ capacitor right at its part's pins 5 and 3.
   the 100 kΩ pull‑down loads it. That is a lighter load than the NPN
   stage's 10 kΩ into the transistor's base, which boots reliably, so it
   should boot too, but it has not been tried.
-- **Untested: OUT0's edge rate.** The datasheet asks that inputs rise and
-  fall no slower than 20 ns per volt; a slower edge on a gate without
-  hysteresis can make its output glitch. OUT0 comes from the 2A03, an NMOS
-  part, and drives the cable and both controllers; how fast its edges are
-  has not been measured. If it is too slow, fit a Schmitt‑trigger
+- **OUT0's edge rate, tested on one console.** The datasheet asks that
+  inputs rise and fall no slower than 20 ns per volt; a slower edge on a
+  gate without hysteresis can make its output glitch. OUT0 comes from the
+  2A03, an NMOS part, and drives the cable and both controllers; how fast
+  its edges are has not been measured. The RX stage carried 298296 baud
+  from the console on one NES‑001 and on the MiSTer, so there it needed
+  no hysteresis. Other consoles have not been tried. If one's OUT0 is too
+  slow, fit a Schmitt‑trigger
   SN74LVC1G14 for RX: it has the same SOT‑23‑5 footprint and pinout,
   inverts, reads a high at 1.87 V or less at a 3 V supply, has at least
   0.56 V of hysteresis, and takes 5.5 V on its input even unpowered. It
