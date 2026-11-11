@@ -134,7 +134,7 @@ need to download or build anything.
 2. Choose **NESP32 hat (inverting)**, for a Stick with the NESP32 hat.
    (**Resistors (non‑inverting)** is for an ESP32‑S3 board wired to the
    controller port with three resistors instead, as in
-   [WIRING.md](WIRING.md#alternative-three-resistors-no-level-shifter).)
+   [WIRING.md](WIRING.md#diy-resistor-network).)
 3. Connect the Stick to the computer with a USB data cable.
 4. **The first time on a StickS3 only:** put it in "boot mode". Press and
    hold the **power button** on its side until the **green light

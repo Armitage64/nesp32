@@ -52,7 +52,7 @@ damage the Stick.
 | 1 | Reverse 8-pin, 2.54 mm, right-angle male header |
 | 1 | NES controller pigtail, or a controller extension cable cut to make one |
 
-The two 100 pF capacitors are speed-up capacitors. With them, inexpensive bulk 2N3904s work as well as ones from a reputable vendor such as Digikey or Mouser, and the hat reaches the link's fastest rate in both directions. Without them, slow transistors lower the maximum throughput. See [WIRING.md](WIRING.md#npn-shifter-default-through-hole) for details.
+The two 100 pF capacitors are speed-up capacitors. With them, inexpensive bulk 2N3904s work as well as ones from a reputable vendor such as Digikey or Mouser, and the hat reaches the link's fastest rate in both directions. Without them, slow transistors lower the maximum throughput. See [WIRING.md](WIRING.md#m5stick-diy-hat) for details.
 
 Part references and photos of both sides of a finished board are in
 [hardware/README.md](../hardware/README.md). Keep the photos open while
