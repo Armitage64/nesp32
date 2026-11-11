@@ -48,10 +48,11 @@ damage the Stick.
 | 2 | 10 kΩ resistors |
 | 1 | 3.3 kΩ resistor |
 | 1 | 100 kΩ resistor |
+| 2 | 100 pF ceramic capacitors (C0G/NP0, 50 V) |
 | 1 | Reverse 8-pin, 2.54 mm, right-angle male header |
 | 1 | NES controller pigtail, or a controller extension cable cut to make one |
 
-Use high quality transistors from a reputable vendor such as Digikey or Mouser. Generic / bulk components from Amazon, etc. can be relabeled general-purpose or audio spec parts with sub-par switching speeds that result in a lower maximum throughput. See [WIRING.md](WIRING.md) for details.
+The two 100 pF capacitors are speed-up capacitors. With them, inexpensive bulk 2N3904s work as well as ones from a reputable vendor such as Digikey or Mouser, and the hat reaches the link's fastest rate in both directions. Without them, slow transistors lower the maximum throughput. See [WIRING.md](WIRING.md#npn-shifter-default-through-hole) for details.
 
 Part references and photos of both sides of a finished board are in
 [hardware/README.md](../hardware/README.md). Keep the photos open while
@@ -93,19 +94,25 @@ Read these before you pick up the iron:
    but if you're new to reading them, measure each one with the
    multimeter instead.
 3. **Solder the resistors** into their marked positions.
-4. **Solder the two transistors**, turned the way the board's outline and
+4. **Solder the two 100 pF capacitors**, one across each transistor's
+   base resistor: the 10 kΩ that runs from the Stick's G8 to the TX
+   transistor's base (not the 10 kΩ pull-up on the RX side), and the
+   100 kΩ. Solder each capacitor's legs to the same two points as its
+   resistor's leads. Ceramic capacitors have no polarity, so either way
+   round is fine.
+5. **Solder the two transistors**, turned the way the board's outline and
    the photos show. The pads are small, so use extra flux. If you
    substitute a different transistor, check its leg order: it may not
    match the 2N3904.
-5. **Solder the 8-pin connector**, facing the same way as in the photos.
+6. **Solder the 8-pin connector**, facing the same way as in the photos.
    This decides which way the hat sits on the Stick, so double-check it
    before soldering.
-6. **Identify the cable's wires.** With the meter in continuity mode, put
+7. **Identify the cable's wires.** With the meter in continuity mode, put
    one probe on a pin of the NES plug and touch the bare wire ends until
    it beeps. Note which wire goes to pins 1, 3, 4 and 5. The NES plug's
    pin numbering is drawn in
    [WIRING.md](WIRING.md#the-nes-controller-plug).
-7. **Solder the four wires** to the hat:
+8. **Solder the four wires** to the hat:
 
    | NES plug pin | What it carries | Hat pad |
    |---:|---|---|

@@ -1,53 +1,44 @@
 # Wiring
 
-This is the hat every nesp32 uses, between an M5StickS3 or an M5StickC Plus2
-and controller port 2: its circuit, its pins, and why it is needed. The
-board itself, with its parts and pictures, is in
-[`hardware/`](../hardware/); this page also has how to wire the same
-circuit by hand on M5Stack's proto hat, another level shifter that does
-the same job with two chips, and three resistors that do without one. The
-circuit was first worked out for nes-radar.
+The NESP32's general purpose IO operates at 3.3V while the NES controller port
+uses 5V instead. For the safety of the device, we've implemented level shifting
+for both the transmit and receive stages.
 
-**Contents.** Three circuits, each tested with
-[the throughput test](../apps/throughput/README.md) on a real NES:
+For the PCB gerber files and bill of materials
+to build your own hat, check out [../hardware/](../hardware/).
 
-| Circuit | Parts | Firmware | Fastest on a real NES, to it / from it |
+## Circuit Choices 
+
+Three level shifting circuits with varying level of complexity are presented here. 
+Each has a different level of DIY difficulty and pros/cons. They have all been
+tested on real hardware and achieve the highest throughput speeds required by
+NESP32 software.
+
+| Design | Parts | Firmware | Pros / cons |
 |---|---|---|---|
-| [NPN shifter](#npn-shifter-default-through-hole) (default, the hat's board) | two 2N3904, five resistors; through‑hole | the hat's (inverted) | 298296 / 223722 baud |
-| [SN74LV1T04](#alternative-sn74lv1t04-surface-mount-inverting) | two SOT‑23‑5 chips on breakout boards, six passives | the hat's (inverted) | 298296 / 298296 baud |
-| [Three resistors](#alternative-three-resistors-no-level-shifter) | three resistors, no level shifter | generic ESP32‑S3 (not inverted) | 298296 baud to it; 298296 from it on the MiSTer |
+| [M5Stick DIY Hat](#m5stick-diy-hat) | 2x 2N3904 transistors, 5x resistors, 2x capacitors | Inverted | **+** DIY, through‑hole, ready‑made PCB, holds D0 idle while Stick is off<br>**−** PCB and components required, soldering |
+| [M5Stick SMD Hat](#m5stick-smd-hat) | 2x SN74LV1T04 ICs, 4x resistors, 2x capacitors | Inverted | **+** Available for purchase pre-built, holds D0 idle while Stick is off<br>**−** higher cost |
+| [DIY Resistor Network](#diy-resistor-network) | 3x resistors | Non-Inverted | **+** lowest cost, only three parts, no PCB required, best option for generic ESP32-S3<br>**−** D0's high is only 3.3 V, below the NES input's guaranteed level, G8 drives a console that is off up to about 2.7 mA, D0 isn't held idle while the ESP32 is off or booting which could result in console seeing phantom input, end result not as tidy as PCB |
 
-And for every circuit:
-- [The NES controller plug](#the-nes-controller-plug): which pin is which,
-  and how to find each wire.
-- [Why a level shifter](#why-a-level-shifter): the voltages on each side,
-  and why NPN rather than MOSFET.
+## Additional Resources
+- [M5Stick GPIO and Hat pinout](#m5stick-gpio-and-hat-pinout)
 
-Whether the link is inverted is `CONFIG_NESP_LINK_INVERTED`
-([`firmware/main/Kconfig.projbuild`](../firmware/main/Kconfig.projbuild)):
-on for the NPN shifter and the SN74LV1T04 alternative, which both invert,
-and off for the resistor network, which does not. The firmware for the
-hat has it on. The generic ESP32‑S3 firmware
-(`firmware/sdkconfig.defaults.generic`, built in `build-esp32s3-generic`)
-has it off, and is the one the [installer](https://nesp32.retrobits.tv/flash/)
-writes when **Resistors (non‑inverting)** is chosen. It is ESP32‑S3 only,
-on the StickS3's pins, G1 and G8.
+- [NES controller pinout](#the-nes-controller-plug)
 
-The ESP32‑S3 is a 3.3 V part and **not 5 V tolerant**, and a 3.3 V high is not
-guaranteed to register on the NES. Each direction goes through one NPN
-transistor stage, all through‑hole, which fits the M5Stick proto hat's 5 × 8
-board with no adapters. See [Why a level shifter](#why-a-level-shifter).
+- [Why a level shifter](#why-a-level-shifter)
 
-The link uses the StickS3's 16‑pin Hat2‑Bus, the GPIO header at the bottom
-end, furthest from the LCD screen. The proto hat's 8‑pin plug
-fits its odd row (pins 1–15), which keeps the old StickC hat order, and a
-StickC Plus2's 8‑pin header takes it as it is. It does not use the Grove
-port.
+## Inverting Firmware
+Both the transistor and level shifter circuits invert the RX and TX lines. This
+requires the firmware to be configured with `CONFIG_NESP_LINK_INVERTED`
+([`firmware/main/Kconfig.projbuild`](../firmware/main/Kconfig.projbuild)) on. For
+generic ESP32-S3 boards using a resistor network that does not invert, the firmware
+must be built non-inverting.
 
-One hat serves both boards. Its slots reach different pins on each, the link
-is on the same two slots, and the firmware picks the pins by the board it
-was built for.
+Both options are available on the [installer](https://nesp32.retrobits.tv/flash/) page
+depending on which circuit and device you are using.
 
+
+## M5Stick GPIO and Hat pinout
 | Hat slot | Hat2 pin | StickS3 | StickC Plus2 | Use |
 |---|---|---|---|---|
 | 1 | 1 | GND | GND | common ground |
@@ -134,40 +125,59 @@ cables often use others. With the cable unplugged, set the meter to
 continuity, hold one probe on a pin of the plug and touch the other to each
 bare wire until it beeps. Mark each wire as you find it.
 
-## NPN shifter (default, through-hole)
+## M5STICK DIY HAT
+NPN transistors / through-hole / inverting
 
 This is the circuit on the hat's board in [`hardware/`](../hardware/),
 which has the parts to buy.
 
 ```
- TX (Stick → NES)                          RX (NES → Stick)
+ TX (Stick → NES)
 
- NES +5 V (pin 5)                          Stick 3V3_L2
-     │                                         │
-   [3.3 kΩ]                                  [10 kΩ]
-     │                                         │
-     ├──[1 kΩ]──► NES D0 (pin 4)               ├──────► Stick G1
-     │                                         │
-    C│                                        C│
- G8  ─[10 kΩ]─B  2N3904              NES OUT0─[100 kΩ]─B  2N3904
-    E│                              (pin 3)   E│
-    GND                                        GND
+                           NES +5 V (pin 5)
+                             │
+                          [3.3 kΩ]
+                             │
+                             ├──[1 kΩ]──► NES D0 (pin 4)
+                             │
+                            C│
+ G8 ────┬──[10 kΩ]──┬──────B─┤  2N3904
+        │           │       E│
+        └──[100 pF]─┘        │
+                            GND
+
+ RX (NES → Stick)
+
+                           Stick 3V3_L2
+                             │
+                          [10 kΩ]
+                             │
+                             ├──────► Stick G1
+                             │
+                            C│
+ NES OUT0 ┬─[100 kΩ]─┬─────B─┤  2N3904
+ (pin 3)  │          │      E│
+          └─[100 pF]─┘       │
+                            GND
 
  Stick GND ── NES GND (pin 1)
  EXT_5V, 5V_IN, BAT, G0 ── not connected
 ```
 
 **Parts:** two 2N3904 (TO‑92), two 10 kΩ, one 3.3 kΩ, one 100 kΩ, and one
-1 kΩ resistor. Any small NPN works (2N2222A, BC547, PN2222); check the E‑B‑C lead
+1 kΩ resistor, and two 100 pF ceramic capacitors (C0G/NP0, 50 V), one
+across each base resistor. Any small NPN works (2N2222A, BC547, PN2222); check the E‑B‑C lead
 order, which differs between parts and makers.
 
 | From | Through | To |
 |---|---|---|
 | Stick G8 | 10 kΩ | TX 2N3904 base |
+| Stick G8 | 100 pF | TX 2N3904 base (across the 10 kΩ) |
 | TX 2N3904 emitter | – | GND |
 | TX 2N3904 collector | 3.3 kΩ | NES pin 5 (+5 V) |
 | TX 2N3904 collector | 1 kΩ | NES pin 4 (D0) |
 | NES pin 3 (OUT0) | 100 kΩ | RX 2N3904 base |
+| NES pin 3 (OUT0) | 100 pF | RX 2N3904 base (across the 100 kΩ) |
 | RX 2N3904 emitter | – | GND |
 | RX 2N3904 collector | 10 kΩ | Stick 3V3_L2 |
 | RX 2N3904 collector | – | Stick G1 |
@@ -214,6 +224,20 @@ hardware to cancel it (`CONFIG_NESP_LINK_INVERTED` on, the default).
   edge costs most. The transistor sinks about 1.5 mA when D0 is low, a
   milliamp more than with 10 kΩ and under one on average, and its 0.26 mA
   of base current still saturates it, with five times what it needs.
+- **Why the 100 pF speed‑up capacitors:** a base resistor alone feeds the
+  transistor's base slowly, and drains it slowly too. At turn‑off the
+  charge stored in the base keeps the transistor on until it has leaked
+  away through the resistor (storage time), and the higher the resistor
+  the longer that takes: on RX, through 100 kΩ, it is a few µs. A
+  capacitor across the resistor passes each edge straight to the base: a
+  burst of current that turns the transistor on at once, and at turn‑off
+  one the other way that pulls the stored charge out. Between edges it
+  passes nothing, so the resistors still set the DC levels: the strobe's
+  light load and the fault‑current limit are as before. With the
+  capacitors, both 2N3904s from a reputable distributor and inexpensive
+  bulk ones carry 298296 baud in both directions on a real NES, the
+  fastest rate the throughput test has each way. Without them the board stopped at 223722
+  from the console, and slow 2N3904s held it lower.
 - **Speed:** the board carries 298296 baud to the console, the last rate
   the console's CPU can take, on a real NES as on the MiSTer through a SNAC
   adapter ([the throughput test](../apps/throughput/README.md)). On a real
@@ -226,20 +250,23 @@ hardware to cancel it (`CONFIG_NESP_LINK_INVERTED` on, the default).
   receivers track now, in the throughput test and in the jukebox's and
   NPR's sound, whose fastest rate is 7 cycles, 255682 baud; with them the
   climb on a real NES reaches 298296 baud, and sound and NPR play at
-  255682. The 100 kΩ base
-  resistor slows the RX transistor's edges to a few µs (estimated, not
-  measured); the slowest is turn‑off, when OUT0 falls. From the console
-  the board carries 223722 baud, on a real NES as on the MiSTer, and
-  298296 fails; nothing the console sends is near that fast, its
-  requests going at 85227.
+  255682. From the console the board carries 298296 baud on a real NES
+  with the speed‑up capacitors. Without them it stopped at 223722, on a real NES
+  as on the MiSTer: the 100 kΩ base resistor slowed the RX transistor's
+  turn‑off, when OUT0 falls, to a few µs (estimated, not measured).
+  Nothing the console sends is near that fast; its requests go at
+  85227.
 - **Not every 2N3904 is fast enough:** the speed depends on which 2N3904s
   you fit. Cheap no‑name 2N3904s from Amazon (BOJACK brand, marked H331)
   were too slow: on a hat built with them, the jukebox's 20338 Hz sound
   failed and only its 10169 Hz sound played. Swapping in 2N3904s marked
   K02 fixed it, and the 20338 Hz sound plays. The likely cause is
   turn‑off delay (storage time), which varies a lot from one maker or
-  batch to another, but it was not measured. If a hat passes at low rates
-  and fails at high ones, try 2N3904s from another source first.
+  batch to another, but it was not measured. The speed‑up capacitors
+  pull that stored charge out at each turn‑off, and with them inexpensive
+  bulk 2N3904s reach 298296 baud both ways too. If a hat passes at low
+  rates and fails at high ones, check that both capacitors are fitted,
+  then try 2N3904s from another source.
 - **Why the 1 kΩ stays:** it is the same fault‑current limiter the FTDI
   cable uses on D0. On the RX side the 100 kΩ base resistor does that job.
 
@@ -248,11 +275,15 @@ hardware to cancel it (`CONFIG_NESP_LINK_INVERTED` on, the default).
   stands about 3 mm tall.
 - Use 1/8 W mini resistors laid flat across 3 holes (0.3″); they stand about
   2 mm tall.
+- Solder each 100 pF capacitor across its base resistor, into the same two
+  holes as the resistor's leads or onto the leads themselves, so it needs
+  no holes of its own.
 - The whole circuit uses about 21 of the 40 holes.
 - Make all connections with the NES off and the Stick off. Identify leads by
   continuity, not color.
 
-## Alternative: SN74LV1T04 (surface mount, inverting)
+## M5Stick SMD Hat
+SN74LV1T04 / surface mount / inverting
 
 Two TI SN74LV1T04 single inverters (`SN74LV1T04DBVR`, SOT‑23‑5, 0.95 mm
 pitch), one per direction, each on its own SOT‑23‑5‑to‑DIP adapter. Each
@@ -331,8 +362,9 @@ capacitor right at its part's pins 5 and 3.
   on a breadboard wired to a StickS3, each part on its own SOT‑23‑5
   breakout board.
   - **Real NES:** 298296 baud both ways, over several climbs. That is the
-    fastest rate the test has in each direction. From the console the NPN
-    board stops at 223722.
+    fastest rate the test has in each direction. The NPN board reaches the same
+    with its speed‑up capacitors; without them it stops at 223722 from
+    the console.
   - **MiSTer, through a SNAC adapter:** 298296 baud from the console and
     255682 to it. That was with the first build, before the fault below
     was found, and has not been run again since.
@@ -389,7 +421,8 @@ capacitor right at its part's pins 5 and 3.
   too close to G8's 3.3 V. The SN74LV1T14 would do both, but TI publishes
   no datasheet for it and no distributor lists it.
 
-## Alternative: three resistors (no level shifter)
+## DIY Resistor Network 
+Three resistors / non-inverting
 
 No transistors and no chips: a divider takes OUT0 down to the Stick's
 level, and G8 drives D0 straight, through a resistor. Neither direction
@@ -442,7 +475,8 @@ on an ESP32‑S3 dev board wired straight to the controller port, on the
 same G1 and G8 the StickS3 uses, on the MiSTer through
 a SNAC adapter and on a real NES‑001.
 - **NES to nesp32:** 298296 baud on the MiSTer, the fastest rate the test
-  has, where the NPN shifter stops at 223722.
+  has, where the NPN shifter without its speed‑up capacitors stops at
+  223722.
 - **nesp32 to NES, real NES:** five climbs, all to 298296 baud.
 - **nesp32 to NES, MiSTer:** of 18 climbs after a night powered off, 8
   reached 298296, 6 stopped at 255682, 1 at 223722 and 3 at 178977.
@@ -488,8 +522,8 @@ has not been tried.
 - Three wires to the controller plug (GND, OUT0, D0), and no supply wiring:
   neither the NES's +5 V nor the Stick's 3.3 V.
 - No transistor storage time and no slow pull‑up: it carries 298296 baud
-  from the console, where the NPN shifter stops at 223722, and its edges
-  do not depend on which 2N3904s were fitted.
+  from the console, as the NPN shifter does only with its speed‑up
+  capacitors, and its edges do not depend on which 2N3904s were fitted.
 
 ## Why a level shifter
 
@@ -501,7 +535,7 @@ the NES's 5 V. The ESP32‑S3 drives about 3.3 V (guaranteed only
 typically switch near 2.5 V, but it would rely on typical behaviour rather than
 the datasheet. A marginal level shows up as bad samples in the ROM's
 cycle‑timed receiver. One NES‑001 took it at every rate the throughput test
-has ([the resistor network](#alternative-three-resistors-no-level-shifter)).
+has ([the resistor network](#diy-resistor-network)).
 The top‑loader, Famicom, and PAL consoles have not been checked.
 
 **NES → Stick (OUT0).** OUT0 comes straight from the NES's 2A03 CPU with no

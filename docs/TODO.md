@@ -20,10 +20,6 @@ its own list in its README.
   that pattern. From 8 cycles down the console's receivers track the start
   bit instead, and the slower ones still hunt: a cause found might be one
   that shows at those too, on another console.
-- What stops the hat at 223722 baud from the console, on a real NES as on
-  the MiSTer: 298296 fails. The 100 kΩ RX base resistor slows that
-  stage's edges, which the SNAC adapter needs; nothing the console sends
-  needs more than 85227 today.
 
 - The Bluetooth keyboard, which works on hardware (paired from Setup,
   typing in NESpedia and Weather): whether every byte of the 75 KB comes
