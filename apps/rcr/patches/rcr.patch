@@ -1,0 +1,36 @@
+--- a/src/rcr.asm
++++ b/src/rcr.asm
+@@ -4,0 +5,3 @@
++.ifdef NETPLAY
++.include "net.asm"
++.endif
+@@ -25684,0 +25688,3 @@
++.ifdef NETPLAY
++    jsr net_nmi_count
++.else
+@@ -25685,0 +25692 @@
++.endif
+@@ -26185,0 +26193,3 @@
++.ifdef NETPLAY
++    jsr net_select_wait
++.else
+@@ -26186,0 +26197 @@
++.endif
+@@ -26193,0 +26205,3 @@
++.ifdef NETPLAY
++    jsr net_select_start
++.else
+@@ -26194,0 +26209 @@
++.endif
+@@ -27076,0 +27092,3 @@
++.ifdef NETPLAY
++    jmp net_read_pads
++.else
+@@ -27077,0 +27096 @@
++.endif
+@@ -27475,0 +27495,3 @@
++.ifdef NETPLAY
++    .addr net_nmi, net_cart_start, IRQ
++.else
+@@ -27476,0 +27499 @@
++.endif

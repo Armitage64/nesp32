@@ -1,0 +1,64 @@
+# River City Ransom (USA): names and comments for tools/convert.py.
+# Addresses only, none of the game's bytes. The form is convert.py's (Map):
+#
+#   code  B:ADDR  NAME  comment     code, and its name
+#   entry B:ADDR                    code, with no name
+#   data  B:ADDR  NAME  comment     a name for data
+#   ram   ADDR    NAME  comment     a variable, or the first of several
+#   note  B:ADDR        comment     a comment over the line there
+#
+# B is the bank of 16 KB, 7 the fixed one at $C000.
+
+# --- the memory ---------------------------------------------------------------
+
+ram 0035 PLAYERS            1 or 2: from the first screen's choice
+ram 0014 IRQ_SPLIT          0 from the NMI; 1 once the first IRQ (the HUD's split) has been
+ram 00EE PAD_PRESSED        2: buttons newly pressed, players 1 and 2 (read: as read)
+ram 00F0 PAD_HELD           2: buttons held, players 1 and 2
+ram 00F4 JOY_OUT            what the controller read writes to JOY1 after its strobe
+ram 00F7 PPUMASK_SHADOW
+ram 00F8 PPUCTRL_SHADOW
+ram 00FB BANK_SELECT        the bank select last written to $8000
+ram 00FC BANK_R6            the 8 KB bank at $8000
+ram 00FD BANK_R7            the 8 KB bank at $A000
+ram 00FF MMC3_IRQ_BUSY      set while the IRQ puts the banks back: the NMI then leaves $8000
+ram 0100 NMI_MODE           bit 7 and bit 6 choose the NMI's handler
+ram 0107 NMI_BUSY           bit 7 while the NMI's work is under way
+ram 010B NMI_COUNT          NMIs since the main loop's pass began
+ram 0521 CHR_SPRITE_BANKS   4: R2 to R5, the sprites' CHR banks ($FE74 sets them)
+ram 0544 MODE_LINE          the first screen's choice: 0 1P PLAY, 1 2P PLAY
+ram 0545 PPU_QUEUE          64: the NMI's queue of writes to the PPU
+ram 06B6 PPU_QUEUE_READ
+ram 06B7 PPU_QUEUE_WRITE
+ram 06D3 MAX_NMI_COUNT      the most NMIs a pass has taken: kept, never read by the game
+
+# --- the fixed bank -----------------------------------------------------------
+
+code 7:FF4F NMI
+code 7:FF76 RESET
+code 7:F1D9 IRQ
+code 7:F103 NMI_40           the NMI with NMI_MODE $40
+code 7:F12B NMI_80           the NMI with NMI_MODE $80: the title's, which reads the controllers
+code 7:F168 NMI_C0           the NMI with NMI_MODE $C0: the game's
+code 7:F1D3 INTERRUPT_END
+code 7:F223 MAIN             the reset's set-up, then the main loop
+code 7:F27D MAIN_LOOP        a pass of the game: once every two NMIs
+code 7:F2C9 MAIN_WAIT        the wait for the second NMI
+code 7:EFD4 DRAW_OBJECTS     waits for IRQ_SPLIT clear, sorts the objects and draws them
+code 7:FD1D READ_PADS        both controllers, and what is newly pressed
+code 7:FD23 READ_EDGES       from the buttons read, what is newly pressed and what is held
+code 7:FD82 READ_JOYS        the controllers' shift registers, once
+code 7:FDA4 READ_FAMICOM     the Famicom's expansion pads' buttons with the controllers'
+code 7:FE4A NMI_OFF
+code 7:FE74 SET_SPRITE_CHR   R2 to R5 from CHR_SPRITE_BANKS
+code 7:F157 NMI_80_READ      the title's NMI reads the controllers
+code 7:F4C3 FIRST_SCREEN     the logo, then 1P PLAY or 2P PLAY and the boys' sides
+code 7:F4BD WAIT_NMI_COUNT   until an NMI has come
+code 7:F56F SELECT_WAIT      the first screen's frame: an NMI, then Start?
+code 7:F578 SELECT_DONE      Start: the choice is made
+code 7:FDF4 SPRITE_DMA
+code 7:FED1 BANK_PAIR        the 16 KB pair A at $8000 (R6 = 2A, R7 = 2A+1)
+code 7:FF07 BANKS_BACK       the NMI's: R6 and R7 from BANK_R6 and BANK_R7
+code 7:FF29 BANKS_BACK_IRQ   the IRQ's
+code 7:FA54 SOUND            the sound engine, in bank 5
+code 7:FC4D PPU_FLUSH        the NMI's run through PPU_QUEUE

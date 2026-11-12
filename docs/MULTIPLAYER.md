@@ -1,9 +1,11 @@
 # Multiplayer: two consoles, one game
 
-Six of the apps are netplay builds of a two-player game:
+Seven of the apps are netplay builds of a two-player game:
 [Contra](../apps/contra), [Dr. Mario](../apps/drmario),
 [Tetris](../apps/tetris), [TMNT II](../apps/tmnt2),
-[Bubble Bobble](../apps/bubblebobble) and [Jackal](../apps/jackal). Each is
+[Bubble Bobble](../apps/bubblebobble), [Jackal](../apps/jackal) and
+[River City Ransom](../apps/rcr), the last so far in the simulation only.
+Each is
 played on two consoles, each console with a nesp32 on controller port 2,
 the nesp32s joined over the network. The six work the same way, and this
 is that way: what the player sees, what a tick is, how the two games are
@@ -24,6 +26,7 @@ and from hardware) is in its own docs:
 | TMNT II | [apps/tmnt2/README.md](../apps/tmnt2/README.md) | its README, "How the netplay works" |
 | Bubble Bobble | [apps/bubblebobble/README.md](../apps/bubblebobble/README.md) | its README, "How the netplay works" |
 | Jackal | [apps/jackal/README.md](../apps/jackal/README.md) | its README, "How the netplay works" |
+| River City Ransom | [apps/rcr/README.md](../apps/rcr/README.md) | its README, "How the netplay works" |
 
 ## Playing
 
@@ -67,6 +70,7 @@ dash.
 | TMNT II | 2 TURTLES | `TMN2` |
 | Bubble Bobble | 2P START | `BUBL` |
 | Jackal | 2 PLAYERS | `JACK` |
+| River City Ransom | 2P PLAY | `RIVR` |
 
 The console that hosted is player 1. When the two nesp32s are connected
 both consoles leave the menu and go straight into a game for two. Each
@@ -379,6 +383,7 @@ What the digest covers is each game's own:
 | Tetris | the same as Dr. Mario's, less the session's one byte there too, and both playfields |
 | TMNT II | its zero page, less the link's bytes, the sound engine's, what its IRQs keep and the flag of a frame under way, and its sprites |
 | Bubble Bobble | its zero page, less its scratch, the link's bytes, the sound engine's, the NMI's stack pointer as the tasks saw it and the PPU's status as the NMI read it, and its sprites |
+| River City Ransom | its zero page, less its scratch, the HUD's split, the link's bytes and the PPU's and the banks' shadows, and its objects ($0300-$04FF), taken at the read that begins the tick |
 
 Each byte goes into the digest with the digest rotated a place, its bits
 round, and EORed: a step that loses nothing, so one byte that differs
