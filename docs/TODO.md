@@ -77,6 +77,33 @@ its own list in its README.
   (46.6 frames a second against 48.2 in level 2), where a model of one
   console had it faster: the early exchange seldom has the other
   console's buttons.
+- **Games for three or four, a console each.** For later consideration
+  (November 2026); a big lift. Everything today is for two: a room holds
+  a host and one more (`ROOM IS FULL`), PEER talks to one other nesp32,
+  and TICKS's reply carries one byte, the other console's buttons, naming
+  no player. It would want:
+  1. *PEER for N.* Either each nesp32 to every other (least delay, but
+     six pairs to punch through their NATs for four, and any one failing
+     fails the room), or each to the host, which passes the buttons on
+     (simpler; two that did not host are two hops apart, and the delay
+     must cover that). The bulk of the work.
+  2. *The rendezvous* to hold rooms of up to four, give each its player
+     number, and the host to start when the room is full.
+  3. *TICKS* to carry the others' buttons, a byte each, by player: two
+     bytes more a frame for four, added to the exchange's 2500 to 3100
+     cycles. A game whose frames are nearly full slows for it.
+  4. *Lockstep for N*: each tick waits for the slowest of the others, and
+     a session must say what becomes of it when one of them leaves.
+  5. *Each game's patch*, much as today: the game's read of the Four
+     Score (or the Famicom's adapter) is replaced by the buttons from the
+     ring, and it is told one is there, so no player needs a real one.
+     The nesp32 in port 2 leaves each console one controller of its own.
+
+  Bomberman II is three at most. Four: Nintendo World Cup, Super Spike
+  V'Ball, Gauntlet II, Super Off Road, RC Pro-Am II, M.U.L.E. To begin, N
+  in the firmware and the Linux simulators with a game that takes turns
+  (M.U.L.E.), which no delay troubles; then one played in real time.
+  Three consoles, with Bomberman II, is the same work with fewer pairs.
 - **For [Family BASIC](../apps/family-basic):** TAPE, its SAVE and LOAD,
   is done. Left: the time a SAVE takes on hardware, a list of the files,
   and BG GRAPHIC's SAVE and LOAD tried. Its README, "Not done", has them.
