@@ -17,6 +17,19 @@ idf_component_register(SRCS ${sources}
 if(NESP_SPIKE)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE NESP_SPIKE=1)
 endif()
+# The logo shown at start (nesp_logo.h), from the one the NES programs show.
+set(NESP_ROOT "${CMAKE_CURRENT_LIST_DIR}/../..")
+set(logo_gen "${CMAKE_CURRENT_BINARY_DIR}/gen")
+file(MAKE_DIRECTORY "${logo_gen}")
+target_include_directories(${COMPONENT_LIB} PRIVATE "${logo_gen}")
+add_custom_command(
+    OUTPUT "${logo_gen}/nesp_logo.h"
+    COMMAND ${PYTHON} "${NESP_ROOT}/tools/gen_logo.py" "${logo_gen}"
+    DEPENDS "${NESP_ROOT}/nes/lib/logo.py" "${NESP_ROOT}/tools/gen_logo.py"
+            "${NESP_ROOT}/tools/gen_web.py"
+    COMMENT "nesp_logo.h from nes/lib/logo.py")
+add_custom_target(nesp_logo DEPENDS "${logo_gen}/nesp_logo.h")
+add_dependencies(${COMPONENT_LIB} nesp_logo)
 # A StickS3's sdkconfig made before it had Bluetooth keeps it off, as the
 # defaults are read only for what an sdkconfig does not yet have.
 if(NOT CMAKE_BUILD_EARLY_EXPANSION AND IDF_TARGET STREQUAL "esp32s3"

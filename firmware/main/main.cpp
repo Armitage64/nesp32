@@ -31,6 +31,7 @@
 #include "fetch.h"
 #include "keyboard.h"
 #include "link.h"
+#include "nesp_logo.h"
 #include "nesp_version.h"
 #include "radio.h"
 #ifdef NESP_SPIKE
@@ -44,6 +45,8 @@ namespace {
 const char *TAG = "nesp32";
 const uint32_t POWER_OFF_HOLD_MS = 2000;
 const uint32_t SCREEN_MS = 500;
+const uint32_t LOGO_MS = 2500;     // the logo at start, before the lines
+const int LOGO_SCALE = 2;           // screen pixels to a side of each of its own
 const uint32_t BATTERY_MS = 10000;
 const uint32_t REPORT_MS = 10000;
 const uint32_t WATCH_MS = 2000;
@@ -70,6 +73,8 @@ const char *const WIFI_STATES[] = {"not set up", "not joined", "joining", "joine
 
 char shown[ROWS][RADIO_SHOWN_MAX];
 bool flipped;           // the way up the screen is drawn
+bool logo_up;           // the logo is on the screen, not the lines
+uint32_t logo_at;       // and since when (ms)
 int battery_level = -1; // 0 to 100, or -1 while the charge is not known
 
 // Write a line of the screen, if it has changed. The top one is the title:
@@ -145,6 +150,15 @@ void split(const char *text, char *first, char *second)
     std::strcpy(second, text + cut + (text[cut] == ' '));
 }
 
+// The screen blank, and every line to be written again.
+void clear()
+{
+    M5.Display.fillScreen(TFT_BLACK);
+    for (auto &row : shown) {
+        row[0] = 0;
+    }
+}
+
 // The screen the way up the console last chose (radio_screen_flipped): 1
 // is M5Stack's landscape, and 3 the same turned a half turn round. Turned,
 // it is cleared, and every line is written again.
@@ -156,9 +170,47 @@ void turn(bool first)
     }
     flipped = wanted;
     M5.Display.setRotation(flipped ? 3 : 1);
-    M5.Display.fillScreen(TFT_BLACK);
-    for (auto &row : shown) {
-        row[0] = 0;
+    clear();
+}
+
+// The logo (nesp_logo.h, from nes/lib/logo.py), in the middle of the
+// screen, LOGO_SCALE times its size: each row a rectangle for each run of
+// one colour, the backdrop left black. For LOGO_MS from now the lines wait.
+void show_logo()
+{
+    int x0 = (M5.Display.width() - NESP_LOGO_WIDE * LOGO_SCALE) / 2;
+    int y0 = (M5.Display.height() - NESP_LOGO_HIGH * LOGO_SCALE) / 2;
+    auto colour = [](int y, int x) {
+        uint8_t two = NESP_LOGO[y][x / 2];
+        return x % 2 ? two & 0x0F : two >> 4;
+    };
+    M5.Display.startWrite();
+    for (int y = 0; y < NESP_LOGO_HIGH; y++) {
+        for (int x = 0; x < NESP_LOGO_WIDE;) {
+            int c = colour(y, x);
+            int run = 1;
+            while (x + run < NESP_LOGO_WIDE && colour(y, x + run) == c) {
+                run++;
+            }
+            if (c != 0) {
+                M5.Display.fillRect(x0 + x * LOGO_SCALE, y0 + y * LOGO_SCALE, run * LOGO_SCALE,
+                                    LOGO_SCALE, NESP_LOGO_RGB[c]);
+            }
+            x += run;
+        }
+    }
+    M5.Display.endWrite();
+    logo_up = true;
+    logo_at = (uint32_t)(esp_timer_get_time() / 1000);
+}
+
+// The logo taken away, for the lines: early, if there is something to say
+// before its time is up.
+void end_logo()
+{
+    if (logo_up) {
+        logo_up = false;
+        clear();
     }
 }
 
@@ -167,6 +219,7 @@ void converting(unsigned rip, unsigned of)
 {
     char text[40];
     std::snprintf(text, sizeof(text), "Converting %u/%u", rip, of);
+    end_logo();
     line(0, "NESP32 " NESP_FIRMWARE_TEXT);
     line(1, text);
 }
@@ -266,6 +319,7 @@ extern "C" void app_main(void)
     M5.Display.setFont(&fonts::FreeSans9pt7b);
     M5.Display.setTextWrap(false);      // a long name is cut off, not run into the next line
     turn(true);
+    show_logo();                        // while the rest starts, not instead of it
 
     // The UART first, before anything slow, so that TX rests at mark. The
     // files next: a ROM that asks for them is not answered until they are
@@ -370,7 +424,11 @@ extern "C" void app_main(void)
                          (unsigned long)ping.over_14ms, (unsigned long)ping.over_40ms);
             }
         }
-        if (now - screen_at >= SCREEN_MS) {
+        if (logo_up && now - logo_at >= LOGO_MS) {
+            end_logo();
+            screen_at = now - SCREEN_MS;    // the lines at once
+        }
+        if (!logo_up && now - screen_at >= SCREEN_MS) {
             // The console's clock, once a request has been heard at it, is
             // the one to start at next time.
             link_stats_t stats;
