@@ -53,13 +53,18 @@ CHECK_TICK      = $FF
 ; and kept until each comes to send it: a few ticks later, by its delay.
 CHECK_AT        = CHECK_TICK - 8
 .assert NET_DELAY_MAX < CHECK_TICK - CHECK_AT, error
+; When the two differ, this console's RAM goes to its nesp32 for its log
+; first (net_differ), in pieces of this many bytes, each asked up to
+; DUMP_TRIES times.
+DUMP_PIECE      = 64
+DUMP_TRIES      = 3
 
 .assert RING & (RING - 1) = 0, error, "RING must be a power of two"
 .assert NET_DELAY_MAX + PER_FRAME < RING, error
 
 ; The link's library (nesp32's nes/lib/nesp.inc).
 NESP_RX_MASK    = $1F           ; the longest reply payload: 32 bytes
-NESP_TX_MAX     = 8             ; the longest request: a hello for one service
+NESP_TX_MAX     = DUMP_PIECE + 2    ; the longest request: a piece of the RAM (net_differ)
 NESP_TIMEOUT    = 1             ; passes of 4.15 ms waited for a reply
 NESP_NMI_ONLY   = 1             ; every exchange is made in an NMI
 NESP_OWN_MEMORY = 1
@@ -114,8 +119,9 @@ NET_RAM_END     = nesp_tx + NESP_TX_MAX + 7
 ; then comes before the end, which is a matter of cycles, does nothing
 ; (net_nmi).
 net_in_nmi      = NET_RAM_END
+net_dumped      = NET_RAM_END + 1   ; pieces of the RAM sent (net_differ)
 
-.assert net_in_nmi < MENU_RAM, error
+.assert net_dumped < MENU_RAM, error
 NET_MENU_ON     = $80           ; in net_menu
 NET_MENU_FIRST  = $C0
 NET_STALL       = $80           ; in net_stalled

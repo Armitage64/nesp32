@@ -7,7 +7,7 @@ import random
 import pytest
 
 from drive import PAD_A, PAD_B, PAD_RIGHT, moves, screen_text
-from netplay import Table
+from netplay import NOT_GAME, Table
 from wire import ms
 
 PLAY_FRAMES = 400
@@ -257,6 +257,39 @@ def test_two_games_that_differ_end_the_session(net_console):
     table.play(560, moves(seed=4))
     for console in table.consoles:
         assert console.byte("net_mode") == 0
+
+
+def test_games_that_differ_send_their_ram_to_the_nesp32s_log(net_console):
+    """Each console's RAM, as it stood at the tick whose digests differed,
+    goes to its nesp32 before the session is given up (PEER's DUMP). The
+    two dumps differ where the games do: here from the random number on."""
+    table = Table(net_console)
+    table.rams = ({}, {})
+    assert play(table, frames=300) > 256
+    # Nothing is sent while the games are alike, nor as a session starts.
+    assert [stick.peer_dump for stick in table.sticks] == [bytes(0x800)] * 2
+    console = table.consoles[0]
+    rng = console.labels["RNG"]
+    console.ram[rng] ^= 0x55
+    table.play(560, moves(seed=4))
+    dumps = [stick.peer_dump for stick in table.sticks]
+    differ = [address for address in range(0x800)
+              if dumps[0][address] != dumps[1][address] and not_game(address)]
+    assert rng in differ or rng + 1 in differ
+    # Each is its console's RAM at the start of that tick, the last that
+    # both consoles came to: but for PPUCTRL_COPY, whose NMI bit the NMI
+    # has cleared by then.
+    tick = min(max(rams) for rams in table.rams)
+    ppuctrl = console.labels["PPUCTRL_COPY"]
+    for side, dump in enumerate(dumps):
+        ram = table.rams[side][tick]
+        assert [hex(address) for address in range(0x800) if dump[address] != ram[address]
+                and not_game(address) and address != ppuctrl] == []
+
+
+def not_game(address):
+    """Not one of the bytes that keep each console's own time (NOT_GAME)."""
+    return all(not start <= address < end for start, end in NOT_GAME)
 
 
 def test_a_check_tick_takes_the_buttons_of_the_tick_before(net_console):

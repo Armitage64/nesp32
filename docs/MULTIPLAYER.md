@@ -450,6 +450,21 @@ other's last came, tell a silence from games that differ; and a lost
 connection is there with its time, each counted back from the console's
 last exchange (`peer.c`, "The end").
 
+**Bubble Bobble's RAM goes to the log when the digests differ**, before
+the console gives the session up: its 2 KB, as it stood at the start of
+the tick whose digests differed, which is where the other console stops
+too, in 32 pieces of PEER's DUMP (`net_differ`; about 0.3 s). Its nesp32
+writes it out a line of 64 bytes at a time:
+
+```
+peer: dump of the console's RAM, as it stood at tick 2047, whose digests differed: 2048 bytes
+peer: dump 0000: 0b1c...
+```
+
+With both players' logs, the bytes that differ are where the two games
+parted. The link's own bytes and the stack below the dump's calls are the
+dump's own doing, and `PPUCTRL_COPY` ($FF) has the NMI's bit cleared.
+
 In Bubble Bobble a game over does not end a session: the game over's
 screen and the title are ticks like any other, and the title's 2P CONTINUE
 goes on at the round the two had reached, and its choices for one are
@@ -481,7 +496,8 @@ seven games:
   the nesp32 went quiet, the games differed); it only goes back to the
   title now.
 - **Games that differ** (for later): a dump of each console's RAM to its
-  nesp32 when the digests differ, to learn why; and if it comes back, the
+  nesp32 when the digests differ, to learn why, as Bubble Bobble's does
+  ("Ending"), in the other games too; and if it comes back, the
   host's game copied to the other in place of ending the session. Tetris
   would be the easiest: its NMI draws the playfields again from RAM, so
   the RAM is most of what has to be sent. Dr. Mario's bottles are in RAM
