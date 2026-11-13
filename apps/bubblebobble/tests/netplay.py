@@ -20,12 +20,13 @@ before each tick.
 """
 
 import hashlib
+import random
 
 import nesp_proto as p
 from console import FRAME_CYCLES
 from drive import BOOT_FRAMES, LIVES
 from nesp import CONN_ANSWERED, CONN_CALLED, CONN_CALLING, CONN_FAILED, CONN_LISTENING
-from nesp import CONN_LOST, CONN_MEETING, CONN_MET, CONN_UP, Stick
+from nesp import ARQ_BYE, CONN_LOST, CONN_MEETING, CONN_MET, CONN_UP, Arq, Stick
 from rendezvous import Rooms
 from nesp_proto import NESP_CPU_HZ
 from wire import SLICE, link, ms
@@ -57,13 +58,34 @@ def game_state(console):
     return hashlib.sha1(ram).hexdigest()
 
 
+SESSION = 0x5EED1234
+GONE_US = 3000000               # conn.c: nothing heard for this long, and the other is gone
+
+
 class Lan:
     """The network the two nesp32s are on. `delay` is how long anything
-    takes to cross it, in cycles: a number or a function returning one."""
+    takes to cross it, in cycles: a number or a function returning one.
 
-    def __init__(self, table, delay):
+    By default a connection is a stream: what one nesp32 sends comes to the
+    other in order, all of it, each piece after a delay. With `datagrams`,
+    it is what the firmware makes of the Internet instead: each nesp32's
+    stream goes through its own arq.c (the firmware's, as conn.c drives it),
+    and each datagram crosses on its own, after its own delay, so that two
+    can come the wrong way round. `loss` and `duplicate` are the chances
+    that one is lost or comes twice, and `outage(ms)`, of the table's clock
+    in milliseconds, says whether the network is down, losing everything."""
+
+    def __init__(self, table, delay, datagrams=False, loss=0.0, duplicate=0.0, outage=None,
+                 seed=1):
         self.table = table
         self.delay = delay
+        self.datagrams = datagrams
+        self.loss = loss
+        self.duplicate = duplicate
+        self.outage = outage
+        self.rng = random.Random(seed)
+        self.arqs = None            # each one's arq.c, once connected with datagrams
+        self.sent = self.lost = self.doubled = 0
         self.sticks = []
         self.addresses = []
         self.calls = []             # each one's calls, as last seen
@@ -104,6 +126,75 @@ class Lan:
                 stick.conn = CONN_LOST
             self.arriving[side].clear()
         self.up = False
+        self.arqs = None
+
+    # --- datagrams ----------------------------------------------------------------
+
+    def _carry(self):
+        """Each nesp32's side of conn.c's carry(): the services' bytes and
+        note into its arq, what has come taken, the stream and the note and
+        the network's time out to the services, and a datagram sent if one
+        is due."""
+        now = self.table.now
+        us = int(now * 1e6 / NESP_CPU_HZ)
+        if self.arqs is None:
+            self.arqs = [Arq(SESSION), Arq(SESSION)]
+            self.going = [b"", b""]         # the services' bytes, not yet in the arq
+            self.coming = [b"", b""]        # the arq's, not yet taken by the services
+            self.measured = [0, 0]
+            self.heard = [us, us]
+            self.flying = ([], [])          # for each: (cycle, datagram) on their way to it
+            for side in (0, 1):
+                self.arriving[side].clear()
+        for side, stick in enumerate(self.sticks):
+            arq = self.arqs[side]
+            self.going[side] += stick.conn_take()
+            if self.going[side]:
+                taken = arq.write(self.going[side])
+                self.going[side] = self.going[side][taken:]
+            if stick.notes != self.noted[side]:
+                self.noted[side] = stick.notes
+                arq.note(stick.note_take())
+            flying = self.flying[side]
+            flying.sort(key=lambda item: item[0])
+            while flying and flying[0][0] <= now:
+                kind = arq.take(us, flying.pop(0)[1])
+                if kind < 0:
+                    continue
+                self.heard[side] = us
+                if kind == ARQ_BYE:
+                    self.cut()
+                    return
+            if arq.rtt_count != self.measured[side]:
+                self.measured[side] = arq.rtt_count
+                stick.took(arq.rtt_last)
+            stick.rtt = arq.rtt_least
+            if us - self.heard[side] >= GONE_US:
+                self.cut()
+                return
+            self.coming[side] += arq.read()
+            if self.coming[side]:
+                given = stick.conn_give(self.coming[side])
+                self.coming[side] = self.coming[side][given:]
+            stick.note_give(arq.noted)
+            if arq.due(us):
+                self._send(1 - side, arq.packet(us))
+
+    def _send(self, to, datagram):
+        """One datagram onto the network: lost, or on its way once or twice,
+        each copy after its own delay."""
+        now = self.table.now
+        self.sent += 1
+        down = self.outage is not None and self.outage(now * 1000.0 / NESP_CPU_HZ)
+        if down or self.rng.random() < self.loss:
+            self.lost += 1
+            return
+        copies = 1
+        if self.rng.random() < self.duplicate:
+            copies = 2
+            self.doubled += 1
+        for _ in range(copies):
+            self.flying[to].append((now + self.latency(), datagram))
 
     def _meet(self):
         """Rooms: each socket's address is found at once, the rendezvous
@@ -162,6 +253,9 @@ class Lan:
         if any(stick.conn not in CONN_UP for stick in self.sticks):
             self.cut()              # one of them hung up
             return
+        if self.datagrams:
+            self._carry()
+            return
         for side, stick in enumerate(self.sticks):
             other = 1 - side
             # What a nesp32 knows of the network: how long it takes there
@@ -203,7 +297,7 @@ ADDRESSES = ((192, 168, 1, 23), (192, 168, 1, 42))
 class Table:
     def __init__(self, make_console, delay=ms(10), drift=0.0, turnaround=ms(0.2),
                  port_options=None, addresses=ADDRESSES, input_delay=None, immortal=True,
-                 console_options=({}, {})):
+                 console_options=({}, {}), network=None):
         self.now = 0.0
         # The delay each console begins a session with: its nesp32's advice,
         # as the menu takes it, unless a test says otherwise.
@@ -214,7 +308,7 @@ class Table:
         self.consoles = (make_console(**console_options[0]),
                          make_console(frame_cycles=FRAME_CYCLES * (1 + drift),
                                       **console_options[1]))
-        self.lan = Lan(self, delay)
+        self.lan = Lan(self, delay, **(network or {}))
         self.sticks = []
         self.ports = []
         self.traces = ({}, {})

@@ -160,6 +160,29 @@ def test_a_network_that_comes_and_goes(net_console):
     assert play(table) > 100
 
 
+def test_the_internet_loses_doubles_and_reorders_datagrams(net_console):
+    """The connection as the firmware has it: each nesp32's arq.c, and
+    datagrams that cross on their own, some lost, some twice, some the wrong
+    way round, and now and then none at all for 300 ms. The same game on
+    both, and the session goes on. (Longer runs of this, past round 2 and
+    with the delay moving from 2 to 5, found nothing either.)"""
+    rng = random.Random(5)
+
+    def delay():
+        return ms(rng.uniform(45, 95) if rng.random() < 0.1 else rng.uniform(33, 38))
+
+    def outage(at_ms):
+        return at_ms > 4000 and at_ms % 4000 < 300
+
+    table = Table(net_console, delay=delay,
+                  network=dict(datagrams=True, loss=0.05, duplicate=0.02, outage=outage))
+    assert play(table, frames=600) > 400
+    for console in table.consoles:
+        assert console.byte("net_mode") == 1
+    assert table.lan.lost > 100 and table.lan.doubled > 10
+    assert table.stalls() > 10
+
+
 def test_a_nesp32_that_is_sometimes_too_slow_to_answer(net_console):
     """The console waits about 4.1 ms for a reply. Later ones are missed,
     or fall across the next exchange, and are asked for again."""
