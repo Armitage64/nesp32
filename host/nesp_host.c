@@ -1316,6 +1316,11 @@ void host_arq_note(nesp_arq_t *arq, const uint8_t *note) { memcpy(arq->note_out,
 void host_arq_noted(const nesp_arq_t *arq, uint8_t *out) { memcpy(out, arq->note_in, NESP_ARQ_NOTE); }
 
 uint32_t host_peer_requests(const host_t *host) { return host->stick.peer.requests; }
+/* The console's RAM as the last DUMP left it. */
+void host_peer_dump(const host_t *host, uint8_t *out)
+{
+    memcpy(out, host->stick.peer.dump, sizeof(host->stick.peer.dump));
+}
 uint32_t host_peer_repeats(const host_t *host) { return host->stick.peer.repeats; }
 uint8_t host_peer_lobby(const host_t *host) { return host->stick.peer.lobby; }
 
@@ -1331,6 +1336,7 @@ uint32_t host_tuner_held(const host_t *host) { return host->stick.tuner.held; }
 uint32_t host_tuner_dropped(const host_t *host) { return host->stick.tuner.dropped; }
 uint32_t host_tuner_dry(const host_t *host) { return host->stick.tuner.dry; }
 const char *host_watched(const host_t *host) { return host->watched; }
+uint32_t host_watch_count(const host_t *host) { return host->watch_count; }
 /* The line said `back` lines before the last (0: the last); "" if none. */
 const char *host_watched_back(const host_t *host, uint32_t back)
 {

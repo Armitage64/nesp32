@@ -100,7 +100,7 @@ static nesp_network_t networks[NESP_SCAN_MAX];  /* under lock */
 static uint8_t battery = 0xFF;
 static char app_id[NESP_APP_ID] = {' ', ' ', ' ', ' '};
 static char shown[2][RADIO_SHOWN_MAX];      /* under lock: the application's lines */
-#define WATCH_LINES 4                       /* lines for the log not yet taken, at most */
+#define WATCH_LINES 8                       /* lines for the log not yet taken, at most */
 static char watched[WATCH_LINES][RADIO_WATCH_MAX];  /* under lock: they, oldest first from */
 static uint8_t watch_first;                 /* this one */
 static uint8_t watch_count;

@@ -36,6 +36,7 @@
  * frame has come for PEER_RATE_QUIET_MS: a console that was reset begins
  * again at the link's rate, and is heard only there.
  */
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -45,6 +46,8 @@
 #define GREETING NESP_PEER_GREETING
 _Static_assert(1 + NESP_PEER_PER_FRAME <= NESP_SHORT_DATA, "TICKS does not fit a short frame");
 _Static_assert(NESP_PEER_PER_FRAME == 2, "a short frame's length is by counts of 2 and under");
+#define DUMP_LINES (NESP_PEER_DUMP_BYTES / NESP_PEER_DUMP_LINE)
+_Static_assert(DUMP_LINES < 255, "a dump's lines, and the one before them, are counted in a byte");
 #define SHOW_MS 500
 #define WATCH_MS 2000
 #define STOPPED_MS 1000            /* a session's console that has not asked for this long has stopped */
@@ -334,6 +337,58 @@ static void farewell(nesp_peer_t *peer, const char *why)
         from_end(text + length, sizeof(text) - length, peer, peer->lost_at);
     }
     peer->hal->watch(peer->hal->ctx, text);
+}
+
+/* DUMP: a piece of the console's RAM, sent when its digest differed from
+ * the other's. The piece that ends at the end finishes it, and its lines
+ * go to the log from the next tick, the first of them saying what it is. */
+static void dump(nesp_peer_t *peer, const nesp_request_t *request, nesp_reply_t *reply)
+{
+    if (request->len < 2) {
+        reply->status = NESP_ST_BAD_ARG;
+        return;
+    }
+    size_t offset = (size_t)request->data[0] | (size_t)request->data[1] << 8;
+    size_t count = (size_t)(request->len - 2);
+    if (offset > NESP_PEER_DUMP_BYTES || count > NESP_PEER_DUMP_BYTES - offset) {
+        reply->status = NESP_ST_BAD_ARG;
+        return;
+    }
+    memcpy(peer->dump + offset, request->data + 2, count);
+    if (count != 0 && offset + count == NESP_PEER_DUMP_BYTES) {
+        peer->dump_lines = DUMP_LINES + 1;
+        peer->dump_at = peer->now;
+        peer->dump_tick = peer->differed_at;
+    }
+}
+
+/* The dump's next line for the log, when it is time. */
+static void dump_said(nesp_peer_t *peer, uint32_t now)
+{
+    if (peer->dump_lines == 0 || (int32_t)(now - peer->dump_at) < 0 || peer->hal->watch == NULL) {
+        return;
+    }
+    char text[RADIO_TEXT];
+    if (peer->dump_lines == DUMP_LINES + 1) {
+        if (peer->dump_tick != 0) {
+            snprintf(text, sizeof(text), "dump of the console's RAM, as it stood at tick %lu, "
+                     "whose digests differed: %u bytes", (unsigned long)peer->dump_tick,
+                     (unsigned)NESP_PEER_DUMP_BYTES);
+        } else {
+            snprintf(text, sizeof(text), "dump of the console's RAM: %u bytes",
+                     (unsigned)NESP_PEER_DUMP_BYTES);
+        }
+    } else {
+        size_t from = (size_t)(DUMP_LINES - peer->dump_lines) * NESP_PEER_DUMP_LINE;
+        size_t length = (size_t)snprintf(text, sizeof(text), "dump %04x:", (unsigned)from);
+        for (size_t index = 0; index < NESP_PEER_DUMP_LINE && length + 3 < sizeof(text); index++) {
+            length += (size_t)snprintf(text + length, sizeof(text) - length, "%s%02x",
+                                       index == 0 ? " " : "", peer->dump[from + index]);
+        }
+    }
+    peer->hal->watch(peer->hal->ctx, text);
+    peer->dump_lines--;
+    peer->dump_at = now + NESP_PEER_DUMP_EVERY_MS;
 }
 
 /* --- a session ------------------------------------------------------------------ */
@@ -1023,6 +1078,9 @@ static void handle(void *ctx, const nesp_request_t *request, nesp_reply_t *reply
     case NESP_PEER_RATE:
         rate(peer, request, reply);
         break;
+    case NESP_PEER_DUMP:
+        dump(peer, request, reply);
+        break;
     default:
         reply->status = NESP_ST_NO_OP;
         break;
@@ -1166,6 +1224,7 @@ static bool tick(void *ctx, uint32_t now)
     peer->now = now;
     bool soon = line(peer, now);
     watch(peer, now);
+    dump_said(peer, now);
     uint8_t conn = peer->hal->peer_state(peer->hal->ctx);
     if (peer->meet != MEET_NONE && peer->meet != MEET_PUNCHING
         && peer->lobby != NESP_LOBBY_FAILED) {
@@ -1226,7 +1285,7 @@ static void reset(nesp_peer_t *peer)
         hal->fetch_stop(hal->ctx);
     }
     hal->lock(hal->ctx);
-    memset(peer, 0, sizeof(*peer));
+    memset(peer, 0, offsetof(nesp_peer_t, dump_lines));    /* the dump goes on being said */
     peer->generation = generation + 1;  /* a fetch that was out is no longer wanted */
     hal->unlock(hal->ctx);
     peer->hal = hal;

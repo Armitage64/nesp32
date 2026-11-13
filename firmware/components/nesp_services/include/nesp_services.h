@@ -870,6 +870,13 @@ typedef struct {
     uint8_t rate_wanted;
     uint8_t rate;
     uint32_t rate_heard_at;
+    /* A console's RAM (DUMP), and its lines for the log still to go. Last,
+     * and kept through peer.c's reset(): a console that has given its
+     * session up may say hello again before they have all gone. */
+    uint8_t dump_lines;             /* 0: none */
+    uint32_t dump_at;               /* when the next may go */
+    uint32_t dump_tick;             /* the tick whose digests differed, or 0 */
+    uint8_t dump[NESP_PEER_DUMP_BYTES];
 } nesp_peer_t;
 
 /* TUNER: a radio station as sampled sound (tuner.c). */

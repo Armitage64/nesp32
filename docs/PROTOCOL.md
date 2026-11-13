@@ -349,6 +349,7 @@ Internet with no port forwarded, by a room's code at the rendezvous
 | `$07` | JOIN_ROOM | `CODE[4]` | the same: join the room of that code |
 | `$08` | ROOM | | the same, and nothing done |
 | `$09` | RATE | `PERIOD` | `PERIOD`: the session's line at that rate, both ways, or `0`: the link's |
+| `$0A` | DUMP | `OFFSET[2]`, `BYTES` ... | nothing: the bytes into the console's RAM as the nesp32 keeps it |
 | short | TICKS again, in five bytes and four | `N` ticks: `FIRST` and `WANTED`, `BUTTONS[1 or 2]` | `N` ticks: `BUTTONS[1]` |
 
 In every reply but LAST's, `ADDRESS` is the nesp32's own IPv4 address.
@@ -371,6 +372,22 @@ too, as do PEER's other ends. A console that asks for no rate is never at
 another, so a netplay ROM built before RATE is not touched by it; a
 nesp32 whose firmware has no RATE answers `NO_OP`, and its console stays
 at the link's rate.
+
+**DUMP** is for finding out why two games stopped being the same. A
+netplay ROM whose digest differs from the other's sends its RAM before it
+gives the session up, `PEER_DUMP_BYTES` bytes (2048, `$0000-$07FF`) in pieces:
+`OFFSET` (low byte first) is where in it the piece's bytes go, and a piece
+that would go past the end is `BAD_ARG`. The one that ends at the end
+finishes it, and the nesp32 writes the whole of it to its log, a line of
+`PEER_DUMP_LINE` (64) bytes in hex every `PEER_DUMP_EVERY_MS` (100):
+
+```
+peer: dump 0000: 0b1c...
+```
+
+With both consoles' logs, the two dumps say which bytes differ. A nesp32
+whose firmware has no DUMP answers `NO_OP`, and the console goes on as
+before.
 
 | `STATE` | Name | |
 |---|---|---|

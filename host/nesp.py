@@ -189,6 +189,10 @@ def library():
         lib.host_watched.restype = ctypes.c_char_p
         lib.host_watched.argtypes = [ctypes.c_void_p]
         lib.host_watched_back.restype = ctypes.c_char_p
+        lib.host_watch_count.restype = ctypes.c_uint32
+        lib.host_peer_dump.restype = None
+        lib.host_peer_dump.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        lib.host_watch_count.argtypes = [ctypes.c_void_p]
         lib.host_watched_back.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
         lib.host_shown.restype = ctypes.c_char_p
         lib.host_shown.argtypes = [ctypes.c_void_p, ctypes.c_uint8]
@@ -890,6 +894,13 @@ class Stick:
         self._lib.host_set_rendezvous(self._host, self._url)
 
     @property
+    def peer_dump(self):
+        """The console's RAM as PEER's last DUMP left it."""
+        buffer = ctypes.create_string_buffer(proto.NESP_PEER_DUMP_BYTES)
+        self._lib.host_peer_dump(self._host, buffer)
+        return buffer.raw
+
+    @property
     def peer_requests(self):
         """PEER: TICKS requests in this session, and how many of them
         brought nothing new."""
@@ -946,6 +957,11 @@ class Stick:
     def watched(self):
         """The last line a service gave for the nesp32's log."""
         return self._lib.host_watched(self._host).decode("ascii")
+
+    @property
+    def watch_count(self):
+        """How many lines the services have given the log, in all."""
+        return self._lib.host_watch_count(self._host)
 
     @property
     def watched_lines(self):

@@ -512,6 +512,94 @@ def test_a_session_with_no_exchange_says_nothing_of_its_end(pair):
     assert not host.watched.startswith("session over")
 
 
+# --- a console's RAM, for the log (DUMP) ---------------------------------------------
+
+DUMP = p.NESP_PEER_DUMP
+RAM = bytes((index * 7 + (index >> 8)) & 0xFF for index in range(p.NESP_PEER_DUMP_BYTES))
+
+
+def send_dump(stick, ram=RAM, piece=64, order=None):
+    """The console's RAM in pieces, as a netplay ROM sends it."""
+    starts = list(range(0, len(ram), piece)) if order is None else order
+    for start in starts:
+        payload = bytes((start & 0xFF, start >> 8)) + ram[start:start + piece]
+        reply = stick.ask(PEER, DUMP, payload)
+        assert reply.ok and reply.payload == b""
+
+
+def dump_lines(stick, at, frames=60):
+    """Every line the log is given, a tick each 20 ms from `at` ms."""
+    lines = []
+    count = stick.watch_count
+    for now in range(at, at + frames * 20, 20):
+        stick.tick(now)
+        new = stick.watch_count - count
+        count = stick.watch_count
+        if new:
+            lines += stick.watched_lines[-new:]
+    return lines
+
+
+def test_the_ram_of_a_console_whose_digest_differed_goes_to_the_log(pair):
+    """A line every 100 ms, 64 bytes in hex each, after one that says what
+    they are."""
+    host, guest = pair
+    connect(host, guest)
+    theirs = stream(5, {767: 0x3C})
+    at = play(host, stream(3, {}), theirs, 0, 768)
+    send_dump(host)
+    lines = dump_lines(host, at, frames=200)
+    dumped = [line for line in lines if line.startswith("dump")]
+    assert dumped[0] == ("dump of the console's RAM, as it stood at tick 767, whose digests "
+                         "differed: 2048 bytes")
+    assert len(dumped) == 1 + 2048 // 64
+    assert dumped[1] == "dump 0000: " + RAM[:64].hex()
+    assert dumped[-1] == "dump 07c0: " + RAM[0x7C0:].hex()
+    assert bytes.fromhex("".join(line.split(": ")[1] for line in dumped[1:])) == RAM
+
+
+def test_the_lines_go_no_faster_than_the_log_takes_them(pair):
+    host, guest = pair
+    connect(host, guest)
+    send_dump(host)
+    host.tick(0)
+    for now in range(1, p.NESP_PEER_DUMP_EVERY_MS):
+        host.tick(now)
+    assert host.watched.startswith("dump of the console's RAM: 2048 bytes")
+    host.tick(p.NESP_PEER_DUMP_EVERY_MS)
+    assert host.watched.startswith("dump 0000: ")
+
+
+def test_a_dump_goes_on_being_said_after_a_hello(pair):
+    """The console gave the session up, and went to its menu at once."""
+    host, guest = pair
+    connect(host, guest)
+    send_dump(host)
+    host.tick(0)
+    assert host.hello(services=[PEER]).ok
+    lines = dump_lines(host, 20, frames=200)
+    assert lines[-1] == "dump 07c0: " + RAM[0x7C0:].hex()
+
+
+def test_pieces_in_any_order_and_again_end_at_the_last(pair):
+    host, guest = pair
+    connect(host, guest)
+    send_dump(host, order=[64, 0, 0, 128] + list(range(192, 2048, 64)))
+    lines = dump_lines(host, 0, frames=200)
+    assert lines[1] == "dump 0000: " + RAM[:64].hex()
+    assert lines[-1] == "dump 07c0: " + RAM[0x7C0:].hex()
+
+
+def test_a_piece_past_the_end_is_refused(pair):
+    host, guest = pair
+    connect(host, guest)
+    for payload in (b"", b"\x00", b"\xf0\x07" + bytes(17), b"\x00\x08\x01"):
+        assert host.ask(PEER, DUMP, payload).status == p.NESP_ST_BAD_ARG
+    assert host.ask(PEER, DUMP, b"\x00\x08").ok        # nothing, at the end: nothing to say
+    host.tick(1000)
+    assert not host.watched.startswith("dump")
+
+
 # --- short frames ------------------------------------------------------------------
 
 
