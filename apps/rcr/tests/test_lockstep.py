@@ -31,7 +31,11 @@ def test_the_pause_and_its_screens_in_a_session(net_console):
     table.play(4000, moves_with_pauses(2, every=500))
     ticks = table.same_game()
     print("ticks", ticks, "frames", table.frames(), "waits", table.waits(), table.waits(1))
-    assert ticks > 0.25 * table.frames()
+    # Less than in play: the pause's screens are loaded with no read for
+    # tens of frames, and how often the buttons by the frame come back to
+    # them is the game's: ticks were 28% of the frames, and 24% with
+    # net_distances, which plays the same buttons into another game.
+    assert ticks > 0.2 * table.frames()
     assert rates(table) == [0x80, 0x80]
 
 

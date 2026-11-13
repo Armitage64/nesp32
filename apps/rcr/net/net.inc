@@ -307,13 +307,50 @@ net_pass_done:
 net_draw_begin:
     lda #$80
     sta net_drawing
+    lda $BFFF                   ; each bank's last byte is its pair's number
+    sta net_draw_bank
     rts
 
-; In place of the pass's call of L7_DFE2, which ends the page.
+; In place of the pass's call of L7_DFE2, which ends the page. The banks
+; the pass had at DRAW_OBJECTS put back, if the objects' drawing left
+; bank 3's pair in.
 net_draw_end:
     jsr L7_DFE2
     lda #$00
     sta net_drawing
+    lda net_draw_bank
+    asl a
+    cmp BANK_R6
+    beq :+
+    lda net_draw_bank
+    jmp BANK_PAIR
+:
+    rts
+
+; Each object's drawing (L7_ED0E) puts in the pair of bank 3, its sprites'
+; tables, and puts back the pair it found when it is done: two switches an
+; object, some 80 cycles each. In the pass's drawing the pair is put in for
+; the first object and left in until net_draw_end. Called from elsewhere,
+; by banks 1 and 2, the drawing switches as the game's does. X kept.
+net_object_bank:
+    bit net_drawing
+    bpl :+
+    lda BANK_R6
+    cmp #$03 * 2
+    beq @in
+:
+    lda #$03
+    jmp BANK_PAIR
+
+@in:
+    rts
+
+; At the drawing's end, with A the pair it found.
+net_object_back:
+    bit net_drawing
+    bmi :+
+    jmp BANK_PAIR
+:
     rts
 
 ; In the game's NMI, in place of SPRITE_DMA.

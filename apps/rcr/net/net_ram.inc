@@ -112,6 +112,11 @@ net_done        = NET_RAM + $7C ; 01 once the pass's work is done, 02 once an NM
 net_took        = NET_RAM + $7D ; NMI_COUNT at the read that took the tick
 net_work        = NET_RAM + $7E ; NMIs from the read to the work's end, the last pass
 net_drawing     = NET_RAM + $7F ; bit 7 while the pass fills the sprites' page (net_draw_begin)
+net_draw_bank   = NET_RAM + $80 ; the banks' pair at DRAW_OBJECTS, put back after it
+; The distances between objects (net/distances.inc).
+net_dist_back   = NET_RAM + $81 ; the other way's three, for two fighters
+net_dist_size   = NET_RAM + $84 ; the first distance's size, for the sum
+net_dist_other  = NET_RAM + $85 ; the other way's place in the tables
 net_quiet       = NET_RAM + $77 ; NMIs since a reply was last heard, up to $FF
 ; A session's line goes back to the link's rate at the nesp32 with no frame
 ; on it for 500 ms (PEER_RATE_QUIET_MS). The game has screens with no reads

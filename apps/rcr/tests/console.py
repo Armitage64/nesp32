@@ -416,7 +416,8 @@ class Console:
     # $00-$13, IRQ_SPLIT ($14), the netplay's link's zero page ($15-$17,
     # $F3, $F9-$FA), the background's columns and colours as far as they
     # are drawn, which is as far as the PPU's queue has had room for
-    # ($1A-$1C, $24-$26, $2A-$2B, $0585-$058D), the stack, the NMI's queue
+    # ($1A-$1C, $24-$26, $2A-$2B, $0585-$058D, and the colours' buffer at
+    # $058E-$060D, which only the queue's filling reads), the stack, the NMI's queue
     # of writes to the PPU ($0545-$0584 and its two ends, $06B6-$06B7), the
     # HUD's redraw ($0517), what the NMI last put in place of the main
     # thread's asks: a palette ($051B-$051C) and the sprites' banks
@@ -426,7 +427,7 @@ class Console:
     # palette for the NMI to upload, which the main thread sets and the
     # NMI clears, and nothing else reads (UNKEPT_BITS).
     UNKEPT = ([(0x00, 0x18), (0x1A, 0x1D), (0x24, 0x27), (0x2A, 0x2C), (0xF3, 0xF4), (0xF7, 0x100),
-               (0x100, 0x200), (0x517, 0x518), (0x51B, 0x51D), (0x525, 0x529), (0x545, 0x58E),
+               (0x100, 0x200), (0x517, 0x518), (0x51B, 0x51D), (0x525, 0x529), (0x545, 0x60E),
                (0x6B6, 0x6B8), (0x6D3, 0x6D4), (0x700, 0x800)])
     UNKEPT_BITS = ((0x3E, 0x08),)
 

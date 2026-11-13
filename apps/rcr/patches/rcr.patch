@@ -4,59 +4,107 @@
 +.ifdef NETPLAY
 +.include "net.asm"
 +.endif
-@@ -25451,0 +25455,5 @@
+@@ -14305,0 +14309,3 @@
++.ifdef NETPLAY
++    jsr net_distances           ; the same, in fewer cycles (net/distances.inc)
++.else
+@@ -14306,0 +14313 @@
++.endif
+@@ -25050,0 +25058,5 @@
++.ifdef NETPLAY
++    jsr net_object_bank
++    nop
++    nop
++.else
+@@ -25052,0 +25065 @@
++.endif
+@@ -25424,0 +25438,3 @@
++.ifdef NETPLAY
++    jsr net_object_back
++.else
+@@ -25425,0 +25442 @@
++.endif
+@@ -25451,0 +25469,5 @@
 +.ifdef NETPLAY
 +    jsr net_draw_begin
 +    nop
 +    nop
 +.else
-@@ -25453,0 +25462 @@
+@@ -25453,0 +25476 @@
 +.endif
-@@ -25645,0 +25655,3 @@
+@@ -25645,0 +25669,3 @@
 +.ifdef NETPLAY
 +    jsr net_sprite_dma
 +.else
-@@ -25646,0 +25659 @@
+@@ -25646,0 +25673 @@
 +.endif
-@@ -25684,0 +25698,3 @@
+@@ -25684,0 +25712,3 @@
 +.ifdef NETPLAY
 +    jsr net_nmi_count
 +.else
-@@ -25685,0 +25702 @@
+@@ -25685,0 +25716 @@
 +.endif
-@@ -25800,0 +25818,3 @@
+@@ -25800,0 +25832,3 @@
 +.ifdef NETPLAY
 +    jsr net_draw_end
 +.else
-@@ -25801,0 +25822 @@
+@@ -25801,0 +25836 @@
 +.endif
-@@ -25820,0 +25842,3 @@
+@@ -25820,0 +25856,3 @@
 +.ifdef NETPLAY
 +    jsr net_pass_done
 +.else
-@@ -25821,0 +25846 @@
+@@ -25821,0 +25860 @@
 +.endif
-@@ -26185,0 +26211,3 @@
+@@ -26185,0 +26225,3 @@
 +.ifdef NETPLAY
 +    jsr net_select_wait
 +.else
-@@ -26186,0 +26215 @@
+@@ -26186,0 +26229 @@
 +.endif
-@@ -26193,0 +26223,3 @@
+@@ -26193,0 +26237,3 @@
 +.ifdef NETPLAY
 +    jsr net_select_start
 +.else
-@@ -26194,0 +26227 @@
+@@ -26194,0 +26241 @@
 +.endif
-@@ -27076,0 +27110,3 @@
+@@ -27076,0 +27124,3 @@
 +.ifdef NETPLAY
 +    jmp net_read_pads
 +.else
-@@ -27077,0 +27114 @@
+@@ -27077,0 +27128 @@
 +.endif
-@@ -27475,0 +27513,3 @@
+@@ -27308,0 +27360,25 @@
++.ifdef NETPLAY
++    ; The same, quicker (README, "The frame rate"): the shadows first,
++    ; which an interrupt puts the registers back from, and no reading of
++    ; A from the stack. A, X and Y kept, and the flags as the game's.
++    pha
++    asl a
++    sta BANK_R6
++    ora #$01
++    sta BANK_R7
++    lda #$06
++    sta BANK_SELECT
++    sta $8000
++    lda BANK_R6
++    sta $8001
++    lda #$07
++    sta BANK_SELECT
++    sta $8000
++    lda BANK_R7
++    sta $8001
++    pla
++    cmp $BFFF
++    bne L7_FF01
++    rts
++    .res 9, $EA
++.else
+@@ -27334,0 +27411 @@
++.endif
+@@ -27475,0 +27553,3 @@
 +.ifdef NETPLAY
 +    .addr net_nmi, net_cart_start, IRQ
 +.else
-@@ -27476,0 +27517 @@
+@@ -27476,0 +27557 @@
 +.endif

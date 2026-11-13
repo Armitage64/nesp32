@@ -197,6 +197,10 @@ tries a read waited for.
 - **The sprites** ("The frame rate"): `DRAW_OBJECTS`'s wait
   (`net_draw_begin`), the pass's call that ends the sprites' page
   (`net_draw_end`), and the NMI's sending of the page (`net_sprite_dma`).
+- **The banks** ("The frame rate"): `BANK_PAIR`, quicker in its own
+  bytes, and the two switches of each object's drawing (`L7_ED0E`).
+- **The distances between objects** ("The frame rate"): bank 6's call of
+  `L7_DAA7` calls `net_distances`, in bank 6's empty bytes.
 - **The first screen's wait for its NMI** (`net_select_wait`): in a
   session, 2P PLAY chosen and Start.
 - **The first screen's Start** (`net_select_start`): with 2P PLAY and no
@@ -233,7 +237,8 @@ what the tests compare (`tests/console.py`, `UNKEPT` and `UNKEPT_BITS`): the scr
 HUD's split at $00-$14, the link's zero page, the background's columns
 and colours as far as they are drawn, which is as far as the queue of
 writes to the PPU has had room for ($1A-$1C, $24-$26, $2A-$2B,
-$0585-$058D), the PPU's and the banks' shadows ($F7-$FF), the stack, the
+$0585-$058D, and the colours' buffer, $058E-$060D, which only the
+filling of the queue reads), the PPU's and the banks' shadows ($F7-$FF), the stack, the
 queue of writes to the PPU, the HUD's redraw, what the NMI last put in
 place of a palette and the sprites' banks ($051B-$051C, $0525-$0528), the
 most NMIs a pass took, the sound engine's memory, and $3E's bit 3: a
@@ -262,19 +267,56 @@ of it depends on its frames' time. It is so with no session too, in
 LOCAL GAME.
 
 A session's exchange is some 2000 cycles at the line at 10, made once or
-twice a pass of two frames or three. In the simulation, two players at
-random, 3000 frames:
+twice a pass of two frames or three. In the simulation, fighting at
+random for 3000 frames from the game's start, 4 seeds (`drive.moves`, by
+the frame), a session's line 10 ms each way; the game's frame rate is its
+passes a second, 30 at most:
 
-| Passes a second | the original, alone | a session, waiting | a session |
-|---|---|---|---|
-| Fighting at random (3 seeds) | 21.0 to 21.8 | 20.5 | 24.2 |
-| Walking right | 23.7 | 21.3 | 24.8 |
+| Passes a second | seeds 1-4 | mean |
+|---|---|---|
+| The original, one player | 29.8, 29.8, 29.9, 29.7 | 29.8 |
+| The original, two players | 21.0, 21.6, 21.4, 21.2 | 21.3 |
+| A session: the first build (553889d, delay 2) | 21.0, 20.9, 20.8, 20.5 | 20.8 |
+| The late read (cc7d77f, delay 1) | 20.5, 20.7, 20.4, 20.4 | 20.5 |
+| No wait for the sprites' page (53ef13b) | 24.0, 24.5, 24.1, 24.1 | 24.2 |
+| The banks | 23.9, 24.6, 24.2, 24.6 | 24.3 |
+| The distances between objects | 24.6, 25.1, 24.7, 24.8 | 24.8 |
+
+Buttons by the frame make each build play its own game, some 2% apart;
+`tests/bench.py` (below) compares two builds more closely.
+
+**The banks** are switched some 45 times a pass (`BANK_PAIR`, $FED1),
+none of them to the pair already in: most are a call into another bank
+and back. The netplay ROM's `BANK_PAIR` is quicker, some 61 cycles
+against 80: it writes the shadows first, which an interrupt puts the
+registers back from, and does not read A back from the stack. And the
+drawing of each object (`L7_ED0E`) put in bank 3's pair and put back the
+one it found, two switches an object: in the pass's drawing the pair is
+put in once and put back after (`net_object_bank`, `net_object_back`,
+`net_draw_end`). Together some 2% more ticks a second.
+
+**The distances between objects** are worked out at the start of each
+pass's objects (`L7_DAA7`): for each fighter (objects 0-3) that is on,
+its distance to each other object, across, along and up, each held to
+-128..127, and the first two's sizes added. `net_distances`
+(`net/distances.inc`, in bank 6's empty bytes at $BE1F) keeps the same
+bytes in fewer cycles: two fighters' pair is worked out once and kept
+both ways (the other way is the same less, or $7F for $80 and $80 for
+$7F past the ends), with no call and no stack for each. With four
+fighters and six objects on, some 3,700 cycles against 4,550. Some 1.3%
+more ticks a second. The
+original and it were run on the same thousands of random states, edges
+of the range weighted, to the same tables.
+
+Speed is measured by `tests/bench.py`: the tests' kind of session, but
+with each console's buttons following its own tick from the session's
+start, so that two builds play the same game tick for tick, which it
+shows by the game's digest at the end. Buttons by the frame make a
+quicker build play another game, which is as likely to be busier.
 
 Of the work left, the most is in drawing each object's sprites
-(`L7_ED0E`, 15% of the console's time in a fight), a search of the
-area's table of the ground (`L4_A379`, 10%), the switching of banks
-(`BANK_PAIR`, 4%, some 45 times a pass) and the distances between the
-objects (`L7_DAA7`, 5%).
+(`L7_ED0E`, 17% of the console's time in a fight), a search of the
+area's table of the ground (`L4_A379`, 11%).
 
 ## The simulation
 
