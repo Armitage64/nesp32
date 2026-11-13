@@ -100,3 +100,12 @@ def test_each_games_version_is_the_one_its_builds_say():
         if app and version:
             found[app.group(1)] = int(version.group(1))
     assert found == VERSIONS
+
+
+def test_a_copy_is_half_a_second_behind_at_a_games_own_tick_rate():
+    """River City Ransom takes a tick a pass of its main loop, 30 a
+    second: the copy is half as many ticks behind."""
+    player = Player("copy", ticks_per_s=30)
+    player.theirs += bytes(range(1, 40))
+    assert player.buttons(COPY_LAG // 2) == 1
+    assert player.buttons(COPY_LAG // 2 - 1) == 0

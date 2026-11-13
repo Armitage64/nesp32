@@ -102,6 +102,7 @@ NET_RATE_TRIES  = 3
 NET_RATE_MISSES = 30            ; half a second: and the line is the link's again
 NET_RATE_WAIT   = 46            ; and asked for again after 3/4 of a second, once the nesp32
                                 ; has gone back to the link's (PEER_RATE_QUIET_MS)
+net_waiting     = NET_RAM + $78 ; 01 while the game's read waits for its tick
 net_quiet       = NET_RAM + $77 ; NMIs since a reply was last heard, up to $FF
 ; A session's line goes back to the link's rate at the nesp32 with no frame
 ; on it for 500 ms (PEER_RATE_QUIET_MS). The game has screens with no reads

@@ -230,7 +230,9 @@ def test_host_and_join_start_one_game(net_console):
         assert console.byte("net_menu") == 0
         assert console.byte("net_mode") == 1
         assert console.byte("net_role") == side
-        assert console.byte("net_delay") == 2   # the nesp32's advice: 20 ms there and back
+        # The nesp32's advice for 20 ms there and back is 2 frames: a tick of
+        # this game's is two or more.
+        assert console.byte("net_delay") == 1
     table.begun()
     table.to_game()
     table.play(300, moves(3))

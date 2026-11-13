@@ -414,13 +414,18 @@ class Console:
 
     # What keeps the frames' time and not the game's: the scratch at
     # $00-$13, IRQ_SPLIT ($14), the netplay's link's zero page ($15-$17,
-    # $F3, $F9-$FA), the stack, the NMI's queue of writes to the
-    # PPU ($0545-$0584 and its two ends, $06B6-$06B7), the HUD's redraw
-    # ($0517), the most NMIs a pass took ($06D3), the PPU's shadows
+    # $F3, $F9-$FA), the background's columns and colours as far as they
+    # are drawn, which is as far as the PPU's queue has had room for
+    # ($1A-$1C, $24-$26, $2A-$2B, $0585-$058D), the stack, the NMI's queue
+    # of writes to the PPU ($0545-$0584 and its two ends, $06B6-$06B7), the
+    # HUD's redraw ($0517), what the NMI last put in place of the main
+    # thread's asks: a palette ($051B-$051C) and the sprites' banks
+    # ($0525-$0528), the most NMIs a pass took ($06D3), the PPU's shadows
     # ($F7-$F8), the banks as the interrupts saw them ($FB-$FF) and the
     # sound engine's memory ($0700-$07FF).
-    UNKEPT = ([(0x00, 0x18), (0xF3, 0xF4), (0xF7, 0x100), (0x100, 0x200), (0x517, 0x518),
-               (0x545, 0x585), (0x6B6, 0x6B8), (0x6D3, 0x6D4), (0x700, 0x800)])
+    UNKEPT = ([(0x00, 0x18), (0x1A, 0x1D), (0x24, 0x27), (0x2A, 0x2C), (0xF3, 0xF4), (0xF7, 0x100),
+               (0x100, 0x200), (0x517, 0x518), (0x51B, 0x51D), (0x525, 0x529), (0x545, 0x58E),
+               (0x6B6, 0x6B8), (0x6D3, 0x6D4), (0x700, 0x800)])
 
     def kept(self):
         """The bytes of the RAM the game's logic keeps (UNKEPT left out)."""

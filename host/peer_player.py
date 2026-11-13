@@ -44,7 +44,7 @@ import peer_net
 PEER = p.NESP_SVC_PEER
 CHECK_TICK = 0xFF               # of every 256, the one that carries the digest
 LEAD = 4                        # ticks sent ahead of the console's
-COPY_LAG = 30                   # ticks the copy is behind
+COPY_LAG = 30                   # in ticks, at a frame a tick
 STEP_S = 0.002
 STATUS_S = 0.05                 # between two questions to the lobby
 BTN_A, BTN_B, BTN_SELECT, BTN_START = 0x80, 0x40, 0x20, 0x10
@@ -57,7 +57,10 @@ STATES = {p.NESP_LOBBY_NO_WIFI: "no network", p.NESP_LOBBY_IDLE: "idle",
           p.NESP_LOBBY_FAILED: "failed", p.NESP_LOBBY_MEETING: "meeting"}
 # Each game's NESP_APP_VERSION as its builds now say it: a room is met only
 # by the same game at the same version.
-VERSIONS = {"TMN2": 2, "CNTR": 2, "DRMA": 3, "TTRS": 2, "BUBL": 2, "JACK": 2}
+VERSIONS = {"TMN2": 2, "CNTR": 2, "DRMA": 3, "TTRS": 2, "BUBL": 2, "JACK": 2, "RIVR": 1}
+# Ticks a second, where a game's tick is not a frame: River City Ransom's
+# is a pass of its main loop, two frames.
+TICKS_PER_S = {"RIVR": 30}
 
 WHYS = {p.NESP_MEET_NO_SERVER: "the rendezvous could not be asked",
         p.NESP_MEET_NO_ROOM: "there is no room of that code",
@@ -72,8 +75,9 @@ class Player:
     """The console's side of a session: its ticks of buttons out, the
     other's in, by PEER's TICKS on `stick`."""
 
-    def __init__(self, play="copy", seed=None):
+    def __init__(self, play="copy", seed=None, ticks_per_s=60):
         self.play = play
+        self.copy_lag = round(COPY_LAG * ticks_per_s / 60)
         self.random = random.Random(seed)
         self.mine = bytearray()     # this side's buttons, by tick
         self.theirs = bytearray()   # the console's
@@ -82,7 +86,7 @@ class Player:
 
     def buttons(self, tick):
         if self.play == "copy":
-            back = tick - COPY_LAG
+            back = tick - self.copy_lag
             if back < 0:
                 return 0
             if back % 256 == CHECK_TICK:
@@ -177,7 +181,7 @@ def main(argv=None):
     print("%s v%d%s at %s, as %s" % (args.app.upper(), args.version, " PAL" if args.pal else "",
                                      socket.inet_ntoa(address), "a room" if room else "an address"))
 
-    player = Player(args.play)
+    player = Player(args.play, ticks_per_s=TICKS_PER_S.get(args.app, 60))
     said = None
     asked = 0.0
     shown = 0.0

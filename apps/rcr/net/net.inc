@@ -91,6 +91,7 @@ net_reset:
     lda net_boot+1
     sta net_role
     lda net_boot+2
+    jsr net_halve
     sta net_delay
     sta net_want
     ; The ticks before 0 have no buttons, and are as many on both consoles
@@ -114,6 +115,7 @@ net_reset:
     sta net_tune
     sta net_silent
     sta net_pad
+    sta net_waiting
     lda #$02
     sta net_rate_ask            ; the session's own rate, asked for at its second try:
     lda #$01                    ; the first, the reset's, is followed by the logo
@@ -233,7 +235,9 @@ net_nmi:
 
 ; In the game's NMI (NMI_C0), in place of its count of NMI_COUNT, once it
 ; has written to the PPU and set up the IRQ: the count, and in a session
-; with no buttons yet for the next read, an exchange for them.
+; with no buttons yet for the next read, an exchange for them. The first
+; NMI of a pass sends the buttons its read took, a frame or two before the
+; other console's next read needs them.
 net_nmi_count:
     inc NMI_COUNT
     lda net_mode
@@ -299,6 +303,8 @@ net_read_pads:
 @wait:
     lda net_ready
     bne @take
+    lda #$01
+    sta net_waiting
     lda PPUCTRL_SHADOW
     bmi @wait                   ; the NMI is on: its exchanges bring them
     php
@@ -327,8 +333,24 @@ net_take:                       ; (a name for the tests: a tick taken)
     lda net_pads+1
     sta PAD_PRESSED+1
     inc net_tick
+    ; This console's controller, now, for the tick net_delay on: a press is
+    ; used net_delay ticks after the game would have used it alone. No NMI
+    ; tries while net_ready is set, and none makes an exchange, with OUT0
+    ; low, in the middle of this read.
+    jsr net_read_local
     lda #$00                    ; last: an NMI may now try for the next
+    sta net_waiting
     sta net_ready
+    ; With the NMI off, a screen's read: its exchange for the next tick now,
+    ; which sends the buttons just read, a frame before the other console's
+    ; next read wants them.
+    lda PPUCTRL_SHADOW
+    bmi :+
+    php
+    sei
+    jsr net_try
+    plp
+:
     jmp READ_EDGES
 
 ; --- a try for a tick's buttons ----------------------------------------------------
@@ -358,39 +380,13 @@ net_try:
     jmp net_rate                ; in place of this try's exchange
 
 @ticks:
-    lda net_tick
-    clc
-    adc net_delay
-    cmp net_read
-    bne @exchange               ; read already, in a try that had no buttons
-    sec
-    sbc net_acked
-    cmp #RING-1
-    bcs @exchange               ; no room until the nesp32 has taken some
-    lda net_want
-    cmp net_delay
-    beq @read
-    bcs @longer
-    dec net_delay               ; a tick shorter: this tick's buttons went a tick ago,
-    bne @exchange               ; and this read goes by
-
-@longer:
-    inc net_delay               ; a tick longer: the tick between has the buttons
-    lda net_pad                 ; as they were last read
-    jsr net_store
-
-@read:
-    jsr net_read_port
-    sta net_pad
-    jsr net_store
-
-@exchange:
+    jsr net_read_local          ; one the read had no room for
     jsr net_exchange
-    lda net_tick
-    clc
-    adc net_delay
-    cmp net_read
+    lda net_read
+    sec
+    sbc net_tick
     beq net_none                ; this console's own buttons are still to read: no room
+    bmi net_none
     lda net_have
     cmp net_tick
     beq net_late_none           ; the other's are not here
@@ -434,6 +430,8 @@ net_try:
     rts
 
 net_late_none:
+    lda net_waiting             ; a tick the game waited for
+    beq net_none
     inc net_late
 
 ; No buttons for this tick yet.
@@ -444,6 +442,51 @@ net_none:
     bcc :+
     jmp net_drop
 :
+    rts
+
+; This console's controller for the tick net_delay after net_tick's last,
+; net_tick + net_delay - 1, unless it is in already. The delay is changed
+; here, as the nesp32 advises: made a tick longer, the tick between has the
+; buttons as they were last read; made a tick shorter, this read goes by.
+net_read_local:
+    lda net_read
+    clc
+    adc #$01
+    sec
+    sbc net_delay
+    cmp net_tick
+    bne @exit                   ; read already
+    lda net_read
+    sec
+    sbc net_acked
+    cmp #RING-1
+    bcs @exit                   ; no room until the nesp32 has taken some
+    lda net_want
+    cmp net_delay
+    beq @read
+    bcs @longer
+    dec net_delay               ; a tick shorter: this read goes by
+    rts
+
+@longer:
+    inc net_delay               ; a tick longer: the tick between
+    lda net_pad
+    jsr net_store
+
+@read:
+    jsr net_read_port
+    sta net_pad
+    jmp net_store
+
+@exit:
+    rts
+
+; The nesp32's delay, A, as this game's: the nesp32 counts a tick as a frame,
+; and this game's are two frames or three. Half, rounded up.
+net_halve:
+    clc
+    adc #$01
+    lsr a
     rts
 
 ; A into this console's buttons, for the next tick that has none: or, if
@@ -471,8 +514,11 @@ net_store:
     rts
 
 ; A digest of the game into A: the zero page the game keeps, less its
-; scratch and the HUD's split ($00-$14), the link's own bytes and the PPU's
-; and the banks' shadows ($F7-$FF); and the objects' pages ($0300-$04FF).
+; scratch and the HUD's split ($00-$14), the scratch of its drawing of the
+; background's columns, which it does only while the queue of writes to the
+; PPU has room ($1A-$1C, $24-$26, $2A-$2B), the link's own bytes and the
+; PPU's and the banks' shadows ($F7-$FF); and the objects' pages
+; ($0300-$04FF).
 ; The sound engine's ($0700 on) is not in it, nor the NMI's queue of writes
 ; to the PPU, which keep the frames' time. Both consoles work it out at the
 ; start of the same tick, CHECK_AT.
@@ -481,22 +527,22 @@ net_store:
 ; differs always makes the digest differ.
 net_digest:
     lda #$00
-    ldx #$18
-@low:
+    ldy #$00
+@range:
+    ldx net_digest_ranges+1,y
+    stx net_temp                ; where it ends
+    ldx net_digest_ranges,y
+@zero:
     cmp #$80                    ; bit 7 into carry: a rotate of A alone
     rol a
     eor $00,x
     inx
-    cpx #nesp_tries
-    bne @low
-    ldx #nesp_tries + 1
-@high:
-    cmp #$80
-    rol a
-    eor $00,x
-    inx
-    cpx #PPUMASK_SHADOW
-    bne @high
+    cpx net_temp
+    bne @zero
+    iny
+    iny
+    cpy #net_digest_ranges_end - net_digest_ranges
+    bne @range
     ldx #$00
 @objects:
     cmp #$80
@@ -508,6 +554,11 @@ net_digest:
     inx
     bne @objects
     rts
+
+; The zero page in the digest: from each first byte to before each second.
+net_digest_ranges:
+    .byte $18, $1A, $1D, $24, $27, $2A, $2C, nesp_tries, nesp_tries + 1, PPUMASK_SHADOW
+net_digest_ranges_end:
 .assert nesp_rx_data = $15 && nesp_ptr = $16 && nesp_tries = $F3 && PPUMASK_SHADOW = $F7, error, "the digest's ranges"
 
 ; Controller 1 into A, as the game's read reads it: D0, or D1 for a
@@ -619,8 +670,9 @@ net_exchange:
     beq @acks
     cmp #NET_DELAY_MAX+1
     bcs @acks
+    jsr net_halve
     sta net_want
-    bcc @acks
+    jmp @acks                   ; (net_halve leaves the carry as it will)
 
 @plain:
     jsr net_unsent

@@ -129,9 +129,10 @@ other's buttons goes on drawing the same picture, and the music goes on.
 
 - **In play**, the game's NMI makes it, once it has written to the PPU and
   set up the IRQs (`net_nmi_count`, in place of its count of the NMIs):
-  for the next tick, which the next pass's read takes. So there is one
-  exchange a pass, in the frame after the read, and the other console's
-  buttons have a frame or two to come before they are wanted.
+  for the next tick, which the next pass's read takes, in each NMI until
+  the other console's buttons for it are here. The first NMI of a pass
+  sends the buttons its read took; the other console's come in for its
+  second, mostly, and then a pass has two exchanges.
 - **On the screens that read with the NMI off**, the read makes it itself,
   with the IRQ held off, after the frame's writes to the PPU; with no
   buttons yet it waits for the next vblank and makes it again.
@@ -146,6 +147,21 @@ thread the NMI is off and the IRQ held off. The HUD's IRQ comes some 5770
 cycles after the NMI begins, and the NMI with an exchange takes some 4000
 at the most but for an exchange asked again: in 1500 frames of play, one
 IRQ came 3 lines late.
+
+**This console's buttons are read at the game's read**, as the game reads
+them alone, and kept for the tick `net_delay` ticks on (`net_read_local`):
+a press is used one tick later than alone, at the delay of 1 a network
+like a home's has. The first build read them in the exchange, in the NMI
+after the read, for the tick after that, which was a tick more. In the
+simulation, at a delay of 1 and 2.5 ms each way, the game reads a press
+some 5.1 frames after it is made, where alone it takes 2.2. The tick is
+the game's: it reads its controllers once a pass, and in a fight or with
+the two of them on screen most passes are three frames, so the least a
+session can add is three frames.
+
+**The delay is half the nesp32's advice**, rounded up (`net_halve`): the
+nesp32 counts a tick as a frame, and this game's are two or three. The
+report the console sends counts as late only the tries a read waited for.
 
 **What had to change in the game**, by `patches/`:
 
@@ -193,20 +209,27 @@ names and the game was never seen to touch (`tests/test_console.py`).
 
 **What keeps the frames' time**, and is left out of the digest and of
 what the tests compare (`tests/console.py`, `UNKEPT`): the scratch and the
-HUD's split at $00-$14, the link's zero page, the PPU's and the banks'
-shadows ($F7-$FF), the stack, the queue of writes to the PPU, the HUD's
-redraw, the most NMIs a pass took, and the sound engine's memory. The
-digest is of the zero page the game keeps and of $0300-$04FF.
+HUD's split at $00-$14, the link's zero page, the background's columns
+and colours as far as they are drawn, which is as far as the queue of
+writes to the PPU has had room for ($1A-$1C, $24-$26, $2A-$2B,
+$0585-$058D), the PPU's and the banks' shadows ($F7-$FF), the stack, the
+queue of writes to the PPU, the HUD's redraw, what the NMI last put in
+place of a palette and the sprites' banks ($051B-$051C, $0525-$0528), the
+most NMIs a pass took, and the sound engine's memory. The digest is of
+the zero page the game keeps and of $0300-$04FF. A session's game was
+checked against the game itself: its buttons, tick by tick, played into
+the original ROM give the same game, for 1500 ticks.
 
 ## The frame rate
 
-A session's exchange is some 3000 cycles, made once a pass of two frames
-or three. In the simulation, two players at random, 3000 frames:
+A session's exchange is some 3000 cycles, made once or twice a pass of
+two frames or three. In the simulation, two players at random, 3000
+frames:
 
 | Passes a second | alone | in a session |
 |---|---|---|
-| Fighting at random, three runs | 21.3 | 20.9 |
-| Walking right | 23.7 | 22.2 |
+| Fighting at random | 21.0 | 20.6 |
+| Walking right | 23.7 | 21.4 |
 
 A busy fight's passes take three frames already, and the exchange seldom
 makes one take a fourth; the slowdown is where the passes nearly fit in
@@ -229,7 +252,15 @@ make test
 ## To do
 
 1. **Hardware**: a session on two consoles, the menu, the line at 10, and
-   the HUD's split while a reply is asked again.
+   the HUD's split while a reply is asked again. Played on one console
+   against `host/peer_player.py`: the input is still far too slow to play,
+   at the line at 10 and at 14 alike. The nesp32's log has the line sound
+   (3% of exchanges asked again), the delay at 1 tick, the least, and
+   the game at its own speed; but a few seconds of Wi-Fi round trips of
+   40-90 ms made the game wait at nearly every tick, and dropped the line
+   to 21 for a time. Still to find, with a slow-motion video of a press
+   against 1P PLAY: whether what is felt is those waits or the one tick
+   itself, which this game's inertia may make too much for lockstep.
 2. **Faster ways** through the game's busiest routines, for the slowdown
    ("The frame rate").
 3. **More of the game in a session**: the shops, the bosses, Slick and the
