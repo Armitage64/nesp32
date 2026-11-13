@@ -4,6 +4,7 @@
 
 ### Other
 - Mesen emulator support for NESP32 added for local testing and development (#74)
+- NESP32 logo displayed on Stick LCD screen at boot (#75)
 
 ## 0.3.0 — 2026-11-08
 
