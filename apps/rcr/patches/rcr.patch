@@ -18,63 +18,133 @@
 +.else
 @@ -25052,0 +25065 @@
 +.endif
-@@ -25424,0 +25438,3 @@
+@@ -25317,0 +25331,67 @@
++.ifdef NETPLAY
++    ; The same bytes in fewer cycles ("The frame rate"): Y is $1A, X the
++    ; sprite's place in the page.
++    lda $31
++    beq :+
++    lda ($30),y
++    .byte $2C                   ; (bit: skips the lda $07)
++:   lda $07
++    eor $05
++    sta $0202,x
++    tya
++    asl a
++    tay
++    lda ($2E),y
++    ldx $04
++    beq :+
++    eor #$FF
++:   ldx #$00
++    cmp #$80
++    bcc :+
++    dex
++:   clc
++    adc $0E
++    sta $08
++    txa
++    adc $0F
++    sta $09
++    iny
++    ldx #$00
++    lda ($2E),y
++    bpl :+
++    dex
++:   clc
++    adc $10
++    sta $0A
++    txa
++    adc $11
++    sta $0B
++    inc $1A
++    ldx $052D
++    ora $09
++    bne @off
++    lda $08
++    cmp #$04
++    bcc @off
++    lda $0A
++    cmp #$33
++    bcc @off
++    lda #$EC                    ; (the game's: ~($0A + 3) - $10)
++    sbc $0A
++    sta $0200,x
++    lda $08
++    sec
++    sbc #$04
++    sta $0203,x
++    txa
++    sbc #$04
++    sta $052D
++    cmp #$04
++    beq L7_EF84
++    bne L7_EF66
++@off:
++    lda #$F8
++    sta $0200,x
++    bne L7_EF66
++    .res $EF66 - $EEDC - (* - L7_EEDC), $EA
++.else
+@@ -25401,0 +25482 @@
++.endif
+@@ -25424,0 +25506,3 @@
 +.ifdef NETPLAY
 +    jsr net_object_back
 +.else
-@@ -25425,0 +25442 @@
+@@ -25425,0 +25510 @@
 +.endif
-@@ -25451,0 +25469,5 @@
+@@ -25451,0 +25537,5 @@
 +.ifdef NETPLAY
 +    jsr net_draw_begin
 +    nop
 +    nop
 +.else
-@@ -25453,0 +25476 @@
+@@ -25453,0 +25544 @@
 +.endif
-@@ -25645,0 +25669,3 @@
+@@ -25645,0 +25737,3 @@
 +.ifdef NETPLAY
 +    jsr net_sprite_dma
 +.else
-@@ -25646,0 +25673 @@
+@@ -25646,0 +25741 @@
 +.endif
-@@ -25684,0 +25712,3 @@
+@@ -25684,0 +25780,3 @@
 +.ifdef NETPLAY
 +    jsr net_nmi_count
 +.else
-@@ -25685,0 +25716 @@
+@@ -25685,0 +25784 @@
 +.endif
-@@ -25800,0 +25832,3 @@
+@@ -25800,0 +25900,3 @@
 +.ifdef NETPLAY
 +    jsr net_draw_end
 +.else
-@@ -25801,0 +25836 @@
+@@ -25801,0 +25904 @@
 +.endif
-@@ -25820,0 +25856,3 @@
+@@ -25820,0 +25924,3 @@
 +.ifdef NETPLAY
 +    jsr net_pass_done
 +.else
-@@ -25821,0 +25860 @@
+@@ -25821,0 +25928 @@
 +.endif
-@@ -26185,0 +26225,3 @@
+@@ -26185,0 +26293,3 @@
 +.ifdef NETPLAY
 +    jsr net_select_wait
 +.else
-@@ -26186,0 +26229 @@
+@@ -26186,0 +26297 @@
 +.endif
-@@ -26193,0 +26237,3 @@
+@@ -26193,0 +26305,3 @@
 +.ifdef NETPLAY
 +    jsr net_select_start
 +.else
-@@ -26194,0 +26241 @@
+@@ -26194,0 +26309 @@
 +.endif
-@@ -27076,0 +27124,3 @@
+@@ -27076,0 +27192,3 @@
 +.ifdef NETPLAY
 +    jmp net_read_pads
 +.else
-@@ -27077,0 +27128 @@
+@@ -27077,0 +27196 @@
 +.endif
-@@ -27308,0 +27360,25 @@
+@@ -27308,0 +27428,25 @@
 +.ifdef NETPLAY
 +    ; The same, quicker (README, "The frame rate"): the shadows first,
 +    ; which an interrupt puts the registers back from, and no reading of
@@ -100,11 +170,11 @@
 +    rts
 +    .res 9, $EA
 +.else
-@@ -27334,0 +27411 @@
+@@ -27334,0 +27479 @@
 +.endif
-@@ -27475,0 +27553,3 @@
+@@ -27475,0 +27621,3 @@
 +.ifdef NETPLAY
 +    .addr net_nmi, net_cart_start, IRQ
 +.else
-@@ -27476,0 +27557 @@
+@@ -27476,0 +27625 @@
 +.endif

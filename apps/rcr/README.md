@@ -201,6 +201,8 @@ tries a read waited for.
   bytes, and the two switches of each object's drawing (`L7_ED0E`).
 - **The distances between objects** ("The frame rate"): bank 6's call of
   `L7_DAA7` calls `net_distances`, in bank 6's empty bytes.
+- **The sprites' places** ("The frame rate"): the part of `L7_ED0E` that
+  places each sprite ($EEDC-$EF65), the same bytes in fewer cycles.
 - **The first screen's wait for its NMI** (`net_select_wait`): in a
   session, 2P PLAY chosen and Start.
 - **The first screen's Start** (`net_select_start`): with 2P PLAY and no
@@ -281,6 +283,7 @@ passes a second, 30 at most:
 | No wait for the sprites' page (53ef13b) | 24.0, 24.5, 24.1, 24.1 | 24.2 |
 | The banks | 23.9, 24.6, 24.2, 24.6 | 24.3 |
 | The distances between objects | 24.6, 25.1, 24.7, 24.8 | 24.8 |
+| The sprites' places | 26.2, 25.4, 25.7, 26.5 | 26.0 |
 
 Buttons by the frame make each build play its own game, some 2% apart;
 `tests/bench.py` (below) compares two builds more closely.
@@ -308,15 +311,23 @@ more ticks a second. The
 original and it were run on the same thousands of random states, edges
 of the range weighted, to the same tables.
 
+**The sprites' places**: of `L7_ED0E`'s work for each sprite, the most
+was placing it: its offsets from the object made 16 bits by a byte set
+to 0 and then decremented, added in a loop of two, and its line worked
+out in five steps. The netplay ROM does the same in its own bytes, some
+140 cycles a sprite against 230, to the same sprites' page and the same
+bytes of its own: on the same game the pages of 630 passes were the same
+as before. Some 4% more ticks a second.
+
 Speed is measured by `tests/bench.py`: the tests' kind of session, but
 with each console's buttons following its own tick from the session's
 start, so that two builds play the same game tick for tick, which it
 shows by the game's digest at the end. Buttons by the frame make a
 quicker build play another game, which is as likely to be busier.
 
-Of the work left, the most is in drawing each object's sprites
-(`L7_ED0E`, 17% of the console's time in a fight), a search of the
-area's table of the ground (`L4_A379`, 11%).
+Of the work left, the most is a search of the area's table of the
+ground (`L4_A379`, 11% of the console's time in a fight), which is the
+game's own logic and so has to give the same bytes.
 
 ## The simulation
 
