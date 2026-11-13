@@ -65,6 +65,13 @@ jackal_net.bps     Jackal, online co-op
     Won't work with: the European release, or the Famicom Disk System's
     Final Command: Akai Yousai.
 
+rcr_net.bps        River City Ransom, online co-op
+    Needs:   River City Ransom (USA)
+             262160 bytes, CRC32 C3508F7E
+             SHA-1 a8612a36d9d2739d2b321b6ebb97c2757ccca410
+    Won't work with: Street Gangs (Europe), or the Japanese
+    Downtown Nekketsu Monogatari.
+
 fbasic.bps         Family BASIC, typed on a Bluetooth keyboard
     Needs:   Family BASIC V3 (Japan)
              40976 bytes, CRC32 667F6EA6
@@ -99,6 +106,9 @@ Playing
   that the original has not; its patched ROM has an NES 2.0 header.
 - Jackal needs a flash cartridge or emulator that supports MMC3, with
   8 KB of RAM; its patched ROM has an NES 2.0 header.
+- River City Ransom keeps its own cartridge type (MMC3), with 8 KB of
+  RAM and twice the PRG ROM of the original; its patched ROM has an
+  NES 2.0 header. It needs NESP32 firmware 0.3.0 or later.
 - Family BASIC needs MMC1 with battery-backed memory, and a Bluetooth
   keyboard paired to the NESP32 (a StickS3).
 - For the online games, both players need the same patched game, from

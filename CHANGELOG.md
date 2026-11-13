@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Games
+- River City Ransom online co-op added, running faster than the original's two-player game on one console
+
 ### Other
 - Mesen emulator support for NESP32 added for local testing and development (#74)
 

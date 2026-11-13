@@ -11,8 +11,10 @@ the first screen with 2P PLAY chosen is the menu, HOST GAME and JOIN GAME
 meet by a room's code or by an address, and the two consoles play one
 game, kept the same by their buttons, with the session's line at 10
 cycles a bit. On hardware, with the late read ("How the netplay works"),
-it plays: the input is quick enough, and the frame rate with two players
-is the thing left to win ("The frame rate").
+it plays well: the input is quick, and with two players it runs faster
+than the original does with two on one console, some 26 passes a second
+in a fight against 21 ("The frame rate"). Players get it as a patch on
+nesp32's web site, with the other games' (nesp32's `tools/gen_web.py`).
 
 The netplay ROM is on the game's own cartridge, an MMC3 (mapper 4), with
 8 KB of PRG RAM and twice the PRG ROM ("The cartridge", below). A flash
@@ -343,22 +345,20 @@ make test
 
 ## To do
 
-1. **The frame rate with two players**: the sprites' wait is gone, and on
-   hardware (the line at 10) the game plays well and feels faster, some
-   26 exchanges a second in the nesp32's log, with no tearing and the
-   sprites' flicker no worse. Next, faster ways through the game's
-   busiest routines ("The frame rate"). The input
-   is playable since the late read; before it, with the controller read
-   at the top of the pass, it was far too slow, at the line at 10 and at
-   14 alike.
-2. **Hardware, the rest**: the menu, the line at 10 against 14, and the
+1. **Hardware, the rest**: the menu, the line at 10 against 14, and the
    HUD's split while a reply is asked again. Wi-Fi round trips of 40-90
    ms, seen in the nesp32's log in the first trial, still make the game
    wait at the ticks they fall on, as any lockstep game does. If the
    input is felt slow again on a calm network: wait for the other
    console's buttons in the main thread, between the HUD's IRQ and the
    one at the foot, so that a wait of a few milliseconds is not a frame.
-3. **More of the game in a session**: the shops, the bosses, Slick and the
+2. **More of the game in a session**: the shops, the bosses, Slick and the
    ending, a password entered, and both players knocked out.
-4. **The release**: the patch in nesp32's `tools/gen_web.py` and the home
-   page's downloads.
+3. **The frame rate, more** (if wanted): the search of the ground's table
+   (`L4_A379`, "The frame rate") is the most work left in a pass, some 2%
+   to 5% to win, and is the game's logic, to be kept to the same bytes as
+   the distances were. Two players are at some 26 passes a second against
+   the game's 30 for one.
+4. **A PAL console**: not yet tried. The late read counts its frames, and
+   should hold at 50 a second, the game at 5/6 of its speed as the other
+   netplay games are on one.

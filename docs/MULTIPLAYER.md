@@ -4,12 +4,12 @@ Seven of the apps are netplay builds of a two-player game:
 [Contra](../apps/contra), [Dr. Mario](../apps/drmario),
 [Tetris](../apps/tetris), [TMNT II](../apps/tmnt2),
 [Bubble Bobble](../apps/bubblebobble), [Jackal](../apps/jackal) and
-[River City Ransom](../apps/rcr), the last so far in the simulation only.
+[River City Ransom](../apps/rcr).
 Each is
 played on two consoles, each console with a nesp32 on controller port 2,
-the nesp32s joined over the network. The six work the same way, and this
+the nesp32s joined over the network. The seven work the same way, and this
 is that way: what the player sees, what a tick is, how the two games are
-kept the same, and what is still left to do in all six.
+kept the same, and what is still left to do in all seven.
 
 What the nesp32s do between them is the PEER service's, in
 [`PROTOCOL.md`](PROTOCOL.md): its lobby, its exchange of buttons, the
@@ -58,7 +58,7 @@ left.
   Internet, for a nesp32 that has no rooms, and for two networks that
   rooms cannot get through.
 
-All six games' menus have both ways. Contra, TMNT II and Bubble Bobble
+All seven games' menus have both ways. Contra, TMNT II and Bubble Bobble
 write the foot of the screen as `SELECT   BY IP`, their fonts having no
 dash.
 
@@ -460,7 +460,7 @@ passed over. With no session, the title passes over 2P CONTINUE.
 ## To do
 
 What is left on the nesp32 itself is in [`TODO.md`](TODO.md). In all
-six games:
+seven games:
 
 
 - **Say why on the console** when a session ends (the other console left,

@@ -36,8 +36,8 @@ software can reach the Internet, so the console can:
 - show live air traffic around an airport,
 - play live Internet radio and NES music through its own sound chip,
 - read Bluesky posts,
-- play Dr. Mario, Tetris, Contra, TMNT II, Bubble Bobble and Jackal online
-  against a friend.
+- play Dr. Mario, Tetris, Contra, TMNT II, Bubble Bobble, Jackal and River
+  City Ransom online with a friend.
 
 A NESP32 is an **M5Stack StickS3** (a small ready-made computer, about
 $20, with its own screen, battery and buttons) plus a little circuit board
@@ -181,8 +181,8 @@ ROM**, `nesp32.nes`. Download it from the
 cartridge") and copy it to your flash cartridge's SD card, or to your
 MiSTer, as you would any NES game.
 
-The online games (Dr. Mario, Tetris, Contra, TMNT II, Bubble Bobble and
-Jackal) are **not** on
+The online games (Dr. Mario, Tetris, Contra, TMNT II, Bubble Bobble,
+Jackal and River City Ransom) are **not** on
 the cartridge, because they contain the original games. See
 [Chapter 11](#11-playing-online-with-a-friend). Nor is
 [Family BASIC](#family-basic-not-on-the-cartridge), for the same reason.
@@ -687,8 +687,8 @@ does.
 
 ## 11. Playing online with a friend
 
-Dr. Mario, Tetris, Contra, TMNT II, Bubble Bobble and Jackal have special
-two-console versions.
+Dr. Mario, Tetris, Contra, TMNT II, Bubble Bobble, Jackal and River City
+Ransom have special two-console versions.
 Each player needs:
 
 - their own NES, with a NESP32 in port 2 and a controller in port 1,
@@ -719,17 +719,21 @@ be handed out ready-made. Instead, you patch your own copy of each game:
 | TMNT II | `tmnt2_net.bps` | Teenage Mutant Ninja Turtles II: The Arcade Game (USA) | 524304 bytes, `C9FFBBDB` |
 | Bubble Bobble | `bubblebobble_net.bps` | Bubble Bobble (USA) | 163856 bytes, `D3A91B41` |
 | Jackal | `jackal_net.bps` | Jackal (USA) | 131088 bytes, `2E52D091` |
+| River City Ransom | `rcr_net.bps` | River City Ransom (USA) | 262160 bytes, `C3508F7E` |
 
 Both players need the same patched game. Use the patches from the same
 release as your NESP32's firmware. The online games' patches from November
 2026 on don't play with earlier ones, and a room says `NOT THIS GAME`:
 both players patch again from the same download. Contra, TMNT II and
 Jackal play a little faster online with firmware newer than 0.2.0, which
-runs their link to the NESP32 faster; with 0.2.0 they play as before. Ask on the
+runs their link to the NESP32 faster; with 0.2.0 they play as before.
+River City Ransom needs firmware 0.3.0 or newer. Ask on the
 [Discord](https://discord.gg/kwSC7pwtmb) if you need help.
 
-Contra, TMNT II and Jackal need a flash cartridge or emulator that supports
-their cartridge type (MMC3). Bubble Bobble keeps its own (MMC1), but needs the
+Contra, TMNT II, Jackal and River City Ransom need a flash cartridge or
+emulator that supports their cartridge type (MMC3); River City Ransom's
+also has 8 KB of RAM and twice the original's program ROM, which its
+header asks for. Bubble Bobble keeps its own (MMC1), but needs the
 8 KB of RAM that one can have, which most flash cartridges and emulators
 give it.
 
@@ -737,8 +741,9 @@ give it.
 
 1. On the title screen, choose the two-player option: **2 PLAYERS**
    (Contra, Tetris), **2 PLAYER GAME** (Dr. Mario), **2 TURTLES**
-   (TMNT II), **2P START** (Bubble Bobble) or **2 PLAYERS** chosen with
-   **Select** and then **Start** (Jackal).
+   (TMNT II), **2P START** (Bubble Bobble), **2 PLAYERS** chosen with
+   **Select** and then **Start** (Jackal), or **2P PLAY** chosen with
+   **Down** and then **Start** (River City Ransom).
 2. One player chooses **HOST GAME**. Their screen, and the Stick's screen,
    show a **four-character room code**. Codes never use easily confused
    pairs like 0 and O, or 1 and I.
@@ -769,6 +774,16 @@ original. With both NESP32s on firmware newer than release 0.2.0, its
 online game talks to the NESP32 faster, which leaves the console more
 time for the game; with 0.2.0 it plays as well, a little slower in its
 busiest moments.
+
+**River City Ransom:** online, the first screen goes straight on with
+2P PLAY. The game runs faster online than the original does with two
+players on one console: the online version's drawing was sped up.
+Still, it can slow down a little when a lot is on screen, and a slow
+moment on the network makes both consoles wait for it. This online
+version is new: fighting through the town has been played, but the
+shops, the bosses and the ending have not been played online yet. If
+you run into a problem there, tell us on the
+[Discord](https://discord.gg/kwSC7pwtmb).
 
 ### Playing by address
 
