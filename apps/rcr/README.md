@@ -194,6 +194,9 @@ tries a read waited for.
   session's exchange in play.
 - **The pass's last call** (`net_pass_done`, before `MAIN_WAIT`): the
   call, and a mark that the pass's work is done, for the late read.
+- **The sprites** ("The frame rate"): `DRAW_OBJECTS`'s wait
+  (`net_draw_begin`), the pass's call that ends the sprites' page
+  (`net_draw_end`), and the NMI's sending of the page (`net_sprite_dma`).
 - **The first screen's wait for its NMI** (`net_select_wait`): in a
   session, 2P PLAY chosen and Start.
 - **The first screen's Start** (`net_select_start`): with 2P PLAY and no
@@ -244,20 +247,34 @@ the original ROM give the same game, for 1500 ticks.
 
 ## The frame rate
 
-A session's exchange is some 3000 cycles, made once or twice a pass of
-two frames or three. In the simulation, two players at random, 3000
-frames:
+The game waited for much of its time. `DRAW_OBJECTS` ($EFD4), which fills
+the sprites' page, began by waiting until no IRQ had come since the NMI,
+so that it filled the page before the next NMI sent it to the PPU: a pass
+that came to it after the HUD's IRQ, on line 29, waited for the next
+frame. That was some 16% of the console's time in a fight, half a frame a
+pass. The netplay ROM does not wait (`net_draw_begin`): an NMI that comes
+while the page is being filled does not send it (`net_sprite_dma`), and
+the sprites of the frame before stand for that frame, in some 23% of the
+frames of a fight. A page is never shown later than the game alone would
+have shown it: the game would have begun it no sooner, and it goes at the
+first NMI after it is done. The game itself does not change, for nothing
+of it depends on its frames' time. It is so with no session too, in
+LOCAL GAME.
 
-| Passes a second | alone | in a session |
-|---|---|---|
-| Fighting at random | 21.0 | 20.6 |
-| Walking right | 23.7 | 21.4 |
+A session's exchange is some 2000 cycles at the line at 10, made once or
+twice a pass of two frames or three. In the simulation, two players at
+random, 3000 frames:
 
-A busy fight's passes take three frames already, and the exchange seldom
-makes one take a fourth; the slowdown is where the passes nearly fit in
-two. The game's own work is where the cycles are, and the place to win
-them back: the sorting and drawing of the objects (`DRAW_OBJECTS`, $EFD4)
-and the objects' logic in bank 6.
+| Passes a second | the original, alone | a session, waiting | a session |
+|---|---|---|---|
+| Fighting at random (3 seeds) | 21.0 to 21.8 | 20.5 | 24.2 |
+| Walking right | 23.7 | 21.3 | 24.8 |
+
+Of the work left, the most is in drawing each object's sprites
+(`L7_ED0E`, 15% of the console's time in a fight), a search of the
+area's table of the ground (`L4_A379`, 10%), the switching of banks
+(`BANK_PAIR`, 4%, some 45 times a pass) and the distances between the
+objects (`L7_DAA7`, 5%).
 
 ## The simulation
 
@@ -273,8 +290,11 @@ make test
 
 ## To do
 
-1. **The frame rate with two players**, which is slow on hardware: faster
-   ways through the game's busiest routines ("The frame rate"). The input
+1. **The frame rate with two players**: the sprites' wait is gone, and on
+   hardware (the line at 10) the game plays well and feels faster, some
+   26 exchanges a second in the nesp32's log, with no tearing and the
+   sprites' flicker no worse. Next, faster ways through the game's
+   busiest routines ("The frame rate"). The input
    is playable since the late read; before it, with the controller read
    at the top of the pass, it was far too slow, at the line at 10 and at
    14 alike.

@@ -4,39 +4,59 @@
 +.ifdef NETPLAY
 +.include "net.asm"
 +.endif
-@@ -25684,0 +25688,3 @@
+@@ -25451,0 +25455,5 @@
++.ifdef NETPLAY
++    jsr net_draw_begin
++    nop
++    nop
++.else
+@@ -25453,0 +25462 @@
++.endif
+@@ -25645,0 +25655,3 @@
++.ifdef NETPLAY
++    jsr net_sprite_dma
++.else
+@@ -25646,0 +25659 @@
++.endif
+@@ -25684,0 +25698,3 @@
 +.ifdef NETPLAY
 +    jsr net_nmi_count
 +.else
-@@ -25685,0 +25692 @@
+@@ -25685,0 +25702 @@
 +.endif
-@@ -25820,0 +25828,3 @@
+@@ -25800,0 +25818,3 @@
++.ifdef NETPLAY
++    jsr net_draw_end
++.else
+@@ -25801,0 +25822 @@
++.endif
+@@ -25820,0 +25842,3 @@
 +.ifdef NETPLAY
 +    jsr net_pass_done
 +.else
-@@ -25821,0 +25832 @@
+@@ -25821,0 +25846 @@
 +.endif
-@@ -26185,0 +26197,3 @@
+@@ -26185,0 +26211,3 @@
 +.ifdef NETPLAY
 +    jsr net_select_wait
 +.else
-@@ -26186,0 +26201 @@
+@@ -26186,0 +26215 @@
 +.endif
-@@ -26193,0 +26209,3 @@
+@@ -26193,0 +26223,3 @@
 +.ifdef NETPLAY
 +    jsr net_select_start
 +.else
-@@ -26194,0 +26213 @@
+@@ -26194,0 +26227 @@
 +.endif
-@@ -27076,0 +27096,3 @@
+@@ -27076,0 +27110,3 @@
 +.ifdef NETPLAY
 +    jmp net_read_pads
 +.else
-@@ -27077,0 +27100 @@
+@@ -27077,0 +27114 @@
 +.endif
-@@ -27475,0 +27499,3 @@
+@@ -27475,0 +27513,3 @@
 +.ifdef NETPLAY
 +    .addr net_nmi, net_cart_start, IRQ
 +.else
-@@ -27476,0 +27503 @@
+@@ -27476,0 +27517 @@
 +.endif

@@ -76,6 +76,7 @@ net_reset:
     sta net_mode
     sta net_ready
     sta net_menu
+    sta net_drawing
     sta nesp_fast               ; the link's rate, until a session asks for its own
     sta net_rate_ask
     sta net_rate_tries
@@ -286,6 +287,41 @@ net_pass_done:
     jsr L7_FAB8
     lda #$01
     sta net_done
+    rts
+
+; --- the sprites ------------------------------------------------------------------
+
+; The game's pass fills the sprites' page ($0200) in DRAW_OBJECTS and hides
+; the slots it did not fill (L7_DFE2), and its NMI sends the page to the
+; PPU (SPRITE_DMA). DRAW_OBJECTS began with a wait until no IRQ had come
+; since the NMI (IRQ_SPLIT clear), so that the page was filled before the
+; next NMI sent it: a pass that came to it after the HUD's IRQ, on line 29,
+; waited for the next frame, half a frame a pass on the whole. In the
+; netplay ROM it does not wait. An NMI that comes while the page is being
+; filled does not send it, and the sprites of the frame before stand for a
+; frame, as they do in a frame the game runs late. This is the time of the
+; frames only: nothing of the game depends on it. With and without a
+; session alike.
+
+; At DRAW_OBJECTS, in place of its wait.
+net_draw_begin:
+    lda #$80
+    sta net_drawing
+    rts
+
+; In place of the pass's call of L7_DFE2, which ends the page.
+net_draw_end:
+    jsr L7_DFE2
+    lda #$00
+    sta net_drawing
+    rts
+
+; In the game's NMI, in place of SPRITE_DMA.
+net_sprite_dma:
+    bit net_drawing
+    bmi :+
+    jmp SPRITE_DMA
+:
     rts
 
 ; --- a read ----------------------------------------------------------------------

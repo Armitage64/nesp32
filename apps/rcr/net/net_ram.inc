@@ -111,6 +111,7 @@ net_due         = NET_RAM + $7B ; the NMI_COUNT whose NMI reads it
 net_done        = NET_RAM + $7C ; 01 once the pass's work is done, 02 once an NMI has seen it
 net_took        = NET_RAM + $7D ; NMI_COUNT at the read that took the tick
 net_work        = NET_RAM + $7E ; NMIs from the read to the work's end, the last pass
+net_drawing     = NET_RAM + $7F ; bit 7 while the pass fills the sprites' page (net_draw_begin)
 net_quiet       = NET_RAM + $77 ; NMIs since a reply was last heard, up to $FF
 ; A session's line goes back to the link's rate at the nesp32 with no frame
 ; on it for 500 ms (PEER_RATE_QUIET_MS). The game has screens with no reads
