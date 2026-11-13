@@ -14,6 +14,7 @@
 
 STATUS_EVERY = $03              ; a step every 4 frames
 STATUS_STEPS = 8
+UPDATE_EVERY = $02              ; of the frames between: poll_keys has the odd ones
 
 ; The lines, down the screen.
 LINE_STICK    = 0
@@ -44,7 +45,9 @@ menu_item:     .res 1           ; where the arrow is
 menu_items:    .res 1           ; how many there are: Quit is on the cartridge alone
 flipping:      .res 1           ; FLIP_*: how far turning the screen has got
 status_step:   .res 1
-hello_status:  .res 1           ; what the Stick said to the last hello
+stick_kbd:     .res 1           ; the Stick's hello had KBD
+stick_http:    .res 1           ; and HTTP
+stick_version: .res 3           ; its firmware's: major, minor, patch
 ; SYS STATUS, as it came: Wi-Fi state, signal, address (4), battery, events.
 stick_status:  .res 8
 STICK_WIFI    = stick_status
@@ -113,6 +116,7 @@ wifi_failed:   .byte "COULD NOT JOIN", 0
     lda #<status_screen
     ldx #>status_screen
     jsr show_screen
+    jsr update_open
     lda #STATE_STATUS
     sta state
     lda #STATUS_STEPS - 1       ; the round begins with the hello
@@ -156,7 +160,12 @@ wifi_failed:   .byte "COULD NOT JOIN", 0
 @round:
     lda frame_count
     and #STATUS_EVERY
+    beq @line
+    cmp #UPDATE_EVERY           ; a frame of its own for the update check
     bne @input
+    jsr update_frame
+    jmp @input
+@line:
     lda draw_len
     bne @input
     ldx status_step
@@ -318,7 +327,9 @@ FLIP_TURN = 2
 
 ; Say hello, if the Stick has not answered one. This ROM needs NET and DIAG,
 ; and asks for KBD too, which this screen takes no keys from, so that the
-; keyboard stays connected from one program on the cartridge to the next.
+; keyboard stays connected from one program on the cartridge to the next,
+; and HTTP, for the update check (update.inc). A Stick that lacks only those
+; two is used, without them.
 .proc step_hello
     lda linked
     bne @found
@@ -328,31 +339,50 @@ FLIP_TURN = 2
     sta nesp_request + NESP_HELLO_FIXED + 1
     lda #NESP_SVC_KBD
     sta nesp_request + NESP_HELLO_FIXED + 2
-    ldy #3
+    lda #NESP_SVC_HTTP
+    sta nesp_request + NESP_HELLO_FIXED + 3
+    ldy #4
     jsr nesp_hello
     bcs @missing
-    sta hello_status
+    ldx #1
+    stx stick_kbd
+    stx stick_http
     cmp #NESP_ST_OK
     beq @greeted
-    cmp #NESP_ST_NO_SERVICE     ; only KBD missing is a Stick to use
+    cmp #NESP_ST_NO_SERVICE
     bne @old
-    lda nesp_reply + 6
-    cmp #1
-    bne @old
-    lda nesp_reply + 7
+    ldx #0
+@lacks:
+    cpx nesp_reply + 6          ; how many it lacks, then which
+    beq @greeted
+    lda nesp_reply + 7,x
     cmp #NESP_SVC_KBD
+    bne @http
+    lda #0
+    sta stick_kbd
+    beq @next
+@http:
+    cmp #NESP_SVC_HTTP
     bne @old
-@greeted:
-    ldx #0                      ; the badge's: the hello had KBD
-    lda hello_status
-    bne @kbd
+    lda #0
+    sta stick_http
+@next:
     inx
-@kbd:
-    stx badge_ok
+    bne @lacks
+@greeted:
+    lda stick_kbd               ; the badge's: the hello had KBD
+    sta badge_ok
+    ldx #2
+@version:
+    lda nesp_reply + 1,x
+    sta stick_version,x
+    dex
+    bpl @version
     lda #1
     sta linked
     lda #0
     sta misses
+    jsr update_open
 @found:
     point stick_found
     ldx #0

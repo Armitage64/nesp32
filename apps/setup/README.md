@@ -32,7 +32,7 @@ computer, and music copied to it.
 
 | Screen | Buttons |
 |---|---|
-| Status: the nesp32, its firmware, its Wi-Fi, address, signal, battery, and a menu: Wi-Fi setup, test interface, enable USB drive, Bluetooth, flip LCD, and on the cartridge quit | Up, Down. A: choose |
+| Status: the nesp32, its firmware, its Wi-Fi, address, signal, battery, whether newer firmware is out, and a menu: Wi-Fi setup, test interface, enable USB drive, Bluetooth, flip LCD, and on the cartridge quit | Up, Down. A: choose |
 | Networks, strongest first, with a lock on those that want a password | Up, Down. A: choose. Start: look again. B: back |
 | Keyboard, for a password (or the name of a network that hides it) | D-pad. A: type; on the set key, left of the space bar, `abc`, `ABC` or `#+=`. B: delete. Start: join. On a Bluetooth keyboard, type it; Backspace: delete. Enter: join |
 | Link test: a checked request every frame, and the nesp32's time to reply | B: back |
@@ -43,6 +43,14 @@ computer, and music copied to it.
 Every printable character can be typed, and a password may be the full 63.
 The nesp32 saves the network and joins it by itself from then on. The
 password goes to the nesp32 and is never sent back.
+
+Once the nesp32 is on Wi-Fi, the status screen asks the web site
+whether there is newer firmware: it fetches the flash page's manifest
+(`https://nesp32.retrobits.tv/flash/manifest.json`), once each time Setup
+runs, and compares the latest release's version with the one the
+nesp32's hello gave. If it is newer, UPDATE AVAILABLE goes under the
+title, and stays there on every screen. If the site cannot be reached, or the nesp32's
+firmware is from before HTTP (`$07`), it says nothing.
 
 Flip LCD turns the nesp32's own screen the other way up, and the
 nesp32 keeps it that way when it is switched off. Quit goes back to the

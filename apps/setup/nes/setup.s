@@ -11,6 +11,7 @@
 ;   test.inc      the link test
 ;   usb.inc       the nesp32's files as a USB drive, for music to be copied to
 ;   kbd.inc       a Bluetooth keyboard: pairing one, and trying it
+;   update.inc    whether the web site has newer firmware than the Stick's
 ;
 ; Everything it knows comes over the link (nes/lib/nesp.inc,
 ; docs/PROTOCOL.md), a request at a time, at most one a frame.
@@ -198,6 +199,7 @@ key_at:       .res 1            ; the next of the keys a KEYS reply has
 .include "test.inc"
 .include "usb.inc"
 .include "kbd.inc"
+.include "update.inc"
 
 .segment "RODATA"
 screens_lo:
@@ -412,9 +414,8 @@ main_wait:
 .proc poll_keys
     lda linked
     beq @done
-    lda hello_status
-    cmp #NESP_ST_OK
-    bne @done
+    lda stick_kbd
+    beq @done
     lda frame_count
     lsr a
     bcc @done
