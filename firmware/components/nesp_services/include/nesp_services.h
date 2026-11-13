@@ -822,6 +822,23 @@ typedef struct {
     uint8_t pads;                   /* how many changes are in pad_log */
     uint32_t pad_changes;           /* how many there have been in the session */
     uint8_t pad_log[NESP_PEER_PADS][2];     /* the tick's low byte, and the buttons */
+    /* For the log's line when the session ends (peer.c, "The end"): the
+     * ticks each way, the digests at each tick whose low byte is FF, and
+     * the times of the last exchange, the other's last buttons and the
+     * connection's loss. */
+    uint32_t exchanged_at;          /* this console's last exchange */
+    bool over;                      /* the line has been said */
+    uint32_t sent_ticks;            /* this console's ticks, in all */
+    uint32_t came_ticks;            /* the other's */
+    uint32_t came_at;               /* when the last of the other's came */
+    uint32_t lost_at;
+    uint32_t alike;                 /* ticks whose two digests were alike */
+    uint32_t ours_at;               /* the tick of this console's last digest: 0 for none */
+    uint32_t theirs_at;             /* and of the other's */
+    uint8_t ours;
+    uint8_t theirs;
+    uint32_t differed_at;           /* the first tick whose digests differed: 0 for none */
+    uint8_t differed[2];            /* this console's digest there, and the other's */
     /* For the nesp32's screen. */
     uint32_t requests;
     uint32_t repeats;               /* requests that brought nothing new */

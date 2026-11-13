@@ -436,6 +436,20 @@ or after 240 NMIs in a row that were not ticks (4 seconds). One end that
 fails takes both consoles back to the title within seconds: one by its own
 end's silence, the other by the lost connection.
 
+The console says nothing of which, so its nesp32 says it in the log, once
+the console has made no exchange for a second, or the session is left or
+the console says hello:
+
+```
+peer: session over, the console stopped: ticks 768 sent, 768 came, the last 0 ms before the end; digests alike 2, then differed at tick 767: this 5a, the other 3c
+```
+
+The nesp32 sees both consoles' digests go by, at each tick whose low byte
+is FF, and compares them itself. The ticks sent and come, and when the
+other's last came, tell a silence from games that differ; and a lost
+connection is there with its time, each counted back from the console's
+last exchange (`peer.c`, "The end").
+
 In Bubble Bobble a game over does not end a session: the game over's
 screen and the title are ticks like any other, and the title's 2P CONTINUE
 goes on at the round the two had reached, and its choices for one are

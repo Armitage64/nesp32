@@ -17,6 +17,7 @@
 
 #define HOST_TRACKS_MAX 64
 #define HOST_SHOWN_MAX 96
+#define HOST_WATCH_LOG 8           /* lines for the log kept, the last of them first */
 #define HOST_CONN_MAX 256
 #define HOST_TYPED_MAX 256
 #define HOST_FILES_MAX 32
@@ -83,6 +84,8 @@ typedef struct {
     bool answering;                 /* in a feed: a file read now would hold up the reply */
     char shown[2][HOST_SHOWN_MAX];  /* the application's lines of the screen */
     char watched[256];              /* the last line for the log (the hal's watch) */
+    char watch_log[HOST_WATCH_LOG][256];    /* and the ones before it, the latest first */
+    uint32_t watch_count;           /* lines said, in all */
     /* The connection to another nesp32. The caller is the network: it says
      * when a call is answered, takes what was sent and gives what comes. */
     uint8_t conn;                   /* NESP_CONN_* */
@@ -378,6 +381,10 @@ static void hal_watch(void *ctx, const char *text)
 {
     host_t *host = ctx;
     snprintf(host->watched, sizeof(host->watched), "%s", text);
+    memmove(host->watch_log[1], host->watch_log[0],
+            sizeof(host->watch_log) - sizeof(host->watch_log[0]));
+    snprintf(host->watch_log[0], sizeof(host->watch_log[0]), "%s", text);
+    host->watch_count++;
 }
 
 static uint8_t hal_peer_state(void *ctx)
@@ -1324,6 +1331,11 @@ uint32_t host_tuner_held(const host_t *host) { return host->stick.tuner.held; }
 uint32_t host_tuner_dropped(const host_t *host) { return host->stick.tuner.dropped; }
 uint32_t host_tuner_dry(const host_t *host) { return host->stick.tuner.dry; }
 const char *host_watched(const host_t *host) { return host->watched; }
+/* The line said `back` lines before the last (0: the last); "" if none. */
+const char *host_watched_back(const host_t *host, uint32_t back)
+{
+    return back < HOST_WATCH_LOG && back < host->watch_count ? host->watch_log[back] : "";
+}
 uint32_t host_tuner_page(const host_t *host) { return host->stick.tuner.page_title; }
 
 /* A page that is waiting may go now, where a station waits a couple of

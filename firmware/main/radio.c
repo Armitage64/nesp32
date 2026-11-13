@@ -100,8 +100,10 @@ static nesp_network_t networks[NESP_SCAN_MAX];  /* under lock */
 static uint8_t battery = 0xFF;
 static char app_id[NESP_APP_ID] = {' ', ' ', ' ', ' '};
 static char shown[2][RADIO_SHOWN_MAX];      /* under lock: the application's lines */
-static char watched[RADIO_WATCH_MAX];       /* under lock: its line for the log */
-static bool watch_news;
+#define WATCH_LINES 4                       /* lines for the log not yet taken, at most */
+static char watched[WATCH_LINES][RADIO_WATCH_MAX];  /* under lock: they, oldest first from */
+static uint8_t watch_first;                 /* this one */
+static uint8_t watch_count;
 static uint8_t app_version;
 static QueueHandle_t orders;
 static nesp_hal_t hal;
@@ -245,9 +247,15 @@ static void hal_watch(void *ctx, const char *text)
 {
     (void)ctx;
     portENTER_CRITICAL(&lock);
-    strncpy(watched, text, RADIO_WATCH_MAX - 1);
-    watched[RADIO_WATCH_MAX - 1] = 0;
-    watch_news = true;
+    if (watch_count == WATCH_LINES) {
+        /* None taken for a while: the oldest goes, to keep the latest. */
+        watch_first = (uint8_t)((watch_first + 1) % WATCH_LINES);
+        watch_count--;
+    }
+    char *line = watched[(watch_first + watch_count) % WATCH_LINES];
+    strncpy(line, text, RADIO_WATCH_MAX - 1);
+    line[RADIO_WATCH_MAX - 1] = 0;
+    watch_count++;
     portEXIT_CRITICAL(&lock);
 }
 
@@ -875,9 +883,12 @@ void radio_app(char *id, uint8_t *version)
 bool radio_watch(char *out)
 {
     portENTER_CRITICAL(&lock);
-    bool news = watch_news;
-    watch_news = false;
-    memcpy(out, watched, RADIO_WATCH_MAX);
+    bool news = watch_count != 0;
+    if (news) {
+        memcpy(out, watched[watch_first], RADIO_WATCH_MAX);
+        watch_first = (uint8_t)((watch_first + 1) % WATCH_LINES);
+        watch_count--;
+    }
     portEXIT_CRITICAL(&lock);
     return news;
 }

@@ -396,16 +396,13 @@ extern "C" void app_main(void)
             // between the two nesp32s has taken.
             watch_at = now;
             char said[RADIO_WATCH_MAX];
-            said[0] = 0;
-            if (!radio_watch(said)) {
-                said[0] = 0;        // nothing new: what it holds has been logged
-            }
-            if (strncmp(said, "npr: ", 5) == 0) {
-                // The station's figures, which are whole as they come.
-                ESP_LOGI(TAG, "%s", said);
-            } else if (said[0] != 0) {
-                conn_ping_t ping;
-                conn_ping(&ping);
+            bool peer_said = false;
+            while (radio_watch(said)) {         // each line since the last time
+                if (strncmp(said, "npr: ", 5) == 0) {
+                    // The station's figures, which are whole as they come.
+                    ESP_LOGI(TAG, "%s", said);
+                    continue;
+                }
                 // What it says of the console's buttons, from "; pad" on,
                 // is for a firmware built to log at the debug level.
                 char *pad = strstr(said, "; pad ");
@@ -417,6 +414,11 @@ extern "C" void app_main(void)
                 if (pad != NULL) {
                     ESP_LOGD(TAG, "peer: %s", pad);
                 }
+                peer_said = true;
+            }
+            if (peer_said) {
+                conn_ping_t ping;
+                conn_ping(&ping);
                 ESP_LOGI(TAG, "peer: network %lu us there and back, least %lu, most %lu; "
                          "of %lu, %lu over 14 ms and %lu over 40 ms",
                          (unsigned long)ping.last_us, (unsigned long)ping.least_us,

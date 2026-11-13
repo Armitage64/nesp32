@@ -396,6 +396,122 @@ def test_the_nesp32s_screen_says_how_it_stands(pair):
     assert guest.shown(0) == "Player 2: peer disconnected"
 
 
+# --- the end of a session, in the log -------------------------------------------------
+
+FRAME_MS = 17
+STOPPED_MS = 1000
+
+
+def stream(seed, digests):
+    """A console's bytes, a tick each: buttons, and at each tick whose low
+    byte is FF a digest, from `digests` by the tick, else 0x5A."""
+    return [digests.get(tick, 0x5A) if tick & 0xFF == 0xFF else (tick * seed) & 0x7F
+            for tick in range(2000)]
+
+
+def play(host, ours, theirs, first, last, came=None, at=0):
+    """A frame at a time from `at` ms, for ticks `first` to before `last`:
+    the other's buttons for the tick come over the network, up to before
+    tick `came`, and the console makes its exchange with its own. Returns
+    the clock."""
+    came = last if came is None else came
+    for tick in range(first, last):
+        host.tick(at)
+        if tick < came:
+            host.conn_give(bytes((theirs[tick],)))
+        ticks(host, tick, min(tick, came), bytes((ours[tick],)))
+        host.conn_take()
+        at += FRAME_MS
+    return at
+
+
+def test_digests_that_differ_are_logged_when_the_console_stops(pair):
+    """Two alike, at ticks 255 and 511, and then not, at 767: both consoles
+    give the session up, and go back to the title, where they make no more
+    exchanges."""
+    host, guest = pair
+    connect(host, guest)
+    ours = stream(3, {})
+    theirs = stream(5, {767: 0x3C})
+    at = play(host, ours, theirs, 0, 768)
+    host.tick(at + STOPPED_MS - FRAME_MS - 1)
+    assert host.watched.startswith("player 1,")       # the session's line, as it was
+    host.tick(at + STOPPED_MS)
+    assert host.watched == ("session over, the console stopped: ticks 768 sent, 768 came, "
+                            "the last 0 ms before the end; digests alike 2, then differed at "
+                            "tick 767: this 5a, the other 3c")
+    # Said once, and nothing more of the session.
+    host.tick(at + STOPPED_MS + 5000)
+    assert host.watched.startswith("session over, the console stopped:")
+
+
+def test_the_others_buttons_not_coming_are_logged(pair):
+    """The other console's last came at tick 299, and this one went on for
+    240 NMIs before it gave up: the line says when they stopped coming, and
+    that tick 511's digest was this one's alone."""
+    host, guest = pair
+    connect(host, guest)
+    ours, theirs = stream(3, {}), stream(5, {})
+    at = play(host, ours, theirs, 0, 540, came=300)
+    host.tick(at + STOPPED_MS)
+    assert host.watched == ("session over, the console stopped: ticks 540 sent, 300 came, the "
+                            "last %d ms before the end; digests alike 1, the other's at tick 511 "
+                            "not come" % (240 * FRAME_MS))
+
+
+def test_the_others_buttons_after_the_end_say_so(pair):
+    """This console stopped first: the other's still came for a while."""
+    host, guest = pair
+    connect(host, guest)
+    ours, theirs = stream(3, {}), stream(5, {})
+    at = play(host, ours, theirs, 0, 50)
+    host.conn_give(bytes(theirs[50:52]))
+    host.tick(at + 30)
+    host.tick(at + STOPPED_MS)
+    assert host.watched.startswith("session over, the console stopped: ticks 50 sent, 52 came, "
+                                   "the last %d ms after the end;" % (30 + FRAME_MS))
+
+
+def test_a_lost_connection_is_logged(pair):
+    host, guest = pair
+    connect(host, guest)
+    ours, theirs = stream(3, {}), stream(5, {})
+    at = play(host, ours, theirs, 0, 100)
+    host.conn = CONN_LOST
+    at = play(host, ours, theirs, 100, 103, came=100, at=at)
+    host.tick(at + STOPPED_MS)
+    assert host.watched == ("session over, the console stopped: ticks 100 sent, 100 came, "
+                            "the last %d ms before the end; digests alike 0; connection lost "
+                            "%d ms before the end" % (3 * FRAME_MS, 2 * FRAME_MS))
+
+
+def test_a_hello_mid_session_is_logged(pair):
+    """The console reset by its player: no wait for it to stop."""
+    host, guest = pair
+    connect(host, guest)
+    play(host, stream(3, {}), stream(5, {}), 0, 300)
+    assert host.hello(services=[PEER]).ok
+    assert host.watched == ("session over, a hello: ticks 300 sent, 300 came, the last %d ms "
+                            "before the end; digests alike 1" % 0)
+
+
+def test_a_session_left_from_the_menu_is_logged(pair):
+    host, guest = pair
+    connect(host, guest)
+    play(host, stream(3, {}), stream(5, {}), 0, 10)
+    lobby(host, LEAVE)
+    assert host.watched.startswith("session over, left: ticks 10 sent, 10 came")
+
+
+def test_a_session_with_no_exchange_says_nothing_of_its_end(pair):
+    host, guest = pair
+    connect(host, guest)
+    host.tick(0)
+    host.tick(STOPPED_MS * 5)
+    lobby(host, LEAVE)
+    assert not host.watched.startswith("session over")
+
+
 # --- short frames ------------------------------------------------------------------
 
 
@@ -744,8 +860,11 @@ def test_the_log_says_what_rate_the_line_is_at(pair):
         host.tick(now)
     assert host.watched.startswith("player 1, line %d, delay" % FAST)
     host.tick(3000 + p.NESP_PEER_RATE_QUIET_MS)
-    assert host.watched == ("line at %d cycles a bit: the link's again, nothing heard at "
-                              "the session's" % p.NESP_PERIOD)
+    # And in the same tick, the console having stopped, the session's end.
+    assert host.watched_lines[-2:] == [
+        "line at %d cycles a bit: the link's again, nothing heard at the session's"
+        % p.NESP_PERIOD,
+        "session over, the console stopped: ticks 0 sent, 0 came; digests alike 0"]
 
 
 # --- a short request that lost a byte (nesp_link_gap) --------------------------------

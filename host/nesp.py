@@ -188,6 +188,8 @@ def library():
         lib.host_tuner_turn.argtypes = [ctypes.c_void_p]
         lib.host_watched.restype = ctypes.c_char_p
         lib.host_watched.argtypes = [ctypes.c_void_p]
+        lib.host_watched_back.restype = ctypes.c_char_p
+        lib.host_watched_back.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
         lib.host_shown.restype = ctypes.c_char_p
         lib.host_shown.argtypes = [ctypes.c_void_p, ctypes.c_uint8]
         lib.host_juke_index.restype = ctypes.c_uint16
@@ -944,6 +946,13 @@ class Stick:
     def watched(self):
         """The last line a service gave for the nesp32's log."""
         return self._lib.host_watched(self._host).decode("ascii")
+
+    @property
+    def watched_lines(self):
+        """The last few lines for the log, oldest first."""
+        lines = [self._lib.host_watched_back(self._host, back).decode("ascii")
+                 for back in range(8)]
+        return [line for line in reversed(lines) if line]
 
     @property
     def tuner_page(self):
