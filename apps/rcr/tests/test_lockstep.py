@@ -1,7 +1,7 @@
 """Two consoles in a session play one game: the same at every tick, whatever
 the network, the consoles' clocks, or the screens the game goes through."""
 
-from drive import moves, moves_with_pauses
+from drive import PAD_LEFT, PAD_RIGHT, moves, moves_with_pauses
 from netplay import Table
 from wire import ms
 
@@ -70,3 +70,34 @@ def test_games_that_differ_end_the_session(net_console):
         table.play(10, moves(4))
     table.run(300)
     assert all(console.byte("net_mode") == 0 for console in table.consoles)
+
+
+HELD = 0xF0                     # player 1's buttons as the game holds them
+
+
+def test_a_press_is_read_late_in_the_pass(net_console):
+    """On a network like a home's (2.5 ms each way, a delay of 1), this
+    console's controller is read for the next tick in the NMI before the
+    pass ends (net_read_late), not at the top of the pass: a press made at
+    a moment chosen at random is read by the game a frame or so later than
+    alone (2.2 frames), where at the top of the pass it took 5.1."""
+    table = Table(net_console, delay=ms(2.5))
+    table.start()
+    table.to_game()
+    table.run(200)
+    ram = table.consoles[0].ram
+    took = []
+    for trial in range(8):
+        table.run(60 + trial)               # standing still, a new phase each time
+        for frame in range(40):
+            table.run(1, (PAD_RIGHT, 0))
+            if ram[HELD] & PAD_RIGHT:
+                took.append(frame + 1)
+                break
+        table.run(30, (PAD_LEFT, 0))
+        table.run(30)
+    print("frames from a press to the game's read", took)
+    assert len(took) == 8
+    assert sum(took) / len(took) < 3.6
+    assert table.delays() == (1, 1)
+    table.same_game()

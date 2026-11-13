@@ -10,7 +10,9 @@ The session and its menu are done and tested in the simulation: Start at
 the first screen with 2P PLAY chosen is the menu, HOST GAME and JOIN GAME
 meet by a room's code or by an address, and the two consoles play one
 game, kept the same by their buttons, with the session's line at 10
-cycles a bit. It has not been played on hardware yet.
+cycles a bit. On hardware, with the late read ("How the netplay works"),
+it plays: the input is quick enough, and the frame rate with two players
+is the thing left to win ("The frame rate").
 
 The netplay ROM is on the game's own cartridge, an MMC3 (mapper 4), with
 8 KB of PRG RAM and twice the PRG ROM ("The cartridge", below). A flash
@@ -148,20 +150,34 @@ cycles after the NMI begins, and the NMI with an exchange takes some 4000
 at the most but for an exchange asked again: in 1500 frames of play, one
 IRQ came 3 lines late.
 
-**This console's buttons are read at the game's read**, as the game reads
-them alone, and kept for the tick `net_delay` ticks on (`net_read_local`):
-a press is used one tick later than alone, at the delay of 1 a network
-like a home's has. The first build read them in the exchange, in the NMI
-after the read, for the tick after that, which was a tick more. In the
-simulation, at a delay of 1 and 2.5 ms each way, the game reads a press
-some 5.1 frames after it is made, where alone it takes 2.2. The tick is
-the game's: it reads its controllers once a pass, and in a fight or with
-the two of them on screen most passes are three frames, so the least a
-session can add is three frames.
+**This console's buttons are read late in the pass** (`net_read_late`).
+A press only has to reach the other console by the end of the pass before
+the tick it is for, which is the nesp32's advice in frames (`net_lead`)
+after it is sent. So in play, with a delay of 1, the controller is read
+for the next tick in the NMI that many frames before the pass is to end,
+and sent in that NMI's exchange. A pass ends at its second NMI, or at the
+first after its work is done if later: the last pass's work foretells it
+(`net_work`, measured from the end of the work, `net_pass_done`, in place
+of the pass's last call). A pass whose work ends sooner than foretold has
+the read in the NMI after it, which may be the pass's last: then the
+other console's buttons come an NMI later, and the next pass waits a
+frame. With no buttons yet, the read waits for an NMI that brings them,
+and reads this console's controller then if it has not. On the screens
+that read with the NMI off, and with a delay of more than 1, the
+controller is read at the game's read, as the game reads it alone.
 
-**The delay is half the nesp32's advice**, rounded up (`net_halve`): the
-nesp32 counts a tick as a frame, and this game's are two or three. The
-report the console sends counts as late only the tries a read waited for.
+In the simulation, at 2.5 ms each way and a delay of 1, the game reads a
+press some 3.2 frames after it is made, where alone it takes 2.2
+(`tests/test_lockstep.py`). Read at the top of the pass it took 5.1: the
+whole pass, two frames or three. The passes a second are as they were.
+The first build read the controller in the NMI after the read, for the
+tick after that, which was a tick more again.
+
+**The delay is half the nesp32's advice**, rounded up (`net_advise`): the
+nesp32 counts a tick as a frame, and this game's are two or three, and a
+read at the top of a pass is sent at its first NMI, so one tick covers 2
+frames at the most. The report the console sends counts as late only the
+tries a read waited for.
 
 **What had to change in the game**, by `patches/`:
 
@@ -176,6 +192,8 @@ report the console sends counts as late only the tries a read waited for.
   nesp32 would take for the start of a byte); in a session, the tick.
 - **The NMI's count of NMIs** (`net_nmi_count`): the count, and the
   session's exchange in play.
+- **The pass's last call** (`net_pass_done`, before `MAIN_WAIT`): the
+  call, and a mark that the pass's work is done, for the late read.
 - **The first screen's wait for its NMI** (`net_select_wait`): in a
   session, 2P PLAY chosen and Start.
 - **The first screen's Start** (`net_select_start`): with 2P PLAY and no
@@ -208,14 +226,18 @@ of zero page: $15-$17, $F3, $F9 and $FA, which no instruction of the game
 names and the game was never seen to touch (`tests/test_console.py`).
 
 **What keeps the frames' time**, and is left out of the digest and of
-what the tests compare (`tests/console.py`, `UNKEPT`): the scratch and the
+what the tests compare (`tests/console.py`, `UNKEPT` and `UNKEPT_BITS`): the scratch and the
 HUD's split at $00-$14, the link's zero page, the background's columns
 and colours as far as they are drawn, which is as far as the queue of
 writes to the PPU has had room for ($1A-$1C, $24-$26, $2A-$2B,
 $0585-$058D), the PPU's and the banks' shadows ($F7-$FF), the stack, the
 queue of writes to the PPU, the HUD's redraw, what the NMI last put in
 place of a palette and the sprites' banks ($051B-$051C, $0525-$0528), the
-most NMIs a pass took, and the sound engine's memory. The digest is of
+most NMIs a pass took, the sound engine's memory, and $3E's bit 3: a
+new palette for the NMI to upload, which the main thread sets and the
+NMI clears, and which nothing else reads. Whether the NMI has cleared it
+by the next read depends on the frames, and the late read once found the
+two consoles apart on it as play began. The digest is of
 the zero page the game keeps and of $0300-$04FF. A session's game was
 checked against the game itself: its buttons, tick by tick, played into
 the original ROM give the same game, for 1500 ticks.
@@ -251,18 +273,18 @@ make test
 
 ## To do
 
-1. **Hardware**: a session on two consoles, the menu, the line at 10, and
-   the HUD's split while a reply is asked again. Played on one console
-   against `host/peer_player.py`: the input is still far too slow to play,
-   at the line at 10 and at 14 alike. The nesp32's log has the line sound
-   (3% of exchanges asked again), the delay at 1 tick, the least, and
-   the game at its own speed; but a few seconds of Wi-Fi round trips of
-   40-90 ms made the game wait at nearly every tick, and dropped the line
-   to 21 for a time. Still to find, with a slow-motion video of a press
-   against 1P PLAY: whether what is felt is those waits or the one tick
-   itself, which this game's inertia may make too much for lockstep.
-2. **Faster ways** through the game's busiest routines, for the slowdown
-   ("The frame rate").
+1. **The frame rate with two players**, which is slow on hardware: faster
+   ways through the game's busiest routines ("The frame rate"). The input
+   is playable since the late read; before it, with the controller read
+   at the top of the pass, it was far too slow, at the line at 10 and at
+   14 alike.
+2. **Hardware, the rest**: the menu, the line at 10 against 14, and the
+   HUD's split while a reply is asked again. Wi-Fi round trips of 40-90
+   ms, seen in the nesp32's log in the first trial, still make the game
+   wait at the ticks they fall on, as any lockstep game does. If the
+   input is felt slow again on a calm network: wait for the other
+   console's buttons in the main thread, between the HUD's IRQ and the
+   one at the foot, so that a wait of a few milliseconds is not a frame.
 3. **More of the game in a session**: the shops, the bosses, Slick and the
    ending, a password entered, and both players knocked out.
 4. **The release**: the patch in nesp32's `tools/gen_web.py` and the home

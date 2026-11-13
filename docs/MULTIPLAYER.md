@@ -383,7 +383,7 @@ What the digest covers is each game's own:
 | Tetris | the same as Dr. Mario's, less the session's one byte there too, and both playfields |
 | TMNT II | its zero page, less the link's bytes, the sound engine's, what its IRQs keep and the flag of a frame under way, and its sprites |
 | Bubble Bobble | its zero page, less its scratch, the link's bytes, the sound engine's, the NMI's stack pointer as the tasks saw it and the PPU's status as the NMI read it, and its sprites |
-| River City Ransom | its zero page, less its scratch, the HUD's split, the link's bytes and the PPU's and the banks' shadows, and its objects ($0300-$04FF), taken at the read that begins the tick |
+| River City Ransom | its zero page, less its scratch, the HUD's split, the link's bytes, the PPU's and the banks' shadows and the flag of a palette for the NMI, and its objects ($0300-$04FF), taken at the read that begins the tick |
 
 Each byte goes into the digest with the digest rotated a place, its bits
 round, and EORed: a step that loses nothing, so one byte that differs

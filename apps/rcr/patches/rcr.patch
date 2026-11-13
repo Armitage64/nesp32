@@ -10,27 +10,33 @@
 +.else
 @@ -25685,0 +25692 @@
 +.endif
-@@ -26185,0 +26193,3 @@
+@@ -25820,0 +25828,3 @@
++.ifdef NETPLAY
++    jsr net_pass_done
++.else
+@@ -25821,0 +25832 @@
++.endif
+@@ -26185,0 +26197,3 @@
 +.ifdef NETPLAY
 +    jsr net_select_wait
 +.else
-@@ -26186,0 +26197 @@
+@@ -26186,0 +26201 @@
 +.endif
-@@ -26193,0 +26205,3 @@
+@@ -26193,0 +26209,3 @@
 +.ifdef NETPLAY
 +    jsr net_select_start
 +.else
-@@ -26194,0 +26209 @@
+@@ -26194,0 +26213 @@
 +.endif
-@@ -27076,0 +27092,3 @@
+@@ -27076,0 +27096,3 @@
 +.ifdef NETPLAY
 +    jmp net_read_pads
 +.else
-@@ -27077,0 +27096 @@
+@@ -27077,0 +27100 @@
 +.endif
-@@ -27475,0 +27495,3 @@
+@@ -27475,0 +27499,3 @@
 +.ifdef NETPLAY
 +    .addr net_nmi, net_cart_start, IRQ
 +.else
-@@ -27476,0 +27499 @@
+@@ -27476,0 +27503 @@
 +.endif

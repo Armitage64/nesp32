@@ -103,6 +103,14 @@ NET_RATE_MISSES = 30            ; half a second: and the line is the link's agai
 NET_RATE_WAIT   = 46            ; and asked for again after 3/4 of a second, once the nesp32
                                 ; has gone back to the link's (PEER_RATE_QUIET_MS)
 net_waiting     = NET_RAM + $78 ; 01 while the game's read waits for its tick
+; The late read (net/net.inc): this console's controller for the next tick
+; read in the NMI net_lead frames before the pass is to end, not at the read.
+net_lead        = NET_RAM + $79 ; frames the nesp32 advises: the time a press has to cross
+net_defer       = NET_RAM + $7A ; 01 while the read for the next tick is put off
+net_due         = NET_RAM + $7B ; the NMI_COUNT whose NMI reads it
+net_done        = NET_RAM + $7C ; 01 once the pass's work is done, 02 once an NMI has seen it
+net_took        = NET_RAM + $7D ; NMI_COUNT at the read that took the tick
+net_work        = NET_RAM + $7E ; NMIs from the read to the work's end, the last pass
 net_quiet       = NET_RAM + $77 ; NMIs since a reply was last heard, up to $FF
 ; A session's line goes back to the link's rate at the nesp32 with no frame
 ; on it for 500 ms (PEER_RATE_QUIET_MS). The game has screens with no reads

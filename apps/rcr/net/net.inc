@@ -27,13 +27,15 @@
 ; Where the exchange is made:
 ;
 ;   in play       the main loop reads at the top of each pass, with the NMI
-;                 on. The NMI that follows (the game's, NMI_C0), once it has
-;                 written to the PPU and set up the IRQ that splits off the
-;                 HUD, makes the exchange for the next tick
-;                 (net_nmi_count), which is a frame or two before the read
-;                 that takes it. A read that finds no buttons waits for an
-;                 NMI that brings them; the picture stands, and the music
-;                 goes on (the sound engine runs in the IRQ).
+;                 on. The game's NMI (NMI_C0), once it has written to the
+;                 PPU and set up the IRQ that splits off the HUD, makes the
+;                 exchange for the next tick (net_nmi_count). This
+;                 console's controller for it is read there too, in the NMI
+;                 net_lead frames before the pass is to end (net_read_late),
+;                 not at the read: a press need not wait out the pass. A
+;                 read that finds no buttons waits for an NMI that brings
+;                 them; the picture stands, and the music goes on (the
+;                 sound engine runs in the IRQ).
 ;   the screens   those read with the NMI off, after the frame's writes to
 ;                 the PPU. The read makes the exchange itself, with the IRQ
 ;                 held off, and with no buttons waits for the next vblank
@@ -91,9 +93,8 @@ net_reset:
     lda net_boot+1
     sta net_role
     lda net_boot+2
-    jsr net_halve
+    jsr net_advise
     sta net_delay
-    sta net_want
     ; The ticks before 0 have no buttons, and are as many on both consoles
     ; whatever the delay of each: a console begins to read when it comes
     ; to the tick that is its delay before 0.
@@ -116,6 +117,9 @@ net_reset:
     sta net_silent
     sta net_pad
     sta net_waiting
+    sta net_defer
+    sta net_done
+    sta net_work
     lda #$02
     sta net_rate_ask            ; the session's own rate, asked for at its second try:
     lda #$01                    ; the first, the reset's, is followed by the logo
@@ -242,11 +246,46 @@ net_nmi_count:
     inc NMI_COUNT
     lda net_mode
     beq @exit
+    lda net_done
+    cmp #$01
+    bne @ready
+    inc net_done                ; the first NMI since the work's end: how long it took
+    lda NMI_COUNT
+    sec
+    sbc net_took
+    sta net_work
+
+@ready:
     lda net_ready
     bne @exit
+    lda net_defer
+    beq @try
+    ; The read for the next tick is put off: until the NMI it is due in, or
+    ; the work is done (the pass may end at the next NMI), or the game's read
+    ; waits. Until then no exchange: there is nothing new to send.
+    lda net_waiting
+    ora net_done
+    bne @due
+    lda NMI_COUNT
+    cmp net_due
+    bcc @exit
+
+@due:
+    lda #$00
+    sta net_defer
+
+@try:
     jmp net_try
 
 @exit:
+    rts
+
+; A pass's work is done, in place of its last call (L7_FAB8, the sound
+; engine's orders), just before MAIN_WAIT.
+net_pass_done:
+    jsr L7_FAB8
+    lda #$01
+    sta net_done
     rts
 
 ; --- a read ----------------------------------------------------------------------
@@ -333,11 +372,14 @@ net_take:                       ; (a name for the tests: a tick taken)
     lda net_pads+1
     sta PAD_PRESSED+1
     inc net_tick
-    ; This console's controller, now, for the tick net_delay on: a press is
-    ; used net_delay ticks after the game would have used it alone. No NMI
+    ; This console's controller for the tick net_delay on: a press is used
+    ; net_delay ticks after the game would have used it alone. No NMI
     ; tries while net_ready is set, and none makes an exchange, with OUT0
     ; low, in the middle of this read.
+    jsr net_read_late
+    bcc :+
     jsr net_read_local
+:
     lda #$00                    ; last: an NMI may now try for the next
     sta net_waiting
     sta net_ready
@@ -449,6 +491,8 @@ net_none:
 ; here, as the nesp32 advises: made a tick longer, the tick between has the
 ; buttons as they were last read; made a tick shorter, this read goes by.
 net_read_local:
+    lda net_defer
+    bne @exit                   ; put off (net_read_late)
     lda net_read
     clc
     adc #$01
@@ -481,12 +525,64 @@ net_read_local:
 @exit:
     rts
 
-; The nesp32's delay, A, as this game's: the nesp32 counts a tick as a frame,
-; and this game's are two frames or three. Half, rounded up.
-net_halve:
+; At a read that takes a tick, in play: whether this console's controller
+; for the next tick is to be read now (carry set) or put off to an NMI
+; (net_nmi_count). Read at the top of the pass, a press waits the whole
+; pass, two frames or three, before the other console can be sent it; but
+; it only has to reach the other console by the end of the pass, net_lead
+; frames after it is sent. So the read is put off to the NMI that is
+; net_lead before the pass is to end: the pass ends at the NMI of the
+; second count of NMI_COUNT, or at the first after the work is done if
+; later, which the last pass's work foretells (net_work). A pass whose
+; work ends sooner than foretold has the read in the NMI after it.
+; Only with a delay of one tick, and with the NMI on.
+net_read_late:
+    lda #$00
+    sta net_done
+    lda PPUCTRL_SHADOW
+    bpl @now                    ; a screen's read: its exchange follows at once
+    lda net_delay
+    cmp #$02
+    bcs @now
+    cmp net_want
+    bne @now                    ; the delay changes at this read
+    lda NMI_COUNT
+    sta net_took
+    clc
+    adc net_work                ; the NMI the work will end by
+    cmp #$02
+    bcs :+
+    lda #$02                    ; and the pass's end
+:
+    sec
+    sbc net_lead
+    bcc @now
+    beq @now
+    cmp NMI_COUNT
+    bcc @now
+    beq @now
+    sta net_due
+    lda #$01
+    sta net_defer
+    clc
+    rts
+
+@now:
+    sec
+    rts
+
+; The nesp32's advice, A: the frames a press needs to cross (the network's
+; time one way, and a margin), for it counts a tick as a frame. They are
+; the late read's lead (net_lead). The delay in this game's ticks, of two
+; frames or three, is half of them, rounded up, into net_want and A: a read
+; at the top of a pass is sent a frame later, at the pass's first NMI, so
+; one tick covers no more than 2 frames.
+net_advise:
+    sta net_lead
     clc
     adc #$01
     lsr a
+    sta net_want
     rts
 
 ; A into this console's buttons, for the next tick that has none: or, if
@@ -517,8 +613,9 @@ net_store:
 ; scratch and the HUD's split ($00-$14), the scratch of its drawing of the
 ; background's columns, which it does only while the queue of writes to the
 ; PPU has room ($1A-$1C, $24-$26, $2A-$2B), the link's own bytes and the
-; PPU's and the banks' shadows ($F7-$FF); and the objects' pages
-; ($0300-$04FF).
+; PPU's and the banks' shadows ($F7-$FF), and $3E's bit 3 (a new palette
+; for the NMI to upload, which the main thread sets and the NMI clears);
+; and the objects' pages ($0300-$04FF).
 ; The sound engine's ($0700 on) is not in it, nor the NMI's queue of writes
 ; to the PPU, which keep the frames' time. Both consoles work it out at the
 ; start of the same tick, CHECK_AT.
@@ -543,6 +640,10 @@ net_digest:
     iny
     cpy #net_digest_ranges_end - net_digest_ranges
     bne @range
+    sta net_temp
+    lda $3E
+    and #<~$08
+    eor net_temp
     ldx #$00
 @objects:
     cmp #$80
@@ -557,7 +658,7 @@ net_digest:
 
 ; The zero page in the digest: from each first byte to before each second.
 net_digest_ranges:
-    .byte $18, $1A, $1D, $24, $27, $2A, $2C, nesp_tries, nesp_tries + 1, PPUMASK_SHADOW
+    .byte $18, $1A, $1D, $24, $27, $2A, $2C, $3E, $3F, nesp_tries, nesp_tries + 1, PPUMASK_SHADOW
 net_digest_ranges_end:
 .assert nesp_rx_data = $15 && nesp_ptr = $16 && nesp_tries = $F3 && PPUMASK_SHADOW = $F7, error, "the digest's ranges"
 
@@ -670,9 +771,8 @@ net_exchange:
     beq @acks
     cmp #NET_DELAY_MAX+1
     bcs @acks
-    jsr net_halve
-    sta net_want
-    jmp @acks                   ; (net_halve leaves the carry as it will)
+    jsr net_advise
+    jmp @acks
 
 @plain:
     jsr net_unsent

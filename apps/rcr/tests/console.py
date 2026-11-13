@@ -422,16 +422,21 @@ class Console:
     # thread's asks: a palette ($051B-$051C) and the sprites' banks
     # ($0525-$0528), the most NMIs a pass took ($06D3), the PPU's shadows
     # ($F7-$F8), the banks as the interrupts saw them ($FB-$FF) and the
-    # sound engine's memory ($0700-$07FF).
+    # sound engine's memory ($0700-$07FF). And one bit: $3E's bit 3, a new
+    # palette for the NMI to upload, which the main thread sets and the
+    # NMI clears, and nothing else reads (UNKEPT_BITS).
     UNKEPT = ([(0x00, 0x18), (0x1A, 0x1D), (0x24, 0x27), (0x2A, 0x2C), (0xF3, 0xF4), (0xF7, 0x100),
                (0x100, 0x200), (0x517, 0x518), (0x51B, 0x51D), (0x525, 0x529), (0x545, 0x58E),
                (0x6B6, 0x6B8), (0x6D3, 0x6D4), (0x700, 0x800)])
+    UNKEPT_BITS = ((0x3E, 0x08),)
 
     def kept(self):
         """The bytes of the RAM the game's logic keeps (UNKEPT left out)."""
         ram = bytearray(self.ram)
         for start, end in self.UNKEPT:
             ram[start:end] = bytes(end - start)
+        for address, bits in self.UNKEPT_BITS:
+            ram[address] &= ~bits & 0xFF
         return bytes(ram)
 
     def state(self):
