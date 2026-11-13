@@ -1,0 +1,23 @@
+--- a/src/header.asm
++++ b/src/header.asm
+@@ -1,0 +2,18 @@
++.ifdef NETPLAY
++; The netplay ROM is on the game's own board, an MMC3, with 8 KB of PRG RAM
++; at $6000 that its code runs from (net/net.inc), and twice the game's PRG
++; ROM for the room. It has an NES 2.0 header: mapper 4 with no submapper,
++; 256 KB of PRG ROM and the game's 128 KB of CHR ROM, 8 KB of PRG RAM with
++; no battery, and NTSC timing. The MMC3 sets the mirroring.
++    .byte $4E,$45,$53,$1A
++    .byte $10 ;16 banks of 16 KB of PRG ROM
++    .byte $10 ;16 banks of 8 KB of CHR ROM
++    .byte $40 ;mapper 4 (MMC3), low bits
++    .byte $08 ;NES console, NES 2.0 header
++    .byte $00 ;mapper high bits and submapper
++    .byte $00 ;PRG and CHR ROM size high bits
++    .byte $07 ;PRG RAM: 64 << 7 bytes
++    .byte $00 ;no CHR RAM
++    .byte $00 ;NTSC
++    .byte $00,$00,$00
++.else
+@@ -2,0 +21 @@
++.endif
