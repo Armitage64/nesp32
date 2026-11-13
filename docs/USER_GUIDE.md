@@ -171,6 +171,10 @@ on the top line of its screen (**NESP32 0.2.0**), and Setup shows it as
 between releases, not a release. Every release is also on
 [GitHub](https://github.com/Armitage64/nesp32/releases).
 
+You don't have to check by hand: once the NESP32 is on Wi-Fi, Setup asks
+the web site for the latest release's number, and if it is newer than the
+Stick's firmware, **UPDATE AVAILABLE** appears under the **SETUP** title.
+
 ---
 
 ## 5. Getting the cartridge onto your NES
@@ -238,6 +242,10 @@ screen.
 | ADDRESS | The NESP32's address on your network |
 | SIGNAL | Wi-Fi signal strength (closer to 0 is stronger) |
 | BATTERY | The Stick's battery level |
+
+If newer firmware has been released, **UPDATE AVAILABLE** shows under
+the **SETUP** title ("Updating later" in [Chapter 4](#updating-later)). Setup checks
+once each time it runs, when the NESP32 is on Wi-Fi.
 
 Underneath is a menu. Use **Up**/**Down** to move and **A** to choose:
 

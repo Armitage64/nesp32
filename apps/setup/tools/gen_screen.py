@@ -46,7 +46,10 @@ TITLE_ROW, TITLE_ROWS = logo.TITLE_ROW, 1   # under the logo, in the 5 x 7 font
 TITLE_TOP = 1                       # pixels down those rows that its letters start
 TITLE_TEXT = "SETUP"
 TITLE_COLOR = 2                     # of the logo's palette: its cyan
+UPDATE_ROW = TITLE_ROW + 1          # under the title: UPDATE AVAILABLE (update.inc)
 HEADER_ROWS = 8                     # rows 0 to 7; the logo's palettes cover them
+assert TITLE_ROW < UPDATE_ROW < HEADER_ROWS
+assert TITLE_ROW % 2 == 0 and UPDATE_ROW == TITLE_ROW + 1   # a row of attributes' quarters
 
 LEFT = 2                            # the first column anything is written in
 WIDTH = 28                          # and how many there are: the safe part of a television
@@ -113,10 +116,13 @@ ALT = 0x80                          # a font tile in the second colour
 BACKDROP = 0x0F
 PALETTES = (
     (0x21, 0x10, 0x30),     # 0: text white, labels and keys blue
-    (0x21, 0x10, 0x30),
+    (0x26, logo.PALETTE[1], 0x30),  # 1: the title's rows: a light red (UPDATE_ROW, in
+                                    # the second colour's tiles; the logo's darker red
+                                    # is hard to read as text), the title's cyan, white
     (0x16, 0x00, 0x30),     # 2: the logo's 32: red, and white
     logo.PALETTE,           # 3: the rest of the logo: navy, cyan, white
 )
+PALETTE_TITLE = 1
 PALETTE_RED = 2
 PALETTE_LOGO = 3
 SPRITE_PALETTE = (0x21, 0x10, 0x30)     # colour 3, white: the cursors
@@ -356,8 +362,9 @@ def build_screen(title=TITLE_TEXT):
 
 
 def header_attributes():
-    """The header's attribute bytes: the logo's palette, and the red one
-    where the logo's 32 is."""
+    """The header's attribute bytes: the logo's palette, the red one
+    where the logo's 32 is, and under the logo the title's: its cyan, and
+    red for UPDATE AVAILABLE."""
     if HEADER_ROWS % 4:
         raise ValueError("the header must end where a row of attributes does")
     data = bytearray()
@@ -365,8 +372,13 @@ def header_attributes():
         for left in range(0, SCREEN_COLUMNS, 4):
             byte = 0
             for quarter, (dy, dx) in enumerate(((0, 0), (0, 2), (2, 0), (2, 2))):
-                red = logo.is_red(top + dy, left + dx)
-                byte |= (PALETTE_RED if red else PALETTE_LOGO) << (2 * quarter)
+                if top + dy >= TITLE_ROW:
+                    palette = PALETTE_TITLE
+                elif logo.is_red(top + dy, left + dx):
+                    palette = PALETTE_RED
+                else:
+                    palette = PALETTE_LOGO
+                byte |= palette << (2 * quarter)
             data.append(byte)
     return bytes(data)
 
@@ -395,6 +407,8 @@ def include(screen):
 
     constant("ALT", "$%02X" % ALT, "a character in the second colour")
     constant("HEADER_ROWS", HEADER_ROWS)
+    constant("UPDATE_ROW", UPDATE_ROW)
+    constant("TILE_BLANK", "$%02X" % TILE_BLANK, "the header's blank")
     constant("LEFT", LEFT)
     constant("WIDTH", WIDTH)
     constant("HEADING_ROW", HEADING_ROW)
@@ -455,7 +469,7 @@ def include(screen):
 # The few NES colors the screen uses, as RGB.
 NES_RGB = {
     0x0F: (0, 0, 0), 0x00: (84, 84, 84), 0x10: (152, 150, 152), 0x30: (236, 238, 236),
-    0x01: (0, 30, 116), 0x16: (152, 34, 32), 0x21: (76, 154, 236), 0x2C: (56, 180, 204),
+    0x01: (0, 30, 116), 0x16: (152, 34, 32), 0x26: (236, 106, 100), 0x21: (76, 154, 236), 0x2C: (56, 180, 204),
 }
 
 
