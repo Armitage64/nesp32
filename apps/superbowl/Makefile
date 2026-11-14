@@ -1,7 +1,9 @@
 # Tecmo Super Bowl build.
 #
-#   make            build/tsb.nes, the original
+#   make            build/tsb.nes, the original, and build/tsb_net.nes, for
+#                   two consoles and two nesp32s
 #   make verify     check the original against the ROM's SHA-512
+#   make test       the simulation's tests (needs requirements-dev.txt)
 #   make import     tools/game.map again, from the disassembly (needs asm6f)
 #   make patches    write patches/ again from the sources in build/src
 #   make clean
@@ -23,23 +25,37 @@ SHA512_ORIGINAL := c3fb1a2ca0d3bfbc04fe33f75cd330e1e3d4b316b48ea63dcf37a009304c8
 BASEROM ?= baserom.nes
 DISASSEMBLY ?= ../../third_party/Tecmo_Super_Bowl_NES_Disassembly
 ASM6F ?= asm6f
+# The netplay ROM's link is nesp32's, at the top of this repository (two
+# directories up). From it come the link's library for the console and the
+# numbers the two ends share; its link and services are built for this
+# computer, for the tests to run the ROM against. The original ROM needs
+# none of it.
+NESP32 ?= ../..
+NESP_BUILD ?= $(abspath $(BUILD))/nesp
+export NESP32 NESP_BUILD
+NESP := $(NESP_BUILD)/nesp.stamp
+NESP_LIB := $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/gen_link.py
 ROM := $(BUILD)/tsb.nes
+NET_ROM := $(BUILD)/tsb_net.nes
 GEN := $(BUILD)/gen
 SRC := $(BUILD)/src
 CONVERTED := $(BUILD)/converted.stamp
 UPSTREAM := $(BUILD)/upstream.stamp
-PATCHED := tsb
+PATCHED := header tsb
 NAMES := header tsb chr
 SOURCES := $(NAMES:%=$(SRC)/%.asm)
 OBJECTS := $(NAMES:%=$(BUILD)/orig/%.o)
+NET_OBJECTS := $(NAMES:%=$(BUILD)/net/%.o)
+NET_SOURCES := $(wildcard net/*.inc net/*.asm) $(BUILD)/link.inc $(NESP_LIB) $(NESP)
+NET_INCLUDES := -I net -I $(BUILD) -I $(NESP_BUILD) -I $(NESP32)/nes/lib
 
-.PHONY: all verify import patches clean
+.PHONY: all verify test import patches clean FORCE
 
-all: $(ROM)
+all: $(ROM) $(NET_ROM)
 
 .SECONDARY:
 
-$(BUILD) $(BUILD)/orig:
+$(BUILD) $(BUILD)/orig $(BUILD)/net:
 	mkdir -p $@
 
 $(CONVERTED): tools/convert.py tools/game.map $(BASEROM) | $(BUILD)
@@ -64,16 +80,46 @@ $(SOURCES): $(UPSTREAM) ;
 $(BASEROM):
 	@echo "no $(BASEROM): the game is built from the ROM"; exit 1
 
+# nesp32's own Makefile knows what of it is out of date.
+$(NESP): FORCE | $(BUILD)
+	$(MAKE) -s -C $(NESP32) BUILD=$(NESP_BUILD) proto host
+	@test -f $@ || touch $@
+
+# A session's line, in CPU cycles a bit, once the nesp32 has agreed to it
+# (PEER's RATE): its exchanges at that rate, and everything else at the
+# link's own, 21. The game plays samples, whose fetches are what made 10
+# too fast for Jackal (nesp32's docs/MULTIPLAYER.md): 14, as Jackal's.
+NET_RATE ?= 14
+
+# The library's serial routines: the receiver that gives up by counting,
+# since no interrupt breaks into an exchange (net/net.inc), and both
+# routines on the one page net/superbowl_net.cfg has for them.
+$(BUILD)/link.inc: $(NESP_LIB) $(NESP) Makefile
+	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $@ --timeout --pack \
+		--short-period=$(NET_RATE) $(LINK_OPTIONS)
+
+# Each ROM is assembled from the same sources: the original as it is, and
+# the netplay one with NETPLAY defined, which brings in net/.
 $(BUILD)/orig/%.o: $(SRC)/%.asm | $(BUILD)/orig
 	ca65 --debug-info --bin-include-dir $(BUILD) -I $(SRC) -o $@ $<
 
+$(BUILD)/net/%.o: $(SRC)/%.asm $(NET_SOURCES) | $(BUILD)/net
+	ca65 -D NETPLAY --debug-info --bin-include-dir $(BUILD) -I $(SRC) $(NET_INCLUDES) -o $@ $<
+
 $(ROM): $(OBJECTS) superbowl.cfg
 	ld65 -C superbowl.cfg --dbgfile $(BUILD)/tsb.dbg -o $@ $(OBJECTS)
+
+$(NET_ROM): $(NET_OBJECTS) net/superbowl_net.cfg
+	ld65 -C net/superbowl_net.cfg --dbgfile $(BUILD)/tsb_net.dbg \
+		-m $(BUILD)/tsb_net.map -o $@ $(NET_OBJECTS)
 
 verify: $(ROM)
 	@test "$$(shasum -a 512 $(ROM) | cut -d' ' -f1)" = "$(SHA512_ORIGINAL)" \
 		&& echo "$(ROM) matches the original" \
 		|| { echo "$(ROM) differs from the original"; exit 1; }
+
+test:
+	$(PYTHON) -m pytest -q tests
 
 # The map again, from the disassembly: only when it changes, or the import.
 import: $(BASEROM)
@@ -97,3 +143,5 @@ clean:
 					"make patches, or delete $(BUILD) yourself"; exit 1; }; \
 		done; fi
 	rm -rf $(BUILD)
+
+FORCE:
