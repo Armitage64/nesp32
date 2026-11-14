@@ -1,4 +1,5 @@
-set(sources "main.cpp" "link.c" "radio.c" "fetch.c" "store.c" "conn.c" "usb.c" "keyboard.c")
+set(sources "main.cpp" "link.c" "radio.c" "fetch.c" "store.c" "conn.c" "usb.c" "keyboard.c"
+            "update.c")
 set(requires nesp_core nesp_services driver esp_wifi esp_netif esp_event nvs_flash esp_timer
              esp_http_client mbedtls lwip fatfs wear_levelling esp_rom esp_app_format)
 # Bluetooth, for a keyboard (keyboard.c), on the board that has LE. The
