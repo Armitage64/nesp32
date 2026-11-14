@@ -4,10 +4,12 @@
 
 ### Games
 - River City Ransom online co-op added, running faster than the original's two-player game on one console (#76)
+- Bubble Bobble online sessions no longer drop at the start or in round 2: each console's leftover RAM from before the session is cleared
 
 ### Other
 - Mesen emulator support for NESP32 added for local testing and development (#74)
 - NESP32 logo displayed on Stick LCD screen at boot (#75)
+- The Stick's log says why each online session ended, and Bubble Bobble sends its RAM to the log when the two games differ
 
 ## 0.3.0 — 2026-11-08
 

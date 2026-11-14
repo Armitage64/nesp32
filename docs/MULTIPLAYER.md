@@ -467,27 +467,18 @@ dump's own doing, and `PPUCTRL_COPY` ($FF) has the NMI's bit cleared.
 
 The first such dumps, from round 2 on two consoles across the Internet,
 differed in three bytes alone: sprite 6's tile, attributes and X, a sprite
-the game had hidden. The rest of the game was the same on both. What the
-stacks held said why: a BRK at $0000, over and over (its flags $34, the
-address after it $0002), on both consoles. The CPU had gone astray in a
-session, run memory that was not code, and found its way back, the
-game's IRQ handler being an RTI. Neither the simulation nor Mesen's
-local game ever does. So the netplay ROM's IRQ handler (`net_irq`, from
-the PRG RAM) now sends the RAM at once when a BRK comes in a session, its
-stack pointer in $0100 and $B7 in $0101, and gives the session up: the
-stack then has the address the BRK was at and the calls that led there.
-The nesp32's line for it says no tick (`dump of the console's RAM: 2048
-bytes`).
-
-The next dump, from a session that ended at its first check, before round
-1 was on the screen, had the same BRKs in its stack and no BRK in the
-session: they were older than it. The game's reset does not clear the
-stack, the sprites' tiles, attributes and places (it hides the sprites,
-and no more), the zero page's scratch, or a few bytes past $EF. What a
-console left there, from its last game or its power-on, was in the
+the game had hidden. One from a session that ended at its first check,
+before round 1 was on the screen, said why. The game's reset does not
+clear the stack, the sprites' tiles, attributes and places (it hides the
+sprites, and no more), the zero page's scratch, or a few bytes past $EF.
+What a console left there, from its last game or its power-on, was in the
 session, each console's own: a digest that differed from the first check,
-or later, where the game reads one of them. `net_start_session` now clears
-all 2 KB, with the NMI off, before the reset.
+or later, where the game reads one of them (it swaps sprites' tiles about,
+hidden ones too). `net_start_session` now clears all 2 KB, with the NMI
+off, before the reset. Two games on hardware at 70 ms, to round 10, went
+without a drop (November 2026). The stacks held BRKs at $0000 over and
+over, which looked like a CPU gone astray in the session; they were older
+than it, and no BRK came in one when the netplay ROM looked for them.
 
 In Bubble Bobble a game over does not end a session: the game over's
 screen and the title are ticks like any other, and the title's 2P CONTINUE
@@ -519,6 +510,10 @@ seven games:
 - **Say why on the console** when a session ends (the other console left,
   the nesp32 went quiet, the games differed); it only goes back to the
   title now.
+- **What the reset leaves**: Bubble Bobble's reset leaves some of the
+  RAM as it was, and that broke its sessions ("Ending"). Whether the other
+  games' resets clear all of theirs is not checked; Jackal and RCR have
+  played long sessions without a drop.
 - **Games that differ** (for later): a dump of each console's RAM to its
   nesp32 when the digests differ, to learn why, as Bubble Bobble's does
   ("Ending"), in the other games too; and if it comes back, the
