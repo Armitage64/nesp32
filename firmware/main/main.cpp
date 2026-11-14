@@ -38,6 +38,7 @@
 #include "spike.h"
 #endif
 #include "store.h"
+#include "update.h"
 #include "usb.h"
 
 namespace {
@@ -53,6 +54,8 @@ const uint32_t WATCH_MS = 2000;
 const uint32_t CONSOLE_GONE_MS = 2000;  // no request for this long: not there
 const int ROWS = 7;
 const uint32_t TITLE_BLUE = 0x40A0FFu;  // the top line and the rule under it
+const uint32_t UPDATE_RED = 0xFF3030u;  // FIRMWARE UPDATE AVAILABLE, as Setup's is red
+const int UPDATE_ROW = 5;               // the last whole row, empty with no console
 // The battery's charge, by how much of it there is: over half, over a
 // tenth, and less.
 const uint32_t BATTERY_GREEN = 0x00FF40u;
@@ -79,8 +82,9 @@ int battery_level = -1; // 0 to 100, or -1 while the charge is not known
 
 // Write a line of the screen, if it has changed. The top one is the title:
 // in blue, with a rule under it and the battery's charge at its right, as
-// a number and a picture filled as far.
-void line(int row, const char *text)
+// a number and a picture filled as far. Any other is in white, or the
+// colour given.
+void line(int row, const char *text, uint32_t colour = 0xFFFFFFu)
 {
     if (std::strncmp(shown[row], text, sizeof(shown[row])) == 0) {
         return;
@@ -89,7 +93,7 @@ void line(int row, const char *text)
     int height = M5.Display.fontHeight() + 4;
     M5.Display.fillRect(0, row * height, M5.Display.width(), height, TFT_BLACK);
     M5.Display.setCursor(2, row * height + 2);
-    M5.Display.setTextColor(row == 0 ? TITLE_BLUE : (uint32_t)0xFFFFFFu, (uint32_t)0x000000u);
+    M5.Display.setTextColor(row == 0 ? TITLE_BLUE : colour, (uint32_t)0x000000u);
     M5.Display.print(text);
     if (row == 0) {
         if (battery_level >= 0) {
@@ -302,6 +306,16 @@ void draw()
         std::snprintf(text, sizeof(text), "req: %lu", (unsigned long)stats.requests);
     }
     line(row++, text);
+    // Newer firmware on the web site (update.c), which is asked only with
+    // no console: then, and only then, said on the last whole row, which
+    // nothing else has then.
+    update_poll(wifi.state == NESP_WIFI_JOINED && !console);
+    if (!console && row <= UPDATE_ROW && update_available()) {
+        while (row < UPDATE_ROW) {
+            line(row++, "");
+        }
+        line(row++, "Firmware update available", UPDATE_RED);
+    }
     while (row < ROWS) {
         line(row++, "");
     }

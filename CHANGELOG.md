@@ -8,6 +8,9 @@
 ### Cartridge
 - Setup says UPDATE AVAILABLE when the web site has newer firmware than the Stick's
 
+### Firmware
+- The Stick's screen says "Firmware update available" in red, with no console running a program, when the web site has newer firmware
+
 ### Other
 - Mesen emulator support for NESP32 added for local testing and development (#74)
 - NESP32 logo displayed on Stick LCD screen at boot (#75)

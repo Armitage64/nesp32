@@ -174,6 +174,9 @@ between releases, not a release. Every release is also on
 You don't have to check by hand: once the NESP32 is on Wi-Fi, Setup asks
 the web site for the latest release's number, and if it is newer than the
 Stick's firmware, **UPDATE AVAILABLE** appears under the **SETUP** title.
+The Stick asks too, whenever it is on Wi-Fi and no program is running on
+the console, and then says **Firmware update available** in red at the
+bottom of its own screen.
 
 ---
 
