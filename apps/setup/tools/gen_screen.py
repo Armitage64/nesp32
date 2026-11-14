@@ -46,7 +46,8 @@ TITLE_ROW, TITLE_ROWS = logo.TITLE_ROW, 1   # under the logo, in the 5 x 7 font
 TITLE_TOP = 1                       # pixels down those rows that its letters start
 TITLE_TEXT = "SETUP"
 TITLE_COLOR = 2                     # of the logo's palette: its cyan
-UPDATE_ROW = TITLE_ROW + 1          # under the title: UPDATE AVAILABLE (update.inc)
+UPDATE_ROW = TITLE_ROW + 1          # under the title: the cartridge menu's
+                                    # UPDATE AVAILABLE (nes/cart/update.inc)
 HEADER_ROWS = 8                     # rows 0 to 7; the logo's palettes cover them
 assert TITLE_ROW < UPDATE_ROW < HEADER_ROWS
 assert TITLE_ROW % 2 == 0 and UPDATE_ROW == TITLE_ROW + 1   # a row of attributes' quarters
@@ -116,7 +117,7 @@ ALT = 0x80                          # a font tile in the second colour
 BACKDROP = 0x0F
 PALETTES = (
     (0x21, 0x10, 0x30),     # 0: text white, labels and keys blue
-    (0x26, logo.PALETTE[1], 0x30),  # 1: the title's rows: a light red (UPDATE_ROW, in
+    (0x26, logo.PALETTE[1], 0x30),  # 1: the title's rows: a light red (the menu's UPDATE_ROW, in
                                     # the second colour's tiles; the logo's darker red
                                     # is hard to read as text), the title's cyan, white
     (0x16, 0x00, 0x30),     # 2: the logo's 32: red, and white
@@ -364,7 +365,7 @@ def build_screen(title=TITLE_TEXT):
 def header_attributes():
     """The header's attribute bytes: the logo's palette, the red one
     where the logo's 32 is, and under the logo the title's: its cyan, and
-    red for UPDATE AVAILABLE."""
+    red for the cartridge menu's UPDATE AVAILABLE."""
     if HEADER_ROWS % 4:
         raise ValueError("the header must end where a row of attributes does")
     data = bytearray()

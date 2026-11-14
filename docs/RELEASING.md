@@ -18,7 +18,9 @@ not part of a release: they go up whenever they change on main.
 
 `tools/version.py` gives the version, and everything else takes it from
 there. That covers the firmware (through `nesp_version.h`, which the build
-writes), the host library and its tests, `tools/lcd.py` and the site. A build of the
+writes), the cartridge's menu (through `nesp_version.inc`: it compares
+its own version with the firmware's and the site's, and says which needs
+an update), the host library and its tests, `tools/lcd.py` and the site. A build of the
 commit tagged `v0.2.0`, with nothing changed, is the release and says
 `0.2.0`. Any other build says `0.2.0-dev`, on the Stick's screen, in
 Setup's FIRMWARE, and on a site built with `make web`. Its numbers in the

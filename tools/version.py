@@ -5,6 +5,9 @@
                                   0.2.0-dev for anything but that release
     tools/version.py describe     the commit, as git names it
     tools/version.py header OUT   nesp_version.h, for the firmware (C)
+    tools/version.py inc OUT      nesp_version.inc, for the cartridge (ca65):
+                                  its menu compares it with the firmware's
+                                  and the web site's
 
 A build is the release when the commit is the one tagged v and VERSION's
 number (v0.2.0), and nothing in the tree is changed from it. Any other
@@ -73,6 +76,14 @@ def header():
             "#endif\n" % (major, minor, patch, text()))
 
 
+def inc():
+    major, minor, patch = numbers()
+    return ("; Made by tools/version.py from VERSION: do not edit.\n"
+            "NESP_VERSION_MAJOR = %d\n"
+            "NESP_VERSION_MINOR = %d\n"
+            "NESP_VERSION_PATCH = %d\n" % (major, minor, patch))
+
+
 def write(path, contents):
     """Write `path` only if its contents changed."""
     try:
@@ -92,5 +103,7 @@ if __name__ == "__main__":
         print(describe())
     elif len(sys.argv) == 3 and sys.argv[1] == "header":
         write(sys.argv[2], header())
+    elif len(sys.argv) == 3 and sys.argv[1] == "inc":
+        write(sys.argv[2], inc())
     else:
         sys.exit(__doc__)

@@ -264,7 +264,7 @@ def main(out, cart=None, release=None):
                      % os.path.relpath(directory))
         builds.setdefault(name, []).append(build(family, directory, prefix, flash))
     for name, its in builds.items():
-        # Setup's update check (apps/setup/nes/update.inc) fetches the
+        # The cartridge menu's update check (nes/cart/update.inc) fetches the
         # hat's and reads "version" from the first 200 bytes: keep it near
         # the top, as a plain major.minor.patch, and the file where it is.
         manifest = {

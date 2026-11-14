@@ -811,7 +811,8 @@ until KBD is let go of, and from the pairing on there is one paired. It shares t
 with Wi-Fi. The nesp32 does not turn it off for a hello that asks for
 KBD again, so every program on nesp32's cartridge asks for it, whether or
 not it takes keys, and so does the cartridge's menu, as `MENU` with KBD
-alone: the keyboard then stays connected from one to the next. In a sound
+and HTTP (for its update check): the keyboard then stays connected from
+one to the next. In a sound
 (RAW) the console asks nothing, so the jukebox and NESradio take keys only
 outside one. A game for two leaves KBD out.
 

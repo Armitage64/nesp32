@@ -3,7 +3,6 @@ services at the other end of a cycle-exact line: every screen, worked with
 the controller.
 """
 
-import json
 import random
 import string
 
@@ -150,163 +149,14 @@ def test_a_stick_from_another_protocol_is_not_used(console):
     assert s.state == STATE_STATUS
 
 
-# --- whether newer firmware is out -------------------------------------------------
-
-SITE = "https://nesp32.retrobits.tv/flash/manifest.json"
-
-
-def manifest(number):
-    """The flash page's manifest, as tools/gen_web.py writes it."""
-    return json.dumps({
-        "name": "nesp32", "version": number, "date": "2026-11-08",
-        "notes": "https://github.com/Armitage64/nesp32/releases/tag/v" + number,
-        "new_install_prompt_erase": True,
-        "builds": [{"chipFamily": "ESP32-S3", "parts": [{"path": "s3.bin", "offset": 0}]}],
-    }, indent=2).encode()
-
-
-def site_says(s, body, status=200):
-    """The web site, when the nesp32 fetches the manifest."""
-    s.c.run_until(lambda: s.stick.fetching, 200)
-    assert s.stick.fetch_url == SITE
-    s.stick.fetch_head(status, b"application/json", len(body))
-    s.stick.fetch_body(body)
-    s.stick.fetch_done()
-
-
-def update_line(s):
-    """What is under the title: FIRMWARE UPDATE AVAILABLE, or nothing."""
-    return s.c.line(layout.UPDATE_ROW)
-
-
-def newer(by=1):
-    """A release after this tree's version, by its patch number."""
-    major, minor, patch = version.numbers()
-    return "%d.%d.%d" % (major, minor, patch + by)
-
-
-def with_version(numbers):
-    """A link on which the nesp32's hello says its firmware is this version."""
-    def rewrite(data):
-        reply = nesp.parse(data)
-        if reply.svc == p.NESP_SVC_SYS and len(reply.payload) >= 7 and reply.payload[0] == 1 \
-                and reply.payload[5] == p.NESP_PAYLOAD_MAX:
-            payload = reply.payload[:1] + bytes(numbers) + reply.payload[4:]
-            return nesp.reply_frame(reply.svc, reply.status, reply.seq, payload)
-        return data
-    return rewrite
-
-
-def test_newer_firmware_on_the_site_is_said(setup):
+def test_setup_does_not_ask_the_web_site_for_updates(setup):
+    # The cartridge's menu does (nes/cart/update.inc): Setup asks for no HTTP.
     s = setup()
-    joined(s.stick, b"Home Network")
-    assert s.stick.fetches == 0
-    site_says(s, manifest(newer()))
-    s.c.run_until(lambda: update_line(s) == "FIRMWARE UPDATE AVAILABLE", 200)
-    assert s.stick.active(p.NESP_SVC_HTTP)
-    assert s.value("NESP32") == "CONNECTED"
-    # Under the title, centred, in red (the second colour's tiles, in the
-    # title's palette), and nothing on the message line.
-    assert layout.UPDATE_ROW == layout.TITLE_ROW + 1
-    assert s.c.text(layout.UPDATE_ROW, 3, 25) == "FIRMWARE UPDATE AVAILABLE"
-    row = layout.address(layout.UPDATE_ROW, 3)
-    assert all(tile & layout.ALT for tile in s.c.vram[row:row + 25])
-    assert layout.PALETTES[layout.PALETTE_TITLE][0] == 0x26                    # a light red
-    assert s.message == ""
-
-
-def test_the_same_or_older_firmware_says_nothing(setup):
-    for number in (".".join(map(str, version.numbers())), "0.0.9", "0.1.0-rc.1"):
-        s = setup()
-        joined(s.stick, b"Home Network")
-        site_says(s, manifest(number))
-        s.settle(120)
-        assert update_line(s) == "" and s.stick.fetches == 1, number
-
-
-def test_each_part_of_the_version_is_compared(setup):
-    for stick, site, said in (((0, 9, 9), "1.0.0", True), ((1, 0, 0), "0.9.9", False),
-                              ((2, 3, 4), "2.4.0", True), ((2, 3, 4), "2.3.4", False),
-                              ((2, 3, 4), "2.3.5", True), ((2, 3, 4), "2.2.200", False),
-                              ((9, 9, 9), "10.20.255", True)):
-        s = setup(to_console=with_version(stick))
-        joined(s.stick, b"Home Network")
-        site_says(s, manifest(site))
-        s.settle(120)
-        assert update_line(s) == ("FIRMWARE UPDATE AVAILABLE" if said else ""), (stick, site)
-
-
-def test_it_waits_for_wi_fi_and_asks_once(setup):
-    s = setup()
-    s.settle(200)
-    assert s.stick.fetches == 0         # not on a network yet
-    joined(s.stick, b"Home Network")
-    site_says(s, manifest(newer()))
-    s.c.run_until(lambda: update_line(s) == "FIRMWARE UPDATE AVAILABLE", 200)
-    s.settle(400)
-    assert s.stick.fetches == 1
-
-
-def test_a_site_that_fails_says_nothing_and_is_not_asked_again(setup):
-    for answer in ("404", "dropped", "no version", "not a version", "too far"):
-        s = setup()
-        joined(s.stick, b"Home Network")
-        s.c.run_until(lambda: s.stick.fetching, 200)
-        if answer == "404":
-            site_says(s, b"<html>Not found: \"version\": \"9.9.9\"</html>", status=404)
-        elif answer == "dropped":
-            s.stick.fetch_done(ok=False, why=b"THE CONNECTION DROPPED")
-        elif answer == "no version":
-            site_says(s, b'{"name": "nesp32"}')
-        elif answer == "not a version":
-            site_says(s, b'{"version": "9.9"}')
-        else:
-            site_says(s, b'{"padding": "' + b"x" * 300 + b'", "version": "9.9.9"}')
-        s.settle(300)
-        assert update_line(s) == "" and s.stick.fetches == 1, answer
-        assert s.value("NESP32") == "CONNECTED"
-
-
-def test_it_stays_up_on_other_screens_and_is_not_fetched_again(setup):
-    s = setup()
-    joined(s.stick, b"Home Network")
-    site_says(s, manifest(newer(10)))
-    s.c.run_until(lambda: update_line(s) == "FIRMWARE UPDATE AVAILABLE", 200)
-    s.menu(MENU_TEST)
-    s.wait_for(STATE_TEST)
-    s.c.run(30)
-    assert update_line(s) == "FIRMWARE UPDATE AVAILABLE"     # the header: no screen clears it
-    s.press(PAD_B)
-    s.wait_for(STATE_STATUS)
-    s.settle(200)
-    assert update_line(s) == "FIRMWARE UPDATE AVAILABLE"
-    assert s.stick.fetches == 1         # known: not fetched again
-
-
-def test_a_check_cut_short_by_another_screen_begins_again(setup):
-    s = setup()
-    joined(s.stick, b"Home Network")
-    s.c.run_until(lambda: s.stick.fetching, 200)
-    s.menu(MENU_TEST)
-    s.wait_for(STATE_TEST)
-    s.c.run(30)
-    s.press(PAD_B)
-    s.wait_for(STATE_STATUS)
-    s.c.run_until(lambda: s.stick.fetches == 2, 200)
-    site_says(s, manifest(newer()))
-    s.c.run_until(lambda: update_line(s) == "FIRMWARE UPDATE AVAILABLE", 200)
-
-
-@pytest.mark.parametrize("dropped", [[p.NESP_SVC_HTTP], [p.NESP_SVC_HTTP, p.NESP_SVC_KBD]])
-def test_a_stick_without_http_is_used_and_not_asked(setup, dropped):
-    s = setup()
-    for svc in dropped:
-        s.stick.drop_service(svc)
     joined(s.stick, b"Home Network")
     s.settle(300)
-    assert s.value("NESP32") == "CONNECTED" and s.value("NETWORK") == "Home Network"
-    assert s.stick.fetches == 0 and update_line(s) == ""
-    assert s.stick.active(p.NESP_SVC_KBD) == (p.NESP_SVC_KBD not in dropped)
+    assert s.value("NESP32") == "CONNECTED"
+    assert not s.stick.active(p.NESP_SVC_HTTP) and s.stick.fetches == 0
+    assert s.c.line(layout.UPDATE_ROW) == ""
 
 
 # --- choosing a network ----------------------------------------------------------

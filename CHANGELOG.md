@@ -6,7 +6,7 @@
 - River City Ransom online co-op added, running faster than the original's two-player game on one console (#76)
 
 ### Cartridge
-- Setup says UPDATE AVAILABLE when the web site has newer firmware than the Stick's
+- The cartridge menu says, under its title, when the firmware or the cartridge needs an update: when the two are from different releases, or the web site has a newer one (#80)
 
 ### Firmware
 - The Stick's screen says "Firmware update available" in red, with no console running a program, when the web site has newer firmware

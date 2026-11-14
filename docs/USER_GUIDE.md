@@ -171,10 +171,11 @@ on the top line of its screen (**NESP32 0.2.0**), and Setup shows it as
 between releases, not a release. Every release is also on
 [GitHub](https://github.com/Armitage64/nesp32/releases).
 
-You don't have to check by hand: once the NESP32 is on Wi-Fi, Setup asks
-the web site for the latest release's number, and if it is newer than the
-Stick's firmware, **UPDATE AVAILABLE** appears under the **SETUP** title.
-The Stick asks too, whenever it is on Wi-Fi and no program is running on
+You don't have to check by hand: the cartridge menu compares the
+cartridge's version with the Stick's firmware, and, once the NESP32 is on
+Wi-Fi, with the latest release on the web site. If either is behind, it
+says so under the **MAIN MENU** title
+([Chapter 6](#6-first-power-on-and-the-cartridge-menu)). The Stick asks too, whenever it is on Wi-Fi and no program is running on
 the console, and then says **Firmware update available** in red at the
 bottom of its own screen.
 
@@ -221,6 +222,21 @@ patches** from the NESP32 home page ("Download ROM patches").
 In most programs, **Select** (or **Ctrl+Esc** on a keyboard) brings you
 back to this menu. **Reset** on the console always does.
 
+Under the **MAIN MENU** title, in red, the menu says when something
+needs updating ("Updating later" in [Chapter 4](#updating-later)):
+
+| It says | What to do |
+|---|---|
+| **FIRMWARE UPDATE AVAILABLE** | Install the latest firmware on the Stick |
+| **CARTRIDGE UPDATE AVAILABLE** | Download the latest `nesp32.nes` and replace your copy |
+| **UPDATES AVAILABLE** | Both: install the latest firmware, and replace your `nesp32.nes` |
+
+The firmware and the cartridge come out together, with one version
+number, so the menu can tell from the Stick alone when one was updated
+and the other wasn't. Once the NESP32 is on Wi-Fi it also asks the web
+site for the latest release, each time the menu comes up. If the site
+can't be reached, the menu says only what the Stick told it.
+
 A small **Bluetooth badge** in the top-right corner shows whether a
 keyboard is connected ([Chapter 8](#8-pairing-a-bluetooth-keyboard)).
 
@@ -245,10 +261,6 @@ screen.
 | ADDRESS | The NESP32's address on your network |
 | SIGNAL | Wi-Fi signal strength (closer to 0 is stronger) |
 | BATTERY | The Stick's battery level |
-
-If newer firmware has been released, **UPDATE AVAILABLE** shows under
-the **SETUP** title ("Updating later" in [Chapter 4](#updating-later)). Setup checks
-once each time it runs, when the NESP32 is on Wi-Fi.
 
 Underneath is a menu. Use **Up**/**Down** to move and **A** to choose:
 

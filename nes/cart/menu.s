@@ -19,6 +19,10 @@
 ; the menu, to the next. Each program begins with its own hello, which is
 ; what tells the nesp32 what to run. The badge is nes/lib/badge.inc's, as
 ; the setup ROM's is.
+;
+; It asks for HTTP too: under the title the menu says when the firmware or
+; the cartridge is older than it should be, from the firmware's version, the
+; cartridge's own and the web site's (update.inc).
 
 PPUCTRL   = $2000
 PPUMASK   = $2001
@@ -61,7 +65,7 @@ BADGE_OAM = oam + 4             ; the badge's four, after the arrow
 
 ; The link (nesp32's nes/lib/nesp.inc).
 NESP_RX_MASK = $1F              ; KBD STATE's reply is 27 bytes at the most
-NESP_TX_MAX  = 8                ; the hello, with its one service
+NESP_TX_MAX  = 16               ; the hello, with its two services, and the address in pieces
 NESP_CRC_TABLE = 1
 NESP_KEY_PAD = 1
 JOY2 = $4017
@@ -72,6 +76,7 @@ STATE_EVERY = $0F               ; and between asking how the keyboard stands
 MISSES_MAX = 8                  ; exchanges in a row with no reply: the nesp32 is gone
 
 .include "menu.inc"
+.include "nesp_version.inc"
 
 .segment "ZEROPAGE"
 frame_count:  .res 1
@@ -90,6 +95,8 @@ go_addr:      .res 2
 greeted:      .res 1            ; the nesp32 has answered the hello (badge_ok: with KBD)
 misses:       .res 1            ; exchanges in a row with no reply
 key_at:       .res 1            ; the next key of a KEYS reply
+line_ptr:     .res 2            ; the line under the title that the NMI is to write
+line_staged:  .res 1            ; and that it is to
 
 ; A register of the mapper = A, from this bank: for a write that leaves it
 ; at $C000.
@@ -109,6 +116,7 @@ screen_data:
 
 .include "nesp.inc"
 .include "badge.inc"
+.include "update.inc"
 
 .proc reset
     sei
@@ -156,6 +164,7 @@ screen_data:
     jsr place_arrow
     jsr badge_init
     jsr show_badge
+    jsr update_init
     lda #PPUCTRL_ON             ; the first NMI turns the picture on
     sta PPUCTRL
     ; fall through
@@ -173,6 +182,7 @@ main_wait:
     jsr link_frame              ; first, right after the NMI
     jsr read_input
     jsr show_badge
+    jsr update_draw
     lda pad_new
     and #PAD_A | PAD_START
     bne launch
@@ -320,7 +330,7 @@ launch_ram:   .res LAUNCH_SIZE
 
 ; The frame's exchange, if it has one: the hello until it is answered, every
 ; eighth frame; then, with KBD, how the keyboard stands every sixteenth and
-; what is typed every other.
+; what is typed every other. The update check has the frames left over.
 .proc link_frame
     lda greeted
     bne @greeted
@@ -329,37 +339,81 @@ launch_ram:   .res LAUNCH_SIZE
     bne @done
     jmp say_hello
 @greeted:
-    lda badge_ok
-    beq @done
-    lda frame_count
-    and #STATE_EVERY
-    beq ask_state
     lda frame_count
     lsr a
-    bcs ask_keys
+    bcc @even
+    lda badge_ok
+    beq @done
+    jmp ask_keys
+@even:
+    lda frame_count
+    and #STATE_EVERY
+    bne @update
+    lda badge_ok
+    beq @done
+    jmp ask_state
+@update:
+    jmp update_frame
 @done:
     rts
 .endproc
 
-; Hello: this is the menu, and it asks for KBD. A nesp32 without it, or
-; that speaks another protocol, is greeted all the same: there is just no
-; keyboard to ask about.
+; Hello: this is the menu, and it asks for KBD and HTTP. A nesp32 without
+; them, or that speaks another protocol, is greeted all the same: there is
+; just no keyboard to ask about, or no web site. Its version is the
+; firmware's, unless it speaks another protocol.
 .proc say_hello
     lda #NESP_SVC_KBD
     sta nesp_request + NESP_HELLO_FIXED
-    ldy #1
+    lda #NESP_SVC_HTTP
+    sta nesp_request + NESP_HELLO_FIXED + 1
+    ldy #2
     jsr nesp_hello
     bcs missed
     ldx #0
     stx misses
-    cmp #NESP_ST_OK
-    bne @without
-    inx
-@without:
+    ldx #1
     stx badge_ok
+    stx stick_http
+    cmp #NESP_ST_OK
+    beq @version
+    cmp #NESP_ST_NO_SERVICE
+    bne @other
+    ldx #0
+@lacks:
+    cpx nesp_reply + 6          ; how many it lacks, then which
+    beq @version
+    lda nesp_reply + 7,x
+    cmp #NESP_SVC_KBD
+    bne @http
+    lda #0
+    sta badge_ok
+@http:
+    cmp #NESP_SVC_HTTP
+    bne @next
+    lda #0
+    sta stick_http
+@next:
+    inx
+    bne @lacks
+@other:
+    lda #0
+    sta badge_ok
+    sta stick_http
+    beq @greeted
+@version:
+    ldx #2
+@copy:
+    lda nesp_reply + 1,x
+    sta versions + VERSION_STICK,x
+    dex
+    bpl @copy
+    lda #1
+    sta stick_known
+@greeted:
     lda #1
     sta greeted
-    rts
+    jmp update_greeted
 .endproc
 
 ; No reply. After MISSES_MAX in a row the nesp32 is taken to be gone, and
@@ -497,6 +551,23 @@ launch_ram:   .res LAUNCH_SIZE
     sta OAMADDR
     lda #>oam
     sta OAMDMA
+    lda line_staged             ; the line under the title, before the badge's
+    beq @badge
+    bit PPUSTATUS
+    lda #>(NAMETABLE + 32 * UPDATE_ROW + LEFT)
+    sta PPUADDR
+    lda #<(NAMETABLE + 32 * UPDATE_ROW + LEFT)
+    sta PPUADDR
+    ldy #0
+@line:
+    lda (line_ptr),y
+    sta PPUDATA
+    iny
+    cpy #WIDTH
+    bne @line
+    lda #0
+    sta line_staged
+@badge:
     badge_nmi
     bit PPUSTATUS
     lda #PPUCTRL_ON

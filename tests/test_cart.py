@@ -8,12 +8,15 @@ it was built, starts, and can be left; and of NES Radar, the one that
 writes to the mapper, that it asks it for its own tiles and nothing else.
 """
 
+import json
 import os
 
 import gen_cart as cart_layout
 import gen_screen as layout
+import nesp
 import nesp_proto
 import pytest
+import version
 from console import (BANK_SIZE, CHR_SIZE, INES_HEADER, PAD_A, PAD_B, PAD_DOWN, PAD_SELECT,
                      PAD_START, PAD_UP, PPUCTRL_NMI, PRG_START)
 from nesp import Stick
@@ -723,3 +726,214 @@ def test_the_badge_is_yellow_when_the_nesp32_stops_answering(cart):
     c.host = None                                               # unplugged
     c.run(60)
     assert badge(c) == layout.badge.COLORS["YELLOW"] and c.home
+
+
+# --- whether an update is out ------------------------------------------------------
+
+SITE = "https://nesp32.retrobits.tv/flash/manifest.json"
+FIRMWARE = "FIRMWARE UPDATE AVAILABLE"
+CARTRIDGE = "CARTRIDGE UPDATE AVAILABLE"
+BOTH = "UPDATES AVAILABLE"
+
+
+def manifest(number):
+    """The flash page's manifest, as tools/gen_web.py writes it."""
+    return json.dumps({
+        "name": "nesp32", "version": number, "date": "2026-11-08",
+        "notes": "https://github.com/Armitage64/nesp32/releases/tag/v" + number,
+        "new_install_prompt_erase": True,
+        "builds": [{"chipFamily": "ESP32-S3", "parts": [{"path": "s3.bin", "offset": 0}]}],
+    }, indent=2).encode()
+
+
+def this_version(by=0):
+    """This tree's version, the cartridge's, or one after it by its patch number."""
+    major, minor, patch = version.numbers()
+    return "%d.%d.%d" % (major, minor, patch + by)
+
+
+def numbers(text):
+    return tuple(int(part) for part in text.split("."))
+
+
+def with_version(firmware):
+    """A link on which the nesp32's hello says its firmware is this version."""
+    def rewrite(data):
+        reply = nesp.parse(data)
+        if reply.svc == nesp_proto.NESP_SVC_SYS and len(reply.payload) >= 7 \
+                and reply.payload[0] == nesp_proto.NESP_PROTOCOL \
+                and reply.payload[5] == nesp_proto.NESP_PAYLOAD_MAX:
+            payload = reply.payload[:1] + bytes(firmware) + reply.payload[4:]
+            return nesp.reply_frame(reply.svc, reply.status, reply.seq, payload)
+        return data
+    return rewrite
+
+
+def join(stick):
+    stick.set_wifi(nesp_proto.NESP_WIFI_JOINED, rssi=-52, address=(192, 168, 1, 77))
+
+
+def on_menu(cart, firmware=None, wifi=True, dropped=()):
+    """The menu, with a nesp32 whose firmware is this version (this tree's
+    if None), on Wi-Fi or not, and without these services."""
+    c = cart()
+    options = {"to_console": with_version(firmware)} if firmware else {}
+    stick, _ = link(c, Stick, **options)
+    for svc in dropped:
+        stick.drop_service(svc)
+    if wifi:
+        join(stick)
+    c.run_until(lambda: stick.hellos, 60)
+    return c, stick
+
+
+def site_says(c, stick, body, status=200):
+    """The web site, when the nesp32 fetches the manifest."""
+    c.run_until(lambda: stick.fetching, 200)
+    assert stick.fetch_url == SITE
+    stick.fetch_head(status, b"application/json", len(body))
+    stick.fetch_body(body)
+    stick.fetch_done()
+
+
+def update_line(c):
+    """What is under the title: which update is out, or nothing."""
+    return c.line(layout.UPDATE_ROW)
+
+
+def test_the_same_versions_say_nothing(cart):
+    c, stick = on_menu(cart)
+    site_says(c, stick, manifest(this_version()))
+    c.run(120)
+    assert update_line(c) == "" and stick.fetches == 1
+    assert stick.app[0] == b"MENU" and stick.active(nesp_proto.NESP_SVC_HTTP)
+    assert at_menu(c)
+
+
+def test_a_newer_release_on_the_site_is_both(cart):
+    c, stick = on_menu(cart)
+    assert update_line(c) == ""
+    site_says(c, stick, manifest(this_version(1)))
+    c.run_until(lambda: update_line(c) == BOTH, 200)
+    # Under the title, centred, in red (the second colour's tiles, in the
+    # title's palette).
+    assert layout.UPDATE_ROW == layout.TITLE_ROW + 1
+    column = (32 - len(BOTH)) // 2
+    assert c.text(layout.UPDATE_ROW, column, len(BOTH)) == BOTH
+    tiles = c.tiles(layout.UPDATE_ROW, column, len(BOTH))
+    assert all(tile & layout.ALT for tile in tiles)
+    assert layout.palette_of(layout.UPDATE_ROW, column) == layout.PALETTE_TITLE
+    assert layout.PALETTES[layout.PALETTE_TITLE][0] == 0x26                    # a light red
+    assert c.home
+
+
+@pytest.mark.parametrize("firmware, site, said", [
+    # The firmware and the cartridge disagree: no web site needed.
+    (this_version(1), None, CARTRIDGE),
+    ("0.0.1", None, FIRMWARE),
+    # The site has the release one of them already has.
+    (this_version(1), this_version(1), CARTRIDGE),
+    ("0.0.1", this_version(), FIRMWARE),
+    # Or one neither has.
+    ("0.0.1", this_version(2), BOTH),
+    (this_version(1), this_version(2), BOTH),
+    # Or an older one, as when the newest firmware is being made.
+    (this_version(1), "0.0.1", CARTRIDGE),
+    (this_version(), "0.0.1", ""),
+])
+def test_the_newest_of_the_three_says_what_is_out_of_date(cart, firmware, site, said):
+    c, stick = on_menu(cart, numbers(firmware), wifi=site is not None)
+    if site:
+        site_says(c, stick, manifest(site))
+    c.run(200)
+    assert update_line(c) == said
+    assert stick.fetches == (1 if site else 0)
+
+
+def test_each_part_of_the_version_is_compared(cart):
+    major, minor, patch = version.numbers()
+    for firmware, said in (((major + 1, 0, 0), CARTRIDGE),
+                           ((major, minor + 1, 0), CARTRIDGE),
+                           ((major, minor, patch + 1), CARTRIDGE),
+                           ((major, minor, patch), ""),
+                           ((0, 0, 0), FIRMWARE if (major, minor, patch) > (0, 0, 0) else "")):
+        c, stick = on_menu(cart, firmware, wifi=False)
+        c.run(60)
+        assert update_line(c) == said, firmware
+    for site, said in (("%d.0.0" % (major + 1), BOTH), ("%d.%d.0" % (major, minor + 1), BOTH),
+                       ("%d.%d.200" % (major, minor - 1), "") if minor else ("0.0.0", ""),
+                       ("0.0.9", "" if (major, minor) > (0, 0) else BOTH),
+                       ("10.20.255", BOTH)):
+        c, stick = on_menu(cart)
+        site_says(c, stick, manifest(site))
+        c.run(120)
+        assert update_line(c) == said, site
+
+
+def test_it_waits_for_wi_fi_and_asks_once(cart):
+    c, stick = on_menu(cart, wifi=False)
+    c.run(300)
+    assert stick.fetches == 0               # not on a network yet
+    join(stick)
+    site_says(c, stick, manifest(this_version(1)))
+    c.run_until(lambda: update_line(c) == BOTH, 300)
+    c.run(400)
+    assert stick.fetches == 1
+
+
+def test_a_site_that_fails_says_nothing_and_is_not_asked_again(cart):
+    for answer in ("404", "dropped", "no version", "not a version", "too far"):
+        c, stick = on_menu(cart)
+        c.run_until(lambda: stick.fetching, 200)
+        if answer == "404":
+            site_says(c, stick, b"<html>Not found: \"version\": \"9.9.9\"</html>", status=404)
+        elif answer == "dropped":
+            stick.fetch_done(ok=False, why=b"THE CONNECTION DROPPED")
+        elif answer == "no version":
+            site_says(c, stick, b'{"name": "nesp32"}')
+        elif answer == "not a version":
+            site_says(c, stick, b'{"version": "9.9"}')
+        else:
+            site_says(c, stick, b'{"padding": "' + b"x" * 300 + b'", "version": "9.9.9"}')
+        c.run(300)
+        assert update_line(c) == "" and stick.fetches == 1, answer
+        assert at_menu(c)
+
+
+def test_a_failed_site_still_says_what_the_firmware_says(cart):
+    c, stick = on_menu(cart, numbers(this_version(1)))
+    site_says(c, stick, b"<html>Not found</html>", status=404)
+    c.run(200)
+    assert update_line(c) == CARTRIDGE and stick.fetches == 1
+
+
+@pytest.mark.parametrize("dropped", [[nesp_proto.NESP_SVC_HTTP],
+                                     [nesp_proto.NESP_SVC_HTTP, nesp_proto.NESP_SVC_KBD]])
+def test_a_nesp32_without_http_is_not_asked(cart, dropped):
+    c, stick = on_menu(cart, numbers(this_version(1)), dropped=dropped)
+    c.run(300)
+    assert stick.fetches == 0
+    assert update_line(c) == CARTRIDGE          # what the hello said is enough
+    assert stick.active(nesp_proto.NESP_SVC_KBD) == (nesp_proto.NESP_SVC_KBD not in dropped)
+
+
+def test_the_keyboard_still_moves_the_arrow_while_the_site_is_asked(cart):
+    c, stick = on_menu(cart)
+    c.run_until(lambda: stick.fetching, 200)
+    stick.kbd_type(bytes((nesp_proto.NESP_KEY_DOWN, nesp_proto.NESP_KEY_DOWN)))
+    site_says(c, stick, manifest(this_version(1)))
+    c.run_until(lambda: update_line(c) == BOTH, 200)
+    c.run(20)
+    assert stick.kbd_unread == 0 and c.byte("choice") == 2
+
+
+def test_reset_asks_again(cart):
+    c, stick = on_menu(cart)
+    site_says(c, stick, manifest(this_version(1)))
+    c.run_until(lambda: update_line(c) == BOTH, 200)
+    c.reset()
+    c.run(10)
+    assert update_line(c) == ""                 # the menu's screen, as it was built
+    site_says(c, stick, manifest(this_version(1)))
+    c.run_until(lambda: update_line(c) == BOTH, 200)
+    assert stick.fetches == 2
