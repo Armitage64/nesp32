@@ -212,6 +212,11 @@ def include(screen, images):
     constant("TILE_ARROW", "$%02X" % screen.named["ARROW"])
     for name, value in layout.badge.constants():
         constant(name, value)
+    constant("UPDATE_ROW", layout.UPDATE_ROW, "under the title: what is out of date")
+    constant("LEFT", layout.LEFT)
+    constant("WIDTH", layout.WIDTH)
+    constant("ALT", "$%02X" % layout.ALT, "a character in the second colour")
+    constant("TILE_BLANK", "$%02X" % layout.TILE_BLANK)
     constant("MENU_CHR", "$%02X" % (2 * MENU_PAGE), "the menu's tiles, as the mapper counts")
     constant("RESET_STUB", "$%04X" % RESET_STUB)
     lines += ["", "; The programs, in the menu's order: " + ", ".join(

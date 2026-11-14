@@ -56,9 +56,13 @@ proto: $(PROTO)
 # The version, from VERSION and the commit (tools/version.py), looked at on
 # every build and rewritten only if what it says changed.
 VERSION_H := $(BUILD)/nesp_version.h
+VERSION_INC := $(BUILD)/nesp_version.inc
 
 $(VERSION_H): FORCE | $(BUILD)
 	$(PYTHON) tools/version.py header $@
+
+$(VERSION_INC): FORCE | $(BUILD)
+	$(PYTHON) tools/version.py inc $@
 
 $(HOST_LIB): $(HOST_SOURCES) $(HOST_HEADERS) $(BUILD)/nesp_proto.h $(VERSION_H)
 	$(CC) $(CFLAGS) -shared -I $(BUILD) -I $(CORE)/include -I $(SERVICES)/include \
@@ -159,8 +163,9 @@ $(CART_TABLES): $(CART_BUILD)/tables.stamp ;
 $(CART_BUILD)/link.inc: nes/lib/gen_link.py $(PROTO) | $(CART_BUILD)/tables.stamp
 	$(PYTHON) nes/lib/gen_link.py $(BUILD) $@
 
-$(CART_BUILD)/menu.o: nes/cart/menu.s $(CART_TABLES) $(CART_BUILD)/link.inc nes/lib/nesp.inc nes/lib/badge.inc $(PROTO)
-	ca65 -g -I $(CART_BUILD) -I $(BUILD) -I nes/lib --bin-include-dir $(CART_BUILD) -o $@ $<
+$(CART_BUILD)/menu.o: nes/cart/menu.s nes/cart/update.inc $(CART_TABLES) $(CART_BUILD)/link.inc \
+		nes/lib/nesp.inc nes/lib/badge.inc $(PROTO) $(VERSION_INC)
+	ca65 -g -I $(CART_BUILD) -I $(BUILD) -I nes/cart -I nes/lib --bin-include-dir $(CART_BUILD) -o $@ $<
 
 $(CART_BUILD)/menu.prg: $(CART_BUILD)/menu.o nes/cart/menu.cfg
 	ld65 -C nes/cart/menu.cfg -o $@ -Ln $(CART_BUILD)/menu.labels \
