@@ -242,6 +242,23 @@ def test_the_nesp32_goes_quiet(net_console):
     assert table.consoles[0].byte("net_mode") == 0
 
 
+def test_what_a_console_did_before_a_session_is_not_in_it(net_console):
+    """The reset clears most of the game's RAM, not all: the sprites' tiles,
+    colours and places stay, and the stack, and a few bytes of the zero
+    page. Each console's own leftovers, from its last game or its power-on,
+    are no part of the session's: the games are alike past several checks."""
+    table = Table(net_console)
+    table.start()
+    for seed, console in enumerate(table.consoles):
+        rng = random.Random(seed)
+        for address in range(0x800):
+            console.ram[address] = rng.randrange(256)
+    to_game(table)
+    table.play(800, moves(seed=3))
+    assert table.same_game() > 0.9 * table.frames()
+    assert all(console.byte("net_mode") == 1 for console in table.consoles)
+
+
 def test_two_games_that_differ_end_the_session(net_console):
     """One tick in 256 carries a digest of each console's game in place of
     its buttons. Here one console's random number is changed under it: the

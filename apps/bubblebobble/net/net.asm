@@ -165,8 +165,16 @@ net_reset:
 ; of X ticks. Both consoles begin from the state of one switched on for the
 ; first time, at the first tick. Does not return: the game starts again
 ; from its reset.
+; The reset clears most of the game's RAM, not all: the sprites' tiles,
+; colours and places stay (it hides them), the stack, the zero page's
+; scratch and a few bytes past $EF. What each console left there, from its
+; last game or its power-on, would be in the session too, and differ: a
+; digest from the first check on, or a game that goes its own way where it
+; reads one of them. So all 2 KB are cleared first, with the NMI off.
 net_start_session:
     sei
+    ldy #$00
+    sty PPUCTRL
     sta net_boot+1
     stx net_boot+2
     eor net_boot+2
@@ -174,6 +182,18 @@ net_start_session:
     sta net_boot+3
     lda #NET_BOOT_MARK
     sta net_boot
+    tya
+:
+    sta $0000,y
+    sta $0100,y
+    sta $0200,y
+    sta $0300,y
+    sta $0400,y
+    sta $0500,y
+    sta $0600,y
+    sta $0700,y
+    iny
+    bne :-
 
 ; The session is over: the other console is gone, or the games differ.
 ; Start again as a console that was reset.
