@@ -287,6 +287,41 @@ def test_games_that_differ_send_their_ram_to_the_nesp32s_log(net_console):
                 and not_game(address) and address != ppuctrl] == []
 
 
+def test_a_brk_in_a_session_sends_the_ram_as_it_stands(net_console):
+    """The CPU gone astray, into a BRK at $0000, as two consoles' stacks
+    showed after a session on hardware. The IRQ's handler (net_irq) sends
+    the RAM to the nesp32 at once, its stack pointer in $0100 and $B7 in
+    $0101, and the session is given up."""
+    table = Table(net_console)
+    assert play(table, frames=120) > 60
+    console = table.consoles[0]
+    console.ram[0x0000] = 0x00                  # BRK
+    console.mpu.pc = 0x0000
+    table.play(120, moves(seed=4))
+    dump = table.sticks[0].peer_dump
+    assert dump[0x0101] == 0xB7
+    sp = dump[0x0100]
+    # Above the handler's PHA: the BRK's flags, with B set, and the
+    # address after it.
+    flags, low, high = dump[0x0102 + sp], dump[0x0103 + sp], dump[0x0104 + sp]
+    assert flags & 0x10 and (high << 8 | low) == 0x0002
+    assert console.byte("net_mode") == 0
+
+
+def test_a_brk_with_no_session_is_the_games_rti(net_console):
+    table = Table(net_console)
+    table.boot()
+    console = table.consoles[0]
+    assert console.byte("net_mode") == 0
+    console.ram[0x0000] = 0x00
+    console.ram[0x0002] = 0x4C                  # JMP back into the main loop
+    console.ram[0x0003] = console.labels["IDLE"] & 0xFF
+    console.ram[0x0004] = console.labels["IDLE"] >> 8
+    console.mpu.pc = 0x0000
+    table.run(30)
+    assert table.sticks[0].peer_dump == bytes(0x800)
+
+
 def not_game(address):
     """Not one of the bytes that keep each console's own time (NOT_GAME)."""
     return all(not start <= address < end for start, end in NOT_GAME)

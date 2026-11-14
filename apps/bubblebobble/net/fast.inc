@@ -198,6 +198,41 @@ net_push:
     NEAR $0B, @next_other
     jmp L7_DB55
 
+; --- an IRQ, or a BRK ---------------------------------------------------------------
+;
+; Nothing raises an IRQ, and the game has no BRK: one is the CPU gone
+; astray, running memory that is not code. Two consoles' stacks showed it
+; in a session, a BRK at $0000 over and over, and the game's own handler,
+; an RTI, let it go on until it found its way back, with three bytes of
+; the sprites' page changed on one console. In a session the RAM goes to
+; the nesp32's log at once, as it stands, and the session is given up
+; (net_differ): the stack has the BRK's address and the calls that led
+; there. $0100 is the stack pointer after this handler's PHA (the BRK's
+; flags, and the address after it, are just above), and $0101 is $B7 to
+; mark it. With no session it is the game's RTI.
+net_irq:
+    pha
+    lda net_mode
+    bne @session
+    pla
+    rti
+
+@session:
+    lda #$00
+    sta PPUCTRL                 ; no NMI while the RAM goes out
+    tsx
+    stx $0100
+    lda #NET_IRQ_MARK
+    sta $0101
+    lda #$80                    ; the MMC1's shift register emptied, if the BRK came mid-write
+    sta $FFFF
+    lda #NET_BANK
+    .repeat 5
+    sta $FFFF
+    lsr a
+    .endrep
+    jmp net_differ
+
 .segment "CODE"
 
 FAST_PAGES      = 2

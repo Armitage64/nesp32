@@ -465,6 +465,20 @@ With both players' logs, the bytes that differ are where the two games
 parted. The link's own bytes and the stack below the dump's calls are the
 dump's own doing, and `PPUCTRL_COPY` ($FF) has the NMI's bit cleared.
 
+The first such dumps, from round 2 on two consoles across the Internet,
+differed in three bytes alone: sprite 6's tile, attributes and X, a sprite
+the game had hidden. The rest of the game was the same on both. What the
+stacks held said why: a BRK at $0000, over and over (its flags $34, the
+address after it $0002), on both consoles. The CPU had gone astray in a
+session, run memory that was not code, and found its way back, the
+game's IRQ handler being an RTI. Neither the simulation nor Mesen's
+local game ever does. So the netplay ROM's IRQ handler (`net_irq`, from
+the PRG RAM) now sends the RAM at once when a BRK comes in a session, its
+stack pointer in $0100 and $B7 in $0101, and gives the session up: the
+stack then has the address the BRK was at and the calls that led there.
+The nesp32's line for it says no tick (`dump of the console's RAM: 2048
+bytes`).
+
 In Bubble Bobble a game over does not end a session: the game over's
 screen and the title are ticks like any other, and the title's 2P CONTINUE
 goes on at the round the two had reached, and its choices for one are

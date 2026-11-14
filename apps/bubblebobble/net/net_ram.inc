@@ -58,6 +58,8 @@ CHECK_AT        = CHECK_TICK - 8
 ; DUMP_TRIES times.
 DUMP_PIECE      = 64
 DUMP_TRIES      = 3
+; In $0101 of a dump made at a BRK (net_irq, net/fast.inc).
+NET_IRQ_MARK    = $B7
 
 .assert RING & (RING - 1) = 0, error, "RING must be a power of two"
 .assert NET_DELAY_MAX + PER_FRAME < RING, error

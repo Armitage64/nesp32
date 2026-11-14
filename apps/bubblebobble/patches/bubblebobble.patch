@@ -111,7 +111,7 @@
 +.endif
 @@ -19460,0 +19538,3 @@
 +.ifdef NETPLAY
-+    .addr net_nmi, RESET, IRQ   ; the netplay's NMI, which goes on to the game's
++    .addr net_nmi, RESET, NET_IRQ   ; the netplay's NMI, which goes on to the game's, and its IRQ
 +.else
 @@ -19461,0 +19542,4 @@
 +.endif

@@ -86,6 +86,14 @@ NESP_APP_VERSION = 2
 .assert NET_DELAY_MAX = NESP_PEER_DELAY_MAX, error
 .assert NESP_PEER_DUMP_BYTES = $800 && DUMP_PIECE = $40, error, "net_differ's pieces"
 
+; The IRQ vector: net_irq, from the PRG RAM, in the build with the faster
+; ways there; the game's own RTI in the one without.
+.ifdef NET_FAST
+NET_IRQ         = net_irq
+.else
+NET_IRQ         = IRQ
+.endif
+
 .segment "CODE"
 
 ; From the reset, once the game has set itself up: the faster ways into
