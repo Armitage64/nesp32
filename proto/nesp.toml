@@ -107,6 +107,7 @@ HOST_ROOM = 0x06        # open a room at the rendezvous, and wait in it for the 
 JOIN_ROOM = 0x07        # code (4): join the other nesp32's room
 ROOM = 0x08             # the lobby's state, with the room's code and why a meeting failed
 RATE = 0x09             # period: a session's line at that many cycles a bit, both ways
+DUMP = 0x0A             # offset (2), bytes: the console's RAM, for the nesp32's log
 
 [services.DIAG]
 id = 0x05
@@ -536,3 +537,6 @@ PEER_CALM = 8           # and for a shorter one
 PEER_FEW = 20           # fewer measurements than this in a report say nothing
 PEER_RATE_MIN = 10      # the fastest a session's line may be asked for, in cycles a bit
 PEER_RATE_QUIET_MS = 500    # no good frame for this long at a session's rate, and the line is the link's again
+PEER_DUMP_BYTES = 2048  # bytes of a console's RAM that DUMP takes: $0000-$07FF
+PEER_DUMP_LINE = 64     # of them to a line of the log
+PEER_DUMP_EVERY_MS = 100    # between two lines of it

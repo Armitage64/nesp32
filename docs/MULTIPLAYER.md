@@ -436,6 +436,50 @@ or after 240 NMIs in a row that were not ticks (4 seconds). One end that
 fails takes both consoles back to the title within seconds: one by its own
 end's silence, the other by the lost connection.
 
+The console says nothing of which, so its nesp32 says it in the log, once
+the console has made no exchange for a second, or the session is left or
+the console says hello:
+
+```
+peer: session over, the console stopped: ticks 768 sent, 768 came, the last 0 ms before the end; digests alike 2, then differed at tick 767: this 5a, the other 3c
+```
+
+The nesp32 sees both consoles' digests go by, at each tick whose low byte
+is FF, and compares them itself. The ticks sent and come, and when the
+other's last came, tell a silence from games that differ; and a lost
+connection is there with its time, each counted back from the console's
+last exchange (`peer.c`, "The end").
+
+**Bubble Bobble's RAM goes to the log when the digests differ**, before
+the console gives the session up: its 2 KB, as it stood at the start of
+the tick whose digests differed, which is where the other console stops
+too, in 32 pieces of PEER's DUMP (`net_differ`; about 0.3 s). Its nesp32
+writes it out a line of 64 bytes at a time:
+
+```
+peer: dump of the console's RAM, as it stood at tick 2047, whose digests differed: 2048 bytes
+peer: dump 0000: 0b1c...
+```
+
+With both players' logs, the bytes that differ are where the two games
+parted. The link's own bytes and the stack below the dump's calls are the
+dump's own doing, and `PPUCTRL_COPY` ($FF) has the NMI's bit cleared.
+
+The first such dumps, from round 2 on two consoles across the Internet,
+differed in three bytes alone: sprite 6's tile, attributes and X, a sprite
+the game had hidden. One from a session that ended at its first check,
+before round 1 was on the screen, said why. The game's reset does not
+clear the stack, the sprites' tiles, attributes and places (it hides the
+sprites, and no more), the zero page's scratch, or a few bytes past $EF.
+What a console left there, from its last game or its power-on, was in the
+session, each console's own: a digest that differed from the first check,
+or later, where the game reads one of them (it swaps sprites' tiles about,
+hidden ones too). `net_start_session` now clears all 2 KB, with the NMI
+off, before the reset. Two games on hardware at 70 ms, to round 10, went
+without a drop (November 2026). The stacks held BRKs at $0000 over and
+over, which looked like a CPU gone astray in the session; they were older
+than it, and no BRK came in one when the netplay ROM looked for them.
+
 In Bubble Bobble a game over does not end a session: the game over's
 screen and the title are ticks like any other, and the title's 2P CONTINUE
 goes on at the round the two had reached, and its choices for one are
@@ -466,8 +510,13 @@ seven games:
 - **Say why on the console** when a session ends (the other console left,
   the nesp32 went quiet, the games differed); it only goes back to the
   title now.
+- **What the reset leaves**: Bubble Bobble's reset leaves some of the
+  RAM as it was, and that broke its sessions ("Ending"). Whether the other
+  games' resets clear all of theirs is not checked; Jackal and RCR have
+  played long sessions without a drop.
 - **Games that differ** (for later): a dump of each console's RAM to its
-  nesp32 when the digests differ, to learn why; and if it comes back, the
+  nesp32 when the digests differ, to learn why, as Bubble Bobble's does
+  ("Ending"), in the other games too; and if it comes back, the
   host's game copied to the other in place of ending the session. Tetris
   would be the easiest: its NMI draws the playfields again from RAM, so
   the RAM is most of what has to be sent. Dr. Mario's bottles are in RAM

@@ -7,7 +7,7 @@ import random
 import pytest
 
 from drive import PAD_A, PAD_B, PAD_RIGHT, moves, screen_text
-from netplay import Table
+from netplay import NOT_GAME, Table
 from wire import ms
 
 PLAY_FRAMES = 400
@@ -160,6 +160,29 @@ def test_a_network_that_comes_and_goes(net_console):
     assert play(table) > 100
 
 
+def test_the_internet_loses_doubles_and_reorders_datagrams(net_console):
+    """The connection as the firmware has it: each nesp32's arq.c, and
+    datagrams that cross on their own, some lost, some twice, some the wrong
+    way round, and now and then none at all for 300 ms. The same game on
+    both, and the session goes on. (Longer runs of this, past round 2 and
+    with the delay moving from 2 to 5, found nothing either.)"""
+    rng = random.Random(5)
+
+    def delay():
+        return ms(rng.uniform(45, 95) if rng.random() < 0.1 else rng.uniform(33, 38))
+
+    def outage(at_ms):
+        return at_ms > 4000 and at_ms % 4000 < 300
+
+    table = Table(net_console, delay=delay,
+                  network=dict(datagrams=True, loss=0.05, duplicate=0.02, outage=outage))
+    assert play(table, frames=600) > 400
+    for console in table.consoles:
+        assert console.byte("net_mode") == 1
+    assert table.lan.lost > 100 and table.lan.doubled > 10
+    assert table.stalls() > 10
+
+
 def test_a_nesp32_that_is_sometimes_too_slow_to_answer(net_console):
     """The console waits about 4.1 ms for a reply. Later ones are missed,
     or fall across the next exchange, and are asked for again."""
@@ -219,6 +242,23 @@ def test_the_nesp32_goes_quiet(net_console):
     assert table.consoles[0].byte("net_mode") == 0
 
 
+def test_what_a_console_did_before_a_session_is_not_in_it(net_console):
+    """The reset clears most of the game's RAM, not all: the sprites' tiles,
+    colours and places stay, and the stack, and a few bytes of the zero
+    page. Each console's own leftovers, from its last game or its power-on,
+    are no part of the session's: the games are alike past several checks."""
+    table = Table(net_console)
+    table.start()
+    for seed, console in enumerate(table.consoles):
+        rng = random.Random(seed)
+        for address in range(0x800):
+            console.ram[address] = rng.randrange(256)
+    to_game(table)
+    table.play(800, moves(seed=3))
+    assert table.same_game() > 0.9 * table.frames()
+    assert all(console.byte("net_mode") == 1 for console in table.consoles)
+
+
 def test_two_games_that_differ_end_the_session(net_console):
     """One tick in 256 carries a digest of each console's game in place of
     its buttons. Here one console's random number is changed under it: the
@@ -234,6 +274,39 @@ def test_two_games_that_differ_end_the_session(net_console):
     table.play(560, moves(seed=4))
     for console in table.consoles:
         assert console.byte("net_mode") == 0
+
+
+def test_games_that_differ_send_their_ram_to_the_nesp32s_log(net_console):
+    """Each console's RAM, as it stood at the tick whose digests differed,
+    goes to its nesp32 before the session is given up (PEER's DUMP). The
+    two dumps differ where the games do: here from the random number on."""
+    table = Table(net_console)
+    table.rams = ({}, {})
+    assert play(table, frames=300) > 256
+    # Nothing is sent while the games are alike, nor as a session starts.
+    assert [stick.peer_dump for stick in table.sticks] == [bytes(0x800)] * 2
+    console = table.consoles[0]
+    rng = console.labels["RNG"]
+    console.ram[rng] ^= 0x55
+    table.play(560, moves(seed=4))
+    dumps = [stick.peer_dump for stick in table.sticks]
+    differ = [address for address in range(0x800)
+              if dumps[0][address] != dumps[1][address] and not_game(address)]
+    assert rng in differ or rng + 1 in differ
+    # Each is its console's RAM at the start of that tick, the last that
+    # both consoles came to: but for PPUCTRL_COPY, whose NMI bit the NMI
+    # has cleared by then.
+    tick = min(max(rams) for rams in table.rams)
+    ppuctrl = console.labels["PPUCTRL_COPY"]
+    for side, dump in enumerate(dumps):
+        ram = table.rams[side][tick]
+        assert [hex(address) for address in range(0x800) if dump[address] != ram[address]
+                and not_game(address) and address != ppuctrl] == []
+
+
+def not_game(address):
+    """Not one of the bytes that keep each console's own time (NOT_GAME)."""
+    return all(not start <= address < end for start, end in NOT_GAME)
 
 
 def test_a_check_tick_takes_the_buttons_of_the_tick_before(net_console):

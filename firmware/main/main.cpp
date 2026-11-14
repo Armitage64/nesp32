@@ -50,7 +50,7 @@ const uint32_t LOGO_MS = 2500;     // the logo at start, before the lines
 const int LOGO_SCALE = 2;           // screen pixels to a side of each of its own
 const uint32_t BATTERY_MS = 10000;
 const uint32_t REPORT_MS = 10000;
-const uint32_t WATCH_MS = 2000;
+const uint32_t WATCH_MS = 100;     // the services' lines for the log are taken this often
 const uint32_t CONSOLE_GONE_MS = 2000;  // no request for this long: not there
 const int ROWS = 7;
 const uint32_t TITLE_BLUE = 0x40A0FFu;  // the top line and the rule under it
@@ -406,20 +406,18 @@ extern "C" void app_main(void)
         }
         if (now - watch_at >= WATCH_MS) {
             // And for whoever is watching: the station's figures, from
-            // TUNER, or what PEER says of a game, and how long the network
-            // between the two nesp32s has taken.
+            // TUNER, or what PEER says of a game, and after its line every
+            // couple of seconds, how long the network between the two
+            // nesp32s has taken.
             watch_at = now;
             char said[RADIO_WATCH_MAX];
-            said[0] = 0;
-            if (!radio_watch(said)) {
-                said[0] = 0;        // nothing new: what it holds has been logged
-            }
-            if (strncmp(said, "npr: ", 5) == 0) {
-                // The station's figures, which are whole as they come.
-                ESP_LOGI(TAG, "%s", said);
-            } else if (said[0] != 0) {
-                conn_ping_t ping;
-                conn_ping(&ping);
+            bool peer_said = false;
+            while (radio_watch(said)) {         // each line since the last time
+                if (strncmp(said, "npr: ", 5) == 0) {
+                    // The station's figures, which are whole as they come.
+                    ESP_LOGI(TAG, "%s", said);
+                    continue;
+                }
                 // What it says of the console's buttons, from "; pad" on,
                 // is for a firmware built to log at the debug level.
                 char *pad = strstr(said, "; pad ");
@@ -431,6 +429,11 @@ extern "C" void app_main(void)
                 if (pad != NULL) {
                     ESP_LOGD(TAG, "peer: %s", pad);
                 }
+                peer_said = peer_said || strncmp(said, "player ", 7) == 0;
+            }
+            if (peer_said) {
+                conn_ping_t ping;
+                conn_ping(&ping);
                 ESP_LOGI(TAG, "peer: network %lu us there and back, least %lu, most %lu; "
                          "of %lu, %lu over 14 ms and %lu over 40 ms",
                          (unsigned long)ping.last_us, (unsigned long)ping.least_us,

@@ -84,6 +84,7 @@ NESP_APP_VERSION = 2
 
 .assert PER_FRAME = NESP_PEER_PER_FRAME, error
 .assert NET_DELAY_MAX = NESP_PEER_DELAY_MAX, error
+.assert NESP_PEER_DUMP_BYTES = $800 && DUMP_PIECE = $40, error, "net_differ's pieces"
 
 .segment "CODE"
 
@@ -156,8 +157,16 @@ net_reset:
 ; of X ticks. Both consoles begin from the state of one switched on for the
 ; first time, at the first tick. Does not return: the game starts again
 ; from its reset.
+; The reset clears most of the game's RAM, not all: the sprites' tiles,
+; colours and places stay (it hides them), the stack, the zero page's
+; scratch and a few bytes past $EF. What each console left there, from its
+; last game or its power-on, would be in the session too, and differ: a
+; digest from the first check on, or a game that goes its own way where it
+; reads one of them. So all 2 KB are cleared first, with the NMI off.
 net_start_session:
     sei
+    ldy #$00
+    sty PPUCTRL
     sta net_boot+1
     stx net_boot+2
     eor net_boot+2
@@ -165,6 +174,18 @@ net_start_session:
     sta net_boot+3
     lda #NET_BOOT_MARK
     sta net_boot
+    tya
+:
+    sta $0000,y
+    sta $0100,y
+    sta $0200,y
+    sta $0300,y
+    sta $0400,y
+    sta $0500,y
+    sta $0600,y
+    sta $0700,y
+    iny
+    bne :-
 
 ; The session is over: the other console is gone, or the games differ.
 ; Start again as a console that was reset.
@@ -176,6 +197,59 @@ net_drop:
     sta net_mode
     sta net_menu
     jmp RESET
+
+; The games differ. Before the session is given up, this console's RAM
+; goes to its nesp32 (PEER's DUMP), as it stands at the start of the tick
+; whose digests differed, where the other console stops too. The nesp32
+; writes it to its log, and the two logs say which bytes differ. The link's
+; own bytes ($64-$65, $F1-$F4) and the stack below this are the dump's
+; doing. A nesp32 that does not answer, or has no DUMP, is given no more.
+net_differ:
+    sei
+    lda #$00
+    sta PPUCTRL
+    sta PPUMASK
+    sta net_dumped
+@piece:
+    lda net_dumped              ; where the piece begins: 64 bytes a piece
+    lsr a
+    lsr a
+    sta nesp_ptr+1
+    sta nesp_request+1
+    lda net_dumped
+    and #$03
+    lsr a
+    ror a
+    ror a
+    sta nesp_ptr
+    sta nesp_request
+    ldy #DUMP_PIECE-1
+@copy:
+    lda (nesp_ptr),y
+    sta nesp_request+2,y
+    dey
+    bpl @copy
+    lda #DUMP_TRIES
+    sta net_temp
+    lda #NESP_SVC_PEER
+    ldx #NESP_PEER_DUMP
+    ldy #DUMP_PIECE+2
+    jsr nesp_call
+@heard:
+    bcc @answered
+    dec net_temp
+    beq net_drop
+    jsr nesp_again
+    jmp @heard
+
+@answered:
+    cmp #NESP_ST_OK
+    bne net_drop
+    inc net_dumped
+    lda net_dumped
+    cmp #NESP_PEER_DUMP_BYTES / DUMP_PIECE
+    bne @piece
+    jmp net_drop
 
 ; --- the title -----------------------------------------------------------------
 
@@ -341,7 +415,7 @@ net_frame:
     lda net_local,x
     cmp net_remote,x
     beq :+
-    jmp net_drop
+    jmp net_differ
 :
     dex
     txa
