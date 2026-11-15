@@ -1,7 +1,7 @@
-# To do: the hardware and the firmware
+# To do: the hardware, the firmware and the tools
 
-What is still to do on the nesp32 itself. Each program in `apps/` keeps
-its own list in its README.
+What is still to do on the nesp32 itself, and on the tools for working
+on it. Each program in `apps/` keeps its own list in its README.
 
 ## Not measured, or not known
 
@@ -127,3 +127,24 @@ its own list in its README.
   pulses, is the other line the hat leaves alone
   ([the jukebox's plan](../apps/jukebox/PLAN.md), "clocked link").
 
+## Tools for development
+
+For later (November 2026).
+
+- **A netplay session in Mesen with no window.** `tools/mesen_run.py
+  --bridge` gives one console a nesp32, but the bridge has no PEER, so a
+  session is tested only in the apps' simulations and on hardware. Two
+  Mesen runs, each with its bridge, and the two bridges joined as
+  `host/peer_net.py` joins two nesp32s, would put a session's picture and
+  timing where a test can see them.
+- **Sound in Mesen with no window.** Mesen runs as fast as it can, so a
+  stream's sound outruns the Internet and the bridge logs gaps. A run
+  held to the console's own speed would let the sound be judged.
+- **Ghidra and a Ghidra MCP server**, for a game with no disassembly to
+  start from: an NES loader (GhidraNes), and the server, so that Claude
+  can look up a routine, what calls it and what RAM it uses. Worth setting
+  up when such a game is begun; the games so far all had one.
+- **A logic analyzer through `sigrok-cli`**, to capture the link's two
+  wires and decode them, for the line's timing (the 12% misheard at 10
+  cycles a bit, the receivers at 8). Wants a cheap USB analyzer at the
+  hat.
