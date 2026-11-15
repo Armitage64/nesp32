@@ -20,9 +20,10 @@
 ; and the three bytes the fixed bank's hooks look at in every NMI are in
 ; the console's RAM, at the end of a run of 31 bytes past the players'
 ; ($0661-$067F) that the disassembly has no name for and the game was
-; never seen to write. The game's reset clears them, before net_reset
+; never seen to write, with one more for the intro (net_skip, $067C). The game's reset clears them, before net_reset
 ; sets them.
 ;   $7FF0-$7FF3   the order to start a session, carried through the reset
+;   $7FF4-$7FF5   where the game goes after that reset (net_skip_mark)
 ;   $7FFF         net_probe
 ;   $6EFE-$6F2D   for the length of an NMI: the stack that its exchange goes
 ;                 over, and the zero page it works in (net_nmi_read)
@@ -130,10 +131,22 @@ NET_RATE_WAIT   = 46            ; and asked for again after 3/4 of a second, onc
 net_mode        = $067D         ; $80 in a session
 net_menu        = $067E         ; bit 7: the NMI is the menu's; bit 6 too: its first
 net_owed        = $067F         ; not 00: the PPU has not had the last tick's writes
+net_skip        = $067C         ; NET_SKIP_*: where the intro goes (net_intro, net/cart.inc)
+
+; Where the game goes after a reset of the netplay's own, which sets
+; net_skip_mark before it and net_reset takes it into net_skip: past the
+; intro to the title (LOCAL GAME, B, a session lost), or to the main menu
+; (a session's start). A reset of the console's, or a power-on, finds none,
+; and the intro plays.
+NET_SKIP_NONE   = 0
+NET_SKIP_TITLE  = 1
+NET_SKIP_MENU   = 2
+NET_SKIP_CHECK  = $C3           ; net_skip_mark+1 is the mark EOR this
 
 net_boot        = $7FF0
 NET_BOOT_MARK   = $4E
 NET_BOOT_CHECK  = $B1
+net_skip_mark   = $7FF4         ; and $7FF5: NET_SKIP_*, and its check
 net_probe       = $7FFF         ; flipped and read back: are the writes on?
 
 ; The stack the NMI's exchange runs on is the scheduler's idle loop's, 14

@@ -30,7 +30,7 @@ def test_same_game(net_console, seed, delay):
     table.to_game()
     table.play(1500, moves(seed))
     ticks = table.same_game()
-    assert ticks > 1800
+    assert ticks > 1400          # some 2000 frames from the main menu on
     # Both in the game, and still in the session.
     for console in table.consoles:
         assert console.byte("net_mode") == 0x80

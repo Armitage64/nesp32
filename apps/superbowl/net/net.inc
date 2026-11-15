@@ -112,10 +112,25 @@ net_reset:
     lda #$00
     sta net_mode
     sta net_menu
+    sta net_skip
     sta nesp_fast               ; the link's rate, until a session asks for its own
     sta net_rate_ask
     sta net_rate_tries
     sta net_rate_misses
+    ; Past the intro, if the reset was the netplay's own. The mark is taken
+    ; once: the console's Reset after it finds none.
+    lda net_skip_mark
+    eor #NET_SKIP_CHECK
+    cmp net_skip_mark+1
+    bne @no_skip
+    lda net_skip_mark
+    cmp #NET_SKIP_MENU + 1
+    bcs @no_skip
+    sta net_skip
+@no_skip:
+    lda #$00
+    sta net_skip_mark
+    sta net_skip_mark+1
     lda net_boot
     cmp #NET_BOOT_MARK
     bne @exit
@@ -126,6 +141,8 @@ net_reset:
     bne @exit
     lda #$00
     sta net_boot
+    lda #NET_SKIP_MENU          ; a session begins at the main menu: both
+    sta net_skip                ; consoles have shown the intro and the title
     lda net_boot+1
     sta net_role
     lda net_boot+2
@@ -188,9 +205,16 @@ net_start_session:
     sta net_boot
 
 ; The session is over: the other console is gone. Start again as a
-; console that was reset.
+; console that was reset, at the title (net_skip_mark): or at the main
+; menu, for net_start_session.
 net_drop:
     sei
+    lda #MMC3_SRAM_WRITE
+    sta MMC3_PRG_RAM
+    lda #NET_SKIP_TITLE
+    sta net_skip_mark
+    eor #NET_SKIP_CHECK
+    sta net_skip_mark+1
     lda #$00
     sta NES_PPU_CTRL
     sta NES_PPU_MASK
@@ -198,7 +222,7 @@ net_drop:
 
 ; --- the title ------------------------------------------------------------------
 
-; From the menu: LOCAL GAME, or B. The game starts again, as reset.
+; From the menu: LOCAL GAME, or B. The game starts again, at the title.
 net_menu_local:
     jmp net_drop
 

@@ -21,6 +21,7 @@ STATUS_POLL = 16                # frames between the menu's questions
 MENU_ON = 0x80                  # net_menu
 IN_SESSION = 0x80               # net_mode
 MAIN_MENU_FIRST_Y = 0x50        # the game's main menu's arrow, at PRESEASON (MAIN_MENU_OPTIONS_DATA)
+SKIP_FRAMES = 60                # from a reset of the netplay's own to the title or main menu
 
 
 def tap(table, side, pad, rest=6):
@@ -89,6 +90,36 @@ def test_local_game_with_no_nesp32(net_console):
     tap(table, 0, PAD_A, rest=2)
     assert console.calls_of("net_reset") == 1
     assert console.byte("net_menu") == 0 and console.byte("net_mode") == 0
+    assert at_title_soon(table, console)
+
+
+def at_title_soon(table, console, frames=SKIP_FRAMES):
+    """The title, past the intro: its test for Start is made every frame,
+    and the intro, which would be first, waits for a press."""
+    console.count_calls("net_title_press")
+    table.run(frames)
+    return console.calls_of("net_title_press") > 0
+
+
+def reset_button(console):
+    """The console's Reset: the CPU to the reset vector, and nothing else of
+    it or the cartridge changed."""
+    console.mpu.pc = console.bus[0xFFFC] | console.bus[0xFFFD] << 8
+    console.interrupts = []
+
+
+def test_b_goes_back_to_the_title_and_reset_to_the_intro(net_console):
+    table = Table(net_console)
+    to_title(table)
+    open_menu(table, 0)
+    console = table.consoles[0]
+    tap(table, 0, PAD_B, rest=2)
+    assert console.byte("net_menu") == 0
+    assert at_title_soon(table, console)
+    # The mark was the reset's alone: the console's own plays the intro.
+    reset_button(console)
+    assert not at_title_soon(table, console, frames=4 * SKIP_FRAMES)
+    assert console.byte("net_skip") == 0
 
 
 def test_the_menu_says_hello_and_shows_the_nesp32s_address(net_console):
@@ -217,9 +248,22 @@ def test_a_lost_session_starts_the_console_again(net_console):
     console = table.consoles[0]
     console.count_calls("net_reset")
     table.lan.cut()
-    table.run(400)
+    table.run(300)
     assert console.calls_of("net_reset") == 1
     assert console.byte("net_mode") == 0 and console.byte("net_menu") == 0
+    assert at_title_soon(table, console, frames=200)
+
+
+def test_a_session_begins_at_the_main_menu(net_console):
+    table = Table(net_console)
+    for console in table.consoles:
+        console.count_calls("net_title_press")
+    table.start()
+    table.run(SKIP_FRAMES)
+    for console in table.consoles:
+        assert console.byte("MENU_ARROW_SPR_Y") == MAIN_MENU_FIRST_Y
+        assert console.calls_of("net_title_press") == 0
+        assert console.byte("net_mode") == IN_SESSION
 
 
 # --- by a room's code ----------------------------------------------------------------

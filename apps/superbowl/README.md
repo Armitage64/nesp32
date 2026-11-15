@@ -175,6 +175,16 @@ borders, which the menu uses for its dash and for the mark under a letter
 being edited. The cursor is the game's menu arrow, tile 0 of bank $0F at
 $1000.
 
+**Past the intro.** The menu leaves by a reset, and a reset plays the
+intro. So a reset of the netplay's own (`net_drop`: LOCAL GAME, B, a
+session lost, a session's start) leaves a mark in the save RAM
+(`net_skip_mark`), which `net_reset` takes into `net_skip`, in the
+console's RAM, and clears. The intro's first wait for a frame
+(`net_intro`, in the fixed bank) goes from there to the title, as the
+intro's Start does, or, for a session, which both consoles begin from the
+title, to the main menu, some 30 frames after the reset. A reset of the
+console's, or a power-on, finds no mark, and the intro plays.
+
 ## The simulation
 
 `tests/console.py` is River City Ransom's console on py65, with the save
@@ -201,30 +211,26 @@ into a session that plays the same game on both.
 
 In order. Each step is tested in the simulation before the next.
 
-1. **Past the intro** (decisions 2 and 3): a mark in the save RAM that
-   the reset finds, so that a session begins at the main menu, and LOCAL
-   GAME and B in the menu go back to the title. A power-on or the
-   console's Reset clears it. Tests in `test_menu.py`.
-2. **The save RAM the same on both consoles.** A session's two consoles
+1. **The save RAM the same on both consoles.** A session's two consoles
    must start with the same save RAM: the game reads its season, the
    playbooks, the starters, the teams' control and the seed of its random
    numbers from it. The tests pass now only because both simulated
    consoles start with the same, empty one. Decision 1, below: the
    host's, copied when the two differ, after player 2 says yes to it, and
    by a bulk op of PEER's that firmware and protocol do not have yet.
-3. **The rest of the game in a session**: the season (and its schedule,
+2. **The rest of the game in a session**: the season (and its schedule,
    SKP mode, the playoffs), the Pro Bowl, TEAM DATA's changes, a game
    played to its end and the screens after it, the pause (timeouts), and
    both players' Start at the title. Each with a lockstep test. Check that
    the game never picks a bank above 29 (`tests/test_console.py`, as RCR's).
-4. **The frame rate.** The exchange costs some 2000 cycles at 14, and the
+3. **The frame rate.** The exchange costs some 2000 cycles at 14, and the
    stack and zero page it keeps some 1000 more, in each tick's NMI, which
    is time the tasks lose: measure the lags in a session against the
    original's 1%, with a bench like Jackal's (`make bench`).
-5. **For players**: `make bps` and `dist/tsb_net.bps`, `tests/test_patch.py`,
+4. **For players**: `make bps` and `dist/tsb_net.bps`, `tests/test_patch.py`,
    the hello's version, and every document that lists the games (the
    `nes-netplay-port` skill's "Shipping a change").
-6. **Hardware**: two consoles and two nesp32s, by a room's code. Watch the
+5. **Hardware**: two consoles and two nesp32s, by a room's code. Watch the
    screen's splits while an exchange holds the IRQ off (the play-call
    screen has them), and the samples against the line at 14.
 
@@ -255,9 +261,10 @@ In order. Each step is tested in the simulation before the next.
 2. **Where a session begins.** *Decided 2026-11-14: at the main menu*
    when the intro and title have already been shown before the session
    was made (as they have been when it is made from the lobby, which is
-   opened at the title). It begins at the reset now.
+   opened at the title). Done ("The menu", Past the intro).
 3. **LOCAL GAME and B in the menu** reset the console (the menu uses the
    game's RAM). *Decided 2026-11-14: they go back to the title*, past the
    intro, by a mark in the save RAM that the reset finds (the same mark
    decision 2's session start uses). A power-on or the console's Reset
-   clears it, and the intro plays as ever.
+   clears it, and the intro plays as ever. Done, and B on the menu's
+   first screen goes back to the title too.

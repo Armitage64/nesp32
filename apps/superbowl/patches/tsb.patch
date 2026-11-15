@@ -4,39 +4,47 @@
 +.ifdef NETPLAY
 +.include "net.asm"
 +.endif
-@@ -57348,0 +57352,4 @@
+@@ -57307,0 +57311,5 @@
++.ifdef NETPLAY
++    jsr net_intro                        ; the same, or past the intro (net/cart.inc)
++    nop
++    nop
++.else
+@@ -57309,0 +57318 @@
++.endif
+@@ -57348,0 +57358,4 @@
 +.ifdef NETPLAY
 +    jsr net_title_press                  ; the same, and Select for the menu (net/cart.inc)
 +    nop
 +.else
-@@ -57350,0 +57358 @@
+@@ -57350,0 +57364 @@
 +.endif
-@@ -128457,0 +128466,5 @@
+@@ -128457,0 +128472,5 @@
 +.ifdef NETPLAY
 +    jsr net_bank_in                      ; the netplay's reset, which makes these writes
 +    jsr net_reset                        ; at its end (net/net.inc)
 +    .res 8, $EA
 +.else
-@@ -128468,0 +128482 @@
+@@ -128468,0 +128488 @@
 +.endif
-@@ -128590,0 +128605,4 @@
+@@ -128590,0 +128611,4 @@
 +.ifdef NETPLAY
 +    jmp net_nmi_check                    ; the same, and a session's tick, stall or lag (net/cart.inc)
 +    nop
 +.else
-@@ -128592,0 +128611 @@
+@@ -128592,0 +128617 @@
 +.endif
-@@ -128767,0 +128787,4 @@
+@@ -128767,0 +128793,4 @@
 +.ifdef NETPLAY
 +    jmp net_read_hook                    ; the same, or a session's tick or stall (net/cart.inc)
 +    .res 3, $EA
 +.else
-@@ -128770,0 +128794 @@
+@@ -128770,0 +128800 @@
 +.endif
-@@ -130530,0 +130555,4 @@
+@@ -130530,0 +130561,4 @@
 +.ifdef NETPLAY
 +    NET_FILL_D05F                        ; in place of L_D05F, which nothing calls (net/cart.inc)
 +    .res $D081 - $D05F - (* - net_title_press), $FF
 +.else
-@@ -130549,0 +130578 @@
+@@ -130549,0 +130584 @@
 +.endif

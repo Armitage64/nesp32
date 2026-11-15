@@ -18,6 +18,8 @@
 ;   net_read_hook   the NMI's read of the controllers (net_read)
 ;   net_title_press the title's test for Start, which takes Select to the
 ;                   menu
+;   net_intro       the intro's first wait, which a reset of the netplay's
+;                   own goes past (net_skip)
 ;
 ; and the reset's hook is a call in place of writes to PPUADDR, which
 ; net_reset makes itself.
@@ -72,6 +74,27 @@ net_read_hook:
     jmp NMI_UPDATE_RANDOM_NUMS
 @stall:
     jmp RETURN_FROM_NMI_ENABLE_INT_RESTORE_BANKS
+
+; In place of the intro's first wait for a frame, in the main thread's task
+; with the intro's bank at $8000: that wait, or, after a reset of the
+; netplay's own (net_skip, net/net.inc), the title at once, as the intro's
+; Start goes to it, or the main menu, as the title's Start goes to it but
+; for the title's own picture and wait.
+net_intro:
+    ldx net_skip
+    bne @skip
+    lda #$01
+    jmp DELAY_TASK
+@skip:
+    pla                         ; the call, which does not return
+    pla
+    dex
+    beq @title
+    .assert NET_SKIP_TITLE = 1 && NET_SKIP_MENU = 2, error
+    jsr END_DRAW_FADE_OUT_STOP_SOUND_CLEAR_SCREEN
+    jmp DRAW_MAIN_MENU_INIT
+@title:
+    jmp DRAW_START_SCREEN
 .endmacro
 
 ; In place of L_D05F, which nothing calls: 34 bytes.

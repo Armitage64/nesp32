@@ -11,7 +11,8 @@
 ;                 for the other. The screen shows the room's code, which
 ;                 player 2 has to enter.
 ;   JOIN GAME     a room's code to edit, and the nesp32 joins that room
-;   LOCAL GAME    back to the game, for two controllers on this console
+;   LOCAL GAME    back to the title, for two controllers on this console
+;                 (and B, likewise)
 ;
 ; Select on either of those screens changes how the two meet: by a room's
 ; code, across the Internet with no port forwarded, or by an address, as
@@ -308,6 +309,12 @@ menu_enter:
 
 menu_mode_main:
     lda menu_press
+    and #BTN_B
+    beq @up
+    jmp menu_leave_local        ; back to the title, as LOCAL GAME
+
+@up:
+    lda menu_press
     and #BTN_UP
     beq @down
     lda menu_cursor
@@ -377,7 +384,8 @@ menu_other_way:
 
 .assert NESP_LOBBY_NO_WIFI = 0, error
 
-; Back to the game, with no session: the console starts again, as reset.
+; Back to the game, with no session: the console starts again, at the
+; title (net_menu_local).
 menu_leave_local:
     jsr menu_leave
     jmp net_menu_local

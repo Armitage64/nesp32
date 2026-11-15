@@ -277,13 +277,12 @@ class Table:
             console.count_calls("net_late_stall")
 
     def to_game(self):
-        """From a session's start to the kickoff of a preseason game, MAN VS
-        MAN, Buffalo against Cleveland: player 1 presses on the first
-        console, player 2 on the second. The frames it took."""
+        """From a session's start, at the main menu (net_intro), to the
+        kickoff of a preseason game, MAN VS MAN, Buffalo against Cleveland:
+        player 1 presses on the first console, player 2 on the second. The
+        frames it took."""
         start = self.frames()
-        script = [(220, 0, PAD_START),      # the intro
-                  (200, 0, PAD_START),      # the title
-                  (150, 0, PAD_A),          # PRESEASON
+        script = [(90, 0, PAD_A),           # PRESEASON: a session begins at the main menu
                   (100, 0, PAD_DOWN),       # MAN VS MAN
                   (40, 0, PAD_A),
                   (150, 0, PAD_A),          # player 1's team: Buffalo
