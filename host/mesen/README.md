@@ -200,3 +200,25 @@ keyboard at a time.
 characters, held to `keyboard.c`; real Bluetooth with a fake helper; pairing, forgetting and typing through
 the firmware's own KBD; a ROM's files kept and loaded again; and fetches,
 with the test as the site.
+
+## Running a ROM with no window
+
+`tools/mesen_run.py` runs a ROM in Mesen's `--testrunner` mode (no window,
+as fast as it goes), holds controller 1's buttons on the frames it is told,
+and keeps the picture and the 2 KB of RAM at the end of chosen frames:
+
+```sh
+python3 tools/mesen_run.py build/web/nesp32.nes \
+    --press 200:down:3 --press 230:down:3 --press 270:a:3 --shot 400 --ram 400
+```
+
+The files go in `build/mesen-run`. It needs no bridge, so a nesp32 ROM
+stops at WAITING FOR LINK; it is for the picture, sound and mapper timing
+that the py65 consoles in the apps' tests leave out. `MESEN` names the
+program (default: `/Applications/Mesen.app`). Tried with MesenCE on macOS.
+
+`tools/png_diff.py A.png B.png [--out DIFF.png]` says which pixels of two
+shots differ (and draws them in red), to hold two ROMs to the same picture.
+With the same buttons, Contra's netplay ROM with no session is the
+original 3 frames on: its frame 1097 and the original's 1100 differ only
+where the buttons came at different points of the game.
