@@ -374,6 +374,15 @@ netplay ROM asks for 14: on a StickS3 and on a StickC Plus2, sessions
 with the music playing stayed at 14 throughout, with 0.6% to 0.7% of
 their replies misheard and asked for again (November 2026).
 
+A game's save (PEER's SAVE ops, `docs/PROTOCOL.md`, "A game's save"):
+Tecmo Super Bowl's netplay ROM (`../apps/superbowl`) copies the console
+that hosts' save to the other's before a session, about 6.6 KB, when the
+two differ and player 2 says yes. It has been tried only in the
+simulation. On hardware, look for the copy's time across the network
+(`arq.c` sends more than a datagram's worth as a window of 2 KB, some
+0.2-0.5 s for the save in `tests/test_arq.py` at 5-60 ms each way), and
+that the ticks that follow it are numbered from the first byte after it.
+
 What `conn.c` leans on: lwIP's sockets from a task on the Wi-Fi's core, a
 non-blocking `connect` waited for with `select`, and a look for received
-bytes once a millisecond.
+bytes once a millisecond, with at most one datagram sent each time.
