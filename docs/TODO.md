@@ -140,10 +140,32 @@ For later (November 2026).
 - **Sound in Mesen with no window.** Mesen runs as fast as it can, so a
   stream's sound outruns the Internet and the bridge logs gaps. A run
   held to the console's own speed would let the sound be judged.
-- **Ghidra and a Ghidra MCP server**, for a game with no disassembly to
-  start from: an NES loader (GhidraNes), and the server, so that Claude
-  can look up a routine, what calls it and what RAM it uses. Worth setting
-  up when such a game is begun; the games so far all had one.
+- **Ghidra and a Ghidra MCP server**, to read a game whose routines are
+  hard to follow. A game with no disassembly is already made into source
+  by its own build (RCR's and Bubble Bobble's `trace.py`, `game.map` and
+  `convert.py`), and that stays what builds it: Ghidra cannot make source
+  that rebuilds the ROM byte for byte. What it adds is reading: what
+  calls a routine, what reads and writes an address, a rough decompiler,
+  asked by Claude through the server. About a day, when a game wants it:
+  1. Java 21, Ghidra, an NES loader (GhidraNes) and the MCP server, at
+     versions that fit one another (each follows Ghidra's), pinned and
+     moved together.
+  2. A script that marks what `entries.txt` says ran as code, since
+     Ghidra's own analysis loses its way where the banks switch.
+  3. Two scripts between `tools/game.map` and Ghidra's labels, one each
+     way, so names settled in Ghidra come back to the repo, which stays
+     the source of truth. The Ghidra project holds the game's bytes and
+     stays out of git, as `baserom.nes` does.
+  4. Tried on a game already known (Contra, against its disassembly).
+
+  Then, for a new game: where the controllers are read (`$4016`,
+  `$4017`: the exchange goes there), the NMI and the main loop, the frame
+  counter and the random numbers, what of the zero page the sound engine
+  owns (left out of the digest), writes to the DMC (`$4010`-`$4013`: a
+  game that plays samples needs its read made twice), the mapper's
+  writes and the free space, and where the title picks two players and
+  the game keeps its level. What runs, and when, is still the
+  simulation's and Mesen's to say.
 - **A logic analyzer through `sigrok-cli`**, to capture the link's two
   wires and decode them, for the line's timing (the 12% misheard at 10
   cycles a bit, the receivers at 8). Wants a cheap USB analyzer at the

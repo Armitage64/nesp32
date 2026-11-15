@@ -8,8 +8,12 @@ description: How a two-player NES game is made a nesp32 netplay ROM in this repo
 Read `docs/MULTIPLAYER.md` first: what a tick, a stall and a lag are, where
 the exchange goes, the music, the digest. Then the nearest port's README,
 which says what was that game's own. Jackal's (`apps/jackal/README.md`) is
-the most complete, with "What has been learned"; RCR's and Bubble
-Bobble's are the ones converted from a disassembly by our own tool.
+the most complete, with "What has been learned". RCR and Bubble Bobble
+had no disassembly to start from: their builds make one from the ROM
+(`tools/trace.py` notes where the game runs, in `entries.txt`;
+`tools/game.map` has the names; `tools/convert.py` makes ca65 source that
+rebuilds the ROM byte for byte). Start a game with no disassembly from
+theirs.
 
 ## The layout of a port
 
