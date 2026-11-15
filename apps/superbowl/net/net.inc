@@ -202,16 +202,6 @@ net_drop:
 net_menu_local:
     jmp net_drop
 
-; From the menu, in its own bank at $8000: an exchange. net_far_hello is
-; nesp_hello; net_far_call is nesp_call for op X of PEER's, with Y bytes
-; of payload. Carry set if no reply came.
-net_far_hello:
-    jmp nesp_hello
-
-net_far_call:
-    lda #NESP_SVC_PEER
-    jmp nesp_call
-
 ; --- the NMI ---------------------------------------------------------------------
 
 ; An NMI with the menu up, or in a session (net_nmi_check, net/cart.inc),

@@ -9,10 +9,10 @@ netplay games share.
 the original matches the ROM byte for byte. The netplay ROM's session is
 done and tested in the simulation: two consoles, each with nesp32's
 firmware, play the same game tick by tick from a session's start through
-the menus to a preseason game, MAN VS MAN, and on into play. There is no
-menu yet (Select at the title goes to a stub that leaves the console
-stuck: don't press it), the save RAM is not yet
-made the same on both consoles, and nothing has been tried on hardware.
+the menus to a preseason game, MAN VS MAN, and on into play. The menu
+(Select at the title) hosts and joins a game by a room's code or an
+address, in the simulation. The save RAM is not yet made the same on
+both consoles, and nothing has been tried on hardware.
 "To do", at the end, is where to pick it up.
 
 **The game is not in this repository.** Whoever builds puts a copy of
@@ -157,6 +157,24 @@ there needed more than the three cases:
 Jackal. The session's read of the controller reads twice while a sample
 plays.
 
+## The menu
+
+`net/menu.inc` is River City Ransom's lobby (HOST GAME, JOIN GAME by a
+room's code or an address, LOCAL GAME), in bank 31 at $8000 with the
+library at $A000. Select at the title opens it (`net_title_press`): the
+title's task sleeps, and the NMI is the menu's (`net_menu_nmi`), which
+the game's tasks do not run in. It ends with a reset, by a session or not,
+so it uses the game's RAM: $0500 on (not $0300, where the NMI saves the
+registers) and the sprites' page at $0200. It turns off the MMC3's IRQ,
+which splits the title's screen, and turns on the save RAM's writes, for
+the library's memory.
+
+Its letters are the game's: the font of its menus, CHR bank $20 at $0000,
+has its letters, digits and full stop at their ASCII codes, and the menus'
+borders, which the menu uses for its dash and for the mark under a letter
+being edited. The cursor is the game's menu arrow, tile 0 of bank $0F at
+$1000.
+
 ## The simulation
 
 `tests/console.py` is River City Ransom's console on py65, with the save
@@ -175,26 +193,25 @@ below the pointer it saved when it went to sleep.
 
 `tests/test_lockstep.py`: from a session's start through the menus and
 1500 frames of play at random, the same game at every tick, at 5 and 20 ms
-each way.
+each way. `tests/test_menu.py`: the menu's screens and what it asks the
+nesp32, and HOST GAME and JOIN GAME, by an address and by a room's code,
+into a session that plays the same game on both.
 
 ## To do
 
 In order. Each step is tested in the simulation before the next.
 
-1. **The menu** (`net/menu.inc`, now a stub). Jackal's and RCR's lobby
-   (HOST GAME, JOIN GAME by a room's code or an address, LOCAL GAME), in
-   bank 31 at $8000 with the library at $A000. Select at the title opens
-   it (`net_title_press`); the title's task sleeps, and the NMI is the
-   menu's (`net_menu_nmi`). It ends with a reset, by a session or not, so
-   it may use the game's RAM: $0500 on (not $0300, where the NMI saves the
-   registers), and the sprites' page at $0200. The menu has to turn off the
-   MMC3's IRQ and set the CHR banks for the title's letters (ASCII tiles).
-   Tests: `test_menu.py` after RCR's.
+1. **Past the intro** (decisions 2 and 3): a mark in the save RAM that
+   the reset finds, so that a session begins at the main menu, and LOCAL
+   GAME and B in the menu go back to the title. A power-on or the
+   console's Reset clears it. Tests in `test_menu.py`.
 2. **The save RAM the same on both consoles.** A session's two consoles
    must start with the same save RAM: the game reads its season, the
    playbooks, the starters, the teams' control and the seed of its random
    numbers from it. The tests pass now only because both simulated
-   consoles start with the same, empty one. Decision 1, below.
+   consoles start with the same, empty one. Decision 1, below: the
+   host's, copied when the two differ, after player 2 says yes to it, and
+   by a bulk op of PEER's that firmware and protocol do not have yet.
 3. **The rest of the game in a session**: the season (and its schedule,
    SKP mode, the playoffs), the Pro Bowl, TEAM DATA's changes, a game
    played to its end and the screens after it, the pause (timeouts), and
@@ -213,25 +230,34 @@ In order. Each step is tested in the simulation before the next.
 
 ## Decisions to make
 
-1. **What save RAM a session starts from** (for To do 2). The link
-   carries about two bytes a frame, and the save RAM the game reads is
-   6-8 KB.
-   - *The host's, copied to the guest* (proposed): the two compare a
-     checksum at the session's start and copy only if they differ, run
-     long, so a season early on (mostly zeros) takes seconds and a full
-     one under a minute. Both play the host's season. The guest's save
-     (of the netplay ROM, which a flash cartridge keeps apart from its
-     Tecmo Super Bowl) becomes a copy of the host's.
-   - *Always the game's defaults*: simpler, but a season cannot go on
-     from one session to the next.
-   - Also to settle with it: which of the save RAM is copied. The season
+1. **What save RAM a session starts from** (for To do 2). *Decided
+   2026-11-14: the host's, copied to the guest*, and only when the two
+   differ (they compare a checksum at the session's start). Before the
+   copy, the screen says that player 2's save will be replaced by
+   player 1's. Both then play the host's season, and the guest's save (of
+   the netplay ROM, which a flash cartridge keeps apart from its Tecmo
+   Super Bowl) becomes a copy of the host's. The notice is a yes/no
+   dialogue in the lobby menu's style, on both screens; only player 2's
+   buttons answer it, and no leaves the session.
+   - *How fast.* Not in the ticks: PEER's stream holds 96 bytes and a
+     tick's exchange carries one or two, so some 70 seconds for 8 KB. The
+     copy is a phase of its own before the first tick, with the screen
+     off and no samples playing, and wants a bulk op of PEER's (firmware
+     and protocol): the line alone is 0.5-0.7 s for 8 KB at 10-14 cycles a
+     bit (faster still at 7-8 with nothing else running), and the network
+     a few round trips with datagrams of a kilobyte or so. About a second
+     in all, less with the zeros of an early season sent as runs.
+   - Still to settle: which of the save RAM is copied. The season
      ($66C0-$7F71, under the checksum) for certain; of $6000-$66BF, the
      teams' control (`TEAM_TYPE_SEASON`), the CPU boosts, the playbooks
      and the random seed (`SAVED_RANDOM_1`-`3`), but not the menus'
      scratch.
-2. **Where a session begins.** Now at the reset, so the players see the
-   intro and the title and press Start, as alone. Straight to the main
-   menu would save a few seconds.
-3. **LOCAL GAME and B in the menu** reset the console now (the menu uses
-   the game's RAM), which shows the intro again. A mark through the reset
-   could go straight back to the title instead.
+2. **Where a session begins.** *Decided 2026-11-14: at the main menu*
+   when the intro and title have already been shown before the session
+   was made (as they have been when it is made from the lobby, which is
+   opened at the title). It begins at the reset now.
+3. **LOCAL GAME and B in the menu** reset the console (the menu uses the
+   game's RAM). *Decided 2026-11-14: they go back to the title*, past the
+   intro, by a mark in the save RAM that the reset finds (the same mark
+   decision 2's session start uses). A power-on or the console's Reset
+   clears it, and the intro plays as ever.
