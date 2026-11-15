@@ -68,12 +68,15 @@ The services and the link core are plain C, also built for this computer:
 
 ```sh
 make host     # build/libnesp_host.dylib, from firmware/components
-make test PYTHON=/usr/bin/python3   # tests/: test_core, test_link, test_peer, ...
+make test         # tests/: test_core, test_link, test_peer, ... on every core
+make test-apps APPS="jackal contra"   # those apps' own tests
 ```
 
 Every app's tests run its ROM against that same library, so a change to
 `nesp_services` can break an app's tests: run the apps it touches too.
-pyenv's Python on this Mac has no pytest, so pass `PYTHON=` (or use a `.venv`, which the Makefile prefers). `tools/mesen_run.py
+pyenv's Python on this Mac has no pytest: the Makefile uses the `.venv`,
+which has it and `pytest-xdist` (`requirements-dev.txt`); another Python
+without `pytest-xdist` runs the tests one at a time. `tools/mesen_run.py
 --bridge` runs a ROM in Mesen against the library (`host/mesen/README.md`).
 `tools/lcd.py out` draws the Stick's screens, to try a layout before
 flashing.

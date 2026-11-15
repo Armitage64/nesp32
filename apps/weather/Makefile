@@ -60,8 +60,13 @@ verify: $(ROM)
 	test "$$(wc -c < $(ROM) | tr -d ' ')" = "$(strip $(ROM_SIZE))" && \
 		printf 'NES\032\001\001\000\000' | cmp -n 8 - $(ROM)
 
+# On every core if this Python has pytest-xdist (conftest.py at the top of
+# nesp32 starts the longest first).
+XDIST = $(shell $(PYTHON) -c 'import xdist' 2>/dev/null \
+	&& printf '%s' '-n auto --dist load --maxschedchunk 1')
+
 test:
-	$(PYTHON) -m pytest
+	$(PYTHON) -m pytest $(XDIST)
 
 preview: | $(BUILD)
 	$(PYTHON) tools/gen_screen.py $(BUILD) --preview docs/screen.png

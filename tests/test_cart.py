@@ -828,9 +828,8 @@ def test_a_newer_release_on_the_site_is_both(cart):
 
 
 @pytest.mark.parametrize("firmware, site, said", [
-    # The firmware and the cartridge disagree: no web site needed.
-    (this_version(1), None, CARTRIDGE),
-    ("0.0.1", None, FIRMWARE),
+    # (The firmware and the cartridge disagreeing with no web site is
+    # test_each_part_of_the_version_is_compared's.)
     # The site has the release one of them already has.
     (this_version(1), this_version(1), CARTRIDGE),
     ("0.0.1", this_version(), FIRMWARE),

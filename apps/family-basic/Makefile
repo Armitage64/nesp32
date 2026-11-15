@@ -63,8 +63,13 @@ verify: $(ROM)
 	test "$$(wc -c < $(ROM) | tr -d ' ')" = "$(strip $(ROM_SIZE))"
 	printf 'NES\032\004\001\023\000\001' | cmp -n 9 - $(ROM)
 
+# On every core if this Python has pytest-xdist (conftest.py at the top of
+# nesp32 starts the longest first).
+XDIST = $(shell $(PYTHON) -c 'import xdist' 2>/dev/null \
+	&& printf '%s' '-n auto --dist load --maxschedchunk 1')
+
 test:
-	$(PYTHON) -m pytest
+	$(PYTHON) -m pytest $(XDIST)
 
 # From the game itself: tools/fbasic.py has checked its SHA-1 as the ROM
 # was built, and the patch is for that one release.

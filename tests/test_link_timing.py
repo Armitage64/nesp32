@@ -257,7 +257,12 @@ def receive_through_a_sample(make, data, start, first_fetch, stolen=4, every=432
     return c.data("nesp_rx", len(data))
 
 
-def test_the_counting_receiver_reads_through_a_sample(timeout_console):
+@pytest.mark.parametrize("half", [0, 2], ids=["even", "odd"])   # of every other phase
+@pytest.mark.parametrize("stolen", [4, 6])
+@pytest.mark.parametrize("data", [frame(0, 5), frame(7, 6),
+                                  bytes((0xB1, 0x34, 0x00, 0xFF, 0x55, 0xAA))],
+                         ids=["empty", "seven", "awkward"])
+def test_the_counting_receiver_reads_through_a_sample(timeout_console, data, stolen, half):
     """nes-contra's music has samples for its drums, and on a real console
     its replies were misheard, one in twelve, by a receiver that looked for
     every byte's start bit 13 cycles apart: with four cycles stolen it had
@@ -267,11 +272,11 @@ def test_the_counting_receiver_reads_through_a_sample(timeout_console):
     more than a fetch takes, every byte but a frame's first, which it has
     to find without knowing where to look. (The old one misread one frame
     in eight with five stolen, and three in ten with six.)"""
-    for data in (frame(0, 5), frame(7, 6), bytes((0xB1, 0x34, 0x00, 0xFF, 0x55, 0xAA))):
-        for phase in PHASES[::2]:
-            for first_fetch in range(150, 150 + 432, 9):
-                stored = receive_through_a_sample(timeout_console, data, phase, first_fetch)
+    for phase in PHASES[half::4]:
+        for first_fetch in range(150, 150 + 432, 9):
+            stored = receive_through_a_sample(timeout_console, data, phase, first_fetch,
+                                              stolen=stolen)
+            if stolen == 4:
                 assert stored == data, (phase, first_fetch)
-                stored = receive_through_a_sample(timeout_console, data, phase, first_fetch,
-                                                  stolen=6)
+            else:
                 assert stored[1:] == data[1:], (phase, first_fetch)

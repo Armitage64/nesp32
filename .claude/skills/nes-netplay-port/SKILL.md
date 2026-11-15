@@ -91,8 +91,14 @@ make && make verify && make test
   consoles against the firmware built for this computer (`make host` at the
   top), with a simulated network. A lockstep test compares the two
   consoles' state tick by tick.
-- Tests need `pytest`; on this Mac it is in `/usr/bin/python3`, not pyenv's:
-  `make test PYTHON=/usr/bin/python3`, or a `.venv`, which the Makefiles prefer.
+- Tests need `pytest`, `py65` and, to run on every core, `pytest-xdist`:
+  the repository's `.venv` has them (`requirements-dev.txt`), pyenv's
+  Python has none. From the top, `make test-apps APPS=<game>` uses it; in
+  the app, `make test PYTHON=../../.venv/bin/python`. A Python without
+  `pytest-xdist` runs them one at a time, a session test of a minute or
+  more after another.
+- Tests run side by side, longest first: no fixed ports or paths, nothing
+  that counts on another test (`docs/DEVELOPMENT.md`, Tests).
 - **In Mesen, with no window** (`host/mesen/README.md`):
   ```sh
   python3 tools/mesen_run.py apps/<game>/build/<game>_net.nes \
@@ -120,7 +126,8 @@ misheard 12% of the time.
 
 ## Shipping a change
 
-1. `make verify && make test`, and the tests at the top (`make test`).
+1. `make verify && make test`, and the tests at the top (`make test`; `make
+   test-apps` for every program's).
 2. `make bps` and commit `dist/<game>_net.bps`; `tests/test_patch.py`
    fails while it is out of date. A new game also needs its entry in
    `PATCHES` in `tools/gen_web.py` and a card on `web/patches/index.html`.

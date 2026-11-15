@@ -144,8 +144,13 @@ verify: $(ROM)
 		&& echo "$(ROM) matches the original" \
 		|| { echo "$(ROM) differs from the original"; exit 1; }
 
+# On every core if this Python has pytest-xdist (conftest.py at the top of
+# nesp32 starts the longest first).
+XDIST = $(shell $(PYTHON) -c 'import xdist' 2>/dev/null \
+	&& printf '%s' '-n auto --dist load --maxschedchunk 1')
+
 test:
-	$(PYTHON) -m pytest -q tests
+	$(PYTHON) -m pytest $(XDIST) -q tests
 
 # From the original as built, once it is known to be the game: the patch
 # is for the US release and no other.
