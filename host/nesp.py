@@ -255,7 +255,7 @@ def library():
             getattr(lib, name).argtypes = [ctypes.c_void_p]
         lib.host_arq_last_at.restype = ctypes.c_uint32
         lib.host_arq_last_at.argtypes = [ctypes.c_void_p]
-        lib.host_arq_unsaid.restype = ctypes.c_uint8
+        lib.host_arq_unsaid.restype = ctypes.c_uint16
         lib.host_arq_unsaid.argtypes = [ctypes.c_void_p]
         lib.host_arq_note.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
         lib.host_arq_noted.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
@@ -1128,6 +1128,8 @@ class Stick:
 
 ARQ_NOTE = 4
 ARQ_PACKET = 56
+ARQ_CARRY = 32
+ARQ_HELD = 2048            # bytes kept each way (NESP_ARQ_HELD)
 ARQ_CALL, ARQ_ANSWER, ARQ_DATA, ARQ_BYE = range(4)
 
 

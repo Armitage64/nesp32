@@ -792,7 +792,7 @@ static void carry(uint32_t began, int sock, nesp_arq_t *arq, struct sockaddr_in 
                   bool answering)
 {
     uint8_t packet[NESP_ARQ_PACKET];
-    uint8_t chunk[NESP_ARQ_HELD];
+    uint8_t chunk[RING];
     uint32_t measured = arq->rtt_count;
     bool gone = false;
     while (!gone) {
@@ -806,6 +806,9 @@ static void carry(uint32_t began, int sock, nesp_arq_t *arq, struct sockaddr_in 
         bool same = serial == began;
         size_t count = 0;
         size_t room = (size_t)(NESP_ARQ_HELD - arq->out_len);
+        if (room > sizeof(chunk)) {
+            room = sizeof(chunk);
+        }
         while (same && count < going.len && count < room) {
             chunk[count] = going.data[(going.at + count) % RING];
             count++;

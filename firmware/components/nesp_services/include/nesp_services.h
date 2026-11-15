@@ -272,7 +272,10 @@ typedef struct {
  * PEER's connection over a network that loses packets. */
 #define NESP_ARQ_HEADER 24
 #define NESP_ARQ_CARRY 32           /* bytes a datagram carries at most */
-#define NESP_ARQ_HELD 96            /* bytes kept each way */
+/* Bytes kept each way: a window of them in flight, for PEER's save, a
+ * network's time there and back at a datagram a millisecond. A game's
+ * few bytes a frame are never more than a datagram carries. */
+#define NESP_ARQ_HELD 2048
 #define NESP_ARQ_NOTE 4
 #define NESP_ARQ_NEEDS (NESP_PEER_DELAY_MAX + 1)
 #define NESP_ARQ_PACKET (NESP_ARQ_HEADER + NESP_ARQ_CARRY)
@@ -282,9 +285,12 @@ typedef struct {
     uint32_t session;
     uint8_t out[NESP_ARQ_HELD];     /* sent, and not yet said to have come */
     uint16_t out_base;              /* where in the stream out[0] is */
-    uint8_t out_len;
+    uint16_t out_len;
+    uint16_t out_sent;              /* how many of out have gone at least once */
+    uint8_t dull;                   /* datagrams in a row that said nothing more of out had come */
+    uint32_t back_at;               /* when a window last went again from the oldest */
     uint8_t in[NESP_ARQ_HELD];      /* come, and not yet read */
-    uint8_t in_len;
+    uint16_t in_len;
     uint16_t in_next;               /* where in the other's stream this end has got to */
     bool sent;
     bool fresh;                     /* there is something new to say */
@@ -875,6 +881,21 @@ typedef struct {
     uint8_t rate_wanted;
     uint8_t rate;
     uint32_t rate_heard_at;
+    /* A game's save, the host's copied to the other before the first tick
+     * (SAVE). Each nesp32 sends its console's sum and length, and, if the
+     * two differ, the host's sends its save and the other's says when its
+     * console has it. Only then do the ticks cross. */
+    bool save_on;                   /* this console asked SAVE: the stream begins with a save's */
+    uint8_t save_head[4];           /* this console's sum and length, as they cross */
+    uint8_t save_head_sent;
+    uint8_t their_head[4];
+    uint8_t their_head_len;
+    uint16_t save_len;
+    uint16_t save_put;              /* the host: bytes of its save sent on */
+    uint16_t save_come;             /* the other: bytes of the host's that have come */
+    bool save_done_sent;            /* the other: its console has the host's save */
+    bool save_done_heard;           /* the host: and it has heard so */
+    uint8_t save_data[NESP_PEER_SAVE_MAX];
     /* A console's RAM (DUMP), and its lines for the log still to go. Last,
      * and kept through peer.c's reset(): a console that has given its
      * session up may say hello again before they have all gone. */

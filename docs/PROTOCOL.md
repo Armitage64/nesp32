@@ -350,6 +350,10 @@ Internet with no port forwarded, by a room's code at the rendezvous
 | `$08` | ROOM | | the same, and nothing done |
 | `$09` | RATE | `PERIOD` | `PERIOD`: the session's line at that rate, both ways, or `0`: the link's |
 | `$0A` | DUMP | `OFFSET[2]`, `BYTES` ... | nothing: the bytes into the console's RAM as the nesp32 keeps it |
+| `$0B` | SAVE | `SUM[2]`, `LENGTH[2]` | `SAVE`: this console's save, and how the two stand |
+| `$0C` | SAVE_PUT | `OFFSET[2]`, `BYTES` ... | `NEXT[2]`: the host's save, for the other, and how far it has gone |
+| `$0D` | SAVE_GET | `OFFSET[2]` | `BYTES` ...: the host's save from there, as much as has come |
+| `$0E` | SAVE_DONE | | `SAVE`: the other console has the host's save |
 | short | TICKS again, in five bytes and four | `N` ticks: `FIRST` and `WANTED`, `BUTTONS[1 or 2]` | `N` ticks: `BUTTONS[1]` |
 
 In every reply but LAST's, `ADDRESS` is the nesp32's own IPv4 address.
@@ -412,6 +416,37 @@ address, over power-off, for LAST to offer the next time.
 
 **A hello ends a game**, as it ends everything: a console that is reset is
 in none, and its nesp32 hangs up.
+
+#### A game's save
+
+A game that keeps a save the two consoles must have alike (Tecmo Super
+Bowl's season) has the host's copied to the other, once the two are
+connected and before the first tick. Each console sends SAVE, with a sum
+of its save and its length, until the two stand otherwise than `WAITING`;
+the first SAVE of a connection, before any TICKS, begins it, and a
+console that never asks has none, and its ticks are as ever.
+
+| `SAVE` | Name | |
+|---|---|---|
+| 0 | WAITING | the other's sum has not come |
+| 1 | SAME | the two are the same: the session may begin |
+| 2 | DIFFERENT | they differ: the host's goes to the other, if its player says yes |
+| 3 | DONE | the other console has the host's save |
+| 4 | GONE | there is no session, or it was lost |
+
+With `DIFFERENT`, the host's console sends its save with SAVE_PUT, from
+the `NEXT` each reply gives (bytes before it are passed over, and bytes
+after a gap are not taken), and its nesp32 sends it on as it can; the
+other's nesp32 keeps it, `PEER_SAVE_MAX` (8192) bytes at the most. The
+other console's player is asked. Yes: it takes the save with SAVE_GET,
+each reply as much as the console's replies hold, and none past what has
+come, and then sends SAVE_DONE, and both stand `DONE`. No: it hangs up
+(LEAVE), and the host's stands `GONE`. Then the ticks cross, tick 0 the
+first byte after the save's.
+
+Between the nesp32s the stream carries, ahead of the ticks, each one's
+`SUM[2]` and `LENGTH[2]`, and, if the two differ, the host's save one way
+and a byte the other, once its console has the save.
 
 #### Meeting in a room
 
@@ -553,7 +588,14 @@ Numbers are low byte first.
 | `NOTE` | four bytes of PEER's, the latest only (below) |
 
 A datagram goes at once when there is a new byte, every 8 ms while any
-byte is not yet said to have come, and every 50 ms otherwise. The one that
+byte is not yet said to have come, and every 50 ms otherwise. Each end
+keeps 2048 bytes each way. More than a datagram carries (a save) goes as a
+window: each new datagram carries the next 32 bytes not yet sent, the
+other end takes them in order and answers at once when one comes past a
+gap, and they go again from the oldest the other lacks after three such
+answers running, or when all have gone and none has been answered for the
+network's time there and back and a half. A game's few bytes are always
+within a datagram, and every one of its datagrams carries all of them. The one that
 calls sends calls, ten a second for three seconds, until one is answered;
 the one that waits answers the first caller and from then on takes only
 that session's datagrams, from wherever they come. An end that hears

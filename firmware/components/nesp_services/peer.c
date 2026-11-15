@@ -235,6 +235,13 @@ static void greet(nesp_peer_t *peer, uint8_t conn, uint32_t now)
         peer->exchanged_at = peer->came_at = peer->lost_at = now;
         peer->alike = 0;
         peer->ours_at = peer->theirs_at = peer->differed_at = 0;
+        peer->save_on = false;
+        peer->save_head_sent = 0;
+        peer->their_head_len = 0;
+        peer->save_put = 0;
+        peer->save_come = 0;
+        peer->save_done_sent = false;
+        peer->save_done_heard = false;
         memset(peer->spread, 0, sizeof(peer->spread));
         memset(peer->since, 0, sizeof(peer->since));
         {
@@ -393,9 +400,23 @@ static void dump_said(nesp_peer_t *peer, uint32_t now)
 
 /* --- a session ------------------------------------------------------------------ */
 
-/* Take what the other nesp32 has sent, as far as there is room for it. */
+static bool save_over(const nesp_peer_t *peer);
+static void save_step(nesp_peer_t *peer);
+
+/* Take what the other nesp32 has sent, as far as there is room for it: the
+ * other console's buttons, or while a save is crossing, that. */
 static void pump(nesp_peer_t *peer)
 {
+    if (peer->save_on && !save_over(peer)) {
+        save_step(peer);
+        if (!save_over(peer)) {
+            if (!peer->lost && !up(peer->hal->peer_state(peer->hal->ctx))) {
+                peer->lost = true;
+                peer->lost_at = peer->now;
+            }
+            return;
+        }
+    }
     size_t room = (size_t)(NESP_PEER_HELD - peer->remote_len);
     if (room == 0) {
         return;
@@ -1056,6 +1077,188 @@ static void rate(nesp_peer_t *peer, const nesp_request_t *request, nesp_reply_t 
     reply->len = 1;
 }
 
+/* --- a game's save ------------------------------------------------------------- */
+
+static bool hosting(const nesp_peer_t *peer)
+{
+    return peer->lobby == NESP_LOBBY_HOST;
+}
+
+static bool save_same(const nesp_peer_t *peer)
+{
+    return memcmp(peer->save_head, peer->their_head, sizeof(peer->save_head)) == 0;
+}
+
+/* Whether the save has crossed, or did not need to: the ticks follow. */
+static bool save_over(const nesp_peer_t *peer)
+{
+    if (peer->save_head_sent < sizeof(peer->save_head)
+        || peer->their_head_len < sizeof(peer->their_head)) {
+        return false;
+    }
+    if (save_same(peer)) {
+        return true;
+    }
+    if (hosting(peer)) {
+        return peer->save_put == peer->save_len && peer->save_done_heard;
+    }
+    return peer->save_come == peer->save_len && peer->save_done_sent;
+}
+
+/* Bytes from the other nesp32: those the session's pump took before this
+ * console asked SAVE, and then the connection's. */
+static size_t save_recv(nesp_peer_t *peer, uint8_t *out, size_t max)
+{
+    if (peer->remote_len != 0) {
+        size_t count = peer->remote_len < max ? peer->remote_len : max;
+        memcpy(out, peer->remote, count);
+        memmove(peer->remote, peer->remote + count, peer->remote_len - count);
+        peer->remote_len = (uint8_t)(peer->remote_len - count);
+        peer->came_ticks -= (uint32_t)count;    /* the pump counted them as ticks */
+        return count;
+    }
+    return peer->hal->peer_recv(peer->hal->ctx, out, max);
+}
+
+/* As far as the save can go now: this console's sum and length out, and
+ * what the other has sent in. */
+static void save_step(nesp_peer_t *peer)
+{
+    if (peer->save_head_sent < sizeof(peer->save_head)) {
+        peer->save_head_sent = (uint8_t)(peer->save_head_sent + peer->hal->peer_send(
+            peer->hal->ctx, peer->save_head + peer->save_head_sent,
+            sizeof(peer->save_head) - peer->save_head_sent));
+    }
+    if (peer->their_head_len < sizeof(peer->their_head)) {
+        peer->their_head_len = (uint8_t)(peer->their_head_len + save_recv(
+            peer, peer->their_head + peer->their_head_len,
+            sizeof(peer->their_head) - peer->their_head_len));
+        if (peer->their_head_len < sizeof(peer->their_head)) {
+            return;
+        }
+    }
+    if (save_same(peer)) {
+        return;
+    }
+    if (hosting(peer)) {
+        uint8_t done;
+        if (!peer->save_done_heard && save_recv(peer, &done, 1) == 1) {
+            peer->save_done_heard = true;
+        }
+    } else if (peer->save_come < peer->save_len) {
+        peer->save_come = (uint16_t)(peer->save_come + save_recv(
+            peer, peer->save_data + peer->save_come, (size_t)(peer->save_len - peer->save_come)));
+    }
+}
+
+static uint8_t save_state(nesp_peer_t *peer)
+{
+    if (!in_session(peer) || !peer->save_on) {
+        return NESP_SAVE_GONE;
+    }
+    if (!peer->lost) {
+        save_step(peer);
+        if (!up(peer->hal->peer_state(peer->hal->ctx))) {
+            peer->lost = true;
+            peer->lost_at = peer->now;
+        }
+    }
+    if (peer->their_head_len < sizeof(peer->their_head)) {
+        return peer->lost ? NESP_SAVE_GONE : NESP_SAVE_WAITING;
+    }
+    if (save_same(peer)) {
+        return NESP_SAVE_SAME;
+    }
+    if (hosting(peer) ? peer->save_done_heard : peer->save_done_sent) {
+        return NESP_SAVE_DONE;
+    }
+    return peer->lost ? NESP_SAVE_GONE : NESP_SAVE_DIFFERENT;
+}
+
+/* SAVE: this console's save, its sum and length; and how the two stand.
+ * The first in a session begins the save's crossing, which only a console
+ * that has sent no buttons yet may begin. */
+static void save(nesp_peer_t *peer, const nesp_request_t *request, nesp_reply_t *reply)
+{
+    if (request->len != 4) {
+        reply->status = NESP_ST_BAD_ARG;
+        return;
+    }
+    uint16_t length = (uint16_t)(request->data[2] | request->data[3] << 8);
+    if (length == 0 || length > NESP_PEER_SAVE_MAX) {
+        reply->status = NESP_ST_BAD_ARG;
+        return;
+    }
+    if (in_session(peer) && !peer->save_on && peer->local_next == 0 && peer->remote_base == 0) {
+        peer->save_on = true;
+        memcpy(peer->save_head, request->data, sizeof(peer->save_head));
+        peer->save_len = length;
+    }
+    reply->data[0] = save_state(peer);
+    reply->len = 1;
+}
+
+/* SAVE_PUT: the host's save, from an offset, to go to the other. The reply
+ * is how far it has gone: bytes before that are passed over, and bytes
+ * that do not follow on from it are not taken. */
+static void save_put(nesp_peer_t *peer, const nesp_request_t *request, nesp_reply_t *reply)
+{
+    if (request->len < 2) {
+        reply->status = NESP_ST_BAD_ARG;
+        return;
+    }
+    uint16_t offset = (uint16_t)(request->data[0] | request->data[1] << 8);
+    size_t count = (size_t)(request->len - 2);
+    if (hosting(peer) && save_state(peer) == NESP_SAVE_DIFFERENT && offset <= peer->save_put
+        && offset + count > peer->save_put) {
+        size_t skip = (size_t)(peer->save_put - offset);
+        size_t most = (size_t)(peer->save_len - peer->save_put);
+        size_t want = count - skip < most ? count - skip : most;
+        peer->save_put = (uint16_t)(peer->save_put + peer->hal->peer_send(
+            peer->hal->ctx, request->data + 2 + skip, want));
+    }
+    reply->data[0] = (uint8_t)peer->save_put;
+    reply->data[1] = (uint8_t)(peer->save_put >> 8);
+    reply->len = 2;
+}
+
+/* SAVE_GET: the host's save from an offset, as much of it as has come and
+ * the reply has room for. */
+static void save_get(nesp_peer_t *peer, const nesp_request_t *request, nesp_reply_t *reply)
+{
+    if (request->len != 2) {
+        reply->status = NESP_ST_BAD_ARG;
+        return;
+    }
+    uint16_t offset = (uint16_t)(request->data[0] | request->data[1] << 8);
+    reply->len = 0;
+    if (hosting(peer) || save_state(peer) != NESP_SAVE_DIFFERENT || offset >= peer->save_come) {
+        return;
+    }
+    size_t count = (size_t)(peer->save_come - offset);
+    if (count > reply->max) {
+        count = reply->max;
+    }
+    memcpy(reply->data, peer->save_data + offset, count);
+    reply->len = (uint8_t)count;
+}
+
+/* SAVE_DONE: the other console has the host's save. */
+static void save_done(nesp_peer_t *peer, const nesp_request_t *request, nesp_reply_t *reply)
+{
+    if (request->len != 0) {
+        reply->status = NESP_ST_BAD_ARG;
+        return;
+    }
+    if (!hosting(peer) && save_state(peer) == NESP_SAVE_DIFFERENT
+        && peer->save_come == peer->save_len) {
+        uint8_t done = 1;
+        peer->save_done_sent = peer->hal->peer_send(peer->hal->ctx, &done, 1) == 1;
+    }
+    reply->data[0] = save_state(peer);
+    reply->len = 1;
+}
+
 static void handle(void *ctx, const nesp_request_t *request, nesp_reply_t *reply)
 {
     nesp_peer_t *peer = ctx;
@@ -1080,6 +1283,18 @@ static void handle(void *ctx, const nesp_request_t *request, nesp_reply_t *reply
         break;
     case NESP_PEER_DUMP:
         dump(peer, request, reply);
+        break;
+    case NESP_PEER_SAVE:
+        save(peer, request, reply);
+        break;
+    case NESP_PEER_SAVE_PUT:
+        save_put(peer, request, reply);
+        break;
+    case NESP_PEER_SAVE_GET:
+        save_get(peer, request, reply);
+        break;
+    case NESP_PEER_SAVE_DONE:
+        save_done(peer, request, reply);
         break;
     default:
         reply->status = NESP_ST_NO_OP;
