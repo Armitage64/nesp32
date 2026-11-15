@@ -1,12 +1,12 @@
-# The web site: the product page, the cartridge and the games' ROM patches
-# to download, and the page that flashes a nesp32 from a browser, put on
-# GitHub Pages.
+# The web site: the product page, the cartridge to download, the ROM
+# patches page with the games' patches, and the page that flashes a nesp32
+# from a browser, put on GitHub Pages.
 #
 # The firmware and the cartridge are the latest release's, as its GitHub
 # release has them: nothing is built here, and a change to the firmware
 # reaches the site only by a release (release.yml, which runs this when
-# it is done). The pages and the ROM patches are main's, and go up when
-# they change, with no release.
+# it is done). The pages and the ROM patches (apps/*/dist/*.bps) are
+# main's, and go up when they change, with no release.
 
 name: Web site
 

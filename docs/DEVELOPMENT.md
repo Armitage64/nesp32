@@ -97,14 +97,16 @@ their own copy. `make bps` in the app writes it, from the original as
 built and verified (Dr. Mario, Tetris, Contra, TMNT II, Bubble Bobble,
 Jackal, River City Ransom) or from `baserom.nes` (Family BASIC); `tools/gen_patch.py` copies
 what it can from the player's ROM and refuses a patch that carries sixteen
-bytes in a row of the game. `make web` puts all eight, as committed, into
-`nesp32-rom-patches.zip` on the web site with `web/patches/README.txt`,
-which says which release of each game a player needs. The site's
-workflow has no copy of any game, so it builds none of the patches: after
-a change to a game, run `make bps` and commit what it writes.
-`tests/test_patch.py` in each app fails while a patch is out of date.
-Each patch's entry in `tools/gen_web.py` gives the first firmware release
-it works with ([RELEASING.md](RELEASING.md)).
+bytes in a row of the game. `make web` puts all eight, as committed, on
+the web site's ROM patches page (`patches/`, from
+`web/patches/index.html`), which says which release of each game a player
+needs and how to apply the patch. The site's workflow has no copy of any
+game, so it builds none of the patches: after a change to a game, run
+`make bps` and commit what it writes. `tests/test_patch.py` in each app
+fails while a patch is out of date. Each patch's entry in `PATCHES` in
+`tools/gen_web.py` gives the first firmware release it works with
+([RELEASING.md](RELEASING.md)). A new game's patch needs an entry there
+and a card on `web/patches/index.html`, or the site's build stops.
 
 ### Versions and releases
 

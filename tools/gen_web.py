@@ -13,10 +13,12 @@ and release.json, which web.yml writes (gh release view --json tagName,published
 and the ROM patches are this tree's, so they go up without a release.
 
     index.html            web/product/index.html, as it is
-    style.css             web/style.css, which both pages use
+    style.css             web/style.css, which the pages use
     nesp32.nes            the cartridge, which the product page links to
-    nesp32-rom-patches.zip  each game's BPS patch, from apps/*/dist/ as
-                          committed, and web/patches/README.txt for players
+    patches/index.html    web/patches/index.html, the ROM patches page: each
+                          game's patch, the release of the game it is applied
+                          to, and how
+    patches/*.bps         each game's BPS patch, from apps/*/dist/ as committed
     img/                  pictures of the programs, from their docs, and
                           img/logo.png and img/logo-dark.png, the header's logo
                           (nes/lib/logo.py) for a light page and a dark one
@@ -127,11 +129,21 @@ PATCHES = [("apps/drmario/dist/drmario_net.bps", "0.2.0"),
            ("apps/family-basic/dist/fbasic.bps", "0.2.0")]
 
 
-def write_patches(path, firmware, release):
-    """The patches and their README in one zip, the same for every build
-    until one of them changes: each entry dated the day of the last commit
-    to them. `firmware` is the site's; with `release`, a patch that needs
-    a later one stops the build."""
+def size(length):
+    """A file's size for people: 1.2 MB, 37 KB or 512 bytes."""
+    if length >= 1024 * 1024:
+        return "%.1f MB" % (length / 1024 / 1024)
+    if length >= 1024:
+        return "%d KB" % round(length / 1024)
+    return "%d bytes" % length
+
+
+def write_patches_page(out, firmware, release, versions):
+    """The ROM patches page, out/patches/index.html, and the patches it
+    links to beside it, as committed: each dated the day of the last commit
+    to it, and the page the day of the last to any of them. `firmware` is the
+    site's; with `release`, a patch that needs a later one stops the build.
+    The page is to link to every patch in PATCHES, and to no other."""
     missing = [name for name, _ in PATCHES if not os.path.exists(os.path.join(ROOT, name))]
     if missing:
         sys.exit("No %s: run make bps in its app." % ", ".join(missing))
@@ -143,20 +155,29 @@ def write_patches(path, firmware, release):
         if release:
             sys.exit(complaint + " Release the firmware first.")
         print("Warning: " + complaint)
-    day = date(*[name for name, _ in PATCHES] + ["web/patches"])
-    stamp = tuple(int(part) for part in (day or "1980-01-01").split("-")) + (0, 0, 0)
-    with open(os.path.join(WEB, "patches", "README.txt")) as f:
-        readme = f.read().replace("{date}", day).replace("{firmware}", needs)
-    entries = [("README.txt", readme.encode())]
-    for name, _ in PATCHES:
-        with open(os.path.join(ROOT, name), "rb") as f:
-            entries.append((os.path.basename(name), f.read()))
-    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
-        for name, data in entries:
-            info = zipfile.ZipInfo(name, stamp)
-            info.compress_type = zipfile.ZIP_DEFLATED
-            info.external_attr = 0o644 << 16
-            archive.writestr(info, data)
+    source = os.path.join(WEB, "patches", "index.html")
+    with open(source) as f:
+        linked = set(re.findall(r'href="([^"/]+\.bps)"', f.read()))
+    names = [os.path.basename(name) for name, _ in PATCHES]
+    unlinked = sorted(set(names) - linked)
+    if unlinked:
+        sys.exit("web/patches/index.html has no link to %s." % ", ".join(unlinked))
+    unknown = sorted(linked - set(names))
+    if unknown:
+        sys.exit("web/patches/index.html links to %s, which PATCHES in tools/gen_web.py "
+                 "has not." % ", ".join(unknown))
+    directory = os.path.join(out, "patches")
+    os.makedirs(directory, exist_ok=True)
+    fill = {"{date}": date(*[name for name, _ in PATCHES]),
+            "{firmware}": needs}
+    marks = dict(versions)
+    for (path, _), name in zip(PATCHES, names):
+        target = os.path.join(directory, name)
+        shutil.copyfile(os.path.join(ROOT, path), target)
+        fill["{date:%s}" % name] = date(path)
+        fill["{size:%s}" % name] = size(os.path.getsize(target))
+        marks[name] = fingerprint(target)
+    page(source, os.path.join(directory, "index.html"), marks, fill)
 
 
 def build(family, directory, prefix, out):
@@ -176,14 +197,18 @@ def fingerprint(path):
         return hashlib.sha256(f.read()).hexdigest()[:8]
 
 
-def page(source, target, versions, release):
+def page(source, target, versions, fill):
     """A page, with each of its files in `versions` (name: fingerprint)
     asked for by a name that changes when the file does: a browser that
-    kept the old one does not go on using it. {version} and {notes} are the
-    release's number and the page of what is new in it."""
+    kept the old one does not go on using it, and each of `fill`'s
+    placeholders ({version}, say) put in. One left over stops the build."""
     with open(source) as f:
         text = f.read()
-    text = text.replace("{version}", release["version"]).replace("{notes}", release["notes"])
+    for placeholder, value in fill.items():
+        text = text.replace(placeholder, value)
+    left = re.findall(r"\{[a-z]+(?::[^}\s]+)?\}", text)
+    if left:
+        sys.exit("%s: nothing for %s" % (os.path.relpath(source), ", ".join(sorted(set(left)))))
     for name, mark in versions.items():
         text = text.replace('%s"' % name, '%s?v=%s"' % (name, mark))
     with open(target, "w") as f:
@@ -283,17 +308,18 @@ def main(out, cart=None, release=None):
             f.write("\n")
     shutil.copyfile(os.path.join(WEB, "style.css"), os.path.join(out, "style.css"))
     shutil.copyfile(cart, os.path.join(out, "nesp32.nes"))
-    write_patches(os.path.join(out, "nesp32-rom-patches.zip"), about["version"], release)
     for name, path in PICTURES:
         shutil.copyfile(os.path.join(ROOT, path), os.path.join(out, "img", name))
     write_logo(os.path.join(out, "img", "logo.png"), accent(), LOGO_OUTLINE_LIGHT, swap_blues=True)
     write_logo(os.path.join(out, "img", "logo-dark.png"))
     # The pages last, since they name the files by what is in them.
-    files = ["style.css", "nesp32.nes", "nesp32-rom-patches.zip"] + ["img/" + name for name in os.listdir(
+    files = ["style.css", "nesp32.nes"] + ["img/" + name for name in os.listdir(
         os.path.join(out, "img"))]
     versions = {name: fingerprint(os.path.join(out, name)) for name in files}
-    page(os.path.join(WEB, "flash", "index.html"), os.path.join(flash, "index.html"), versions, about)
-    page(os.path.join(WEB, "product", "index.html"), os.path.join(out, "index.html"), versions, about)
+    fill = {"{version}": about["version"], "{notes}": about["notes"]}
+    page(os.path.join(WEB, "flash", "index.html"), os.path.join(flash, "index.html"), versions, fill)
+    page(os.path.join(WEB, "product", "index.html"), os.path.join(out, "index.html"), versions, fill)
+    write_patches_page(out, about["version"], release, versions)
     unpacked.cleanup()
     print("%s: nesp32 %s, %s" % (os.path.relpath(out), manifest["version"], manifest["date"]))
 

@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NESP32 ROM patches</title>
+<meta name="description" content="Patches that make the NESP32's online games and Family BASIC from your own copies of the games">
+<link rel="stylesheet" href="../style.css">
+<style>
+  /* Each game's card: its name and download on one line, what it needs under. */
+  .patch { margin: 0 0 16px; }
+  .patch .head { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline;
+                 justify-content: space-between; margin: 0 0 12px; }
+  .patch h3 { margin: 0; }
+  .patch .head small { display: block; }
+  .patch .button { padding: 6px 14px; font-size: 15px; }
+  /* What the original has to be: a label beside each value, stacked on a phone. */
+  .patch dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 16px; margin: 0; }
+  .patch dt { color: var(--dim); }
+  .patch dd { margin: 0; min-width: 0; }
+  @media (max-width: 520px) {
+    .patch dl { grid-template-columns: 1fr; }
+    .patch dd { margin: 0 0 6px; }
+  }
+  code { font: 14px ui-monospace, "SF Mono", Menlo, monospace; overflow-wrap: anywhere; }
+  h2 { margin-top: 40px; }
+  .card h3 { margin-top: 0; }
+  .card ol + h3 { margin-top: 20px; }
+  .card ol, .card ul { margin: 0 0 16px; }
+</style>
+</head>
+<body>
+<main class="wide">
+  <nav><a href="../">&larr; NESP32</a></nav>
+  <h1><picture><source srcset="../img/logo-dark.png" media="(prefers-color-scheme: dark)"><img class="logo" src="../img/logo.png" alt="NESP32" width="360" height="128"></picture></h1>
+  <p class="lead">The software titles below contain copyrighted code
+so the ROMs are not directly available. Patch files are supplied for 
+you to apply to your original copies of the software in order to gain
+all the NESP32 capabilities.</p>
+
+  <div class="card">
+    <p><strong>Requirements:</strong></p>
+    <ul>
+      <li>Your original copy of each program ROM in <code>.nes</code> format;</li>
+      <li>A BPS patcher such as <a href="https://www.marcrobledo.com/RomPatcher.js/">RomPatcher.js</a>
+        which runs in your web browser, or Floating IPS (Flips) for Windows, macOS and Linux;</li>
+      <li>NESP32 firmware {firmware} or later.</li>
+    </ul>
+    <p class="dim"><small>Patches updated {date}.</small></p>
+  </div>
+
+  <h2>Available Patches</h2>
+
+  <div class="card patch">
+    <div class="head">
+      <div><h3>Dr. Mario</h3><small>Online VS &middot; updated {date:drmario_net.bps}</small></div>
+      <a class="button" href="drmario_net.bps" download>drmario_net.bps &middot; {size:drmario_net.bps}</a>
+    </div>
+    <dl>
+      <dt>Needs</dt><dd>Dr. Mario (Japan, USA), the first release (PRG0)</dd>
+      <dt>Size</dt><dd>65552 bytes</dd>
+      <dt>CRC32</dt><dd><code>B1F7E3E9</code></dd>
+      <dt>SHA-1</dt><dd><code>01de1e04c396298358e86468ba96148066688194</code></dd>
+      <dt>Won't work with</dt><dd>the later revision (PRG1, "Rev A")</dd>
+    </dl>
+  </div>
+
+  <div class="card patch">
+    <div class="head">
+      <div><h3>Tetris</h3><small>Online VS &middot; updated {date:tetris_net.bps}</small></div>
+      <a class="button" href="tetris_net.bps" download>tetris_net.bps &middot; {size:tetris_net.bps}</a>
+    </div>
+    <dl>
+      <dt>Needs</dt><dd>Tetris (USA), Nintendo's</dd>
+      <dt>Size</dt><dd>49168 bytes</dd>
+      <dt>CRC32</dt><dd><code>6D72C53A</code></dd>
+      <dt>SHA-1</dt><dd><code>77747840541bfc62a28a5957692a98c550bd6b2b</code></dd>
+      <dt>Won't work with</dt><dd>Tengen's Tetris, or the European release</dd>
+    </dl>
+  </div>
+
+  <div class="card patch">
+    <div class="head">
+      <div><h3>Contra</h3><small>Online co-op &middot; updated {date:contra_net.bps}</small></div>
+      <a class="button" href="contra_net.bps" download>contra_net.bps &middot; {size:contra_net.bps}</a>
+    </div>
+    <dl>
+      <dt>Needs</dt><dd>Contra (USA)</dd>
+      <dt>Size</dt><dd>131088 bytes</dd>
+      <dt>CRC32</dt><dd><code>C50A8304</code></dd>
+      <dt>SHA-1</dt><dd><code>c9ea66bb7cb30ad5343f1721b1d4d3219859319b</code></dd>
+      <dt>Won't work with</dt><dd>Probotector (Europe), or the Japanese Contra</dd>
+      <dt>Plays on</dt><dd>a flash cartridge or emulator with MMC3; the patched ROM has an NES 2.0 header</dd>
+    </dl>
+  </div>
+
+  <div class="card patch">
+    <div class="head">
+      <div><h3>Teenage Mutant Ninja Turtles II</h3><small>Online co-op &middot; updated {date:tmnt2_net.bps}</small></div>
+      <a class="button" href="tmnt2_net.bps" download>tmnt2_net.bps &middot; {size:tmnt2_net.bps}</a>
+    </div>
+    <dl>
+      <dt>Needs</dt><dd>Teenage Mutant Ninja Turtles II: The Arcade Game (USA)</dd>
+      <dt>Size</dt><dd>524304 bytes</dd>
+      <dt>CRC32</dt><dd><code>C9FFBBDB</code></dd>
+      <dt>SHA-1</dt><dd><code>40ff068d2a7be1202d843c2a9dc1220f087a094a</code></dd>
+      <dt>Won't work with</dt><dd>Teenage Mutant Hero Turtles II (Europe), or the Japanese release</dd>
+      <dt>Plays on</dt><dd>a flash cartridge or emulator with MMC3</dd>
+    </dl>
+  </div>
+
+  <div class="card patch">
+    <div class="head">
+      <div><h3>Bubble Bobble</h3><small>Online co-op &middot; updated {date:bubblebobble_net.bps}</small></div>
+      <a class="button" href="bubblebobble_net.bps" download>bubblebobble_net.bps &middot; {size:bubblebobble_net.bps}</a>
+    </div>
+    <dl>
+      <dt>Needs</dt><dd>Bubble Bobble (USA)</dd>
+      <dt>Size</dt><dd>163856 bytes</dd>
+      <dt>CRC32</dt><dd><code>D3A91B41</code></dd>
+      <dt>SHA-1</dt><dd><code>0e40052299ada46f6c2d1172323366f872f90570</code></dd>
+      <dt>Won't work with</dt><dd>the European release, or the Famicom Disk System's</dd>
+      <dt>Plays on</dt><dd>its own cartridge type (MMC1), with 8 KB of RAM that the original has not; the patched ROM has an NES 2.0 header</dd>
+    </dl>
+  </div>
+
+  <div class="card patch">
+    <div class="head">
+      <div><h3>Jackal</h3><small>Online co-op &middot; updated {date:jackal_net.bps}</small></div>
+      <a class="button" href="jackal_net.bps" download>jackal_net.bps &middot; {size:jackal_net.bps}</a>
+    </div>
+    <dl>
+      <dt>Needs</dt><dd>Jackal (USA)</dd>
+      <dt>Size</dt><dd>131088 bytes</dd>
+      <dt>CRC32</dt><dd><code>2E52D091</code></dd>
+      <dt>SHA-1</dt><dd><code>86c392a1d9a731fa48e148afbe60af75f918cb5a</code></dd>
+      <dt>Won't work with</dt><dd>the European release, or the Famicom Disk System's Final Command: Akai Yousai</dd>
+      <dt>Plays on</dt><dd>a flash cartridge or emulator with MMC3 and 8 KB of RAM; the patched ROM has an NES 2.0 header</dd>
+    </dl>
+  </div>
+
+  <div class="card patch">
+    <div class="head">
+      <div><h3>River City Ransom</h3><small>Online co-op &middot; updated {date:rcr_net.bps}</small></div>
+      <a class="button" href="rcr_net.bps" download>rcr_net.bps &middot; {size:rcr_net.bps}</a>
+    </div>
+    <dl>
+      <dt>Needs</dt><dd>River City Ransom (USA)</dd>
+      <dt>Size</dt><dd>262160 bytes</dd>
+      <dt>CRC32</dt><dd><code>C3508F7E</code></dd>
+      <dt>SHA-1</dt><dd><code>a8612a36d9d2739d2b321b6ebb97c2757ccca410</code></dd>
+      <dt>Won't work with</dt><dd>Street Gangs (Europe), or the Japanese Downtown Nekketsu Monogatari</dd>
+      <dt>Plays on</dt><dd>its own cartridge type (MMC3), with 8 KB of RAM and twice the PRG ROM of the original; the patched ROM has an NES 2.0 header</dd>
+      <dt>Firmware</dt><dd>0.3.0 or later</dd>
+    </dl>
+  </div>
+
+  <div class="card patch">
+    <div class="head">
+      <div><h3>Family BASIC</h3><small>Typed on a Bluetooth keyboard &middot; updated {date:fbasic.bps}</small></div>
+      <a class="button" href="fbasic.bps" download>fbasic.bps &middot; {size:fbasic.bps}</a>
+    </div>
+    <dl>
+      <dt>Needs</dt><dd>Family BASIC V3 (Japan)</dd>
+      <dt>Size</dt><dd>40976 bytes</dd>
+      <dt>CRC32</dt><dd><code>667F6EA6</code></dd>
+      <dt>SHA-1</dt><dd><code>21620b454c8b1253afc720feb25be9c8132dbfbc</code></dd>
+      <dt>Won't work with</dt><dd>Family BASIC V1 or V2</dd>
+      <dt>Plays on</dt><dd>a flash cartridge or emulator with MMC1 and battery-backed memory, with a Bluetooth keyboard paired to the NESP32 (a StickS3)</dd>
+    </dl>
+  </div>
+
+  <h2>How to patch</h2>
+  <div class="card">
+    <h3>RomPatcher.js, in your browser</h3>
+    <ol>
+      <li>Open <a href="https://www.marcrobledo.com/RomPatcher.js/">RomPatcher.js</a>.</li>
+      <li>Choose your game's <code>.nes</code> file as the ROM file.</li>
+      <li>Choose the game's <code>.bps</code> from this page as the patch.</li>
+      <li>Press Apply patch. It saves the patched ROM.</li>
+    </ol>
+    <h3>Floating IPS</h3>
+    <ol>
+      <li>Press Apply Patch and choose the <code>.bps</code>.</li>
+      <li>Choose your game's <code>.nes</code> file.</li>
+      <li>Choose where to save the patched ROM.</li>
+    </ol>
+    <p>Copy the patched ROM to your flash cartridge's SD card or your MiSTer as you would
+      any NES game.</p>
+    <p class="note">If the patcher says the ROM is wrong (a checksum or CRC mismatch), your copy
+      is a different release from the one listed above, or has no iNES header. The patch
+      isn't broken: find the right release.</p>
+  </div>
+
+  <h2>In Case of Trouble</h2>
+  <div class="card">
+    <ul>
+      <li>Both players need the same patched version or you will get a "NOT THIS GAME" error in the lobby.</li>
+    </ul>
+    <p>The <a href="https://github.com/Armitage64/nesp32/blob/main/docs/USER_GUIDE.md">user guide</a>
+      contains further information about each software title or jump straight to <a href="https://github.com/Armitage64/nesp32/blob/main/docs/USER_GUIDE.md#11-playing-online-with-a-friend">playing
+      online with a friend</a> or <a href="https://github.com/Armitage64/nesp32/blob/main/docs/USER_GUIDE.md#family-basic-not-on-the-cartridge">Family
+      BASIC</a> sections.</p>
+  </div>
+</main>
+</body>
+</html>
