@@ -1,7 +1,7 @@
 # A Right that nobody pressed, in a netplay session
 
 **Status: found and mended in `apps/drmario` on 2026-10-12. `apps/contra`
-is still to be looked at.** The music's drums are samples, and on a real
+does not have it.** The music's drums are samples, and on a real
 NES the fetch of a sample's byte that falls on a read of the controller
 reads it once more. A session read its controller once, and took what it
 was given.
@@ -89,12 +89,9 @@ press that begins in such a tick is a frame late.
 
 ## What is left
 
-- **Contra.** Its session already reads twice while a sample plays
-  (`net_read_pad` in `apps/contra/net/net.inc`), and was said to have the
-  presses all the same. It asks the channel after the first read, which
-  misses a read spoiled by a sample's last fetch, and that would be rare.
-  Nothing on 2026-10-12 was tried with Contra: a session with the log
-  running, nothing held, is the first thing to do.
+- **Contra** does not have it (November 2026). Its session already read
+  twice while a sample plays (`net_read_pad` in `apps/contra/net/net.inc`);
+  the presses once said of it are not seen.
 - **The MiSTer** did not show it, with a real controller on its SNAC
   port. Why is not known, and it is not a console to look for this kind of
   thing on.
