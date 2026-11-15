@@ -193,7 +193,9 @@ FORCE:
 # On every core: tests/conftest.py builds once and the workers share it.
 # The longest tests go first, one to each worker, from their times the
 # last run (conftest.py, at the top), so the run does not wait on one.
-XDIST := -n auto --dist load --maxschedchunk 1
+# A Python without pytest-xdist runs them one at a time.
+XDIST = $(shell $(PYTHON) -c 'import xdist' 2>/dev/null \
+	&& printf '%s' '-n auto --dist load --maxschedchunk 1')
 
 test:
 	$(PYTHON) -m pytest $(XDIST)

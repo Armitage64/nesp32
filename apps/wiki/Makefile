@@ -90,8 +90,13 @@ verify: $(ROM) $(LINK_ROM)
 preview: | $(BUILD)
 	$(PYTHON) tools/gen_screen.py $(BUILD) --preview $(BUILD)/search.png --reader $(BUILD)/reader.png
 
+# On every core if this Python has pytest-xdist (conftest.py at the top of
+# nesp32 starts the longest first).
+XDIST = $(shell $(PYTHON) -c 'import xdist' 2>/dev/null \
+	&& printf '%s' '-n auto --dist load --maxschedchunk 1')
+
 test:
-	$(PYTHON) -m pytest
+	$(PYTHON) -m pytest $(XDIST)
 
 clean:
 	rm -rf $(BUILD)
