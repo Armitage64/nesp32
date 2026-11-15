@@ -39,3 +39,13 @@ def test_png_diff_round_trip(tmp_path):
     png_diff.save(pb, 5, 4, b)
     assert png_diff.load(pa) == (5, 4, a)
     assert png_diff.diff(png_diff.load(pa), png_diff.load(pb)) == [(3, 2)]
+
+
+def test_lua_bridge():
+    lua = mesen_run.lua_script(10, [], [10], [], "/o", port=12345)
+    assert 'BRIDGE_PORT = 12345' in lua
+    assert lua.index("nesp32.lua") < lua.index("local OUT")
+    assert os.path.exists(mesen_run.NESP32_LUA)
+    with open(mesen_run.NESP32_LUA) as f:
+        assert "local BRIDGE_PORT = 7878" in f.read()   # what the gsub replaces
+    assert "BRIDGE_PORT" not in mesen_run.lua_script(10, [], [10], [], "/o")

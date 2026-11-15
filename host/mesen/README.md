@@ -212,9 +212,13 @@ python3 tools/mesen_run.py build/web/nesp32.nes \
     --press 200:down:3 --press 230:down:3 --press 270:a:3 --shot 400 --ram 400
 ```
 
-The files go in `build/mesen-run`. It needs no bridge, so a nesp32 ROM
-stops at WAITING FOR LINK; it is for the picture, sound and mapper timing
-that the py65 consoles in the apps' tests leave out. `MESEN` names the
+The files go in `build/mesen-run`. It is for the picture, sound and mapper
+timing that the py65 consoles in the apps' tests leave out. With no bridge
+a nesp32 ROM stops at WAITING FOR LINK; `--bridge` (after `make host`)
+starts `nesp32_bridge.py` on a free port and runs `nesp32.lua` ahead of the
+runner's own script, so the programs reach the Internet as above, and the
+bridge's log is `bridge.log` beside the shots. Mesen runs faster than real
+time with no window, so a stream's sound has gaps in the log. `MESEN` names the
 program (default: `/Applications/Mesen.app`). Tried with MesenCE on macOS.
 
 `tools/png_diff.py A.png B.png [--out DIFF.png]` says which pixels of two
