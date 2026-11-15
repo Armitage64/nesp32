@@ -13,6 +13,7 @@
 - The Stick's screen says "Firmware update available" in red, with no console running a program, when the web site has newer firmware
 
 ### Other
+- The web site's ROM patches are a page instead of a zip: each game's patch to download, the release of the game it needs (size, CRC32 and SHA-1), and how to apply it
 - Mesen emulator support for NESP32 added for local testing and development (#74)
 - NESP32 logo displayed on Stick LCD screen at boot (#75)
 - The Stick's log says why each online session ended, and Bubble Bobble sends its RAM to the log when the two games differ

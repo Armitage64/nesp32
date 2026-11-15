@@ -194,14 +194,15 @@ Jackal and River City Ransom) are **not** on
 the cartridge, because they contain the original games. See
 [Chapter 11](#11-playing-online-with-a-friend). Nor is
 [Family BASIC](#family-basic-not-on-the-cartridge), for the same reason.
-For these you patch your own copy of each game instead, with the **ROM
-patches** from the NESP32 home page ("Download ROM patches").
+For these you patch your own copy of each game instead, with the
+[ROM patches](https://nesp32.retrobits.tv/patches/) from the NESP32 home
+page ("ROM patches").
 
 > **Keep the firmware and the cartridge in step.** When you update one,
 > update the other too, from the same release. A mismatched pair can show
 > **UPDATE NESP32** or **NEEDS AN UPDATE**, or behave oddly. The ROM
-> patches are updated on their own; their README gives the oldest firmware
-> they work with.
+> patches are updated on their own; the ROM patches page gives the oldest
+> firmware they work with.
 
 ---
 
@@ -631,9 +632,9 @@ keyboard. On a Famicom it needs the Family keyboard, which plugs into a
 port the NES doesn't have; here the NESP32's keyboard takes its place.
 
 **Getting it:** it contains the original program, so it isn't on the
-cartridge and can't be handed out ready-made. Download the **ROM
-patches** from the [NESP32 home page](https://nesp32.retrobits.tv/)
-("Download ROM patches") and unzip them. Apply `fbasic.bps` to your own
+cartridge and can't be handed out ready-made. Download `fbasic.bps`
+from the [ROM patches](https://nesp32.retrobits.tv/patches/) page (on
+the NESP32 home page, "ROM patches"). Apply it to your own
 copy of Family BASIC V3 (40976 bytes, CRC32 `667F6EA6`) with a BPS
 patcher such as [RomPatcher.js](https://www.marcrobledo.com/RomPatcher.js/)
 (it runs in a web browser) or Floating IPS, and put the result on your
@@ -723,15 +724,16 @@ Each player needs:
 **Getting the games:** these contain the original games, so they can't
 be handed out ready-made. Instead, you patch your own copy of each game:
 
-1. Download the **ROM patches** from the
-   [NESP32 home page](https://nesp32.retrobits.tv/) ("Download ROM
-   patches") and unzip them.
+1. Download the game's patch from the
+   [ROM patches](https://nesp32.retrobits.tv/patches/) page (on the
+   NESP32 home page, "ROM patches").
 2. Open a BPS patcher, such as
    [RomPatcher.js](https://www.marcrobledo.com/RomPatcher.js/) (it runs
    in a web browser) or Floating IPS.
 3. Apply the game's patch to your own copy of the game, below. The
    patcher refuses a copy that isn't the right release: a different
-   release won't work, and the zip's README lists the releases that don't.
+   release won't work, and the ROM patches page lists the releases that
+   don't.
 4. Put the patched ROM on your flash cartridge.
 
 | Game | Patch | Apply it to | Size and CRC32 |
@@ -747,7 +749,7 @@ be handed out ready-made. Instead, you patch your own copy of each game:
 Both players need the same patched game. Use the patches from the same
 release as your NESP32's firmware. The online games' patches from November
 2026 on don't play with earlier ones, and a room says `NOT THIS GAME`:
-both players patch again from the same download. Contra, TMNT II and
+both players patch again from the ROM patches page. Contra, TMNT II and
 Jackal play a little faster online with firmware newer than 0.2.0, which
 runs their link to the NESP32 faster; with 0.2.0 they play as before.
 River City Ransom needs firmware 0.3.0 or newer. Ask on the

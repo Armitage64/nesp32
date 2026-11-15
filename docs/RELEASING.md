@@ -99,9 +99,13 @@ says it is `-dev`. `make web-serve` serves it.
 
 ## The ROM patches
 
-`nesp32-rom-patches.zip` is made from `apps/*/dist/*.bps` as committed,
-and is dated by the last commit to them. Each patch in `PATCHES` in
-`tools/gen_web.py` gives the first release of the firmware it works with,
-and the zip's README tells players the highest one. If a patch needs a
+The site's ROM patches page, `patches/`, is `web/patches/index.html`
+with each `apps/*/dist/*.bps` as committed beside it. Each game's card on
+the page says the day of the last commit to its patch and the patch's
+size, and the page says the day of the last commit to any of them. Each
+patch in `PATCHES` in `tools/gen_web.py` gives the first release of the
+firmware it works with, and the page tells players the highest one. The
+page and `PATCHES` have to agree: the build stops if a patch has no link
+on the page, or the page links to one that `PATCHES` doesn't have. If a patch needs a
 firmware that has not been released yet, web.yml fails and the site stays
 as it was: release the firmware first. `make web` only warns.

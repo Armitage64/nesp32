@@ -84,7 +84,7 @@ Please join our [Discord](https://discord.gg/kwSC7pwtmb)!
 | [Bluesky](apps/bluesky) | Bluesky posts from a list of favorite accounts the NESP32 remembers, after [ConnectedNES](https://github.com/hxlnt/connectedNES) |
 | [Family BASIC](apps/family-basic)* | Family BASIC V3 using a Bluetooth keyboard. Save and load programs to the NESP32 instead of cassette |
 
-\* These titles contains copyrighted material and cannot be provided. Instead, download the patches from the [home page](https://nesp32.retrobits.tv/), and apply them to your own original ROM files.
+\* These titles contains copyrighted material and cannot be provided. Instead, download the patches from the [ROM patches](https://nesp32.retrobits.tv/patches/) page, and apply them to your own original ROM files.
 
 ## How it works
 
@@ -103,7 +103,7 @@ Please join our [Discord](https://discord.gg/kwSC7pwtmb)!
 [Online Firmware Installer](https://nesp32.retrobits.tv/flash/).
 
 **Just want to play the online games or Family BASIC?** You don't need to build those either:
-download the ROM patches from the [home page](https://nesp32.retrobits.tv/) and apply each to
+download the patches from the [ROM patches](https://nesp32.retrobits.tv/patches/) page and apply each to
 your own copy of the game ([User Guide](docs/USER_GUIDE.md#11-playing-online-with-a-friend)).
 
 The steps below are for building the firmware and ROMs from source.

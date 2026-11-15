@@ -17,8 +17,8 @@ NES 2.0.
 
 **To play, you don't need to build anything:** apply `dist/contra_net.bps` to
 your own copy of the game (["The patch, for players"](#the-patch-for-players),
-below), or get every game's patch at once from **Download ROM patches** on
-the [home page](https://nesp32.retrobits.tv/).
+below), or download it from the
+[ROM patches](https://nesp32.retrobits.tv/patches/) page.
 
 **The game is not in this repository.** What is here is the netplay code,
 its tests, and a few lines to be put into the game's own code. The build
@@ -47,8 +47,8 @@ firmware's link and services for this computer.
 
 ## The patch, for players
 
-To play, there is no need to build anything. `dist/contra_net.bps`, also in
-**Download ROM patches** on the [home page](https://nesp32.retrobits.tv/), is the
+To play, there is no need to build anything. `dist/contra_net.bps`, also on the
+[ROM patches](https://nesp32.retrobits.tv/patches/) page, is the
 netplay ROM as a patch to the US release: apply it to your own copy of the game
 with any BPS patcher (Floating IPS, or RomPatcher.js in a browser), and
 put the ROM it makes on a flash cartridge. A BPS patch knows the ROM it is
