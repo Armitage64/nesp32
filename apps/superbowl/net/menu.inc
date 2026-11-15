@@ -73,6 +73,11 @@ MARK_CHR_BANK   = $0F
 ; $1000 and the background's at $0000, 8x8 sprites, a step of one along a
 ; row, the first nametable.
 MENU_PPUCTRL    = $88
+; And with no NMI, while a frame of the menu is at work: the game's NMI
+; keeps the registers it saves in memory (NMI_A, NMI_X, NMI_Y), not on the
+; stack, and one that broke into a frame of the menu that ran long would
+; give the main thread back another's (menu_nmi_on).
+MENU_PPUCTRL_QUIET = MENU_PPUCTRL & $7F
 
 IP_TILES        = 15            ; 192.168.001.023
 CODE_TILES      = NESP_PEER_CODE    ; K7QF
@@ -121,7 +126,11 @@ menu_way        = menu_vars + 54    ; 00 by a room's code, 01 by an address
 menu_code       = menu_vars + 55    ; 4: the code to join, each a letter's number
 menu_room       = menu_vars + 59    ; 4: the room's code, as the nesp32 gave it
 menu_why        = menu_vars + 63    ; why a meeting failed: NESP_MEET_*
-MENU_VARS       = 64
+menu_sum        = menu_vars + 64    ; 2: this console's save's sum, high byte first
+menu_at         = menu_vars + 66    ; 2: where in the save the next piece is
+menu_tries      = menu_vars + 68    ; 2: exchanges that came to nothing
+menu_save       = menu_vars + 70    ; the saves' state, from the last SAVE: NESP_SAVE_*
+MENU_VARS       = 71
 
 menu_oam        = SPRITE_DMA_ADDR   ; 256: the sprites, the game's page for the OAM's DMA
 
@@ -132,6 +141,8 @@ MODE_MAIN       = 0
 MODE_HOSTING    = 1
 MODE_EDIT       = 2
 MODE_JOINING    = 3
+MODE_SAVE       = 4             ; the two saves compared (menu_mode_save)
+MODE_ASK        = 5             ; they differ: player 2 is asked
 
 DIRTY_OWN       = $01           ; this nesp32's address, or why there is none
 DIRTY_DIGITS    = $02
@@ -153,6 +164,8 @@ menu_nmi:
     rts
 :
     inc menu_busy
+    lda #MENU_PPUCTRL_QUIET
+    sta NES_PPU_CTRL
     jsr menu_sprites
     ; What the last frame left to draw.
     lda menu_draw_len
@@ -196,16 +209,28 @@ menu_nmi:
     sta menu_press
     sty menu_pad_old
     inc menu_count
+    lda menu_mode
+    cmp #MODE_SAVE
+    bcs @drawn                  ; the save's modes make their own exchanges
     lda menu_pending
     beq @link
     jsr menu_exchange
 
 @link:
     jsr menu_link
+
+@drawn:
     jsr menu_draw
     jsr menu_handle
     lda #$00
     sta menu_busy
+
+; The NMI on again, at the end of a frame of the menu, and not for a
+; vblank that has begun while it was at work.
+menu_nmi_on:
+    lda NES_PPU_STATUS
+    lda #MENU_PPUCTRL
+    sta NES_PPU_CTRL
     rts
 
 ; The mode's handler, which ends the frame.
@@ -221,23 +246,33 @@ menu_handle:
 
 menu_handlers:
     .word menu_mode_main-1, menu_mode_hosting-1, menu_mode_edit-1, menu_mode_joining-1
+    .word menu_mode_save-1, menu_mode_ask-1
 
-; The marker beside the line the cursor is on, on the first screen, and
-; hidden on the others; and the sprites to the OAM, first in the NMI as the
-; game sends them.
+; The marker beside the line the cursor is on, on the first screen and on
+; player 2's question, and hidden on the others; and the sprites to the
+; OAM, first in the NMI as the game sends them.
 menu_sprites:
     ldy #MARK_HIDDEN
-    lda menu_mode
-    bne :+
+    lda #9 * 8
+    ldx menu_mode
+    bne @ask
     ldx menu_cursor
     ldy menu_mark_y,x
-:
+    bne @set
+
+@ask:
+    cpx #MODE_ASK
+    bne @set
+    ldx menu_role
+    beq @set                    ; player 1 only waits
+    ldx menu_cursor
+    ldy menu_ask_y,x
+    lda #ASK_COLUMN * 8 - 16
+
+@set:
     sty menu_oam
-    lda #$00
-    sta NES_OAM_ADDR
-    lda #>menu_oam
-    sta NES_OAM_DMA
-    rts
+    sta menu_oam+3
+    jmp menu_sprites_out
 
 .assert MODE_MAIN = 0, error
 
@@ -245,6 +280,11 @@ menu_sprites:
 ; sprite is drawn a line below its Y.
 menu_mark_y:
     .byte 9 * 8 - 1, 11 * 8 - 1, 13 * 8 - 1
+
+; Beside YES and NO, on player 2's question.
+ASK_COLUMN      = 15
+menu_ask_y:
+    .byte 15 * 8 - 1, 17 * 8 - 1
 
 ; The arrow, to the left of the first screen's lines, which begin at
 ; column 11.
@@ -257,7 +297,7 @@ menu_picture:
     lda #$00
     sta NES_PPU_SCROLL
     sta NES_PPU_SCROLL
-    lda #MENU_PPUCTRL
+    lda #MENU_PPUCTRL_QUIET    ; on at the frame's end (menu_nmi_on)
     sta NES_PPU_CTRL
     lda #$1e
     sta NES_PPU_MASK
@@ -303,7 +343,7 @@ menu_enter:
     jsr menu_show_main
     lda #$00
     sta menu_busy
-    rts
+    jmp menu_nmi_on
 
 ; --- the first screen ------------------------------------------------------------
 
@@ -427,14 +467,7 @@ menu_mode_hosting:
 
 @session:
     lda #$00
-
-; Into a session, as player A + 1.
-menu_leave_session:
-    sta menu_role
-    jsr menu_leave
-    lda menu_role
-    ldx menu_delay
-    jmp net_start_session
+    jmp menu_leave_session      ; player 1
 
 menu_exit:
     rts
@@ -1312,7 +1345,13 @@ menu_drawn:
 ; Carry set on the join screen.
 menu_joining:
     lda menu_mode
+    cmp #MODE_SAVE
+    bcs @not
     cmp #MODE_EDIT
+    rts
+
+@not:
+    clc
     rts
 
 .assert MODE_JOINING > MODE_EDIT && MODE_HOSTING < MODE_EDIT && MODE_MAIN < MODE_EDIT, error
@@ -1502,13 +1541,12 @@ menu_show:
     beq @string
 
 @shown:
-    ; The NMI on again, and not for a vblank that has already begun: the
-    ; next one turns the picture on.
+    ; The scroll back, for the next NMI, which turns the picture on.
     lda NES_PPU_STATUS
     lda #$00
     sta NES_PPU_SCROLL
     sta NES_PPU_SCROLL
-    lda #MENU_PPUCTRL
+    lda #MENU_PPUCTRL_QUIET    ; on at the frame's end (menu_nmi_on)
     sta NES_PPU_CTRL
     rts
 
@@ -1596,15 +1634,21 @@ menu_tile:
 
 menu_screens_lo:
     .byte <menu_screen_main, <menu_screen_hosting, <menu_screen_join, <menu_screen_room
-    .byte <menu_screen_join_room
+    .byte <menu_screen_join_room, <menu_screen_save, <menu_screen_ask, <menu_screen_wait
+    .byte <menu_screen_copy
 menu_screens_hi:
     .byte >menu_screen_main, >menu_screen_hosting, >menu_screen_join, >menu_screen_room
-    .byte >menu_screen_join_room
+    .byte >menu_screen_join_room, >menu_screen_save, >menu_screen_ask, >menu_screen_wait
+    .byte >menu_screen_copy
 SCREEN_MAIN      = 0
 SCREEN_HOSTING   = 1            ; by address
 SCREEN_JOIN      = 2
 SCREEN_ROOM      = 3            ; by room code
 SCREEN_JOIN_ROOM = 4
+SCREEN_SAVE      = 5            ; the saves compared
+SCREEN_ASK       = 6            ; they differ: player 2's
+SCREEN_WAIT      = 7            ; and player 1's
+SCREEN_COPY      = 8            ; player 2's, as its save is replaced
 
 menu_screen_main:
     screen_text 4, 10, "NETWORK GAME"
@@ -1645,3 +1689,449 @@ menu_screen_join_room:
     screen_text 24, 12, "B - BACK"
     screen_text 26, 9, "SELECT - BY IP"
     .byte 0
+
+menu_screen_save:
+    screen_text 4, 10, "NETWORK GAME"
+    screen_text 12, 6, "COMPARING THE SAVES"
+    .byte 0
+
+; Player 2's save is to be replaced by player 1's.
+.macro save_question
+    screen_text 4, 10, "NETWORK GAME"
+    screen_text 8, 5, "PLAYER 2 SAVE WILL BE"
+    screen_text 10, 3, "REPLACED BY PLAYER 1 SAVE"
+.endmacro
+
+menu_screen_ask:
+    save_question
+    screen_text 12, 11, "GO ON WITH IT"
+    screen_text 15, ASK_COLUMN, "YES"
+    screen_text 17, ASK_COLUMN, "NO"
+    .byte 0
+
+menu_screen_wait:
+    save_question
+    screen_text 15, 6, "WAITING FOR PLAYER 2"
+    .byte 0
+
+menu_screen_copy:
+    save_question
+    screen_text 15, 8, "COPYING THE SAVE"
+    .byte 0
+
+; --- the save ----------------------------------------------------------------------
+
+; When the nesp32s are connected, the two consoles must have the same save
+; (SAVE_START to SAVE_END, net/net_ram.inc) before a session: the game
+; reads its season, playbooks, starters and the seed of its random numbers
+; from it. Each sends its nesp32 a sum of its own (PEER SAVE). The same:
+; the session begins. Not: player 2's screen asks whether its save may be
+; replaced by player 1's, and player 1's waits for the answer while it
+; sends its save, a piece a frame (SAVE_PUT), to the other nesp32, which
+; keeps it. Yes: player 2's console takes it from its nesp32 (SAVE_GET)
+; into its save RAM, all at once with the NMI off, says so (SAVE_DONE),
+; and both begin the session. No, or B: player 2 hangs up, and both are
+; back at the first screen.
+
+; Exchanges in a row with no reply before the save, and the session, are
+; given up.
+SAVE_TRIES      = 60
+COPY_TRIES      = $10           ; in 256s, as the copy counts them: some seconds
+
+; The first of the save's bytes into menu_ptr.
+menu_save_first:
+    lda #<SAVE_START
+    sta menu_ptr
+    lda #>SAVE_START
+    sta menu_ptr+1
+    rts
+
+; menu_ptr on to the save's next byte, past the netplay's stretch. Z set
+; when it is the save's end. Changes only A.
+menu_save_step:
+    inc menu_ptr
+    bne :+
+    inc menu_ptr+1
+:
+    lda menu_ptr
+    cmp #<SAVE_GAP
+    bne @end
+    lda menu_ptr+1
+    cmp #>SAVE_GAP
+    bne @end
+    lda #<SAVE_GAP_END
+    sta menu_ptr
+    lda #>SAVE_GAP_END          ; not 0: Z clear
+    sta menu_ptr+1
+    rts
+
+@end:
+    lda menu_ptr
+    cmp #<SAVE_END
+    bne @exit
+    lda menu_ptr+1
+    cmp #>SAVE_END
+
+@exit:
+    rts
+
+; The byte of the save at offset menu_at, into menu_ptr.
+menu_save_at:
+    clc
+    lda menu_at
+    adc #<SAVE_START
+    sta menu_ptr
+    lda menu_at+1
+    adc #>SAVE_START
+    sta menu_ptr+1
+    lda menu_ptr
+    cmp #<SAVE_GAP
+    lda menu_ptr+1
+    sbc #>SAVE_GAP
+    bcc @exit
+    lda menu_ptr
+    adc #<(SAVE_GAP_END - SAVE_GAP - 1)     ; carry set
+    sta menu_ptr
+    lda menu_ptr+1
+    adc #>(SAVE_GAP_END - SAVE_GAP)
+    sta menu_ptr+1
+
+@exit:
+    rts
+
+; Carry clear while menu_at is short of the save's length, set once it
+; is all of it.
+menu_save_short:
+    lda menu_at
+    cmp #<SAVE_LENGTH
+    lda menu_at+1
+    sbc #>SAVE_LENGTH
+    rts
+
+; Op X of PEER's, with Y bytes of payload. Carry clear if a good reply came.
+menu_save_call:
+    lda #NESP_SVC_PEER
+    jsr nesp_call
+    bcs @missed
+    lda nesp_status
+    bne @missed
+    clc
+    rts
+
+@missed:
+    sec
+    rts
+
+; Into the session, the save settled.
+menu_start_session:
+    jsr menu_leave
+    lda menu_role
+    ldx menu_delay
+    jmp net_start_session
+
+; The nesp32s are connected, and this console is player A + 1: the save's
+; sum, and the two compared.
+menu_leave_session:
+    sta menu_role
+    lda #$FF
+    sta nesp_crc_hi
+    sta nesp_crc_lo
+    jsr menu_save_first
+    ldy #$00
+
+@byte:
+    lda (menu_ptr),y
+    jsr nesp_crc                ; keeps Y
+    jsr menu_save_step
+    bne @byte
+    lda nesp_crc_hi
+    sta menu_sum
+    lda nesp_crc_lo
+    sta menu_sum+1
+    lda #$00
+    sta menu_tries
+    sta menu_at
+    sta menu_at+1
+    sta menu_cursor             ; YES, when it is asked
+    lda #MODE_SAVE
+    ldx #SCREEN_SAVE
+    jsr menu_show
+    lda #$00
+    sta menu_dirty
+    rts
+
+; SAVE, with the sum and the length: carry clear and menu_save the two
+; saves' state (NESP_SAVE_*), or carry set if no good reply came.
+menu_save_ask:
+    lda menu_sum
+    sta nesp_request
+    lda menu_sum+1
+    sta nesp_request+1
+    lda #<SAVE_LENGTH
+    sta nesp_request+2
+    lda #>SAVE_LENGTH
+    sta nesp_request+3
+    ldx #NESP_PEER_SAVE
+    ldy #$04
+    jsr menu_save_call
+    bcs @missed
+    lda nesp_reply
+    sta menu_save
+    lda #$00
+    sta menu_tries
+    clc
+    rts
+
+@missed:
+    inc menu_tries
+    sec
+    rts
+
+; Comparing the two saves.
+menu_mode_save:
+    lda menu_count
+    and #$03
+    bne @exit
+    jsr menu_save_ask
+    bcs menu_save_missed
+    lda menu_save
+    cmp #NESP_SAVE_WAITING
+    beq @exit
+    cmp #NESP_SAVE_SAME
+    bne :+
+    jmp menu_start_session
+:
+    cmp #NESP_SAVE_DIFFERENT
+    bne menu_save_gone
+    ; They differ: player 2 is asked, and player 1 waits.
+    ldx #SCREEN_ASK
+    lda menu_role
+    bne :+
+    ldx #SCREEN_WAIT
+:
+    lda #MODE_ASK
+    jsr menu_show
+    lda #$00
+    sta menu_dirty
+
+@exit:
+    rts
+
+; No reply: given up after SAVE_TRIES.
+menu_save_missed:
+    lda menu_tries
+    cmp #SAVE_TRIES
+    bcs menu_save_gone
+    rts
+
+; The session is off: player 2 said no, or the other is gone. Hang up, and
+; back to the first screen.
+menu_save_gone:
+    lda #NESP_PEER_LEAVE
+    jsr menu_command
+    jmp menu_show_main
+
+; The saves differ. Player 1 sends its save, and waits; player 2 says yes
+; or no.
+menu_mode_ask:
+    lda menu_role
+    bne @asked
+    jsr menu_save_short
+    bcs @wait
+    jsr menu_put_piece
+
+@wait:
+    lda menu_count
+    and #$07
+    bne @exit
+    jsr menu_save_ask
+    bcs menu_save_missed
+    lda menu_save
+    cmp #NESP_SAVE_DONE
+    bne :+
+    jmp menu_start_session
+:
+    cmp #NESP_SAVE_DIFFERENT
+    bne menu_save_gone
+
+@exit:
+    rts
+
+@asked:
+    lda menu_press
+    and #BTN_UP | BTN_DOWN
+    beq @pick
+    lda menu_cursor
+    eor #$01
+    sta menu_cursor
+
+@pick:
+    lda menu_press
+    and #BTN_B
+    bne menu_save_gone          ; as no
+    lda menu_press
+    and #BTN_A | BTN_START
+    beq @still
+    lda menu_cursor
+    bne menu_save_gone          ; NO
+    jmp menu_copy
+
+@still:
+    ; Is player 1 still there?
+    lda menu_count
+    and #$0F
+    bne @exit
+    jsr menu_save_ask
+    bcs menu_save_missed
+    lda menu_save
+    cmp #NESP_SAVE_DIFFERENT
+    bne menu_save_gone
+    rts
+
+; Player 1: the next piece of its save, from menu_at, and how far the
+; nesp32 has taken it.
+menu_put_piece:
+    jsr menu_save_at
+    lda menu_at
+    sta nesp_request
+    lda menu_at+1
+    sta nesp_request+1
+    ldx #$00
+    ldy #$00
+
+@byte:
+    lda (menu_ptr),y
+    sta nesp_request+2,x
+    inx
+    jsr menu_save_step
+    beq @send
+    cpx #SAVE_PIECE
+    bne @byte
+
+@send:
+    txa
+    clc
+    adc #$02
+    tay
+    ldx #NESP_PEER_SAVE_PUT
+    jsr menu_save_call
+    bcs @exit
+    lda nesp_reply
+    sta menu_at
+    lda nesp_reply+1
+    sta menu_at+1
+
+@exit:
+    rts
+
+; Player 2 said yes: once all of player 1's save is at its nesp32, it is
+; copied into the save RAM, with the NMI off, the screen saying so. Then
+; SAVE_DONE, and the session. Does not return.
+menu_copy:
+    lda #MODE_ASK
+    ldx #SCREEN_COPY
+    jsr menu_show
+    lda #MARK_HIDDEN
+    sta menu_oam
+    jsr menu_sprites_out
+    jsr menu_picture
+    lda #$00
+    sta menu_tries
+    sta menu_tries+1
+    ; All of it there: its last byte.
+    lda #<(SAVE_LENGTH - 1)
+    sta menu_at
+    lda #>(SAVE_LENGTH - 1)
+    sta menu_at+1
+
+@there:
+    jsr menu_get_piece
+    bcs @there                  ; or given up
+    lda nesp_reply_len
+    beq @there
+    lda #$00
+    sta menu_at
+    sta menu_at+1
+
+@piece:
+    jsr menu_get_piece
+    bcs @piece
+    ldx nesp_reply_len
+    beq @piece
+    stx menu_tmp
+    jsr menu_save_at
+    ldx #$00
+    ldy #$00
+
+@byte:
+    lda nesp_reply,x
+    sta (menu_ptr),y
+    jsr menu_save_step
+    inx
+    cpx menu_tmp
+    bne @byte
+    txa
+    clc
+    adc menu_at
+    sta menu_at
+    bcc :+
+    inc menu_at+1
+:
+    jsr menu_save_short
+    bcc @piece
+
+@done:
+    ldx #NESP_PEER_SAVE_DONE
+    ldy #$00
+    jsr menu_save_call
+    bcs @again
+    lda nesp_reply
+    cmp #NESP_SAVE_DONE
+    bne @again
+    jmp menu_start_session
+
+@again:
+    jsr menu_copy_tried
+    jmp @done
+
+; SAVE_GET from menu_at. Carry set if no good reply came, and the copy is
+; given up after COPY_TRIES of those, or of replies with nothing.
+menu_get_piece:
+    lda menu_at
+    sta nesp_request
+    lda menu_at+1
+    sta nesp_request+1
+    ldx #NESP_PEER_SAVE_GET
+    ldy #$02
+    jsr menu_save_call
+    bcs menu_copy_tried
+    lda nesp_reply_len
+    bne @exit
+    jsr menu_copy_tried
+    clc
+
+@exit:
+    rts
+
+; One more try that came to nothing. Too many: the copy is given up, and
+; the console starts again, as LOCAL GAME, with what it has of the save.
+menu_copy_tried:
+    inc menu_tries
+    bne @exit
+    inc menu_tries+1
+    lda menu_tries+1
+    cmp #COPY_TRIES
+    bcc @exit
+    jmp menu_leave_local
+
+@exit:
+    sec
+    rts
+
+; The sprites to the OAM.
+menu_sprites_out:
+    lda #$00
+    sta NES_OAM_ADDR
+    lda #>menu_oam
+    sta NES_OAM_DMA
+    rts

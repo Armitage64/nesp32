@@ -11,8 +11,9 @@ done and tested in the simulation: two consoles, each with nesp32's
 firmware, play the same game tick by tick from a session's start through
 the menus to a preseason game, MAN VS MAN, and on into play. The menu
 (Select at the title) hosts and joins a game by a room's code or an
-address, in the simulation. The save RAM is not yet made the same on
-both consoles, and nothing has been tried on hardware.
+address, and makes the two consoles' saves the same, player 1's copied to
+player 2's when player 2 says yes, all in the simulation. Nothing has been
+tried on hardware.
 "To do", at the end, is where to pick it up.
 
 **The game is not in this repository.** Whoever builds puts a copy of
@@ -185,6 +186,38 @@ intro's Start does, or, for a session, which both consoles begin from the
 title, to the main menu, some 30 frames after the reset. A reset of the
 console's, or a power-on, finds no mark, and the intro plays.
 
+## The save
+
+A session's two consoles must have the same save RAM: the game reads its
+season, playbooks, starters, the teams' control and the seed of its random
+numbers from it. The save (`SAVE_START` to `SAVE_END`, `net/net_ram.inc`)
+is $6403 (`SAVED_RANDOM_1`) to the end of the season ($7F71), 6,763 bytes
+but for the 260 the game leaves empty at $6EFE, which are the netplay's.
+Before it, $6000-$6402 is the scratch of the game's scenes and sprites,
+which is not compared or copied, and which a session's start clears on
+both consoles.
+
+When the nesp32s are connected, each console works out a CRC of its save
+(some frames, with the NMI off) and sends it with PEER's SAVE (nesp32's
+`docs/PROTOCOL.md`, "A game's save"). The same: the session begins. Not:
+player 2's screen says that its save will be replaced by player 1's, YES
+or NO, and player 1's says it is waiting for player 2. Meanwhile player 1
+sends its save to the other nesp32, 64 bytes a frame (SAVE_PUT, about two
+seconds at the link's rate), which keeps it. YES: player 2's console waits
+until all of it is at its nesp32, and copies it into its save RAM, with
+the NMI off (SAVE_GET, 64 bytes an exchange, about a second), says so
+(SAVE_DONE), and both begin the session. NO, or B: player 2 hangs up, and
+both are back at the menu's first screen.
+
+The menu's NMI is off while a frame of it is at work (`menu_nmi_on`): the
+game's NMI keeps the registers it saves in memory, and one that broke into
+a frame of the menu that ran long (a SAVE_PUT and a SAVE in one) gave the
+main thread back the wrong ones.
+
+Between the nesp32s the save goes ahead of the session's ticks, on a
+stream that now keeps a window of 2 KB in flight: some 0.2-0.5 s for the
+save across a network with no loss, in nesp32's `tests/test_arq.py`.
+
 ## The simulation
 
 `tests/console.py` is River City Ransom's console on py65, with the save
@@ -205,34 +238,34 @@ below the pointer it saved when it went to sleep.
 1500 frames of play at random, the same game at every tick, at 5 and 20 ms
 each way. `tests/test_menu.py`: the menu's screens and what it asks the
 nesp32, and HOST GAME and JOIN GAME, by an address and by a room's code,
-into a session that plays the same game on both.
+into a session that plays the same game on both; the same saves, and
+different ones, with player 2's YES (its save becomes player 1's, and the
+session is one game) and its NO.
 
 ## To do
 
 In order. Each step is tested in the simulation before the next.
 
-1. **The save RAM the same on both consoles.** A session's two consoles
-   must start with the same save RAM: the game reads its season, the
-   playbooks, the starters, the teams' control and the seed of its random
-   numbers from it. The tests pass now only because both simulated
-   consoles start with the same, empty one. Decision 1, below: the
-   host's, copied when the two differ, after player 2 says yes to it, and
-   by a bulk op of PEER's that firmware and protocol do not have yet.
-2. **The rest of the game in a session**: the season (and its schedule,
+1. **The rest of the game in a session**: the season (and its schedule,
    SKP mode, the playoffs), the Pro Bowl, TEAM DATA's changes, a game
    played to its end and the screens after it, the pause (timeouts), and
    both players' Start at the title. Each with a lockstep test. Check that
    the game never picks a bank above 29 (`tests/test_console.py`, as RCR's).
-3. **The frame rate.** The exchange costs some 2000 cycles at 14, and the
+2. **The frame rate.** The exchange costs some 2000 cycles at 14, and the
    stack and zero page it keeps some 1000 more, in each tick's NMI, which
    is time the tasks lose: measure the lags in a session against the
    original's 1%, with a bench like Jackal's (`make bench`).
-4. **For players**: `make bps` and `dist/tsb_net.bps`, `tests/test_patch.py`,
+3. **For players**: `make bps` and `dist/tsb_net.bps`, `tests/test_patch.py`,
    the hello's version, and every document that lists the games (the
-   `nes-netplay-port` skill's "Shipping a change").
-5. **Hardware**: two consoles and two nesp32s, by a room's code. Watch the
+   `nes-netplay-port` skill's "Shipping a change"), with `TSBO` in
+   `VERSIONS` (`host/peer_player.py`), which `tests/test_peer_player.py`
+   fails without. The save needs a firmware with PEER's SAVE ops: a line
+   under Protocol in `CHANGELOG.md`, and the firmware the patch needs.
+4. **Hardware**: two consoles and two nesp32s, by a room's code. Watch the
    screen's splits while an exchange holds the IRQ off (the play-call
-   screen has them), and the samples against the line at 14.
+   screen has them), and the samples against the line at 14. And the
+   save: its time across the Internet, and the copy at the link's rate
+   (RATE could make it faster).
 
 ## Decisions to make
 
@@ -245,19 +278,7 @@ In order. Each step is tested in the simulation before the next.
    Super Bowl) becomes a copy of the host's. The notice is a yes/no
    dialogue in the lobby menu's style, on both screens; only player 2's
    buttons answer it, and no leaves the session.
-   - *How fast.* Not in the ticks: PEER's stream holds 96 bytes and a
-     tick's exchange carries one or two, so some 70 seconds for 8 KB. The
-     copy is a phase of its own before the first tick, with the screen
-     off and no samples playing, and wants a bulk op of PEER's (firmware
-     and protocol): the line alone is 0.5-0.7 s for 8 KB at 10-14 cycles a
-     bit (faster still at 7-8 with nothing else running), and the network
-     a few round trips with datagrams of a kilobyte or so. About a second
-     in all, less with the zeros of an early season sent as runs.
-   - Still to settle: which of the save RAM is copied. The season
-     ($66C0-$7F71, under the checksum) for certain; of $6000-$66BF, the
-     teams' control (`TEAM_TYPE_SEASON`), the CPU boosts, the playbooks
-     and the random seed (`SAVED_RANDOM_1`-`3`), but not the menus'
-     scratch.
+   Done: "The save", below.
 2. **Where a session begins.** *Decided 2026-11-14: at the main menu*
    when the intro and title have already been shown before the session
    was made (as they have been when it is made from the lobby, which is

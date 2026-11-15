@@ -353,3 +353,80 @@ def test_another_versions_room_is_not_joined(net_console):
     join_room(table, 1, line.split()[1])
     table.run(4 * STATUS_POLL)
     assert screen_row(table.consoles[1], STATUS_ROW).strip() == "NOT THIS GAME"
+
+
+# --- the save ----------------------------------------------------------------------
+
+ASK_ROW, YES_ROW, NO_ROW = 12, 15, 17
+
+
+def save_of(console):
+    """The save a session's consoles must have alike."""
+    labels, ram = console.labels, console.bus.prg_ram
+    return (bytes(ram[labels["SAVE_START"] - 0x6000:labels["SAVE_GAP"] - 0x6000])
+            + bytes(ram[labels["SAVE_GAP_END"] - 0x6000:labels["SAVE_END"] - 0x6000]))
+
+
+def hosts_save(make_console):
+    """Player 1's save: the one the game makes in an empty save RAM, which
+    the other console's makes too, with one team's control changed. (A save
+    the game finds no good it makes again, and the two would be alike.)"""
+    console = make_console()
+    console.run(400)
+    sram = bytearray(console.bus.prg_ram)
+    sram[console.labels["TEAM_TYPE_SEASON"] - 0x6000] ^= 0x01
+    return bytes(sram)
+
+
+def connect_with_saves(table):
+    to_title(table)
+    host_by_address(table, 0)
+    open_join(table, 1)
+    edit_last_octet_to_23(table, 1)
+    tap(table, 1, PAD_START, rest=8 * STATUS_POLL)
+
+
+def test_different_saves_player_2_says_yes(net_console):
+    table = Table(net_console, console_options=({"sram": hosts_save(net_console)}, {}))
+    connect_with_saves(table)
+    host, guest = table.consoles
+    assert "GO ON WITH IT" in screen_text(guest)
+    assert screen_row(guest, YES_ROW).strip() == "YES"
+    assert marker_row(guest) == YES_ROW
+    assert "WAITING FOR PLAYER 2" in screen_text(host)
+    assert marker_row(host) is None
+    assert save_of(guest) != save_of(host)
+    tap(table, 1, PAD_A, rest=0)
+    # Player 1's save goes a piece a frame, and the copy follows it: some
+    # seconds, and then the session, whose ticks are counted from its start.
+    for _ in range(80):
+        if all(console.byte("net_mode") == IN_SESSION for console in table.consoles):
+            break
+        table.run(10)
+    in_session(table)
+    assert save_of(guest) == save_of(host)
+    table.begun()
+    table.to_game()
+    table.play(300, moves(7))
+    assert table.same_game() > 600
+
+
+def test_different_saves_player_2_says_no(net_console):
+    table = Table(net_console, console_options=({"sram": hosts_save(net_console)}, {}))
+    connect_with_saves(table)
+    host, guest = table.consoles
+    before = save_of(guest)
+    tap(table, 1, PAD_DOWN)
+    assert marker_row(guest) == NO_ROW
+    tap(table, 1, PAD_A, rest=8 * STATUS_POLL)
+    for console in table.consoles:
+        assert console.byte("net_mode") == 0
+        assert screen_row(console, HOST_GAME_ROW).strip() == "HOST GAME"
+    assert save_of(guest) == before
+
+
+def test_the_same_saves_are_not_asked_about(net_console):
+    """Both consoles' saves are empty: straight into the session."""
+    table = Table(net_console)
+    connect_with_saves(table)
+    in_session(table)

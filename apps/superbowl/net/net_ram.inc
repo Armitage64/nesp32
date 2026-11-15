@@ -27,6 +27,7 @@
 ;   $7FFF         net_probe
 ;   $6EFE-$6F2D   for the length of an NMI: the stack that its exchange goes
 ;                 over, and the zero page it works in (net_nmi_read)
+;   $6F2E-$6FBB   the library's frames, a reply and a request
 ;
 ; The menu has the console only at the title and starts it again when it
 ; is done, by a session or not: so it keeps its own memory in the
@@ -66,8 +67,8 @@ CHECK_AT        = CHECK_TICK - 8
 .assert NET_DELAY_MAX + PER_FRAME < RING, error
 
 ; The link's library (nesp32's nes/lib/nesp.inc).
-NESP_RX_MASK    = $1F           ; the longest reply payload: 32 bytes
-NESP_TX_MAX     = 8             ; the longest request: a hello for one service
+NESP_RX_MASK    = $3F           ; the longest reply payload: 64 bytes, a piece of the save
+NESP_TX_MAX     = 2 + SAVE_PIECE    ; the longest request: SAVE_PUT's
 NESP_TIMEOUT    = 1             ; passes of 4.15 ms waited for a reply
 NESP_NMI_ONLY   = 1             ; every exchange is made in an NMI
 NESP_OWN_MEMORY = 1
@@ -112,10 +113,8 @@ nesp_crc_lo     = NET_RAM + 38
 nesp_status     = NET_RAM + 39
 nesp_attention  = NET_RAM + 40
 nesp_rng        = NET_RAM + 41  ; 2
-nesp_rx         = NET_RAM + 43
-nesp_tx         = nesp_rx + NESP_RX_MASK + 1 + 7
 ; A session's line at its own rate (net_rate, net/net.inc).
-nesp_fast       = nesp_tx + NESP_TX_MAX + 7 ; bit 7: a session's exchanges at its own rate
+nesp_fast       = NET_RAM + 43  ; bit 7: a session's exchanges at its own rate
 net_rate_ask    = nesp_fast + 1 ; not 00: ask for it this many NMIs of the session on, less one
 net_rate_tries  = nesp_fast + 2 ; times it has been asked for in this session
 net_rate_misses = nesp_fast + 3 ; exchanges in a row that had no reply, at it
@@ -158,7 +157,26 @@ net_probe       = $7FFF         ; flipped and read back: are the writes on?
 STACK_KEEP      = 40
 net_stack_copy  = $6EFE         ; STACK_KEEP, and the 8 of LOCAL_1 to LOCAL_8
 
+; The save a session's two consoles must have alike (net/menu.inc): the
+; save RAM from the game's random seed to the end of its season, but for
+; the stretch the game leaves empty, which is the netplay's. Before it,
+; the scratch of the game's scenes and sprites, which a session clears.
+SAVE_SCRATCH    = $6000
+SAVE_START      = $6403         ; SAVED_RANDOM_1
+SAVE_GAP        = $6EFE         ; EMPTY_SEASON_INFO: 260 bytes
+SAVE_GAP_END    = $7002
+SAVE_END        = $7F72         ; SRAM_FREE_SPACE: the netplay's memory on
+SAVE_LENGTH     = (SAVE_GAP - SAVE_START) + (SAVE_END - SAVE_GAP_END)
+SAVE_PIECE      = 64            ; bytes of it a request or a reply carries
+
 .assert NET_RAM_END <= net_boot, error, "the netplay's memory runs into net_boot"
+
+; The library's frames, past the stack the NMI keeps (net_stack_copy), in
+; the save RAM that the game's checksum leaves out and nothing writes.
+nesp_rx         = net_stack_copy + STACK_KEEP + 8
+nesp_tx         = nesp_rx + NESP_RX_MASK + 1 + 7
+NESP_FRAMES_END = nesp_tx + NESP_TX_MAX + 7
+.assert NESP_FRAMES_END <= SAVE_GAP_END, error, "the library's frames run out of the gap"
 
 NET_MENU_ON     = $80           ; in net_menu
 NET_MENU_FIRST  = $C0

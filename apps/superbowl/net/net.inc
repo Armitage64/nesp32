@@ -143,6 +143,26 @@ net_reset:
     sta net_boot
     lda #NET_SKIP_MENU          ; a session begins at the main menu: both
     sta net_skip                ; consoles have shown the intro and the title
+    ; The save RAM's scratch the same on both, as the save is (net/menu.inc).
+    lda #<SAVE_SCRATCH
+    sta nesp_ptr
+    lda #>SAVE_SCRATCH
+    sta nesp_ptr+1
+    lda #$00
+    tay
+:
+    sta (nesp_ptr),y
+    iny
+    bne :-
+    inc nesp_ptr+1
+    ldx nesp_ptr+1
+    cpx #>SAVE_START
+    bcc :-
+:
+    sta (nesp_ptr),y
+    iny
+    cpy #<SAVE_START
+    bcc :-
     lda net_boot+1
     sta net_role
     lda net_boot+2

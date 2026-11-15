@@ -166,7 +166,14 @@ class Lan:
                 self.arriving[other].append((due, data))
             arriving = self.arriving[side]
             while arriving and arriving[0][0] <= now:
-                stick.conn_give(arriving.pop(0)[1])
+                # As much as the nesp32 has room for: the rest waits, as
+                # the stream's window does (a save is more than its room).
+                due, data = arriving[0]
+                taken = stick.conn_give(data)
+                if taken < len(data):
+                    arriving[0] = (due, data[taken:])
+                    break
+                arriving.pop(0)
 
     def _answer(self, side):
         caller, other = self.sticks[side], self.sticks[1 - side]
@@ -271,8 +278,10 @@ class Table:
 
     def begun(self):
         """A session has just begun on both consoles: what frames() and
-        stalls() count from."""
+        stalls() count from, and the ticks compared: any taken before it
+        were named by where the table began counting, not the session."""
         self.started = [len(console.frames) for console in self.consoles]
+        self.traces = ({}, {})
         for console in self.consoles:
             console.count_calls("net_late_stall")
 
