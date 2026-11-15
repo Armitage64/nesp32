@@ -58,7 +58,7 @@ ROOT = os.path.join(HERE, "..")
 WEB = os.path.join(ROOT, "web")
 
 # The header's logo, for a light page and a dark one: web/img/'s, as they are.
-LOGOS = ["logo.png", "logo-dark.png"]
+LOGOS = ["logo.png"]
 
 # The product page's pictures: (its name for one, where it is)
 PICTURES = [("cart-menu.png", "docs/cart-menu.png"),
