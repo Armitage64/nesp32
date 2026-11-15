@@ -87,7 +87,8 @@ make && make verify && make test
   consoles against the firmware built for this computer (`make host` at the
   top), with a simulated network. A lockstep test compares the two
   consoles' state tick by tick.
-- Tests need `pytest`; on this Mac it is in `/usr/bin/python3`, not pyenv's.
+- Tests need `pytest`; on this Mac it is in `/usr/bin/python3`, not pyenv's:
+  `make test PYTHON=/usr/bin/python3`, or a `.venv`, which the Makefiles prefer.
 - **In Mesen, with no window** (`host/mesen/README.md`):
   ```sh
   python3 tools/mesen_run.py apps/<game>/build/<game>_net.nes \
