@@ -27,7 +27,6 @@ add_custom_command(
     OUTPUT "${logo_gen}/nesp_logo.h"
     COMMAND ${PYTHON} "${NESP_ROOT}/tools/gen_logo.py" "${logo_gen}"
     DEPENDS "${NESP_ROOT}/nes/lib/logo.py" "${NESP_ROOT}/tools/gen_logo.py"
-            "${NESP_ROOT}/tools/gen_web.py"
     COMMENT "nesp_logo.h from nes/lib/logo.py")
 add_custom_target(nesp_logo DEPENDS "${logo_gen}/nesp_logo.h")
 add_dependencies(${COMPONENT_LIB} nesp_logo)

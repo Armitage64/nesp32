@@ -21,7 +21,7 @@ and the ROM patches are this tree's, so they go up without a release.
     patches/*.bps         each game's BPS patch, from apps/*/dist/ as committed
     img/                  pictures of the programs, from their docs, and
                           img/logo.png and img/logo-dark.png, the header's logo
-                          (nes/lib/logo.py) for a light page and a dark one
+                          for a light page and a dark one, from web/img/
     flash/index.html      web/flash/index.html, as it is
     flash/manifest.json   what ESP Web Tools is to write for the nesp32 hat,
                           and where
@@ -46,12 +46,10 @@ import json
 import os
 import re
 import shutil
-import struct
 import subprocess
 import sys
 import tempfile
 import zipfile
-import zlib
 
 import version
 
@@ -59,19 +57,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..")
 WEB = os.path.join(ROOT, "web")
 
-sys.path.insert(0, os.path.join(ROOT, "nes", "lib"))
-import logo  # noqa: E402
-
-# The logo's colours, as the screenshots show them: its palette's navy, cyan
-# and white, and the NES's red for its 32.
-LOGO_RGB = {"1": (0, 30, 116), "2": (56, 180, 204), "3": (236, 238, 236),
-            "r": (152, 34, 32)}
-# The dark page has it as the NES does. On the light page its 32 is the
-# buttons' red (--accent in style.css), its white, the outline and the port,
-# is black, and the word's blues change places: cyan letters with a navy
-# band.
-LOGO_OUTLINE_LIGHT = (0, 0, 0)
-WORD_TOP = 14                   # the logo's first row of the word, under the Wi-Fi mark
+# The header's logo, for a light page and a dark one: web/img/'s, as they are.
+LOGOS = ["logo.png", "logo-dark.png"]
 
 # The product page's pictures: (its name for one, where it is)
 PICTURES = [("cart-menu.png", "docs/cart-menu.png"),
@@ -215,37 +202,6 @@ def page(source, target, versions, fill):
         f.write(text)
 
 
-def accent():
-    """style.css's --accent for the light page, as RGB: the first one."""
-    with open(os.path.join(WEB, "style.css")) as f:
-        found = re.search(r"--accent:\s*#([0-9a-fA-F]{6})", f.read())
-    if not found:
-        sys.exit("style.css: no --accent")
-    return tuple(bytes.fromhex(found.group(1)))
-
-
-def write_logo(path, red=LOGO_RGB["r"], outline=LOGO_RGB["3"], swap_blues=False):
-    """The logo as a PNG, a pixel for each of the NES's, the backdrop clear,
-    the 32 in `red` and the white in `outline`; with `swap_blues`, the
-    word's navy and cyan change places."""
-    colors = dict(LOGO_RGB, r=red)
-    colors["3"] = outline
-    picture = [line.translate(str.maketrans("12", "21")) if swap_blues and row >= WORD_TOP
-               else line for row, line in enumerate(logo.PICTURE)]
-    rows = b"".join(b"\0" + b"".join(bytes(colors[c] + (255,)) if c in colors else bytes(4)
-                                      for c in line)
-                    for line in picture)
-
-    def chunk(kind, data):
-        return (struct.pack(">I", len(data)) + kind + data
-                + struct.pack(">I", zlib.crc32(kind + data)))
-
-    header = struct.pack(">IIBBBBB", len(logo.PICTURE[0]), len(logo.PICTURE), 8, 6, 0, 0, 0)
-    with open(path, "wb") as f:
-        f.write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header)
-                + chunk(b"IDAT", zlib.compress(rows, 9)) + chunk(b"IEND", b""))
-
-
 def released(directory, unpacked):
     """A release's cartridge, each board's firmware's directory (unpacked
     from its zip), and its number, day and notes."""
@@ -310,8 +266,11 @@ def main(out, cart=None, release=None):
     shutil.copyfile(cart, os.path.join(out, "nesp32.nes"))
     for name, path in PICTURES:
         shutil.copyfile(os.path.join(ROOT, path), os.path.join(out, "img", name))
-    write_logo(os.path.join(out, "img", "logo.png"), accent(), LOGO_OUTLINE_LIGHT, swap_blues=True)
-    write_logo(os.path.join(out, "img", "logo-dark.png"))
+    for name in LOGOS:
+        path = os.path.join(WEB, "img", name)
+        if not os.path.exists(path):
+            sys.exit("No logo at %s." % os.path.relpath(path))
+        shutil.copyfile(path, os.path.join(out, "img", name))
     # The pages last, since they name the files by what is in them.
     files = ["style.css", "nesp32.nes"] + ["img/" + name for name in os.listdir(
         os.path.join(out, "img"))]

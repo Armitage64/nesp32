@@ -8,8 +8,7 @@
                       of each number in it as 0xRRGGBB; 0 is the backdrop,
                       left as it is
 
-The colours are the dark web page's (gen_web.py's LOGO_RGB), the logo as
-the NES shows it. The file is rewritten only if its contents changed.
+The colours are LOGO_RGB, the logo as the NES shows it. The file is rewritten only if its contents changed.
 """
 
 import os
@@ -18,7 +17,11 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "nes", "lib"))
 import logo  # noqa: E402
-from gen_web import LOGO_RGB  # noqa: E402
+
+# The logo's colours, as the screenshots show them: its palette's navy, cyan
+# and white, and the NES's red for its 32.
+LOGO_RGB = {"1": (0, 30, 116), "2": (56, 180, 204), "3": (236, 238, 236),
+            "r": (152, 34, 32)}
 
 # Each of the picture's characters, as a number in the header: '.' the
 # backdrop, then the colours.
