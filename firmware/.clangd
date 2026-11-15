@@ -1,0 +1,6 @@
+# Lets clangd (editors, Serena) read the ESP-IDF build of the firmware.
+# Build the S3 target once (idf.py -B build-esp32s3 ...) to create the database.
+CompileFlags:
+  CompilationDatabase: build-esp32s3
+  # GCC/Xtensa-only flags clangd does not know
+  Remove: [-mlongcalls, -mdisable-hardware-atomics, -fno-tree-switch-conversion, -fstrict-volatile-bitfields, -fno-shrink-wrap, -mtext-section-literals]
