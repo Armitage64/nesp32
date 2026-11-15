@@ -18,7 +18,6 @@ on:
       - "apps/*/dist/**"
       - "docs/cart-menu.png"
       - "apps/*/docs/*.png"
-      - "nes/lib/logo.py"
       - "tools/gen_web.py"
       - "tools/version.py"
       - ".github/workflows/web.yml"
