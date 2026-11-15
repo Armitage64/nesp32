@@ -15,7 +15,8 @@
 #                   cartridge and puts it there to be downloaded. The web
 #                   site itself has the latest release's (docs/RELEASING.md).
 #                   make web-serve serves it at http://localhost:8032
-#   make test
+#   make test       tests/, on every core
+#   make test-apps  each program's and sample's own tests; test-all, both
 #
 # The Stick's firmware itself is built with ESP-IDF, from firmware/.
 
@@ -36,7 +37,7 @@ HOST_HEADERS := $(CORE)/include/nesp_core.h $(wildcard $(SERVICES)/include/*.h) 
 
 ROM := $(BUILD)/setup.nes
 
-.PHONY: all proto host rom timeout-rom verify cart verify-cart web web-serve test clean FORCE
+.PHONY: all proto host rom timeout-rom verify cart verify-cart web web-serve test test-apps test-all clean FORCE
 
 all: proto host rom
 
@@ -189,8 +190,31 @@ web-serve: web
 
 FORCE:
 
+# On every core: tests/conftest.py builds once and the workers share it.
+# The longest tests go first, one to each worker, from their times the
+# last run (conftest.py, at the top), so the run does not wait on one.
+XDIST := -n auto --dist load --maxschedchunk 1
+
 test:
-	$(PYTHON) -m pytest
+	$(PYTHON) -m pytest $(XDIST)
+
+# Each program's and sample's own tests, one after the other, each on every
+# core. They cannot share one pytest: each has its own conftest.py and
+# helpers of the same names. Each worker builds the host library and the
+# ROMs for itself, into its own directory: a few seconds. All of them, or
+# some: make test-apps APPS="jackal contra"
+APP_TESTS := $(if $(APPS),$(addsuffix /tests,$(addprefix apps/,$(APPS))),\
+	$(wildcard apps/*/tests samplecode/*/tests))
+
+test-apps:
+	@failed=""; for dir in $(APP_TESTS); do \
+		echo "== $$dir"; \
+		$(PYTHON) -m pytest -q $(XDIST) $$dir; status=$$?; \
+		[ $$status = 0 ] || [ $$status = 5 ] || failed="$$failed $$dir"; \
+	done; \
+	[ -z "$$failed" ] || { echo "failed:$$failed"; exit 1; }
+
+test-all: test test-apps
 
 clean:
 	rm -rf $(BUILD)

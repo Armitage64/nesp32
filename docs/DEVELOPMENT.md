@@ -14,7 +14,8 @@ git submodule update --init    # for the two games and nes-radar only
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 make            # build/setup.nes, and the firmware's code for this computer
 make cart       # build/nesp32.nes: the cartridge (needs the nes-radar submodule)
-make test       # about three and a half minutes
+make test       # under a minute, on every core (pytest-xdist)
+make test-apps  # each program's own tests, on every core
 ```
 
 The nesp32's firmware is built with ESP-IDF, from `firmware/`
@@ -240,6 +241,30 @@ What is still to do on the hardware and the firmware is in
 ```sh
 make test
 ```
+
+`make test` runs them on every core (pytest-xdist): `tests/conftest.py`
+builds the host library once, and the ROMs once under a lock, in a
+directory the workers share. `make test-apps` runs each program's and
+sample's own tests the same way, one after the other
+(`make test-apps APPS="jackal contra"` for some), and `make test-all` runs
+both. `conftest.py` at the top keeps each test's time in pytest's cache,
+and the next run starts with the longest, one to a worker, so the run does
+not end waiting on one. Plain `pytest` runs them one at a time, which is
+what to use with `-s` or `--pdb`, or for a file or two.
+
+A new program's tests in `apps/<name>/tests` are found by `make test-apps`
+as they are. Written for it, a test has to stand other tests running at
+the same time, in other processes:
+
+- No fixed port: bind port 0, or find a free one as
+  `tests/test_peer_net.py`'s `free_port()` does.
+- No fixed path: what a test writes goes in `tmp_path`, or a directory of
+  its own from `tempfile`, never the tree or the home directory.
+- What a conftest builds goes in a directory of its own, as each one's
+  `build` fixture does: each worker builds its own, or, as
+  `tests/conftest.py` does, one builds and the rest wait on a lock.
+- No test counts on another having run before it, or after: they are
+  started longest first, on whichever worker is free.
 
 - `test_core.py`: the C link and services, bytes in and bytes out.
 - `test_link_timing.py`: every sample and every bit of the console's two
