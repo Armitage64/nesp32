@@ -4,6 +4,8 @@
 #                   two consoles and two nesp32s
 #   make verify     check the original against the ROM's SHA-512
 #   make test       the simulation's tests (needs requirements-dev.txt)
+#   make bench      how the frames go, the original against a session, in a
+#                   game for two (tools/bench.py)
 #   make import     tools/game.map again, from the disassembly (needs asm6f)
 #   make patches    write patches/ again from the sources in build/src
 #   make clean
@@ -49,7 +51,7 @@ NET_OBJECTS := $(NAMES:%=$(BUILD)/net/%.o)
 NET_SOURCES := $(wildcard net/*.inc net/*.asm) $(BUILD)/link.inc $(NESP_LIB) $(NESP)
 NET_INCLUDES := -I net -I $(BUILD) -I $(NESP_BUILD) -I $(NESP32)/nes/lib
 
-.PHONY: all verify test import patches clean FORCE
+.PHONY: all verify test bench import patches clean FORCE
 
 all: $(ROM) $(NET_ROM)
 
@@ -125,6 +127,10 @@ XDIST = $(shell $(PYTHON) -c 'import xdist' 2>/dev/null \
 
 test:
 	$(PYTHON) -m pytest $(XDIST) -q tests
+
+# Each seed's original and session side by side, on every core.
+bench: $(ROM) $(NET_ROM) $(NESP)
+	$(PYTHON) tools/bench.py $(ROM) $(BUILD)/tsb.dbg $(NET_ROM) $(BUILD)/tsb_net.dbg $(BENCH_OPTIONS)
 
 # The map again, from the disassembly: only when it changes, or the import.
 import: $(BASEROM)

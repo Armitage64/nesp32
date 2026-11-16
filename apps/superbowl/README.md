@@ -29,6 +29,7 @@ git submodule update --init third_party/Tecmo_Super_Bowl_NES_Disassembly
 make            # build/tsb.nes, the original, and build/tsb_net.nes
 make verify     # the original matches its SHA-512
 make test       # the simulation's tests (needs requirements-dev.txt)
+make bench      # the original's frames against a session's ("The frame rate")
 make patches    # patches/ again, from what has been changed in build/src
 make import     # tools/game.map again, from the disassembly (needs asm6f)
 ```
@@ -94,8 +95,8 @@ scheduler's idle loop (`CHECK_TASKS`, $CB4E).
 A task that runs past the next NMI is broken into by it: the controllers
 and the numbers change under it, and a task of more weight may be run in
 the middle of it. In the simulation, a game for two lagged like that in
-about 1% of its frames, mostly the sprites' sorting (task $25) and the
-players' update ($20).
+about 2% of its frames (`make bench`, "The frame rate"), mostly the
+sprites' sorting (task $25) and the players' update ($20).
 
 The cartridge is an MMC3 with 256 KB of PRG ROM, 128 KB of CHR ROM and
 8 KB of save RAM kept by a battery. The game picks each 8 KB window on its
@@ -290,6 +291,41 @@ shorter, the same on both consoles:
   tackle in bounds, which plays at random seldom end with: the clock runs
   between plays while the test tries (`clock_runs`).
 
+## The frame rate
+
+`make bench` (`tools/bench.py`) plays a preseason game for two, MAN VS
+MAN, Buffalo against Cleveland, from its kickoff: on the original by its
+own menus, and in a session of two consoles with nesp32's firmware, 10 ms
+apart. Then 1,500 frames of both players' buttons at random, the same for
+each seed on both. Each NMI is a lag (it found a task at work), a tick (it
+ran the tasks) or a stall (in a session, the other's buttons not there);
+a tick is timed from its vblank to every task asleep again. The two are
+not the same game, so it compares four seeds of each, not tick for tick.
+On 2026-11-15, at 14 cycles a bit:
+
+| | NMI off | lags | ticks a second | NMI to the tasks | a tick | over a frame |
+|---|---|---|---|---|---|---|
+| the original | 0.9% | 2.2% | 58.2 | 2,375 | 22,068 | 2.2% |
+| a session | 0.9% | 14.2% | 51.0 | 6,817 | 26,329 | 16.8% |
+
+(Cycles are medians; a frame is 29,780.) The game's tick is long: the
+median is three quarters of a frame, so the 4,400 cycles the session adds
+to the NMI put one tick in six over. In the original a lag costs the game
+nothing but where it falls (the NMI goes on into the tasks, which count
+their frames as before); in a session it is a frame the game stands still,
+so the game plays at 51 ticks a second, 15% slower than the original. No
+stalls at 10 ms: the delay covers the trip.
+
+What the session's NMI adds, from its read (`net_nmi_read`) to the tasks,
+5,100 cycles in all, where the game's own read is some 700:
+
+| | cycles |
+|---|---|
+| the save RAM on, the 40 bytes below the stack and `LOCAL_1` to `LOCAL_8` kept | 890 |
+| this console's buttons read and stored | 363 |
+| the exchange, PEER's TICKS at 14 | 2,598 |
+| both players' buttons taken, the stack and the locals put back | 1,027 |
+
 ## What has been learned
 
 - **The game's NMI keeps the registers it saves in memory** (`NMI_A`,
@@ -336,12 +372,12 @@ shorter, the same on both consoles:
 
 In order. Each step is tested in the simulation before the next.
 
-1. **The frame rate**, next. The exchange costs some 2000 cycles at 14,
-   and the stack and zero page it keeps some 1000 more, in each tick's
-   NMI, which is time the tasks lose: measure the lags in a session
-   against the original's 1%, with a bench like Jackal's (`make bench`).
-   The rest of the game in a session, which was first, is done ("The
-   simulation").
+1. **The frame rate**, next: measured ("The frame rate"), a session lags
+   in 14% of its frames where the original does in 2%. Cut what the NMI
+   adds before the tasks, 4,400 cycles: the 40 bytes of stack and the
+   locals kept and put back are 1,700 of them (a byte a time in a loop;
+   keep only as deep as the exchange goes, or unroll it), and the
+   exchange 2,600. Then `make bench` again.
 2. **For players**: `make bps` and `dist/tsb_net.bps`, `tests/test_patch.py`,
    the hello's version, and every document that lists the games (the
    `nes-netplay-port` skill's "Shipping a change"), with `TSBO` in
