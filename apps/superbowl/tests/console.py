@@ -410,7 +410,13 @@ class Console:
     # screen's splits the IRQ has got ($0306); and the sound engine's
     # memory ($F0-$FF and $0700-$07FF).
     UNKEPT = [(0x3E, 0x46), (0xF0, 0x100), (0x1F2, 0x200), (0x300, 0x307), (0x700, 0x800)]
-    UNKEPT_BITS = ()
+    # And SOFT_PPU_CTRL's nametable bits ($31, bits 0-1), which each of the
+    # screen's splits sets for its own (UPDATE_IRQ_CHR_BANKS_SCROLL_LOC, in
+    # the NMI and the IRQ): at a tick they are the last split's to have run,
+    # which is where the frame fell. The game only writes them to the PPU,
+    # and a task changes bit 5 and puts the rest back. Two consoles differed
+    # there once the session's NMI was some 1,300 cycles quicker.
+    UNKEPT_BITS = ((0x31, 0x03),)
     # The save RAM is the game's too, but for the netplay's: the stretch the
     # game's checksum leaves out at $6EFE, which the NMI's exchange keeps
     # the stack in, and its memory at $7F72 on.

@@ -38,6 +38,32 @@ TICK_AT = "NMI_UPDATE_RANDOM_NUMS"
 # again from its reset in any case.
 BOOT_FRAMES = 60
 
+def guard_stack(console):
+    """Fail if the NMI's exchange writes to the stack below the STACK_KEEP
+    bytes net_nmi_read keeps and puts back: the first task's would be
+    spoiled. From net_nmi_read to its call of net_sram_back."""
+    keep = console.labels["STACK_KEEP"]
+    entry = []                  # the stack at net_nmi_read, while in it
+
+    def enter(console):
+        entry[:] = [console.mpu.sp]
+        console.watch_writes()
+
+    def leave(console):
+        # Its own call: a jsr from net_nmi_read's level.
+        if not entry or console.mpu.sp != (entry[0] - 2) & 0xFF:
+            return
+        lowest = 0x100 + entry[0] - keep + 1
+        under = [address for address in console.written() if 0x100 <= address < lowest]
+        assert not under, "the exchange wrote the stack at $%04X, below the kept $%04X" % (
+            min(under), lowest)
+        entry.clear()
+        console.bus.written = None
+
+    console.watch("net_nmi_read", enter)
+    console.watch("net_sram_back", leave)
+
+
 class Lan:
     """The network the two nesp32s are on. `delay` is how long anything
     takes to cross it, in cycles: a number or a function returning one."""
@@ -218,6 +244,7 @@ class Table:
             # goes on into its tasks, once the exchange has put back the
             # stack and the zero page it worked in.
             console.watch(TICK_AT, lambda console, side=side: self._taken(side, console))
+            guard_stack(console)
         self.offsets = [0.0, 0.0]
         self.changes = {}           # tick: what to do to each console's memory before it
         # What to do to each console's memory before every tick from one to

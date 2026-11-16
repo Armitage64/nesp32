@@ -351,43 +351,33 @@ net_nmi_read:
 @session:
     jsr net_sram_on
     ; The STACK_KEEP bytes below this one's place in the stack, kept: the
-    ; first task's are among them.
+    ; first task's are among them. Unrolled, as it is in every tick's NMI
+    ; (a loop was some 700 cycles each way). a: keeps $0100-i,x absolute:
+    ; zero page,x would wrap in page 0.
     tsx
-    ldy #$00
-:
-    lda $0100,x
-    sta net_stack_copy,y
-    dex
-    iny
-    cpy #STACK_KEEP
-    bne :-
+    .repeat STACK_KEEP, i
+    lda a:$0100-i,x
+    sta net_stack_copy+i
+    .endrepeat
     ; And the game's LOCAL_1 to LOCAL_8, which the exchange works in: a task
     ; that starts finds them as the last one left them, and keeps them.
-    ldx #$07
-:
-    lda LOCAL_1,x
-    sta net_stack_copy+STACK_KEEP,x
-    dex
-    bpl :-
+    .repeat 8, i
+    lda LOCAL_1+i
+    sta net_stack_copy+STACK_KEEP+i
+    .endrepeat
     jsr net_session
     lda #$00
     rol a
     sta net_carry               ; a tick or a stall, kept off the stack
-    ldx #$07
-:
-    lda net_stack_copy+STACK_KEEP,x
-    sta LOCAL_1,x
-    dex
-    bpl :-
+    .repeat 8, i
+    lda net_stack_copy+STACK_KEEP+i
+    sta LOCAL_1+i
+    .endrepeat
     tsx
-    ldy #$00
-:
-    lda net_stack_copy,y
-    sta $0100,x
-    dex
-    iny
-    cpy #STACK_KEEP
-    bne :-
+    .repeat STACK_KEEP, i
+    lda net_stack_copy+i
+    sta a:$0100-i,x
+    .endrepeat
     jsr net_sram_back
     lda net_carry
     lsr a

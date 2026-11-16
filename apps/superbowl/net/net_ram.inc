@@ -25,9 +25,9 @@
 ;   $7FF0-$7FF3   the order to start a session, carried through the reset
 ;   $7FF4-$7FF5   where the game goes after that reset (net_skip_mark)
 ;   $7FFF         net_probe
-;   $6EFE-$6F2D   for the length of an NMI: the stack that its exchange goes
+;   $6EFE-$6F1D   for the length of an NMI: the stack that its exchange goes
 ;                 over, and the zero page it works in (net_nmi_read)
-;   $6F2E-$6FBB   the library's frames, a reply and a request
+;   $6F1E-$6FAB   the library's frames, a reply and a request
 ;
 ; The menu has the console only at the title and starts it again when it
 ; is done, by a session or not: so it keeps its own memory in the
@@ -153,8 +153,11 @@ net_probe       = $7FFF         ; flipped and read back: are the writes on?
 ; own NMI fits in. The exchange goes deeper: so it keeps the bytes it is to
 ; go over, and puts them back (net_nmi_read). They are kept for no longer
 ; than the NMI, in the save RAM that its checksum leaves out at $6EFE,
-; which the game does not read.
-STACK_KEEP      = 40
+; which the game does not read. Its deepest, a short request's first try
+; (net_exchange to net_ask to nesp_short), writes 15 bytes below where
+; net_nmi_read keeps them from; 24 leaves room, and the tests fail a write
+; below them (tests/netplay.py, guard_stack).
+STACK_KEEP      = 24
 net_stack_copy  = $6EFE         ; STACK_KEEP, and the 8 of LOCAL_1 to LOCAL_8
 
 ; The save a session's two consoles must have alike (net/menu.inc): the

@@ -128,7 +128,7 @@ before them (`net_skip`, $067C). The library's zero page is the game's
 `LOCAL_1` to `LOCAL_8` ($3E-$45), which a task keeps on its own stack
 while it sleeps. Its frames, a reply of 64 bytes and a request of 66, are
 in the save RAM the game leaves empty at $6EFE, past the stack the NMI's
-exchange keeps there ($6F2E on).
+exchange keeps there ($6F1E on).
 
 **An NMI in a session** (`net_nmi`, `net/net.inc`) is one of three things:
 
@@ -154,7 +154,7 @@ there needed more than the three cases:
 - **The exchange runs where the game's read was**, in the NMI, and the
   NMI's stack is the idle loop's 14 bytes at $01F2-$01FF, which the game's
   own NMI fits in; the first task's stack is below. So the exchange keeps
-  the 40 bytes below it and `LOCAL_1` to `LOCAL_8`, in the save RAM at
+  the 24 bytes below it and `LOCAL_1` to `LOCAL_8`, in the save RAM at
   $6EFE, which the checksum leaves out, and puts them back.
 - **A tick clears `TASK_BUSY_FLAG`.** Its low bits are what the idle loop
   has shifted out of it, once each time round, and the last of them is
@@ -301,30 +301,34 @@ each seed on both. Each NMI is a lag (it found a task at work), a tick (it
 ran the tasks) or a stall (in a session, the other's buttons not there);
 a tick is timed from its vblank to every task asleep again. The two are
 not the same game, so it compares four seeds of each, not tick for tick.
-On 2026-11-15, at 14 cycles a bit:
+At 14 cycles a bit:
 
 | | NMI off | lags | ticks a second | NMI to the tasks | a tick | over a frame |
 |---|---|---|---|---|---|---|
 | the original | 0.9% | 2.2% | 58.2 | 2,375 | 22,068 | 2.2% |
-| a session | 0.9% | 14.2% | 51.0 | 6,817 | 26,329 | 16.8% |
+| a session, 2026-11-15 | 0.9% | 14.2% | 51.0 | 6,817 | 26,329 | 16.8% |
+| a session, the stack kept unrolled (2026-11-16) | 1.1% | 10.4% | 53.2 | 5,763 | 25,282 | 11.8% |
 
 (Cycles are medians; a frame is 29,780.) The game's tick is long: the
-median is three quarters of a frame, so the 4,400 cycles the session adds
-to the NMI put one tick in six over. In the original a lag costs the game
-nothing but where it falls (the NMI goes on into the tasks, which count
-their frames as before); in a session it is a frame the game stands still,
-so the game plays at 51 ticks a second, 15% slower than the original. No
-stalls at 10 ms: the delay covers the trip.
+median is three quarters of a frame, so what the session adds to the NMI
+puts many ticks over. In the original a lag costs the game nothing but
+where it falls (the NMI goes on into the tasks, which count their frames
+as before); in a session it is a frame the game stands still, so the game
+plays at 53 ticks a second, 9% slower than the original. No stalls at
+10 ms: the delay covers the trip.
 
 What the session's NMI adds, from its read (`net_nmi_read`) to the tasks,
-5,100 cycles in all, where the game's own read is some 700:
+where the game's own read is some 700 cycles. The stack and the locals
+were kept in loops of a byte at a time, 40 bytes of stack; now 24, and
+unrolled (`STACK_KEEP`, `net/net_ram.inc`, which says why 24):
 
-| | cycles |
-|---|---|
-| the save RAM on, the 40 bytes below the stack and `LOCAL_1` to `LOCAL_8` kept | 890 |
-| this console's buttons read and stored | 363 |
-| the exchange, PEER's TICKS at 14 | 2,598 |
-| both players' buttons taken, the stack and the locals put back | 1,027 |
+| | loops, 40 bytes | unrolled, 24 |
+|---|---|---|
+| the save RAM on, the stack below and `LOCAL_1` to `LOCAL_8` kept | 890 | 327 |
+| this console's buttons read and stored | 363 | 363 |
+| the exchange, PEER's TICKS at 14 | 2,598 | 2,593 |
+| both players' buttons taken, the stack and the locals put back | 1,027 | 434 |
+| in all | 5,102 | 3,748 |
 
 ## What has been learned
 
@@ -363,6 +367,11 @@ What the session's NMI adds, from its read (`net_nmi_read`) to the tasks,
   the week out with its scoreboard and statistics, some 900 frames a game
   with A to go on; each A in TEAM CONTROL makes a team's control the next
   (MAN 0, COA 1, COM 2, SKP 3).
+- **`SOFT_PPU_CTRL`'s nametable bits ($31) are where the frame fell**:
+  each of the screen's splits sets them for its own, in the NMI and the
+  IRQ, so at a tick they are the last split's to have run. A quicker NMI
+  made two consoles differ there; the tests leave the two bits out
+  (`UNKEPT_BITS`). The game only writes them to the PPU.
 - **A test's ticks are counted from `Table.begun()`**, which now clears
   what was traced before it: one console's session may begin some frames
   before the other's (player 2 copying a save), and ticks taken before it
@@ -372,13 +381,25 @@ What the session's NMI adds, from its read (`net_nmi_read`) to the tasks,
 
 In order. Each step is tested in the simulation before the next.
 
-1. **The frame rate**, next: measured ("The frame rate"), a session lags
-   in 14% of its frames where the original does in 2%. Cut what the NMI
-   adds before the tasks, 4,400 cycles: the 40 bytes of stack and the
-   locals kept and put back are 1,700 of them (a byte a time in a loop;
-   keep only as deep as the exchange goes, or unroll it), and the
-   exchange 2,600. Then `make bench` again.
-2. **For players**: `make bps` and `dist/tsb_net.bps`, `tests/test_patch.py`,
+1. **The save's copy is not reliable**, next: `test_menu.py`'s two tests
+   of different saves fail some runs of the same code: `says_yes` 3 of 12
+   before the stack was kept unrolled (761cdb2; six at once, each in its
+   own process), 3 of 6 after, and one of the two in most runs of the
+   whole `make test`. Most often
+   player 2's save is player 1's only up to byte 2088 of it, a little past
+   2 KB, the stream's window (NESP_ARQ_HELD 2048): player 2 seems to take
+   it before all of it is at its nesp32. Sometimes player 2 is still at
+   the menu when the test looks. Two consoles whose saves differ play
+   different games, so this comes before the frame rate. Find first what
+   makes two runs of the simulation differ: it is meant to be the same
+   every time (the firmware's host build, `host/nesp_host.c`, decides
+   nothing by the clock).
+2. **The frame rate**: measured ("The frame rate"), a session lags in 10%
+   of its frames where the original does in 2%. What the NMI adds before
+   the tasks is mostly the exchange now, 2,600 cycles of 3,750: a faster
+   line (10 was misheard on Jackal), or fewer bytes in TICKS. Then
+   `make bench` again.
+3. **For players**: `make bps` and `dist/tsb_net.bps`, `tests/test_patch.py`,
    the hello's version, and every document that lists the games (the
    `nes-netplay-port` skill's "Shipping a change"), with `TSBO` in
    `VERSIONS` (`host/peer_player.py`), which `tests/test_peer_player.py`
@@ -388,7 +409,7 @@ In order. Each step is tested in the simulation before the next.
    brings them, and a nesp32 with older firmware should be told to update
    (its SAVE answers `NO_OP`; the menu now gives the session up after
    `SAVE_TRIES` instead).
-3. **Hardware**: two consoles and two nesp32s, by a room's code, each
+4. **Hardware**: two consoles and two nesp32s, by a room's code, each
    nesp32 flashed with this branch's firmware. Watch the screen's splits
    while an exchange holds the IRQ off (the play-call screen has them),
    and the samples against the line at 14. And the save: the dialogue on
@@ -396,7 +417,7 @@ In order. Each step is tested in the simulation before the next.
    SAVE_PUT, player 2's second of SAVE_GET), and that a copied save is the
    one the game then plays. The copy is at the link's rate; PEER's RATE
    could make it some twice as fast.
-4. **River City Ransom's menu** is the same as this one's but for the
+5. **River City Ransom's menu** is the same as this one's but for the
    save: check whether its frames can run past an NMI, and whether its
    game's NMI keeps its registers where a nested one would spoil them.
 
