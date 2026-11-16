@@ -29,7 +29,7 @@ net_band_ptr    = LOCAL_1       ; (and LOCAL_2) the offset's table: kept, and pu
 .ifndef NET_SLOW
 
 NET_FLICKER = 1                 ; the game's dispatch goes to net_flicker (patches/tsb.patch)
-HAVE_FREE_22_8F32 = 1
+HAVE_FREE_22_8F32 = 1           ; net_flicker, and net_coll (net/coll.inc)
 
 .macro FILL_FREE_22_8F32
 ; In place of the dispatch on sprite_cycling_index, the counter just
@@ -107,6 +107,8 @@ net_flicker:
     cpy #<(SPRITE_SUBSET_END_2 + OFFSET_TO_NEXT_SPRITE)
 :
     rts
+
+    NET_COLL_HOOK                   ; the collision checks' (net/coll.inc)
 .endmacro
 
 .pushseg

@@ -27,32 +27,39 @@
 +.else
 @@ -90346,0 +90366 @@
 +.endif
-@@ -128457,0 +128478,5 @@
+@@ -91292,0 +91313,4 @@
++.ifdef NET_COLL
++    jmp net_coll                         ; the 11 defenders, quicker (net/coll.inc)
++    nop
++.else
+@@ -91294,0 +91319 @@
++.endif
+@@ -128457,0 +128483,5 @@
 +.ifdef NETPLAY
 +    jsr net_bank_in                      ; the netplay's reset, which makes these writes
 +    jsr net_reset                        ; at its end (net/net.inc)
 +    .res 8, $EA
 +.else
-@@ -128468,0 +128494 @@
+@@ -128468,0 +128499 @@
 +.endif
-@@ -128590,0 +128617,4 @@
+@@ -128590,0 +128622,4 @@
 +.ifdef NETPLAY
 +    jmp net_nmi_check                    ; the same, and a session's tick, stall or lag (net/cart.inc)
 +    nop
 +.else
-@@ -128592,0 +128623 @@
+@@ -128592,0 +128628 @@
 +.endif
-@@ -128767,0 +128799,4 @@
+@@ -128767,0 +128804,4 @@
 +.ifdef NETPLAY
 +    jmp net_read_hook                    ; the same, or a session's tick or stall (net/cart.inc)
 +    .res 3, $EA
 +.else
-@@ -128770,0 +128806 @@
+@@ -128770,0 +128811 @@
 +.endif
-@@ -130530,0 +130567,4 @@
+@@ -130530,0 +130572,4 @@
 +.ifdef NETPLAY
 +    NET_FILL_D05F                        ; in place of L_D05F, which nothing calls (net/cart.inc)
 +    .res $D081 - $D05F - (* - net_title_press), $FF
 +.else
-@@ -130549,0 +130590 @@
+@@ -130549,0 +130595 @@
 +.endif

@@ -312,14 +312,15 @@ At 14 cycles a bit:
 | a session, 2026-11-15 | 0.9% | 14.2% | 51.0 | 6,817 | 26,329 | 16.8% |
 | a session, the stack kept unrolled (2026-11-16) | 1.1% | 10.4% | 53.2 | 5,763 | 25,282 | 11.8% |
 | a session, the sprites' flicker quicker (2026-11-16) | 0.9% | 6.5% | 55.6 | 5,470 | 24,326 | 7.2% |
+| a session, and the collision checks quicker (2026-11-16) | 0.9% | 3.9% | 57.2 | 5,470 | 23,293 | 4.3% |
 
 (Cycles are medians; a frame is 29,780.) The game's tick is long: the
 median is three quarters of a frame, so what the session adds to the NMI
 puts many ticks over. In the original a lag costs the game nothing but
 where it falls (the NMI goes on into the tasks, which count their frames
 as before); in a session it is a frame the game stands still, so the game
-plays at 55.6 ticks a second, 4.5% slower than the original (53.2, 9%,
-before the flicker's quicker count). No stalls at 10 ms: the delay covers
+plays at 57.2 ticks a second, 1.7% slower than the original (53.2, 9%,
+before the quicker routines). No stalls at 10 ms: the delay covers
 the trip. Each 1,000 cycles off a tick of play takes some three of the
 lags in a hundred frames away: the busy stretches' ticks are close to a
 frame, and the session's work tips them over.
@@ -363,6 +364,16 @@ wherever a frame ends, and a quicker routine makes a different game.
   were; the registers and flags it leaves are the game's loop's, which the
   task's next sleep keeps on its stack (the first thing the whole game's
   test found). Lags from 10.4% to 6.5%.
+- **The collision checks** (`net/coll.inc`): each frame the collision
+  task checks two of the offense's players against each of the defense's
+  11, some 70 to 90 cycles a pair, most of it the loop's tables, pointer
+  and counting. Written out, a defender at a time, with its byte and bit
+  of the pair's status as constants and its RAM at a fixed address, in a
+  copy for each team on defense, a pair that may not collide takes some
+  20 and one too far up or down 34. In a bank of its own, 34, put in by
+  `net_coll` in bank 22's empty bytes as the flicker's is. It leaves the
+  loop's pointer, counter, last pair's byte and bit, registers and flags
+  as the game's. Lags from 6.5% to 3.9%.
 - **The players' movement** is next by its size, but its loop is as tight
   as the game's way of reaching each player's 32 bytes, through a
   pointer, allows; X-indexed it would save some 1,000 cycles a tick, in
@@ -455,10 +466,11 @@ In order. Each step is tested in the simulation before the next.
    line (10 was misheard on Jackal), or fewer bytes in TICKS, would save
    200-300 of them. Moving the exchange to the idle loop gained little
    ("What has been learned"). The game's own routines are the larger
-   part of a tick ("Quicker routines"): the flicker's count is done (lags
-   10.4% to 6.5%); next, of what is left, the checks of each offensive
-   player against the defense, the music, or the players' movement if
-   room can be found for it. Each against `tsb_net_slow.nes` in
+   part of a tick ("Quicker routines"): the flicker's count and the
+   collision checks are done (lags 10.4% to 3.9%, the original's 2.2%);
+   next, of what is left, the check for players near each other
+   (`PLAYER_NEARBY_CHECK`), the music, or the players' movement if room
+   can be found for it. Each against `tsb_net_slow.nes` in
    `tests/test_fast.py`, then `make bench` again.
 2. **For players**: `make bps` and `dist/tsb_net.bps`, `tests/test_patch.py`,
    the hello's version, and every document that lists the games (the

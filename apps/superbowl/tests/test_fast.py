@@ -3,7 +3,8 @@ the game's own do. The netplay ROM is held to tsb_net_slow.nes, the same
 build with the game's own routines: each routine from memory at random,
 and a session's whole game tick by tick.
 
-So far one: the sprites' flicker (net/flicker.inc)."""
+The sprites' flicker (net/flicker.inc) and the collision checks
+(net/coll.inc)."""
 
 import random
 
@@ -35,9 +36,14 @@ def make(build, name, **kwargs):
     return Console(str(build / (name + ".nes")), str(build / (name + ".dbg")), **kwargs)
 
 
+FAST = [None]
+SLOW_FIRST = {DISPATCH: 0xA5, 0x95E6: 0xA9}     # LDA zp, LDA #
+
+
 @pytest.fixture
 def pair(build):
     roms = [make(build, name) for name in ROMS]
+    FAST[0] = roms[0]
     for nes in roms:
         assert nes.labels["SOFT_BANK_SELECT"] == SOFT_BANKS[0]
         assert nes.labels["SOFT_8000_BANK"] == SOFT_BANKS[1]
@@ -48,12 +54,13 @@ def pair(build):
     return roms
 
 
-def call(nes, ram, a000_bank, select):
-    """The flicker's count from the dispatch, with this memory, the flicker
-    task's bank at $8000 and another at $A000, until it returns. What it
-    leaves: the memory, but for what is below the stack, which is dead,
-    the registers and flags (the task's next sleep keeps them), and the
-    MMC3's banks and its register select."""
+def call(nes, ram, a000_bank, select, start=DISPATCH, until=SENTINEL):
+    """The game's code in bank 22 from `start` (the flicker's count from
+    its dispatch, unless it says), with this memory, the task's bank at
+    $8000 and another at $A000, until it returns or comes to `until`.
+    What it leaves: the memory, but for what is below the stack, which is
+    dead, the registers and flags (the task's next sleep keeps them), and
+    the MMC3's banks and its register select."""
     mpu = nes.mpu
     nes.ram[:] = ram
     nes.ram[SOFT_BANKS[1]] = FLICKER_TASK_BANK
@@ -65,21 +72,23 @@ def call(nes, ram, a000_bank, select):
     nes.write_mapper(0x8000, 0x07)
     nes.write_mapper(0x8001, a000_bank)
     nes.write_mapper(0x8000, select)
-    assert nes.bus[DISPATCH] in (0x4C, 0xA5), "no dispatch at $%04X" % DISPATCH
+    # The netplay ROM's JMP to its quicker way, the slow one's own LDA.
+    assert nes.bus[start] == (0x4C if nes is FAST[0] else SLOW_FIRST[start]), \
+        "not the code expected at $%04X" % start
     mpu.a = mpu.x = mpu.y = 0
     mpu.p = 0x24
     mpu.sp = 0xFD
     mpu.stPushWord(SENTINEL - 1)
-    mpu.pc = DISPATCH
+    mpu.pc = start
     for _ in range(100000):
-        if mpu.pc == SENTINEL:
+        if mpu.pc in (until, SENTINEL):
             ram = bytearray(nes.ram)
             ram[0x100:0x100 + mpu.sp + 1] = bytes(mpu.sp + 1)
             # Bit 4 of P is not in the CPU, but PLP leaves it in py65's.
             return (bytes(ram), mpu.a, mpu.x, mpu.y, mpu.p & ~0x10,
                     nes.banks[6], nes.banks[7], nes.bank_select)
         mpu.step()
-    raise AssertionError("the count did not return")
+    raise AssertionError("the code from $%04X did not return" % start)
 
 
 def sprites(rng):
@@ -192,3 +201,58 @@ def test_a_session_is_the_same_game_tick_by_tick(build, seed):
     assert len(shared) > len(script) - 100
     for tick in shared:
         assert traces[0][tick] == traces[1][tick], "the ROMs' games differ at tick %d" % tick
+
+
+# The collision task's loop over the 11 defenders (bank 22): from where it
+# sets their count (the netplay ROM's JMP net_coll) to its end.
+COLL_START = 0x95E6
+COLL_DONE = 0x9679
+PLAYER_RAM = {1: 0x039F, 2: 0x04FF}     # PLAYER_1_RAM_START, PLAYER_2_RAM_START
+PLAYER_SIZE = 0x20
+X_POS, Y_POS = 0x13, 0x16
+CURR_OFF_COLL_ADDR, CURR_DEF_COLL_ADDR = 0xBA, 0xBC
+CURRENT_OFF_PLAYER = 0x41
+CAN_COLLIDE = 0x068A                    # CAN_COLLIDE_STATUS_OFFENSE, 22 bytes each
+COLLIDED = 0x06B6                       # COLLIDED_STATUS_OFFENSE
+
+
+def players_close(rng):
+    """Memory with the offense player at the pointer and the 11 defenders
+    round it: some too far up or down, some too far across either way,
+    some on it, across the high byte of X now and then."""
+    ram = bytearray(rng.randrange(256) for _ in range(0x800))
+    offense = rng.choice((1, 2))
+    defense = 3 - offense
+    player = rng.randrange(11)
+    off = PLAYER_RAM[offense] + player * PLAYER_SIZE
+    ram[CURR_OFF_COLL_ADDR:CURR_OFF_COLL_ADDR + 2] = off.to_bytes(2, "little")
+    ram[CURR_DEF_COLL_ADDR:CURR_DEF_COLL_ADDR + 2] = PLAYER_RAM[defense].to_bytes(2, "little")
+    ram[CURRENT_OFF_PLAYER] = 11 - player
+    y = rng.randrange(256)
+    x = rng.choice((rng.randrange(0x10000), rng.randrange(0xF8, 0x108) + 0x100 * rng.randrange(8)))
+    ram[off + Y_POS + 1] = y
+    ram[off + X_POS + 1:off + X_POS + 3] = (x & 0xFFFF).to_bytes(2, "little")
+    for k in range(11):
+        d = PLAYER_RAM[defense] + k * PLAYER_SIZE
+        ram[d + Y_POS + 1] = (y + rng.randrange(-9, 10)) & 0xFF
+        dx = x + rng.choice((rng.randrange(-10, 11), rng.randrange(-300, 300)))
+        ram[d + X_POS + 1:d + X_POS + 3] = (dx & 0xFFFF).to_bytes(2, "little")
+    for at in range(0x2C):
+        ram[CAN_COLLIDE + at] = rng.choice((0xFF, 0x00, rng.randrange(256)))
+        ram[COLLIDED + at] = rng.randrange(256)
+    return ram
+
+
+def test_the_collision_checks_check_as_the_games(pair):
+    fast, slow = pair
+    rng = random.Random(1991)
+    met = 0
+    for _ in range(PASSES):
+        ram = players_close(rng)
+        a000_bank = rng.choice((21, 23, 28))
+        select = rng.choice((0x06, 0x07, 0x46, 0x47))
+        result = call(fast, bytes(ram), a000_bank, select, COLL_START, COLL_DONE)
+        assert result == call(slow, bytes(ram), a000_bank, select, COLL_START, COLL_DONE)
+        met += sum(bin(result[0][COLLIDED + at] & ~ram[COLLIDED + at]).count("1")
+                   for at in range(0x2C))
+    assert met > PASSES // 2         # pairs did meet
