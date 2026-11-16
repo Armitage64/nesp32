@@ -220,6 +220,22 @@ class Table:
             console.watch(TICK_AT, lambda console, side=side: self._taken(side, console))
         self.offsets = [0.0, 0.0]
         self.changes = {}           # tick: what to do to each console's memory before it
+        # What to do to each console's memory before every tick from one to
+        # another (every_tick): (first, last or None, change).
+        self.each_tick = None
+
+    def every_tick(self, change):
+        """Change each console's memory before every tick from the next one
+        neither has taken, as a change the game made itself would be: it
+        must depend on the game alone. None stops it, from the next such
+        tick on. (The two are some ticks apart: a change from the tick each
+        is at would be one tick's on one and another's on the other.)"""
+        next_tick = max(self.ticks(0), self.ticks(1)) + 2
+        if change is None:
+            if self.each_tick is not None:
+                self.each_tick = (self.each_tick[0], next_tick, self.each_tick[2])
+        else:
+            self.each_tick = (next_tick, None, change)
 
     def at_tick(self, tick, change, sides=(0, 1)):
         """Change each console's memory as it takes this tick: both alike, as
@@ -311,6 +327,10 @@ class Table:
             return
         if tick in self.changes and side in self.changes[tick][1]:
             self.changes[tick][0](console)
+        if self.each_tick is not None:
+            first, last, change = self.each_tick
+            if tick >= first and (last is None or tick < last):
+                change(console)
         self.traces[side][tick] = console.state()
 
     def ticks(self, side):

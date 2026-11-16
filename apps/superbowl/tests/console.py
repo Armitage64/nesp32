@@ -414,7 +414,11 @@ class Console:
     # The save RAM is the game's too, but for the netplay's: the stretch the
     # game's checksum leaves out at $6EFE, which the NMI's exchange keeps
     # the stack in, and its memory at $7F72 on.
-    SRAM_UNKEPT = [(0x0EFE, 0x1002), (0x1F72, 0x2000)]
+    # And $6203-$621E, where the game saves its state for a scene (bank 19,
+    # $A07B) puts a copy of $0150-$016B: a task's stack, and below the
+    # pointer it saved, whatever the interrupts left there (a season game
+    # for two differed in three of them).
+    SRAM_UNKEPT = [(0x0203, 0x021F), (0x0EFE, 0x1002), (0x1F72, 0x2000)]
 
     # The stack is each task's own, a stretch of page 1 below the top it
     # starts at (the game's *_STACK_INDEX). Only what a task has pushed is

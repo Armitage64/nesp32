@@ -8,14 +8,16 @@ netplay games share.
 **Where it stands.** The game builds from its disassembly with ca65, and
 the original matches the ROM byte for byte. The netplay ROM's session is
 done and tested in the simulation: two consoles, each with nesp32's
-firmware, play the same game tick by tick from a session's start through
-the menus to a preseason game, MAN VS MAN, and on into play. The menu
-(Select at the title) hosts and joins a game by a room's code or an
-address, and makes the two consoles' saves the same, player 1's copied to
-player 2's when player 2 says yes, all in the simulation. A session begins
-at the game's main menu. Only a preseason game, MAN VS MAN, has been played
-in a session so far; the season and the rest are not tried yet. Nothing
-has been tried on hardware. "To do", at the end, is where to pick it up.
+firmware, play the same game tick by tick from a session's start at the
+main menu through all of the game: a preseason game played to its end in
+each of the six ways to play, the timeouts, the season (TEAM CONTROL, a
+season game for two, a week of the CPU's games skipped through, the
+standings and the playoffs), the Pro Bowl and TEAM DATA, with the two
+consoles' saves alike after each. The menu (Select at the title) hosts and
+joins a game by a room's code or an address, and makes the two consoles'
+saves the same, player 1's copied to player 2's when player 2 says yes,
+all in the simulation. Nothing has been tried on hardware. "To do", at the
+end, is where to pick it up.
 
 **The game is not in this repository.** Whoever builds puts a copy of
 it, the US release, in this directory as `baserom.nes` (or says where it
@@ -34,7 +36,7 @@ make import     # tools/game.map again, from the disassembly (needs asm6f)
 Needs cc65 (`ca65`, `ld65`), Python 3, `patch`, and a C compiler: the
 tests run the ROM against nesp32's firmware built for this computer. Each
 test is a minute or more; with the repository's `.venv`, which has
-pytest-xdist, they run on every core, the 20 of them in about four minutes:
+pytest-xdist, they run on every core, the 32 of them in about 12 minutes:
 `make test PYTHON=../../.venv/bin/python` here, or from the top of nesp32
 `make test-apps APPS=superbowl`. They need the firmware of this branch,
 whose PEER has the save's ops.
@@ -233,7 +235,10 @@ save across a network with no loss, in nesp32's `tests/test_arq.py`.
 RAM's $A001 as the MMC3 has it and a scheduler that leaves the NMI with no
 RTI. `tests/netplay.py` is two of them, each with nesp32's firmware, and a
 network between; `Table.to_game` plays from a session's start to the
-kickoff of a preseason game, MAN VS MAN, Buffalo against Cleveland.
+kickoff of a preseason game, MAN VS MAN, Buffalo against Cleveland. A test
+may change both consoles' memory alike at a tick (`Table.at_tick`), or at
+every tick from the next one neither console has taken
+(`Table.every_tick`), as a change the game made itself would be.
 
 The two consoles' states are compared at the start of each tick, where
 the game's NMI goes on into its tasks (`NMI_UPDATE_RANDOM_NUMS`), once the
@@ -241,7 +246,10 @@ exchange has put back what it borrowed. Left out (`UNKEPT`): the
 library's zero page, the sound engine's memory, the interrupts' saves of
 the registers and how far down the screen's splits the IRQ has got
 ($0300-$0306), the idle loop's stack, and in each task's stack what is
-below the pointer it saved when it went to sleep.
+below the pointer it saved when it went to sleep; and in the save RAM,
+the netplay's own, and $6203-$621E, where the game's save of its state for
+a scene keeps a copy of one task's stack, $0150-$016B, with whatever the
+interrupts left below its pointer.
 
 `tests/test_lockstep.py`: from a session's start through the menus and
 1500 frames of play at random, the same game at every tick, at 5 and 20 ms
@@ -250,6 +258,37 @@ nesp32, and HOST GAME and JOIN GAME, by an address and by a room's code,
 into a session that plays the same game on both; the same saves, and
 different ones, with player 2's YES (its save becomes player 1's, and the
 session is one game) and its NO.
+
+`tests/test_game.py`: a preseason game, MAN VS MAN, played to the fourth
+quarter's whistle, its statistics, and A back to the main menu; a timeout
+taken by each player from the play-call screen's menu; the preseason's
+five other ways to play (MAN VS COM, MAN VS COA, COA VS COM, COA VS COA,
+COM VS COM); the Pro Bowl; and TEAM DATA, the AFC's all stars' playbooks
+changed at random, which the game writes to the save. `tests/test_season.py`:
+TEAM CONTROL's change of a team, and a season game for two played to its
+end, its result in the season; SCHEDULE's autoskip and a week of the
+CPU's games played out with no buttons; and the season's last game into
+the standings and the first playoff game. Each from a session's start at
+the main menu, the same game at every tick, the two saves alike at the
+end, and in the longer ones every bank the game picks one of its 30 (the
+netplay's are 30 and 31; `game_banks`).
+
+Some of the game would take too long in the simulation, some 19 frames a
+second for the two consoles and their nesp32s, and the tests make it
+shorter, the same on both consoles:
+
+- **A game** is some 15 minutes of play. Each quarter's clock is 0:10
+  once it starts (`short_quarters`), and player 1 is given a touchdown, or
+  a tie goes on to overtime: a game is then some 5500 frames. Setting the
+  quarter instead does not end it: the game's quarters are a task's
+  calls one after another, and `QUARTER` only a count.
+- **A season** is 17 weeks. A test that needs it further on sets the week
+  and game in the save (`CURRENT_WEEK_IN_SEASON`, `CURRENT_GAME_IN_WEEK`)
+  at the main menu and makes its checksum right (`fix_checksum`), which
+  the game checks only at the power-on.
+- **A timeout** is taken only while the clock runs between plays, after a
+  tackle in bounds, which plays at random seldom end with: the clock runs
+  between plays while the test tries (`clock_runs`).
 
 ## What has been learned
 
@@ -269,6 +308,25 @@ session is one game) and its NO.
 - **The game's IRQ splits the title's screen**, and its handler is in the
   fixed bank: a hang with the PC in $C2C2-$C378 is the IRQ, running when
   it should not.
+- **The game's tasks keep their stacks in page 1, and it copies one into
+  the save RAM** for a scene ($0150-$016B to $6203, bank 19's $A07B),
+  with what an interrupt pushed below the stack's pointer. Two consoles
+  differ there, and in nothing that counts: a season game for two
+  differed in three such bytes. The save the two must share begins at
+  $6403, past it.
+- **On the play-call screen, A alone is the menu** (CANCEL, TIMEOUT, and
+  the offense's PUNT KICK, FIELD GOAL and CHANGE), not Start, and it takes
+  some frames to open; its text stays in the nametable after it closes,
+  so a test looks at its arrow's sprite ($0200 for player 1, $0204 for
+  player 2, at Y $38 beside CANCEL). A timeout is refused while the clock
+  is stopped.
+- **The main menu is PRESEASON, SEASON GAME, PRO BOWL and TEAM DATA**, in
+  that order; the season's is TEAM CONTROL, SCHEDULE, GAME START, the
+  standings, rankings and leaders, and TEAM DATA. A season starts with
+  every team SKP (TEAM_TYPE_SEASON 3), and GAME START plays each game of
+  the week out with its scoreboard and statistics, some 900 frames a game
+  with A to go on; each A in TEAM CONTROL makes a team's control the next
+  (MAN 0, COA 1, COM 2, SKP 3).
 - **A test's ticks are counted from `Table.begun()`**, which now clears
   what was traced before it: one console's session may begin some frames
   before the other's (player 2 copying a save), and ticks taken before it
@@ -278,30 +336,13 @@ session is one game) and its NO.
 
 In order. Each step is tested in the simulation before the next.
 
-1. **The rest of the game in a session**, next. Only `Table.to_game`'s
-   preseason game, MAN VS MAN, Buffalo against Cleveland, has been played
-   in a session, and only some 25 seconds of it. Each of these is a
-   lockstep test, in `tests/test_lockstep.py` or a file of its own, from
-   a session's start at the main menu (`Table.start`, and a script of
-   presses like `to_game`'s):
-   - a preseason game played to its end, and the screens after it;
-   - the pause, and the timeouts in it;
-   - MAN VS COM and COACH: whatever of them two players can choose;
-   - the season: TEAM CONTROL, the schedule, GAME START, a week with SKP
-     (the CPU's games played out, the longest stretch of play with no
-     buttons), the standings, and the playoffs. The season goes into the
-     save RAM, and the two consoles' saves must stay alike: compare them
-     at the end of each test, as `test_menu.py`'s `save_of` does;
-   - the Pro Bowl, and TEAM DATA's changes (starters, playbooks), which
-     are written to the save RAM too.
-
-   Check that the game never picks a bank above 29
-   (`tests/test_console.py`, as RCR's).
-2. **The frame rate.** The exchange costs some 2000 cycles at 14, and the
-   stack and zero page it keeps some 1000 more, in each tick's NMI, which
-   is time the tasks lose: measure the lags in a session against the
-   original's 1%, with a bench like Jackal's (`make bench`).
-3. **For players**: `make bps` and `dist/tsb_net.bps`, `tests/test_patch.py`,
+1. **The frame rate**, next. The exchange costs some 2000 cycles at 14,
+   and the stack and zero page it keeps some 1000 more, in each tick's
+   NMI, which is time the tasks lose: measure the lags in a session
+   against the original's 1%, with a bench like Jackal's (`make bench`).
+   The rest of the game in a session, which was first, is done ("The
+   simulation").
+2. **For players**: `make bps` and `dist/tsb_net.bps`, `tests/test_patch.py`,
    the hello's version, and every document that lists the games (the
    `nes-netplay-port` skill's "Shipping a change"), with `TSBO` in
    `VERSIONS` (`host/peer_player.py`), which `tests/test_peer_player.py`
@@ -311,7 +352,7 @@ In order. Each step is tested in the simulation before the next.
    brings them, and a nesp32 with older firmware should be told to update
    (its SAVE answers `NO_OP`; the menu now gives the session up after
    `SAVE_TRIES` instead).
-4. **Hardware**: two consoles and two nesp32s, by a room's code, each
+3. **Hardware**: two consoles and two nesp32s, by a room's code, each
    nesp32 flashed with this branch's firmware. Watch the screen's splits
    while an exchange holds the IRQ off (the play-call screen has them),
    and the samples against the line at 14. And the save: the dialogue on
@@ -319,7 +360,7 @@ In order. Each step is tested in the simulation before the next.
    SAVE_PUT, player 2's second of SAVE_GET), and that a copied save is the
    one the game then plays. The copy is at the link's rate; PEER's RATE
    could make it some twice as fast.
-5. **River City Ransom's menu** is the same as this one's but for the
+4. **River City Ransom's menu** is the same as this one's but for the
    save: check whether its frames can run past an NMI, and whether its
    game's NMI keeps its registers where a nested one would spoil them.
 
