@@ -338,6 +338,15 @@ unrolled (`STACK_KEEP`, `net/net_ram.inc`, which says why 24):
   back the wrong registers, and the idle loop takes X for a task's index
   and crashes. Anything of the netplay's that may run past a frame does so
   with the NMI off.
+  And the NMI goes on again only at the RTI (`net_menu_nmi`): the menu
+  turned it on at the end of its frame's work, before the way out restored
+  the registers, and a vblank that came in those few instructions brought
+  an NMI that saved its own over them. The idle loop then took X = $C9 for
+  a task, ran into a stale stack, and from there into BRKs at $24A7; on
+  player 1 the save's copy stopped (player 2 kept its own past byte 2088)
+  or ran on with the IRQ left on. It came in about one run in four of
+  `test_menu.py`'s different saves. The tests now fail any task the
+  scheduler takes up that is none of the eight (`guard_tasks`).
 - **The game puts much of its save right at the power-on.** A save RAM of
   zeros becomes a new save; in one the game had made, a change to the
   seed (`SAVED_RANDOM_1`), the CPU's boost or the playbooks was undone by
@@ -381,19 +390,13 @@ unrolled (`STACK_KEEP`, `net/net_ram.inc`, which says why 24):
 
 In order. Each step is tested in the simulation before the next.
 
-1. **The save's copy is not reliable**, next: `test_menu.py`'s two tests
-   of different saves fail some runs of the same code: `says_yes` 3 of 12
-   before the stack was kept unrolled (761cdb2; six at once, each in its
-   own process), 3 of 6 after, and one of the two in most runs of the
-   whole `make test`. Most often
-   player 2's save is player 1's only up to byte 2088 of it, a little past
-   2 KB, the stream's window (NESP_ARQ_HELD 2048): player 2 seems to take
-   it before all of it is at its nesp32. Sometimes player 2 is still at
-   the menu when the test looks. Two consoles whose saves differ play
-   different games, so this comes before the frame rate. Find first what
-   makes two runs of the simulation differ: it is meant to be the same
-   every time (the firmware's host build, `host/nesp_host.c`, decides
-   nothing by the clock).
+1. **Why two runs of the simulation differ.** The same test, run in
+   separate processes at once, has taken different turns: the menu's
+   frames came out a little longer or shorter against the vblank. Python's
+   hash seed is not it (fixed, the runs still differed), nor the host
+   build's clock. It let the menu's NMI bug ("What has been learned")
+   pass some runs and fail others; a test meant to be the same every time
+   should be.
 2. **The frame rate**: measured ("The frame rate"), a session lags in 10%
    of its frames where the original does in 2%. What the NMI adds before
    the tasks is mostly the exchange now, 2,600 cycles of 3,750: a faster

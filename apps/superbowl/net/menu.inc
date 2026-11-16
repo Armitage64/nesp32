@@ -76,7 +76,8 @@ MENU_PPUCTRL    = $88
 ; And with no NMI, while a frame of the menu is at work: the game's NMI
 ; keeps the registers it saves in memory (NMI_A, NMI_X, NMI_Y), not on the
 ; stack, and one that broke into a frame of the menu that ran long would
-; give the main thread back another's (menu_nmi_on).
+; give the main thread back another's. The NMI is on again only as the
+; menu's returns, its registers already back (menu_nmi_on, net_menu_nmi).
 MENU_PPUCTRL_QUIET = MENU_PPUCTRL & $7F
 
 IP_TILES        = 15            ; 192.168.001.023
@@ -130,7 +131,8 @@ menu_sum        = menu_vars + 64    ; 2: this console's save's sum, high byte fi
 menu_at         = menu_vars + 66    ; 2: where in the save the next piece is
 menu_tries      = menu_vars + 68    ; 2: exchanges that came to nothing
 menu_save       = menu_vars + 70    ; the saves' state, from the last SAVE: NESP_SAVE_*
-MENU_VARS       = 71
+menu_nmi_want   = menu_vars + 71    ; 01: the NMI on again as this one returns (menu_nmi_on)
+MENU_VARS       = 72
 
 menu_oam        = SPRITE_DMA_ADDR   ; 256: the sprites, the game's page for the OAM's DMA
 
@@ -154,6 +156,8 @@ DIRTY_CODE      = $10           ; the room's code, on the host's screen
 ; One NMI of the menu. net_menu is NET_MENU_FIRST for the first, which sets
 ; it up.
 menu_nmi:
+    lda #$00
+    sta menu_nmi_want
     bit net_menu
     bvc @running
     jmp menu_enter
@@ -225,12 +229,16 @@ menu_nmi:
     lda #$00
     sta menu_busy
 
-; The NMI on again, at the end of a frame of the menu, and not for a
-; vblank that has begun while it was at work.
+; The NMI on again, at the end of a frame of the menu: as the NMI returns
+; (net_menu_nmi), with the main thread's X and Y back and its A on the
+; stack. Turned on any sooner, a vblank that came on the way out brought an
+; NMI into this one's end, which saved over NMI_A, NMI_X and NMI_Y the
+; registers this one was about to give back: the idle loop then took a
+; wrong X for a task's index, and ran into anything (a copy of the save
+; that stopped, or broke, some runs in four).
 menu_nmi_on:
-    lda NES_PPU_STATUS
-    lda #MENU_PPUCTRL
-    sta NES_PPU_CTRL
+    lda #$01
+    sta menu_nmi_want
     rts
 
 ; The mode's handler, which ends the frame.

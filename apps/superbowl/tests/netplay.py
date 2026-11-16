@@ -22,7 +22,7 @@ when each tick was taken, where the game's NMI goes on into its tasks
 """
 
 import nesp_proto as p
-from console import FRAME_CYCLES, PAD_A, PAD_DOWN, PAD_RIGHT, PAD_START
+from console import FRAME_CYCLES, PAD_A, PAD_DOWN, PAD_RIGHT, PAD_START, Console
 from nesp import CONN_ANSWERED, CONN_CALLED, CONN_CALLING, CONN_FAILED, CONN_LISTENING
 from nesp import CONN_LOST, CONN_MEETING, CONN_MET, CONN_UP, Stick
 from rendezvous import Rooms
@@ -62,6 +62,19 @@ def guard_stack(console):
 
     console.watch("net_nmi_read", enter)
     console.watch("net_sram_back", leave)
+
+
+TASKS = tuple(task for task, _ in Console.TASK_STACKS)
+
+
+def guard_tasks(console):
+    """Fail if the scheduler takes up a task that is none of the eight: the
+    idle loop given back a wrong X, as by an NMI that broke into another's
+    end (the menu's, before menu_nmi_on waited for the RTI)."""
+    def taken(console):
+        assert console.mpu.x in TASKS, "the scheduler took up a task at $%02X, frame %d" % (
+            console.mpu.x, len(console.frames))
+    console.watch("UPDATE_CURRENT_TASK", taken)
 
 
 class Lan:
@@ -245,6 +258,7 @@ class Table:
             # stack and the zero page it worked in.
             console.watch(TICK_AT, lambda console, side=side: self._taken(side, console))
             guard_stack(console)
+            guard_tasks(console)
         self.offsets = [0.0, 0.0]
         self.changes = {}           # tick: what to do to each console's memory before it
         # What to do to each console's memory before every tick from one to

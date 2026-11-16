@@ -327,7 +327,24 @@ net_menu_nmi:
     lda #MENU_BANK
     sta MMC3_DATA
     jsr menu_nmi
-    jmp RETURN_FROM_NMI_TASK_BUSY
+    ; As RETURN_FROM_NMI_TASK_BUSY, but with the NMI on again only once X
+    ; and Y are back, and A kept on the stack: an NMI that comes before the
+    ; RTI saves the right X and Y, and leaves this one's A alone
+    ; (menu_nmi_on).
+    lda SOFT_BANK_SELECT
+    sta MMC3_SELECT
+    ldy NMI_Y
+    ldx NMI_X
+    lda NMI_A
+    pha
+    lda menu_nmi_want
+    beq @quiet
+    lda NES_PPU_STATUS          ; a vblank begun while at work brings no NMI
+    lda #MENU_PPUCTRL
+    sta NES_PPU_CTRL
+@quiet:
+    pla
+    rti
 
 ; --- the NMI's read -------------------------------------------------------------
 
