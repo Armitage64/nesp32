@@ -6,6 +6,18 @@ CONFIG_FREERTOS_HZ=1000
 CONFIG_UART_ISR_IN_IRAM=y
 # Wi-Fi on core 0; the link task has core 1 to itself (main/link.c).
 CONFIG_ESP_WIFI_TASK_PINNED_TO_CORE_0=y
+# FreeRTOS's functions and the ring buffer's run from RAM. Each request
+# goes through them: the link task waits on the UART's event queue, reads
+# the request from the driver's receive ring buffer and writes the reply to
+# its transmit one, and from flash any of those calls can wait on a cache
+# miss. ESP-IDF 6 puts both in flash by default and keeps in RAM only what
+# interrupts and the scheduler call; these two bring the rest back, for
+# about 11 KB of internal RAM. ESP-IDF 5.5 kept them in RAM without being
+# asked: FreeRTOS through a hidden option that defaults to y, the ring
+# buffer because RINGBUF_PLACE_FUNCTIONS_INTO_FLASH defaults to n. 5.5 has
+# no RINGBUF_IN_IRAM and warns of an unknown symbol.
+CONFIG_FREERTOS_IN_IRAM=y
+CONFIG_RINGBUF_IN_IRAM=y
 CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
