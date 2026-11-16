@@ -19,32 +19,40 @@
 +.else
 @@ -57350,0 +57364 @@
 +.endif
-@@ -128457,0 +128472,5 @@
+@@ -90344,0 +90359,5 @@
++.ifdef NET_FLICKER
++    jmp net_flicker                      ; the same, quicker (net/flicker.inc)
++    nop
++NET_FLICKER_ORDERS:
++.else
+@@ -90346,0 +90366 @@
++.endif
+@@ -128457,0 +128478,5 @@
 +.ifdef NETPLAY
 +    jsr net_bank_in                      ; the netplay's reset, which makes these writes
 +    jsr net_reset                        ; at its end (net/net.inc)
 +    .res 8, $EA
 +.else
-@@ -128468,0 +128488 @@
+@@ -128468,0 +128494 @@
 +.endif
-@@ -128590,0 +128611,4 @@
+@@ -128590,0 +128617,4 @@
 +.ifdef NETPLAY
 +    jmp net_nmi_check                    ; the same, and a session's tick, stall or lag (net/cart.inc)
 +    nop
 +.else
-@@ -128592,0 +128617 @@
+@@ -128592,0 +128623 @@
 +.endif
-@@ -128767,0 +128793,4 @@
+@@ -128767,0 +128799,4 @@
 +.ifdef NETPLAY
 +    jmp net_read_hook                    ; the same, or a session's tick or stall (net/cart.inc)
 +    .res 3, $EA
 +.else
-@@ -128770,0 +128800 @@
+@@ -128770,0 +128806 @@
 +.endif
-@@ -130530,0 +130561,4 @@
+@@ -130530,0 +130567,4 @@
 +.ifdef NETPLAY
 +    NET_FILL_D05F                        ; in place of L_D05F, which nothing calls (net/cart.inc)
 +    .res $D081 - $D05F - (* - net_title_press), $FF
 +.else
-@@ -130549,0 +130584 @@
+@@ -130549,0 +130590 @@
 +.endif

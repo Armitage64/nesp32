@@ -1,7 +1,10 @@
 # Tecmo Super Bowl build.
 #
 #   make            build/tsb.nes, the original, and build/tsb_net.nes, for
-#                   two consoles and two nesp32s
+#                   two consoles and two nesp32s; and build/tsb_net_slow.nes,
+#                   the same with the game's own routines where the netplay
+#                   ROM has quicker ones, which it is held to and measured
+#                   against
 #   make verify     check the original against the ROM's SHA-512
 #   make test       the simulation's tests (needs requirements-dev.txt)
 #   make bench      how the frames go, the original against a session, in a
@@ -39,6 +42,7 @@ NESP := $(NESP_BUILD)/nesp.stamp
 NESP_LIB := $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/gen_link.py
 ROM := $(BUILD)/tsb.nes
 NET_ROM := $(BUILD)/tsb_net.nes
+SLOW_ROM := $(BUILD)/tsb_net_slow.nes
 GEN := $(BUILD)/gen
 SRC := $(BUILD)/src
 CONVERTED := $(BUILD)/converted.stamp
@@ -48,16 +52,17 @@ NAMES := header tsb chr
 SOURCES := $(NAMES:%=$(SRC)/%.asm)
 OBJECTS := $(NAMES:%=$(BUILD)/orig/%.o)
 NET_OBJECTS := $(NAMES:%=$(BUILD)/net/%.o)
+SLOW_OBJECTS := $(NAMES:%=$(BUILD)/slow/%.o)
 NET_SOURCES := $(wildcard net/*.inc net/*.asm) $(BUILD)/link.inc $(NESP_LIB) $(NESP)
 NET_INCLUDES := -I net -I $(BUILD) -I $(NESP_BUILD) -I $(NESP32)/nes/lib
 
 .PHONY: all verify test bench import patches clean FORCE
 
-all: $(ROM) $(NET_ROM)
+all: $(ROM) $(NET_ROM) $(SLOW_ROM)
 
 .SECONDARY:
 
-$(BUILD) $(BUILD)/orig $(BUILD)/net:
+$(BUILD) $(BUILD)/orig $(BUILD)/net $(BUILD)/slow:
 	mkdir -p $@
 
 $(CONVERTED): tools/convert.py tools/game.map $(BASEROM) | $(BUILD)
@@ -108,12 +113,18 @@ $(BUILD)/orig/%.o: $(SRC)/%.asm | $(BUILD)/orig
 $(BUILD)/net/%.o: $(SRC)/%.asm $(NET_SOURCES) | $(BUILD)/net
 	ca65 -D NETPLAY --debug-info --bin-include-dir $(BUILD) -I $(SRC) $(NET_INCLUDES) -o $@ $<
 
+$(BUILD)/slow/%.o: $(SRC)/%.asm $(NET_SOURCES) | $(BUILD)/slow
+	ca65 -D NETPLAY -D NET_SLOW --debug-info --bin-include-dir $(BUILD) -I $(SRC) $(NET_INCLUDES) -o $@ $<
+
 $(ROM): $(OBJECTS) superbowl.cfg
 	ld65 -C superbowl.cfg --dbgfile $(BUILD)/tsb.dbg -o $@ $(OBJECTS)
 
 $(NET_ROM): $(NET_OBJECTS) net/superbowl_net.cfg
 	ld65 -C net/superbowl_net.cfg --dbgfile $(BUILD)/tsb_net.dbg \
 		-m $(BUILD)/tsb_net.map -o $@ $(NET_OBJECTS)
+
+$(SLOW_ROM): $(SLOW_OBJECTS) net/superbowl_net.cfg
+	ld65 -C net/superbowl_net.cfg --dbgfile $(BUILD)/tsb_net_slow.dbg -o $@ $(SLOW_OBJECTS)
 
 verify: $(ROM)
 	@test "$$(shasum -a 512 $(ROM) | cut -d' ' -f1)" = "$(SHA512_ORIGINAL)" \

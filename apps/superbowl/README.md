@@ -26,7 +26,9 @@ SHA-512.
 
 ```sh
 git submodule update --init third_party/Tecmo_Super_Bowl_NES_Disassembly
-make            # build/tsb.nes, the original, and build/tsb_net.nes
+make            # build/tsb.nes, the original, build/tsb_net.nes, and
+                # build/tsb_net_slow.nes, the netplay ROM with the game's
+                # own routines where it has quicker ones ("Quicker routines")
 make verify     # the original matches its SHA-512
 make test       # the simulation's tests (needs requirements-dev.txt)
 make bench      # the original's frames against a session's ("The frame rate")
@@ -258,7 +260,8 @@ each way. `tests/test_menu.py`: the menu's screens and what it asks the
 nesp32, and HOST GAME and JOIN GAME, by an address and by a room's code,
 into a session that plays the same game on both; the same saves, and
 different ones, with player 2's YES (its save becomes player 1's, and the
-session is one game) and its NO.
+session is one game) and its NO. `tests/test_fast.py`: the netplay ROM's
+quicker routines against `tsb_net_slow.nes` ("Quicker routines").
 
 `tests/test_game.py`: a preseason game, MAN VS MAN, played to the fourth
 quarter's whistle, its statistics, and A back to the main menu; a timeout
@@ -308,14 +311,18 @@ At 14 cycles a bit:
 | the original | 0.9% | 2.2% | 58.2 | 2,375 | 22,068 | 2.2% |
 | a session, 2026-11-15 | 0.9% | 14.2% | 51.0 | 6,817 | 26,329 | 16.8% |
 | a session, the stack kept unrolled (2026-11-16) | 1.1% | 10.4% | 53.2 | 5,763 | 25,282 | 11.8% |
+| a session, the sprites' flicker quicker (2026-11-16) | 0.9% | 6.5% | 55.6 | 5,470 | 24,326 | 7.2% |
 
 (Cycles are medians; a frame is 29,780.) The game's tick is long: the
 median is three quarters of a frame, so what the session adds to the NMI
 puts many ticks over. In the original a lag costs the game nothing but
 where it falls (the NMI goes on into the tasks, which count their frames
 as before); in a session it is a frame the game stands still, so the game
-plays at 53 ticks a second, 9% slower than the original. No stalls at
-10 ms: the delay covers the trip.
+plays at 55.6 ticks a second, 4.5% slower than the original (53.2, 9%,
+before the flicker's quicker count). No stalls at 10 ms: the delay covers
+the trip. Each 1,000 cycles off a tick of play takes some three of the
+lags in a hundred frames away: the busy stretches' ticks are close to a
+frame, and the session's work tips them over.
 
 What the session's NMI adds, from its read (`net_nmi_read`) to the tasks,
 where the game's own read is some 700 cycles. The stack and the locals
@@ -329,6 +336,38 @@ unrolled (`STACK_KEEP`, `net/net_ram.inc`, which says why 24):
 | the exchange, PEER's TICKS at 14 | 2,598 | 2,593 |
 | both players' buttons taken, the stack and the locals put back | 1,027 | 434 |
 | in all | 5,102 | 3,748 |
+
+### Quicker routines
+
+The game's own routines are the larger part of a tick. In play (a
+profile of the original's ticks, by routine): the players' movement
+(`UPDATE_PLAYER_LOCATION_START` and the loop round it, in the fixed bank)
+some 6,700 cycles a tick, the checks of each offensive player against the
+defense (`CHECK_OFF_PLAYER_VS_ALL_DEF_LOOP`) 1,600, the sprites' flicker
+1,900, the task switches 2,300, the music 1,500. The netplay ROM has
+quicker ways through some of them, and `build/tsb_net_slow.nes` is the
+same ROM with the game's own (built with `NET_SLOW`): `tests/test_fast.py`
+holds the one to the other, each routine from memory at random (its
+memory, registers, flags and the MMC3's banks after), and a session's
+whole game, its buttons the same at each tick, the same at every tick.
+That is a session's game: alone, the game's NMI breaks into its tasks
+wherever a frame ends, and a quicker routine makes a different game.
+
+- **The sprites' flicker** (`net/flicker.inc`): each frame the flicker
+  task counts the sprites in each band of 16 lines and puts the ninth and
+  later off the screen, over some 48 sprites, at some 45 cycles each.
+  Written out a sprite at a time, with the band from a table, 16 of them
+  for the offsets the game cycles through, it is some 27. Its bank, 33,
+  goes in at $A000 for the count from bank 22's empty bytes
+  (`net_flicker`), which keeps the game's shadows of the banks as they
+  were; the registers and flags it leaves are the game's loop's, which the
+  task's next sleep keeps on its stack (the first thing the whole game's
+  test found). Lags from 10.4% to 6.5%.
+- **The players' movement** is next by its size, but its loop is as tight
+  as the game's way of reaching each player's 32 bytes, through a
+  pointer, allows; X-indexed it would save some 1,000 cycles a tick, in
+  the fixed bank, which has no room, with the players' bytes across four
+  pages.
 
 ## What has been learned
 
@@ -392,6 +431,19 @@ unrolled (`STACK_KEEP`, `net/net_ram.inc`, which says why 24):
   what was traced before it: one console's session may begin some frames
   before the other's (player 2 copying a save), and ticks taken before it
   were named from the table's start.
+- **The exchange made ahead, in the idle loop, gained little** (tried
+  and taken out, 2026-11-16). Once a tick's tasks were asleep, the
+  scheduler's idle loop read the controller for the next tick and made
+  its exchange, so that the NMI had only to take the buttons; an NMI that
+  came first gave it up and put back what it had changed. The NMI's part
+  went from 5,770 cycles to 3,238, but lags only from 10.4% to 9.2% (53.2
+  to 54.0 ticks a second, `make bench`'s four seeds), and the NMI cut off
+  some 30% of them. After a tick there are some 4,100 cycles to the next
+  vblank (the median), and the exchange ahead took some 3,600 with the
+  read and the stack and locals kept; in the busy stretches of play,
+  where the lags are, there are fewer. Moving the session's work about
+  the frame does not help where the frame has no room: a tick has to cost
+  less in all. Each exchange cut off left half a request on the line.
 
 ## To do
 
@@ -400,8 +452,14 @@ In order. Each step is tested in the simulation before the next.
 1. **The frame rate**: measured ("The frame rate"), a session lags in 10%
    of its frames where the original does in 2%. What the NMI adds before
    the tasks is mostly the exchange now, 2,600 cycles of 3,750: a faster
-   line (10 was misheard on Jackal), or fewer bytes in TICKS. Then
-   `make bench` again.
+   line (10 was misheard on Jackal), or fewer bytes in TICKS, would save
+   200-300 of them. Moving the exchange to the idle loop gained little
+   ("What has been learned"). The game's own routines are the larger
+   part of a tick ("Quicker routines"): the flicker's count is done (lags
+   10.4% to 6.5%); next, of what is left, the checks of each offensive
+   player against the defense, the music, or the players' movement if
+   room can be found for it. Each against `tsb_net_slow.nes` in
+   `tests/test_fast.py`, then `make bench` again.
 2. **For players**: `make bps` and `dist/tsb_net.bps`, `tests/test_patch.py`,
    the hello's version, and every document that lists the games (the
    `nes-netplay-port` skill's "Shipping a change"), with `TSBO` in

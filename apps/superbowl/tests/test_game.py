@@ -17,8 +17,12 @@ from wire import ms
 GAME_BANKS = 30                 # the game's switchable banks; 30 and 31 are the netplay's
 MMC3_DATA = 0x8001
 FIXED_HOOKS = 0xFF80            # the netplay's hooks in the fixed bank (net/cart.inc)
+# And its quicker flicker's bank (net/flicker.inc), which its way in and out,
+# in bank 22's empty bytes, puts in at $A000, and the game's own NMI puts
+# back from the game's shadow if it comes during the count.
+FLICKER_BANK = 33
 END_OF_GAME_STATS = 0x4E        # DRAW_SCOREBOARD_SCENE's scene: the blue screen after a game
-GAME_FRAMES = 9000              # a game of short quarters is some 5500
+GAME_FRAMES = 12000             # a game of short quarters is some 5500, with overtime 9800
 SHORT_QUARTER = 0x10            # seconds, in BCD
 TEAM_TAPS = 12                  # presses enough to pick the teams in any of the preseason's ways
 TIMEOUT_TRIES = 20
@@ -37,8 +41,8 @@ def tap(table, side, pad, rest):
 
 def game_banks(table):
     """Every bank the game picks for $8000 or $A000 on either console. The
-    netplay's own picks (its hooks in the fixed bank, and its code in its
-    banks) are left out."""
+    netplay's own picks (its hooks in the fixed bank, its code in its
+    banks, and its flicker's bank) are left out."""
     picked = set()
     for console in table.consoles:
         write = console.write_mapper
@@ -47,8 +51,8 @@ def game_banks(table):
             if address & 0xE001 == MMC3_DATA and console.bank_select & 7 in (6, 7):
                 # py65 has taken the opcode, not yet the operand.
                 at = console.mpu.pc - 1
-                ours = at >= FIXED_HOOKS or (at < 0xC000 and console.bus.bank_at(at) >= GAME_BANKS
-                                             and console.bus.bank_at(at) < GAME_BANKS + 2)
+                ours = at >= FIXED_HOOKS or value == FLICKER_BANK or (
+                    at < 0xC000 and GAME_BANKS <= console.bus.bank_at(at) < GAME_BANKS + 2)
                 if not ours:
                     picked.add(value)
             write(address, value)
