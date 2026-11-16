@@ -82,15 +82,18 @@ jobs:
       - name: Build the StickS3's firmware
         uses: espressif/esp-idf-ci-action@v1
         with:
-          esp_idf_version: v5.5.5
+          esp_idf_version: v6.1.1
           target: esp32s3
           path: firmware
           command: idf.py -B build-esp32s3 -D SDKCONFIG=build-esp32s3/sdkconfig -D IDF_TARGET=esp32s3 build
 
+      # 6.0.3, not 6.1.1, until M5GFX builds for the ESP32 there: 6.1.1
+      # renamed the DAC functions its Panel_CVBS calls (m5stack/M5GFX#425).
+      # 6.0.3 has the same Mbed TLS (4.1.1).
       - name: Build the StickC Plus2's firmware
         uses: espressif/esp-idf-ci-action@v1
         with:
-          esp_idf_version: v5.5.5
+          esp_idf_version: v6.0.3
           target: esp32
           path: firmware
           command: idf.py -B build-esp32 -D SDKCONFIG=build-esp32/sdkconfig -D IDF_TARGET=esp32 build
@@ -99,7 +102,7 @@ jobs:
       - name: Build the generic ESP32-S3's firmware
         uses: espressif/esp-idf-ci-action@v1
         with:
-          esp_idf_version: v5.5.5
+          esp_idf_version: v6.1.1
           target: esp32s3
           path: firmware
           command: idf.py -B build-esp32s3-generic -D SDKCONFIG=build-esp32s3-generic/sdkconfig -D IDF_TARGET=esp32s3 -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.defaults.generic" build

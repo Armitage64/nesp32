@@ -109,7 +109,7 @@ your own copy of the game ([User Guide](docs/USER_GUIDE.md#11-playing-online-wit
 The steps below are for building the firmware and ROMs from source.
 
 You will need [cc65](https://cc65.github.io/) (`ca65`, `ld65`), a C compiler, `make`, `patch`,
-Python 3, and for the firmware [ESP-IDF 5.x](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/)
+Python 3, and for the firmware [ESP-IDF 6.x](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/)
 installed in `~/esp/esp-idf` (or wherever `IDF_PATH` points).
 
 **1. Clone the repository and its submodules**

@@ -1,6 +1,6 @@
 # The nesp32's firmware
 
-ESP-IDF 5.x and M5Unified, for an M5StickC Plus2 (`esp32`) or an M5StickS3
+ESP-IDF 6.x and M5Unified, for an M5StickC Plus2 (`esp32`) or an M5StickS3
 (`esp32s3`). One image serves every ROM: the ROM says which services it
 needs (`../docs/PROTOCOL.md`).
 
