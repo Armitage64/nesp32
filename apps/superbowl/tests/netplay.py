@@ -21,6 +21,8 @@ when each tick was taken, where the game's NMI goes on into its tasks
 (TICK_AT).
 """
 
+import random
+
 import nesp_proto as p
 from console import FRAME_CYCLES, PAD_A, PAD_DOWN, PAD_RIGHT, PAD_START, Console
 from nesp import CONN_ANSWERED, CONN_CALLED, CONN_CALLING, CONN_FAILED, CONN_LISTENING
@@ -37,6 +39,8 @@ TICK_AT = "NMI_UPDATE_RANDOM_NUMS"
 # From the power on to the game's first screen. A session starts the game
 # again from its reset in any case.
 BOOT_FRAMES = 60
+# The rooms' codes and sessions, the same every run (Lan).
+ROOMS_SEED = 6502
 
 def guard_stack(console):
     """Fail if the NMI's exchange writes to the stack below the STACK_KEEP
@@ -93,7 +97,9 @@ class Lan:
         self.noted = []             # how many notes each had left, as last seen
         self.notes = []             # for each: (cycle, note) on their way to it
         self.up = False
-        self.rooms = Rooms()
+        # Seeded: a room's code is drawn on its menu and crosses the link,
+        # so a different one each run made each run's frames different.
+        self.rooms = Rooms(rng=random.Random(ROOMS_SEED))
         self.meets = []             # each one's meetings, fetches and punches, as last seen
         self.fetches = []
         self.punches = []

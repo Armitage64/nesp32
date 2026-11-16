@@ -381,6 +381,13 @@ unrolled (`STACK_KEEP`, `net/net_ram.inc`, which says why 24):
   IRQ, so at a tick they are the last split's to have run. A quicker NMI
   made two consoles differ there; the tests leave the two bits out
   (`UNKEPT_BITS`). The game only writes them to the PPU.
+- **The simulation is the same every run** now that the rendezvous's
+  rooms are made with a seed (`ROOMS_SEED`, `tests/netplay.py`; `Rooms`'s
+  `rng`, nesp32's `host/rendezvous.py`). Each room's code and session were
+  drawn from the system's random numbers, and the code is drawn on the
+  menu and crosses the link: frames after it took a little more or less
+  time each run, which let the menu's NMI bug pass some runs and fail
+  others. The other games' tests still make their rooms at random.
 - **A test's ticks are counted from `Table.begun()`**, which now clears
   what was traced before it: one console's session may begin some frames
   before the other's (player 2 copying a save), and ticks taken before it
@@ -390,19 +397,12 @@ unrolled (`STACK_KEEP`, `net/net_ram.inc`, which says why 24):
 
 In order. Each step is tested in the simulation before the next.
 
-1. **Why two runs of the simulation differ.** The same test, run in
-   separate processes at once, has taken different turns: the menu's
-   frames came out a little longer or shorter against the vblank. Python's
-   hash seed is not it (fixed, the runs still differed), nor the host
-   build's clock. It let the menu's NMI bug ("What has been learned")
-   pass some runs and fail others; a test meant to be the same every time
-   should be.
-2. **The frame rate**: measured ("The frame rate"), a session lags in 10%
+1. **The frame rate**: measured ("The frame rate"), a session lags in 10%
    of its frames where the original does in 2%. What the NMI adds before
    the tasks is mostly the exchange now, 2,600 cycles of 3,750: a faster
    line (10 was misheard on Jackal), or fewer bytes in TICKS. Then
    `make bench` again.
-3. **For players**: `make bps` and `dist/tsb_net.bps`, `tests/test_patch.py`,
+2. **For players**: `make bps` and `dist/tsb_net.bps`, `tests/test_patch.py`,
    the hello's version, and every document that lists the games (the
    `nes-netplay-port` skill's "Shipping a change"), with `TSBO` in
    `VERSIONS` (`host/peer_player.py`), which `tests/test_peer_player.py`
@@ -412,7 +412,7 @@ In order. Each step is tested in the simulation before the next.
    brings them, and a nesp32 with older firmware should be told to update
    (its SAVE answers `NO_OP`; the menu now gives the session up after
    `SAVE_TRIES` instead).
-4. **Hardware**: two consoles and two nesp32s, by a room's code, each
+3. **Hardware**: two consoles and two nesp32s, by a room's code, each
    nesp32 flashed with this branch's firmware. Watch the screen's splits
    while an exchange holds the IRQ off (the play-call screen has them),
    and the samples against the line at 14. And the save: the dialogue on
@@ -420,7 +420,7 @@ In order. Each step is tested in the simulation before the next.
    SAVE_PUT, player 2's second of SAVE_GET), and that a copied save is the
    one the game then plays. The copy is at the link's rate; PEER's RATE
    could make it some twice as fast.
-5. **River City Ransom's menu** is the same as this one's but for the
+4. **River City Ransom's menu** is the same as this one's but for the
    save: check whether its frames can run past an NMI, and whether its
    game's NMI keeps its registers where a nested one would spoil them.
 
