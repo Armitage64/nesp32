@@ -24,8 +24,11 @@ import jbs  # noqa: E402
 import vgm  # noqa: E402
 import vgm2jbs  # noqa: E402
 
+# The rips are not in git (apps/jukebox/music is ignored): without them, as on
+# GitHub's runners, their test is skipped.
 MUSIC = os.path.join(JUKEBOX, "music")
-RIPS = sorted(name for name in os.listdir(MUSIC) if name.endswith((".vgz", ".vgm")))
+RIPS = sorted(name for name in os.listdir(MUSIC) if name.endswith((".vgz", ".vgm"))) \
+    if os.path.isdir(MUSIC) else []
 NTSC, PAL = vgm.NTSC_CLOCK, vgm.PAL_CLOCK
 HEADER = 0x100
 

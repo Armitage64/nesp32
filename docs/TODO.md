@@ -1,7 +1,7 @@
-# To do: the hardware and the firmware
+# To do: the hardware, the firmware and the tools
 
-What is still to do on the nesp32 itself. Each program in `apps/` keeps
-its own list in its README.
+What is still to do on the nesp32 itself, and on the tools for working
+on it. Each program in `apps/` keeps its own list in its README.
 
 ## Not measured, or not known
 
@@ -20,10 +20,6 @@ its own list in its README.
   that pattern. From 8 cycles down the console's receivers track the start
   bit instead, and the slower ones still hunt: a cause found might be one
   that shows at those too, on another console.
-- What stops the hat at 223722 baud from the console, on a real NES as on
-  the MiSTer: 298296 fails. The 100 kΩ RX base resistor slows that
-  stage's edges, which the SNAC adapter needs; nothing the console sends
-  needs more than 85227 today.
 
 - The Bluetooth keyboard, which works on hardware (paired from Setup,
   typing in NESpedia and Weather): whether every byte of the 75 KB comes
@@ -64,15 +60,53 @@ its own list in its README.
   Rolling back, as newer games do, is not for any of the three: a
   cartridge with no RAM has nowhere to keep a copy of the game, and no
   frame has the time to run the game again.
-- **PEER's session at a faster rate**: the line at 14 cycles a bit, then
-  perhaps 10, from a session's start to its end, for a faster exchange in
-  every netplay game ([MULTIPLAYER.md](MULTIPLAYER.md), "To do", has what
-  it gains and what it takes). On hold until every player's hardware can
-  run the line at those rates: some cannot yet (issue #15). The nesp32's part is to change its UART's
-  rate both ways when the session begins and ends, as RAW does for a run.
-  First, nes-throughput's trial of each rate with the music's samples
-  playing, on a real NES with each board: the rates above were found with
-  none.
+- **PEER's session at a faster rate** (issue #15): built, November 2026.
+  PEER's RATE runs a session's line faster when its console asks
+  ([MULTIPLAYER.md](MULTIPLAYER.md), "A faster exchange"); Jackal, TMNT II
+  and Contra ask for 14 cycles a bit. Dr. Mario and Tetris have the room
+  at 21 and would not gain; Bubble Bobble would gain a little. TMNT II and
+  Contra at 14 have been played on a real NES and are fine, the music as it
+  was; their misheard replies are not yet counted. Jackal's sessions at 14 have been played on a real NES with
+  each board, levels 1, 2 and 4, the music's samples playing: 0.6% to 0.7%
+  of replies misheard, and no fall back to 21 in play. 10 was built (the
+  fold receiver) and tried: 12% misheard with Jackal's samples, no faster
+  than 14, so Jackal asks for 14. A game with no samples might use it.
+- **The exchange ahead**: tried in Jackal and dropped (November 2026; its
+  README, "To do"). Made at the end of a tick that lagged, with the MMC3's
+  scanline IRQ as its deadline, it was slower in a two-console session
+  (46.6 frames a second against 48.2 in level 2), where a model of one
+  console had it faster: the early exchange seldom has the other
+  console's buttons.
+- **Games for three or four, a console each.** For later consideration
+  (November 2026); a big lift. Everything today is for two: a room holds
+  a host and one more (`ROOM IS FULL`), PEER talks to one other nesp32,
+  and TICKS's reply carries one byte, the other console's buttons, naming
+  no player. It would want:
+  1. *PEER for N.* Either each nesp32 to every other (least delay, but
+     six pairs to punch through their NATs for four, and any one failing
+     fails the room), or each to the host, which passes the buttons on
+     (simpler; two that did not host are two hops apart, and the delay
+     must cover that). The bulk of the work.
+  2. *The rendezvous* to hold rooms of up to four, give each its player
+     number, and the host to start when the room is full.
+  3. *TICKS* to carry the others' buttons, a byte each, by player: two
+     bytes more a frame for four, added to the exchange's 2500 to 3100
+     cycles. A game whose frames are nearly full slows for it.
+  4. *Lockstep for N*: each tick waits for the slowest of the others, and
+     a session must say what becomes of it when one of them leaves.
+  5. *Each game's patch*, much as today: the game's read of the Four
+     Score (or the Famicom's adapter) is replaced by the buttons from the
+     ring, and it is told one is there, so no player needs a real one.
+     The nesp32 in port 2 leaves each console one controller of its own.
+
+  Bomberman II is three at most. Four: Nintendo World Cup, Super Spike
+  V'Ball, Gauntlet II, Super Off Road, RC Pro-Am II, M.U.L.E. To begin, N
+  in the firmware and the Linux simulators with a game that takes turns
+  (M.U.L.E.), which no delay troubles; then one played in real time.
+  Three consoles, with Bomberman II, is the same work with fewer pairs.
+- **For [Family BASIC](../apps/family-basic):** TAPE, its SAVE and LOAD,
+  is done. Left: the time a SAVE takes on hardware, a list of the files,
+  and BG GRAPHIC's SAVE and LOAD tried. Its README, "Not done", has them.
 - An idle opponent on the nesp32, as `host/serial_host.py --idle` has, to
   test one console with a nesp32 alone.
 - A fetch that drops partway made again; today what came is read, if it
@@ -93,3 +127,46 @@ its own list in its README.
   pulses, is the other line the hat leaves alone
   ([the jukebox's plan](../apps/jukebox/PLAN.md), "clocked link").
 
+## Tools for development
+
+For later (November 2026).
+
+- **A netplay session in Mesen with no window.** `tools/mesen_run.py
+  --bridge` gives one console a nesp32, but the bridge has no PEER, so a
+  session is tested only in the apps' simulations and on hardware. Two
+  Mesen runs, each with its bridge, and the two bridges joined as
+  `host/peer_net.py` joins two nesp32s, would put a session's picture and
+  timing where a test can see them.
+- **Sound in Mesen with no window.** Mesen runs as fast as it can, so a
+  stream's sound outruns the Internet and the bridge logs gaps. A run
+  held to the console's own speed would let the sound be judged.
+- **Ghidra and a Ghidra MCP server**, to read a game whose routines are
+  hard to follow. A game with no disassembly is already made into source
+  by its own build (RCR's and Bubble Bobble's `trace.py`, `game.map` and
+  `convert.py`), and that stays what builds it: Ghidra cannot make source
+  that rebuilds the ROM byte for byte. What it adds is reading: what
+  calls a routine, what reads and writes an address, a rough decompiler,
+  asked by Claude through the server. About a day, when a game wants it:
+  1. Java 21, Ghidra, an NES loader (GhidraNes) and the MCP server, at
+     versions that fit one another (each follows Ghidra's), pinned and
+     moved together.
+  2. A script that marks what `entries.txt` says ran as code, since
+     Ghidra's own analysis loses its way where the banks switch.
+  3. Two scripts between `tools/game.map` and Ghidra's labels, one each
+     way, so names settled in Ghidra come back to the repo, which stays
+     the source of truth. The Ghidra project holds the game's bytes and
+     stays out of git, as `baserom.nes` does.
+  4. Tried on a game already known (Contra, against its disassembly).
+
+  Then, for a new game: where the controllers are read (`$4016`,
+  `$4017`: the exchange goes there), the NMI and the main loop, the frame
+  counter and the random numbers, what of the zero page the sound engine
+  owns (left out of the digest), writes to the DMC (`$4010`-`$4013`: a
+  game that plays samples needs its read made twice), the mapper's
+  writes and the free space, and where the title picks two players and
+  the game keeps its level. What runs, and when, is still the
+  simulation's and Mesen's to say.
+- **A logic analyzer through `sigrok-cli`**, to capture the link's two
+  wires and decode them, for the line's timing (the 12% misheard at 10
+  cycles a bit, the receivers at 8). Wants a cheap USB analyzer at the
+  hat.

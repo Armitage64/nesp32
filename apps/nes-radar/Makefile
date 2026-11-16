@@ -101,8 +101,13 @@ verify: $(LINK_ROM) $(NESP)
 	done
 	@echo "nes-radar's copy of the link library is nesp32's"
 
+# On every core if this Python has pytest-xdist (conftest.py at the top of
+# nesp32 starts the longest first).
+XDIST = $(shell $(PYTHON) -c 'import xdist' 2>/dev/null \
+	&& printf '%s' '-n auto --dist load --maxschedchunk 1')
+
 test:
-	$(PYTHON) -m pytest -q tests
+	$(PYTHON) -m pytest $(XDIST) -q tests
 
 clean:
 	rm -rf $(BUILD)

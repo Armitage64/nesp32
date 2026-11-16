@@ -242,7 +242,9 @@ static bool tick(void *ctx, uint32_t now)
         }
         return true;
     case WAITING:
-        if (now - raw->armed_at < NESP_RAW_START_MS) {
+        /* The console counts its settle in cycles, so on a PAL console it
+         * is 7.6% longer: the first byte waits as much more. */
+        if (now - raw->armed_at < nesp_link_console_ms(raw->link, NESP_RAW_START_MS)) {
             return true;
         }
         raw->phase = SENDING;

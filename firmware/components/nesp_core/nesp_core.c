@@ -48,6 +48,8 @@ void nesp_link_init(nesp_link_t *link)
 {
     memset(link, 0, sizeof(*link));
     link->reply_max = NESP_REPLY_BEFORE_HELLO;
+    link->gap_at = SIZE_MAX;
+    link->hunting = true;
 }
 
 static nesp_slot_t *find_slot(nesp_link_t *link, uint8_t id)
@@ -256,6 +258,61 @@ static size_t answer_short(nesp_link_t *link, const uint8_t *frame, uint8_t *out
     return (size_t)(3 + length);
 }
 
+bool nesp_link_gap(nesp_link_t *link)
+{
+    link->gap_at = link->rx_len != 0 ? link->rx_len : SIZE_MAX;
+    bool missed = link->hunting && link->burst >= NESP_HUNT_BYTES && !link->burst_good;
+    link->burst = 0;
+    link->burst_good = false;
+    if (!missed || ++link->misses < (link->settled ? NESP_HUNT_MISSES : 1)) {
+        return false;
+    }
+    link->region = link->region == NESP_REGION_PAL ? NESP_REGION_NTSC : NESP_REGION_PAL;
+    link->settled = false;
+    link->misses = 0;
+    link->counters.hunts++;
+    link->rx_len = 0;               /* heard at the old rate */
+    link->gap_at = SIZE_MAX;
+    return true;
+}
+
+void nesp_link_set_region(nesp_link_t *link, uint8_t region)
+{
+    link->region = region == NESP_REGION_PAL ? NESP_REGION_PAL : NESP_REGION_NTSC;
+    link->settled = false;
+    link->misses = 0;
+}
+
+void nesp_link_line_period(nesp_link_t *link, uint8_t period)
+{
+    link->hunting = period == NESP_PERIOD;
+    link->misses = 0;
+}
+
+uint32_t nesp_link_cpu_hz(const nesp_link_t *link)
+{
+    return link->region == NESP_REGION_PAL ? NESP_PAL_CPU_HZ : NESP_CPU_HZ;
+}
+
+uint32_t nesp_link_baud(const nesp_link_t *link, uint8_t period)
+{
+    return (nesp_link_cpu_hz(link) + period / 2u) / period;
+}
+
+uint32_t nesp_link_console_ms(const nesp_link_t *link, uint32_t ms)
+{
+    uint32_t hz = nesp_link_cpu_hz(link);
+    return (uint32_t)(((uint64_t)ms * NESP_CPU_HZ + hz - 1) / hz);
+}
+
+/* The bytes before `at` in rx are gone: the gap moves with what is kept. */
+static void forget(nesp_link_t *link, size_t at)
+{
+    if (link->gap_at != SIZE_MAX) {
+        link->gap_at = link->gap_at > at ? link->gap_at - at : SIZE_MAX;
+    }
+}
+
 size_t nesp_link_feed(nesp_link_t *link, const uint8_t *data, size_t len, uint8_t *out)
 {
     /* Keep the newest bytes if more come than there is room for. */
@@ -264,14 +321,17 @@ size_t nesp_link_feed(nesp_link_t *link, const uint8_t *data, size_t len, uint8_
         data += len - NESP_RX_BUFFER;
         len = NESP_RX_BUFFER;
         link->rx_len = 0;
+        link->gap_at = SIZE_MAX;    /* nothing held from before it */
     } else if (link->rx_len + len > NESP_RX_BUFFER) {
         size_t over = link->rx_len + len - NESP_RX_BUFFER;
         memmove(link->rx, link->rx + over, link->rx_len - over);
+        forget(link, over);
         link->rx_len -= over;
         link->counters.noise += (uint32_t)over;
     }
     memcpy(link->rx + link->rx_len, data, len);
     link->rx_len += len;
+    link->burst += (uint32_t)len;
 
     /* Find every whole request. A byte that begins none is passed over:
      * the console's controller read is on this line too, and comes through
@@ -290,6 +350,10 @@ size_t nesp_link_feed(nesp_link_t *link, const uint8_t *data, size_t len, uint8_
              * CRC takes in the marker. */
             uint8_t a, b;
             size_t total = short_length(rx[at]);
+            if (at < link->gap_at && at + total > link->gap_at) {
+                at++;                   /* across a quiet line: two requests' bytes */
+                continue;
+            }
             if (at + total > count) {
                 if (pending == count) {
                     pending = at;
@@ -356,6 +420,10 @@ size_t nesp_link_feed(nesp_link_t *link, const uint8_t *data, size_t len, uint8_
 
     size_t sent = 0;
     if (found) {
+        /* Heard at this clock: it is the console's. */
+        link->burst_good = true;
+        link->settled = true;
+        link->misses = 0;
         sent = (rx[newest] & NESP_SHORT_MARK) == NESP_SHORT_REQUEST
                    ? answer_short(link, rx + newest, out) : answer(link, rx + newest, out);
     }
@@ -364,6 +432,7 @@ size_t nesp_link_feed(nesp_link_t *link, const uint8_t *data, size_t len, uint8_
     size_t kept = count - pending;
     link->counters.noise += (uint32_t)(pending - framed);
     memmove(link->rx, link->rx + pending, kept);
+    forget(link, pending);
     link->rx_len = kept;
     return sent;
 }

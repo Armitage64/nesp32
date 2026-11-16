@@ -21,15 +21,17 @@ To build one step by step, with the checks to run before you plug it in, follow 
 * 2 x 2N3904 Transistors (see note below!)
 * 1 x 1K Axial-0.3 Resistor
 * 2 x 10K Axial-0.3 Resistors
-* 1 x 3.3K Axial-0.3 Resistor (the TX pull-up, from NES +5V to the TX transistor's collector)
+* 1 x 3.3K Axial-0.3 Resistor
 * 1 x 100k Axial-0.3 Resistor
+* 2 x 100pF ±5% C0G/NP0 ceramic capacitors, radial through-hole, 2.5mm lead spacing, 50V or higher
 * 1 x 8-pin 2.54mm 90 Degree Right Angle Single Row Male Pin Header (reverse) [Amazon](https://amzn.to/4e4FZ7i)
 * 1 x NES Controller Pigtail [Amazon](https://amzn.to/4dVqi2r)
 
 ## Important Notes
-* Use high quality transistors from a reputable vendor such as Digikey or Mouser. Generic / bulk components from Amazon, etc. can be relabeled general-purpose or audio spec parts with sub-par switching speeds that result in a lower maximum throughput.
 * It is recommended to use additional flux when soldering in the transistors due to the small pads
 * Make sure to orient the 8-pin connector as shown in the pictures (below)
+* The two 100pF speed-up capacitors allow both high quality 2N3904s from a vendor such as Digikey or Mouser and cheap ones from Amazon/Aliexpress to reach the link's fastest rate. Without them, slow bulk transistors (relabeled general-purpose or audio parts) lower the maximum throughput
+
 
 <img src="pcb_top.png" width=49%> <img src="pcb_bottom.png" width=49%>
 

@@ -25,7 +25,16 @@ idf.py -B build-esp32 -D SDKCONFIG=build-esp32/sdkconfig -D IDF_TARGET=esp32 bui
 idf.py -B build-esp32 -p /dev/cu.usbserial-XXXX flash monitor
 # a StickS3
 idf.py -B build-esp32s3 -D SDKCONFIG=build-esp32s3/sdkconfig -D IDF_TARGET=esp32s3 build
+# an ESP32-S3 board wired with three resistors (a link that does not invert)
+idf.py -B build-esp32s3-generic -D SDKCONFIG=build-esp32s3-generic/sdkconfig -D IDF_TARGET=esp32s3 \
+       -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.defaults.generic" build
 ```
+
+The generic ESP32-S3 firmware is the StickS3's with
+`CONFIG_NESP_LINK_INVERTED` off, for the resistors in
+[`../docs/WIRING.md`](../docs/WIRING.md), on the same pins (G1 and G8). It
+calls itself an ESP32-S3, and needs 8 MB of flash or more and 8 MB of
+octal PSRAM, as the StickS3 has.
 
 A StickS3 build directory made before the nesp32 had Bluetooth has an
 `sdkconfig` with it off, which the defaults do not change: the build stops
@@ -35,7 +44,9 @@ defaults have it).
 
 `firmware/deploy.sh` does both for whichever boards are on this computer's
 USB, telling a StickS3 from a StickC Plus2 by the name of its port, and
-`firmware/deploy.sh watch` prints their logs without restarting them.
+`firmware/deploy.sh watch` prints their logs without restarting them. An
+ESP32-S3 board's port looks like a StickS3's: `firmware/deploy.sh
+--generic` flashes it the generic firmware instead.
 
 The screen is drawn upside down from M5Stack's landscape. Flip LCD in
 [Setup](../apps/setup)'s menu turns it the other way up, and the nesp32
@@ -51,13 +62,22 @@ over USB.
 
 M5Unified, and for a StickS3 TinyUSB (`espressif/esp_tinyusb`), are fetched
 by the component manager on the first build (`main/idf_component.yml`).
+M5Unified and M5GFX are pinned there, to the pair the 0.2.0 release was
+built with: `dependencies.lock` is not kept, and unpinned they took
+whatever was newest. M5GFX 0.3.0 broke the StickS3's build (it includes
+`esp_psram.h` without asking for the component that has it), and M5GFX
+pinned alone took M5Unified back to 0.2.25, whose StickS3 crashed as it
+started (November 2026). Move the two together, and try both boards. A
+change of their version can leave the old objects in a build directory,
+since the component manager keeps the sources' dates: delete
+`build-*/esp-idf/m5stack__*` before building.
 
 | Path | Purpose |
 |---|---|
 | `components/nesp_core` | frames, the CRC, the services' registry, who is asked what. No hardware; also built for the tests |
-| `components/nesp_services` | SYS, NET (Wi-Fi), DIAG, KBD, WIKI, RAW, JUKE, PEER, RADAR, TUNER and WEATHER, the text code, the MP3 decoder (`mp3.c`, which is minimp3 from `../third_party`), and `nesp_hal_t`, what they ask of the hardware |
+| `components/nesp_services` | SYS, NET (Wi-Fi), DIAG, KBD, HTTP, WIKI, RAW, JUKE, PEER, RADAR, TUNER, WEATHER and TAPE, the text code, the MP3 decoder (`mp3.c`, which is minimp3 from `../third_party`), and `nesp_hal_t`, what they ask of the hardware |
 | `main/link.c` | the UART and the one task that answers the console, on a core of its own; the UART with framing off, for RAW |
-| `main/store.c` | the files: a FAT filing system in the `storage` partition, and the jukebox's tracks in it |
+| `main/store.c` | the files: a FAT filing system in the `storage` partition, the jukebox's tracks in it, and Family BASIC's programs (TAPE) in `basic` |
 | `main/usb.c` | a StickS3 as a USB drive of those files, when the setup ROM asks |
 | `main/keyboard.c` | a StickS3's Bluetooth keyboard, under KBD: on while a ROM uses it, pairing, and what is typed ("A Bluetooth keyboard", below) |
 | `components/esp_hid` | ESP-IDF's HID host, with a fix to it from ESP-IDF's master that the keyboard needs ([its README](components/esp_hid/README.md)) |
@@ -254,10 +274,16 @@ report map would have to be read for where the keys are.
 A key held down is typed again after 500 ms and every 40 ms from then
 on, as a computer does it, since a keyboard says only which keys are down
 (an esp_timer, `REPEAT_DELAY_MS` and `REPEAT_EVERY_MS`). Only the last key
-to go down repeats, and Enter and Escape never do. Besides printable
+to go down repeats, and Enter and Escape never do. A repeat is kept only
+once the console has taken everything typed before it, so a ROM that
+takes keys more slowly than they repeat ([Family BASIC](../apps/family-basic)'s,
+15 a second) is not left typing a run of them after the key is let go. Besides printable
 ASCII, KBD sends Backspace, Tab, Enter, Escape, the arrows, and Page Up
 and Page Down, and Ctrl with Enter or Escape as Start and Select, which
-the cartridge's programs take as the controller's.
+the cartridge's programs take as the controller's. KEYS_ALL, which only
+Family BASIC asks for, has besides F1 to F8, F12, Home (and with Shift),
+Insert and Delete, and a key with Ctrl or Alt after a code that says so,
+for the Famicom keyboard's CTR and GRPH (`docs/PROTOCOL.md`).
 
 What is typed is logged only at the debug level, as it may be a password.
 The log's report ends with how the keyboard stands: off, unpaired,
@@ -331,6 +357,14 @@ nesp32. What to look for, with that ROM (`../apps/drmario`,
    them.
 4. **One end switched off**, and the other console back at its title
    within a few seconds.
+
+A session's line at its own rate (PEER's RATE): the log says when it
+changes and why (`peer: line at 14 cycles a bit: the session's, as its
+console asked`, and back to 21 when nothing is heard at it, or at the
+session's end), and each `peer:` line has `line 14` or `line 21`. Jackal's
+netplay ROM asks for 14: on a StickS3 and on a StickC Plus2, sessions
+with the music playing stayed at 14 throughout, with 0.6% to 0.7% of
+their replies misheard and asked for again (November 2026).
 
 What `conn.c` leans on: lwIP's sockets from a task on the Wi-Fi's core, a
 non-blocking `connect` waited for with `select`, and a look for received

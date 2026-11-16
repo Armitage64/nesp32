@@ -23,6 +23,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 
 #include "board.h"
@@ -30,11 +31,14 @@
 #include "fetch.h"
 #include "keyboard.h"
 #include "link.h"
+#include "nesp_logo.h"
+#include "nesp_version.h"
 #include "radio.h"
 #ifdef NESP_SPIKE
 #include "spike.h"
 #endif
 #include "store.h"
+#include "update.h"
 #include "usb.h"
 
 namespace {
@@ -42,12 +46,16 @@ namespace {
 const char *TAG = "nesp32";
 const uint32_t POWER_OFF_HOLD_MS = 2000;
 const uint32_t SCREEN_MS = 500;
+const uint32_t LOGO_MS = 2500;     // the logo at start, before the lines
+const int LOGO_SCALE = 2;           // screen pixels to a side of each of its own
 const uint32_t BATTERY_MS = 10000;
 const uint32_t REPORT_MS = 10000;
-const uint32_t WATCH_MS = 2000;
+const uint32_t WATCH_MS = 100;     // the services' lines for the log are taken this often
 const uint32_t CONSOLE_GONE_MS = 2000;  // no request for this long: not there
 const int ROWS = 7;
 const uint32_t TITLE_BLUE = 0x40A0FFu;  // the top line and the rule under it
+const uint32_t UPDATE_RED = 0xFF3030u;  // FIRMWARE UPDATE AVAILABLE, as Setup's is red
+const int UPDATE_ROW = 5;               // the last whole row, empty with no console
 // The battery's charge, by how much of it there is: over half, over a
 // tenth, and less.
 const uint32_t BATTERY_GREEN = 0x00FF40u;
@@ -61,19 +69,22 @@ const struct {
     const char *id;
     const char *name;
 } APP_NAMES[] = {{"BSKY", "Bluesky"}, {"CNTR", "Contra"}, {"DRMA", "Dr. Mario"},
-                 {"JUKE", "Jukebox"}, {"NPR ", "NESradio"}, {"RADR", "Radar"}, {"SETP", "Setup"},
-                 {"THRU", "Throughput"}, {"TTRS", "Tetris"}, {"WIKI", "Wikipedia"},
-                 {"WTHR", "Weather"}};
+                 {"FBAS", "Family BASIC"}, {"JUKE", "Jukebox"}, {"NPR ", "NESradio"},
+                 {"RADR", "Radar"}, {"SETP", "Setup"}, {"THRU", "Throughput"},
+                 {"TTRS", "Tetris"}, {"WIKI", "Wikipedia"}, {"WTHR", "Weather"}};
 const char *const WIFI_STATES[] = {"not set up", "not joined", "joining", "joined", "failed"};
 
 char shown[ROWS][RADIO_SHOWN_MAX];
 bool flipped;           // the way up the screen is drawn
+bool logo_up;           // the logo is on the screen, not the lines
+uint32_t logo_at;       // and since when (ms)
 int battery_level = -1; // 0 to 100, or -1 while the charge is not known
 
 // Write a line of the screen, if it has changed. The top one is the title:
 // in blue, with a rule under it and the battery's charge at its right, as
-// a number and a picture filled as far.
-void line(int row, const char *text)
+// a number and a picture filled as far. Any other is in white, or the
+// colour given.
+void line(int row, const char *text, uint32_t colour = 0xFFFFFFu)
 {
     if (std::strncmp(shown[row], text, sizeof(shown[row])) == 0) {
         return;
@@ -82,7 +93,7 @@ void line(int row, const char *text)
     int height = M5.Display.fontHeight() + 4;
     M5.Display.fillRect(0, row * height, M5.Display.width(), height, TFT_BLACK);
     M5.Display.setCursor(2, row * height + 2);
-    M5.Display.setTextColor(row == 0 ? TITLE_BLUE : (uint32_t)0xFFFFFFu, (uint32_t)0x000000u);
+    M5.Display.setTextColor(row == 0 ? TITLE_BLUE : colour, (uint32_t)0x000000u);
     M5.Display.print(text);
     if (row == 0) {
         if (battery_level >= 0) {
@@ -143,6 +154,15 @@ void split(const char *text, char *first, char *second)
     std::strcpy(second, text + cut + (text[cut] == ' '));
 }
 
+// The screen blank, and every line to be written again.
+void clear()
+{
+    M5.Display.fillScreen(TFT_BLACK);
+    for (auto &row : shown) {
+        row[0] = 0;
+    }
+}
+
 // The screen the way up the console last chose (radio_screen_flipped): 1
 // is M5Stack's landscape, and 3 the same turned a half turn round. Turned,
 // it is cleared, and every line is written again.
@@ -154,9 +174,47 @@ void turn(bool first)
     }
     flipped = wanted;
     M5.Display.setRotation(flipped ? 3 : 1);
-    M5.Display.fillScreen(TFT_BLACK);
-    for (auto &row : shown) {
-        row[0] = 0;
+    clear();
+}
+
+// The logo (nesp_logo.h, from nes/lib/logo.py), in the middle of the
+// screen, LOGO_SCALE times its size: each row a rectangle for each run of
+// one colour, the backdrop left black. For LOGO_MS from now the lines wait.
+void show_logo()
+{
+    int x0 = (M5.Display.width() - NESP_LOGO_WIDE * LOGO_SCALE) / 2;
+    int y0 = (M5.Display.height() - NESP_LOGO_HIGH * LOGO_SCALE) / 2;
+    auto colour = [](int y, int x) {
+        uint8_t two = NESP_LOGO[y][x / 2];
+        return x % 2 ? two & 0x0F : two >> 4;
+    };
+    M5.Display.startWrite();
+    for (int y = 0; y < NESP_LOGO_HIGH; y++) {
+        for (int x = 0; x < NESP_LOGO_WIDE;) {
+            int c = colour(y, x);
+            int run = 1;
+            while (x + run < NESP_LOGO_WIDE && colour(y, x + run) == c) {
+                run++;
+            }
+            if (c != 0) {
+                M5.Display.fillRect(x0 + x * LOGO_SCALE, y0 + y * LOGO_SCALE, run * LOGO_SCALE,
+                                    LOGO_SCALE, NESP_LOGO_RGB[c]);
+            }
+            x += run;
+        }
+    }
+    M5.Display.endWrite();
+    logo_up = true;
+    logo_at = (uint32_t)(esp_timer_get_time() / 1000);
+}
+
+// The logo taken away, for the lines: early, if there is something to say
+// before its time is up.
+void end_logo()
+{
+    if (logo_up) {
+        logo_up = false;
+        clear();
     }
 }
 
@@ -165,6 +223,7 @@ void converting(unsigned rip, unsigned of)
 {
     char text[40];
     std::snprintf(text, sizeof(text), "Converting %u/%u", rip, of);
+    end_logo();
     line(0, "NESP32 " NESP_FIRMWARE_TEXT);
     line(1, text);
 }
@@ -184,10 +243,12 @@ void draw()
 
     line(0, "NESP32 " NESP_FIRMWARE_TEXT);
     if (console) {
-        std::snprintf(text, sizeof(text), "NES: %s v%u", app, version);
+        // A PAL console says so in place of "NES".
+        const char *kind = stats.region == NESP_REGION_PAL ? "PAL" : "NES";
+        std::snprintf(text, sizeof(text), "%s: %s v%u", kind, app, version);
         for (const auto &known : APP_NAMES) {
             if (std::strcmp(app, known.id) == 0) {
-                std::snprintf(text, sizeof(text), "NES: %s", known.name);
+                std::snprintf(text, sizeof(text), "%s: %s", kind, known.name);
             }
         }
     } else {
@@ -245,6 +306,16 @@ void draw()
         std::snprintf(text, sizeof(text), "req: %lu", (unsigned long)stats.requests);
     }
     line(row++, text);
+    // Newer firmware on the web site (update.c), which is asked only with
+    // no console: then, and only then, said on the last whole row, which
+    // nothing else has then.
+    update_poll(wifi.state == NESP_WIFI_JOINED && !console);
+    if (!console && row <= UPDATE_ROW && update_available()) {
+        while (row < UPDATE_ROW) {
+            line(row++, "");
+        }
+        line(row++, "Firmware update available", UPDATE_RED);
+    }
     while (row < ROWS) {
         line(row++, "");
     }
@@ -262,16 +333,19 @@ extern "C" void app_main(void)
     M5.Display.setFont(&fonts::FreeSans9pt7b);
     M5.Display.setTextWrap(false);      // a long name is cut off, not run into the next line
     turn(true);
+    show_logo();                        // while the rest starts, not instead of it
 
     // The UART first, before anything slow, so that TX rests at mark. The
     // files next: a ROM that asks for them is not answered until they are
     // there to be listed.
-    link_open();
+    link_open(radio_region());
     store_start(converting);
     link_start(radio_hal());
     radio_start();
     keyboard_start();
-    ESP_LOGI(TAG, "nesp32 %s on a %s", NESP_FIRMWARE_TEXT, BOARD_NAME);
+    // The version, and the commit it was built from (PROJECT_VER).
+    ESP_LOGI(TAG, "nesp32 %s (%s) on %s", NESP_FIRMWARE_TEXT, esp_app_get_description()->version,
+             BOARD_NAME);
 
     uint32_t screen_at = 0;
     uint32_t battery_at = 0;
@@ -316,9 +390,12 @@ extern "C" void app_main(void)
             report_at = now;
             link_stats_t stats;
             link_stats(&stats);
-            ESP_LOGI(TAG, "%lu requests, %lu again, %lu noise; reply %lu us, slowest %lu; "
+            ESP_LOGI(TAG, "%s console, %lu hunts; %lu requests, %lu again, %lu noise; "
+                     "reply %lu us, slowest %lu; "
                      "stack left: link %lu, fetch %lu, conn %lu; free: %u internal, %u PSRAM; "
                      "keyboard %s",
+                     stats.region == NESP_REGION_PAL ? "PAL" : "NTSC",
+                     (unsigned long)stats.hunts,
                      (unsigned long)stats.requests, (unsigned long)stats.repeats,
                      (unsigned long)stats.noise, (unsigned long)stats.turnaround_us,
                      (unsigned long)stats.turnaround_max_us,
@@ -329,20 +406,18 @@ extern "C" void app_main(void)
         }
         if (now - watch_at >= WATCH_MS) {
             // And for whoever is watching: the station's figures, from
-            // TUNER, or what PEER says of a game, and how long the network
-            // between the two nesp32s has taken.
+            // TUNER, or what PEER says of a game, and after its line every
+            // couple of seconds, how long the network between the two
+            // nesp32s has taken.
             watch_at = now;
             char said[RADIO_WATCH_MAX];
-            said[0] = 0;
-            if (!radio_watch(said)) {
-                said[0] = 0;        // nothing new: what it holds has been logged
-            }
-            if (strncmp(said, "npr: ", 5) == 0) {
-                // The station's figures, which are whole as they come.
-                ESP_LOGI(TAG, "%s", said);
-            } else if (said[0] != 0) {
-                conn_ping_t ping;
-                conn_ping(&ping);
+            bool peer_said = false;
+            while (radio_watch(said)) {         // each line since the last time
+                if (strncmp(said, "npr: ", 5) == 0) {
+                    // The station's figures, which are whole as they come.
+                    ESP_LOGI(TAG, "%s", said);
+                    continue;
+                }
                 // What it says of the console's buttons, from "; pad" on,
                 // is for a firmware built to log at the debug level.
                 char *pad = strstr(said, "; pad ");
@@ -354,6 +429,11 @@ extern "C" void app_main(void)
                 if (pad != NULL) {
                     ESP_LOGD(TAG, "peer: %s", pad);
                 }
+                peer_said = peer_said || strncmp(said, "player ", 7) == 0;
+            }
+            if (peer_said) {
+                conn_ping_t ping;
+                conn_ping(&ping);
                 ESP_LOGI(TAG, "peer: network %lu us there and back, least %lu, most %lu; "
                          "of %lu, %lu over 14 ms and %lu over 40 ms",
                          (unsigned long)ping.last_us, (unsigned long)ping.least_us,
@@ -361,7 +441,18 @@ extern "C" void app_main(void)
                          (unsigned long)ping.over_14ms, (unsigned long)ping.over_40ms);
             }
         }
-        if (now - screen_at >= SCREEN_MS) {
+        if (logo_up && now - logo_at >= LOGO_MS) {
+            end_logo();
+            screen_at = now - SCREEN_MS;    // the lines at once
+        }
+        if (!logo_up && now - screen_at >= SCREEN_MS) {
+            // The console's clock, once a request has been heard at it, is
+            // the one to start at next time.
+            link_stats_t stats;
+            link_stats(&stats);
+            if (stats.settled) {
+                radio_keep_region(stats.region);
+            }
             screen_at = now;
             turn(false);
             draw();

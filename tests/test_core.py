@@ -5,6 +5,7 @@ import random
 import nesp
 import nesp_proto as p
 import pytest
+import version
 from nesp import frame, parse
 
 SYS, NET, DIAG = p.NESP_SVC_SYS, p.NESP_SVC_NET, p.NESP_SVC_DIAG
@@ -132,8 +133,8 @@ def test_busy_is_never_repeated(stick):
 def test_hello_says_what_the_stick_is(stick):
     reply = stick.hello(app=b"SETP", version=3, services=[NET, DIAG])
     assert reply.ok
-    assert reply.payload == bytes((p.NESP_PROTOCOL, 0, 1, 0, p.NESP_BOARD_HOST,
-                                   p.NESP_PAYLOAD_MAX, 0))
+    assert reply.payload == bytes((p.NESP_PROTOCOL,) + version.numbers()
+                                  + (p.NESP_BOARD_HOST, p.NESP_PAYLOAD_MAX, 0))
     assert stick.app == (b"SETP", 3)
 
 
@@ -199,7 +200,7 @@ def test_status_and_info(stick):
     stick.set_battery(83)
     reply = stick.ask(SYS, p.NESP_SYS_STATUS)
     assert reply.payload == bytes((p.NESP_WIFI_JOINED, 256 - 61, 192, 168, 1, 77, 83, 0))
-    assert stick.ask(SYS, p.NESP_SYS_INFO, bytes((p.NESP_INFO_FIRMWARE,))).payload == b"0.1.0"
+    assert stick.ask(SYS, p.NESP_SYS_INFO, bytes((p.NESP_INFO_FIRMWARE,))).payload == version.text().encode()
     assert stick.ask(SYS, p.NESP_SYS_INFO, bytes((p.NESP_INFO_BOARD,))).payload == b"Computer"
     assert stick.ask(SYS, p.NESP_SYS_INFO,
                      bytes((p.NESP_INFO_NETWORK,))).payload == b"Home Network"

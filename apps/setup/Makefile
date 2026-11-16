@@ -22,7 +22,7 @@ PYTHON ?= $(firstword $(wildcard $(abspath .venv/bin/python $(NESP32)/.venv/bin/
 NESP := $(NESP_BUILD)/nesp.stamp
 NESP_LIB := $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/gen_link.py
 ROM := $(BUILD)/setup.nes
-ROM_SIZE := 40976   # 16-byte header + 32 KB PRG + 8 KB CHR
+ROM_SIZE := 24592   # 16-byte header + 16 KB PRG + 8 KB CHR
 SOURCES := $(wildcard nes/*.s nes/*.inc) $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/badge.inc
 INCLUDES := -I $(BUILD) -I $(NESP_BUILD) -I $(NESP32)/nes/lib -I nes
 
@@ -55,8 +55,8 @@ $(SCREEN): $(BUILD)/screen.stamp ;
 $(BUILD)/setup.o: $(SOURCES) $(SCREEN) $(BUILD)/link.inc
 	ca65 -g $(INCLUDES) --bin-include-dir $(BUILD) -o $@ nes/setup.s
 
-$(ROM): $(BUILD)/setup.o nes/nrom256.cfg
-	ld65 -C nes/nrom256.cfg -o $@ -Ln $(BUILD)/setup.labels \
+$(ROM): $(BUILD)/setup.o nes/nrom128.cfg
+	ld65 -C nes/nrom128.cfg -o $@ -Ln $(BUILD)/setup.labels \
 		--dbgfile $(BUILD)/setup.dbg -m $(BUILD)/setup.map $<
 
 # The same ROM on the library's other receiver, the one for exchanges made
@@ -73,14 +73,14 @@ $(BUILD)/setup_timeout.o: $(SOURCES) $(SCREEN) $(BUILD)/timeout/link.inc
 	ca65 -g -D TIMEOUT_BUILD -I $(BUILD)/timeout $(INCLUDES) \
 		--bin-include-dir $(BUILD) -o $@ nes/setup.s
 
-$(TIMEOUT_ROM): $(BUILD)/setup_timeout.o nes/nrom256.cfg
-	ld65 -C nes/nrom256.cfg -o $@ -Ln $(BUILD)/setup_timeout.labels $<
+$(TIMEOUT_ROM): $(BUILD)/setup_timeout.o nes/nrom128.cfg
+	ld65 -C nes/nrom128.cfg -o $@ -Ln $(BUILD)/setup_timeout.labels $<
 
 timeout-rom: $(TIMEOUT_ROM)
 
 verify: $(ROM)
 	test "$$(wc -c < $(ROM) | tr -d ' ')" = "$(strip $(ROM_SIZE))"
-	printf 'NES\032\002\001\001\000' | cmp -n 8 - $(ROM)
+	printf 'NES\032\001\001\001\000' | cmp -n 8 - $(ROM)
 
 # The tests work the ROM on nesp32's simulated console, with the tests of
 # the link it is the first user of.

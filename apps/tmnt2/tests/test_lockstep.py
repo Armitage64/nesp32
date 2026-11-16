@@ -12,6 +12,16 @@ from drive import PAD_A, PAD_B, PAD_RIGHT, STATE_LEVELS, STATE_TITLE, STATE_TURT
 from netplay import Table
 from wire import ms
 
+
+def _net_rate():
+    """NET_RATE, the Makefile's: the session's line the netplay ROM asks for."""
+    import os
+    import re
+    with open(os.path.join(os.path.dirname(__file__), "..", "Makefile")) as handle:
+        return int(re.search(r"^NET_RATE \?= (\d+)", handle.read(), re.M).group(1))
+
+
+RATE = _net_rate()
 PLAY_FRAMES = 400
 SOUND_ENGINE = "SOUND_FORWARD"
 LEVEL_FRAMES = 300              # from the turtles chosen to the level under way
@@ -109,15 +119,19 @@ def test_a_delay_too_short_is_made_longer_as_the_game_goes(net_console):
 
 def test_a_delay_longer_than_it_need_be_is_made_shorter(net_console):
     """Both begin with 2 where 1 will do. After a while of a network that
-    1 covers each is advised a tick less, and no frame waits for it."""
+    1 covers each is advised a tick less, and no frame waits for it: a tick
+    a frame. (A frame the game nearly fills on one console can have its
+    buttons late for the other, which then stands still where it would
+    have overrun with a slower exchange; that is the game's own lag, not
+    the network's, and is a frame either way.)"""
     table = Table(net_console, delay=ms(3), input_delay=2)
     table.start()
     to_game(table)
     table.play(1300, moves(seed=3))
     assert table.delays() == (1, 1)
-    before = table.stalls()
+    before = table.ticks(0)
     table.play(200, moves(seed=4))
-    assert table.stalls() - before <= 2
+    assert table.ticks(0) - before >= 198
     assert table.same_game() > 1200
 
 
@@ -324,3 +338,129 @@ def test_the_splits_stay_on_their_lines_in_a_session(net_console):
         splits = collections.Counter(tuple(console.scanline(raised) for raised, _ in frame.irqs)
                                      for frame in frames)
         assert splits.most_common(1)[0][0] == (47, 188, 199, 202)
+
+
+def test_a_reply_misheard_and_asked_again_leaves_the_splits_on_their_lines(net_console):
+    """One reply in ten is spoiled, and asked for again in the same NMI.
+    At the link's rate two exchanges took longer than the first split
+    waits, and it came a few lines late; at the session's they fit."""
+    rng = random.Random(5)
+
+    def spoil(data):
+        if rng.random() < 0.1:
+            data = bytearray(data)
+            data[rng.randrange(len(data))] ^= 1 << rng.randrange(8)
+        return bytes(data)
+
+    table = Table(net_console, delay=ms(3), input_delay=1,
+                  port_options=({"to_console": spoil}, {"to_console": spoil}))
+    table.start()
+    to_game(table)
+    marks = [len(console.frames) for console in table.consoles]
+    table.play(400, moves(seed=3))
+    assert sum(stick.peer_repeats for stick in table.sticks) > 40
+    assert all(console.byte("nesp_fast") == 0x80 for console in table.consoles)
+    for console, mark in zip(table.consoles, marks):
+        late = collections.Counter(console.scanline(taken) - console.scanline(raised)
+                                   for frame in console.frames[mark:]
+                                   for raised, taken in frame.irqs)
+        assert set(late) == {0}
+
+
+# --- a session's line at its own rate (PEER's RATE) ---------------------------------
+
+
+def rates(table):
+    return [[period for _, period in port.rates] for port in table.ports]
+
+
+def test_a_session_runs_its_line_at_the_rate_it_asks_for(net_console):
+    """In its first NMI each console asks its nesp32 for the session's own
+    rate, at the link's; from then on both ends of each line are at it. The
+    NMI that asks is a stall, and its splits are on their lines."""
+    table = Table(net_console, delay=ms(5))
+    table.start()
+    to_game(table)
+    table.play(200, moves(seed=3))
+    assert rates(table) == [[RATE], [RATE]]
+    assert all(console.byte("nesp_fast") == 0x80 for console in table.consoles)
+    assert table.same_game() > 0.8 * table.frames()
+    for console in table.consoles:
+        assert all(console.scanline(taken) == console.scanline(raised)
+                   for frame in console.frames for raised, taken in frame.irqs)
+
+
+def no_rate(data):
+    """A nesp32 whose firmware has no RATE: it answers that it has no such op."""
+    import nesp
+    import nesp_proto as p
+    try:
+        reply = nesp.parse(data)
+    except ValueError:
+        return data                 # a short reply: a session's exchange
+    if reply.svc == p.NESP_SVC_PEER and len(reply.payload) == 1:
+        return nesp.reply_frame(reply.svc, p.NESP_ST_NO_OP, reply.seq, b"")
+    return data
+
+
+def test_with_a_nesp32_that_has_no_rate_the_line_stays_the_links(net_console):
+    table = Table(net_console, delay=ms(5),
+                  port_options=({"to_console": no_rate}, {"to_console": no_rate}))
+    table.start()
+    to_game(table)
+    table.play(200, moves(seed=3))
+    assert all(console.byte("nesp_fast") == 0 for console in table.consoles)
+    assert table.same_game() > 0.8 * table.frames()
+
+
+def test_a_line_no_good_at_its_rate_goes_back_to_the_links(net_console):
+    """Every reply at the session's rate is lost. Each console goes back to
+    the link's rate when it has heard none for a while, and its nesp32
+    when it has heard nothing it could make out; the console asks again,
+    and after a few times stays at the link's. The session goes on."""
+    ports = []
+
+    def lost_when_fast(side):
+        def spoil(data):
+            return None if len(ports) > side and ports[side].period == RATE else data
+        return spoil
+
+    table = Table(net_console, delay=ms(5),
+                  port_options=({"to_console": lost_when_fast(0)},
+                                {"to_console": lost_when_fast(1)}))
+    ports += table.ports
+    table.start()
+    table.play(900, moves(seed=3))
+    for console in table.consoles:
+        assert console.byte("net_mode") == 1
+        assert console.byte("nesp_fast") == 0
+        assert console.byte("net_rate_tries") == console.labels["NET_RATE_TRIES"]
+    assert rates(table)[0][-1] == 21 and rates(table)[1][-1] == 21
+    assert table.same_game() > 300
+
+
+def test_a_line_that_goes_bad_for_a_while_comes_back_to_its_rate(net_console):
+    """The first 80 replies at the session's rate are lost (40 exchanges,
+    each asked twice), and then none are. The console goes back to the
+    link's rate, waits for its nesp32 to have gone back too, asks again,
+    and is at the session's rate again."""
+    lost = [0, 0]
+
+    def spoiler(side):
+        def spoil(data):
+            if table.ports[side].period == RATE and lost[side] < 80:
+                lost[side] += 1
+                return None
+            return data
+        return spoil
+
+    table = Table(net_console, delay=ms(5),
+                  port_options=({"to_console": spoiler(0)}, {"to_console": spoiler(1)}))
+    table.start()
+    table.play(400, moves(seed=3))
+    for console in table.consoles:
+        assert console.byte("net_mode") == 1
+        assert console.byte("nesp_fast") == 0x80
+        assert console.byte("net_rate_tries") == 2
+    assert rates(table) == [[RATE, 21, RATE], [RATE, 21, RATE]]
+    assert table.same_game() > 250

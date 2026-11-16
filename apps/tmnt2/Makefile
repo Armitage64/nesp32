@@ -7,8 +7,8 @@
 #   make verify     check the original against the ROM's SHA-512
 #   make test       the simulation's tests (needs requirements-dev.txt)
 #   make patches    write patches/ again from the sources in build/src
-#   make bps        dist/tmnt2_net.bps and .ips again, the netplay ROM as
-#                   a patch to the game, which players apply to their own
+#   make bps        dist/tmnt2_net.bps again, the netplay ROM as a patch
+#                   to the game, which players apply to their own
 #   make clean
 #
 # The game is not here. Its disassembly is Aaron Bottegal's
@@ -105,11 +105,19 @@ $(NESP): FORCE | $(BUILD)
 	$(MAKE) -s -C $(NESP32) BUILD=$(NESP_BUILD) proto host
 	@test -f $@ || touch $@
 
+# A session's line, in CPU cycles a bit, once the nesp32 has agreed to it
+# (PEER's RATE): its exchanges at that rate, and everything else at the
+# link's own, 21. Jackal has played at 14 on hardware with its samples on,
+# 0.6% of replies misheard (README, "The session's line").
+NET_RATE ?= 14
+
 # The library's serial routines: the receiver that gives up by counting,
 # since every exchange is made in an NMI, and both routines on the one page
-# net/tmnt2_net.cfg has for them.
-$(BUILD)/link.inc: $(NESP_LIB) $(NESP)
-	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $@ --timeout --pack $(LINK_OPTIONS)
+# net/tmnt2_net.cfg has for them; and the session's pair at NET_RATE, on
+# pages of their own.
+$(BUILD)/link.inc: $(NESP_LIB) $(NESP) Makefile
+	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $@ --timeout --pack \
+		--short-period=$(NET_RATE) $(LINK_OPTIONS)
 
 # Each ROM is assembled from the same sources: the original as it is, and
 # the netplay one with NETPLAY defined, which brings in net/.
@@ -138,14 +146,19 @@ verify: $(ROM)
 		&& echo "$(ROM) matches the original" \
 		|| { echo "$(ROM) differs from the original"; exit 1; }
 
+# On every core if this Python has pytest-xdist (conftest.py at the top of
+# nesp32 starts the longest first).
+XDIST = $(shell $(PYTHON) -c 'import xdist' 2>/dev/null \
+	&& printf '%s' '-n auto --dist load --maxschedchunk 1')
+
 test:
-	$(PYTHON) -m pytest -q tests
+	$(PYTHON) -m pytest $(XDIST) -q tests
 
 # From the original as built, once it is known to be the game: the patch
 # is for the US release and no other.
 bps: verify $(NET_ROM)
 	mkdir -p $(DIST)
-	$(PYTHON) $(GEN_PATCH) $(ROM) $(NET_ROM) $(DIST)/tmnt2_net.bps --ips $(DIST)/tmnt2_net.ips
+	$(PYTHON) $(GEN_PATCH) $(ROM) $(NET_ROM) $(DIST)/tmnt2_net.bps
 
 # What a source in build/src has that the converted one has not.
 PATCH_OF = diff -U0 --label a/src/$(1).asm --label b/src/$(1).asm \

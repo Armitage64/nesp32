@@ -67,7 +67,7 @@ def test_a_stick_whose_clock_is_out(rom, error):
     assert good == sent and (silent, wrong) == (0, 0)
 
 
-@pytest.mark.parametrize("delay", [0, 7, 14, 21, 29])
+@pytest.mark.parametrize("delay", [7, 14, 21, 29])     # 0 is the clean line's
 def test_every_phase_of_the_nmi_against_the_frame(console, delay):
     def make():
         return console(nmi_delay=delay)

@@ -28,6 +28,7 @@ _RATE = ctypes.CFUNCTYPE(None, ctypes.c_uint8)
 _WRITE = ctypes.CFUNCTYPE(ctypes.c_size_t, _u8p, ctypes.c_size_t)
 _IDLE = ctypes.CFUNCTYPE(ctypes.c_bool)
 _lib = None
+FILE_NAME = 64                  # a kept file's name, with its 0 (nesp_services.h)
 
 
 def library():
@@ -38,6 +39,13 @@ def library():
         lib.host_free.argtypes = [ctypes.c_void_p]
         lib.host_feed.restype = ctypes.c_size_t
         lib.host_feed.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t, _u8p]
+        lib.host_gap.restype = ctypes.c_bool
+        lib.host_gap.argtypes = [ctypes.c_void_p]
+        lib.host_region.restype = ctypes.c_uint8
+        lib.host_region.argtypes = [ctypes.c_void_p]
+        lib.host_settled.restype = ctypes.c_bool
+        lib.host_settled.argtypes = [ctypes.c_void_p]
+        lib.host_set_region.argtypes = [ctypes.c_void_p, ctypes.c_uint8]
         lib.host_event.argtypes = [ctypes.c_void_p, ctypes.c_uint8, ctypes.c_uint8]
         lib.host_note_turnaround.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
         lib.host_set_wifi.argtypes = [ctypes.c_void_p, ctypes.c_uint8, ctypes.c_uint8,
@@ -79,6 +87,22 @@ def library():
             getattr(lib, name).argtypes = [ctypes.c_void_p]
         lib.host_kbd_unread.restype = ctypes.c_size_t
         lib.host_kbd_unread.argtypes = [ctypes.c_void_p]
+        lib.host_files_absent.argtypes = [ctypes.c_void_p]
+        lib.host_drop_service.argtypes = [ctypes.c_void_p, ctypes.c_uint8]
+        lib.host_file_put.restype = ctypes.c_bool
+        lib.host_file_put.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p,
+                                      ctypes.c_size_t]
+        lib.host_file_size.restype = ctypes.c_long
+        lib.host_file_size.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        lib.host_file_get.restype = ctypes.c_size_t
+        lib.host_file_get.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p,
+                                      ctypes.c_size_t]
+        lib.host_file_count.restype = ctypes.c_uint16
+        lib.host_file_count.argtypes = [ctypes.c_void_p]
+        lib.host_file_name.argtypes = [ctypes.c_void_p, ctypes.c_uint16, ctypes.c_char_p]
+        lib.host_file_writes.restype = ctypes.c_uint32
+        lib.host_file_writes.argtypes = [ctypes.c_void_p]
+        lib.host_files_fail.argtypes = [ctypes.c_void_p, ctypes.c_bool]
         for name in ("host_scan_state", "host_wifi_state", "host_app_version"):
             getattr(lib, name).restype = ctypes.c_uint8
             getattr(lib, name).argtypes = [ctypes.c_void_p]
@@ -164,6 +188,12 @@ def library():
         lib.host_tuner_turn.argtypes = [ctypes.c_void_p]
         lib.host_watched.restype = ctypes.c_char_p
         lib.host_watched.argtypes = [ctypes.c_void_p]
+        lib.host_watched_back.restype = ctypes.c_char_p
+        lib.host_watch_count.restype = ctypes.c_uint32
+        lib.host_peer_dump.restype = None
+        lib.host_peer_dump.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        lib.host_watch_count.argtypes = [ctypes.c_void_p]
+        lib.host_watched_back.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
         lib.host_shown.restype = ctypes.c_char_p
         lib.host_shown.argtypes = [ctypes.c_void_p, ctypes.c_uint8]
         lib.host_juke_index.restype = ctypes.c_uint16
@@ -419,12 +449,41 @@ class Stick:
         they do between requests, if the port has a clock. True if a reply
         went out."""
         heard = self.port.read()
+        if heard and hasattr(self.port, "now_ms"):
+            # The line quiet since the last byte, as the nesp32's link task
+            # sees it (firmware/main/link.c): no short request spans that.
+            now = self.port.now_ms()
+            if now - getattr(self, "_heard_ms", now) >= proto.NESP_LINK_GAP_US / 1000.0:
+                if self.gap():
+                    heard = b""     # at the old clock's rate, as the firmware drops them
+            self._heard_ms = now
         reply = self.feed(heard) if heard else b""
         if reply:
             self.port.write(reply)
         if hasattr(self.port, "now_ms"):
             self.tick(self.port.now_ms())
         return bool(reply)
+
+    def gap(self):
+        """The line has been quiet for NESP_LINK_GAP_US before what is fed
+        next. True if the console's clock was changed for the other there
+        (docs/PAL.md)."""
+        return self._lib.host_gap(self._host)
+
+    @property
+    def region(self):
+        """The console's clock as the nesp32 hears it: NESP_REGION_*."""
+        return self._lib.host_region(self._host)
+
+    @region.setter
+    def region(self, region):
+        """The one to start at, as the firmware's kept one is."""
+        self._lib.host_set_region(self._host, region)
+
+    @property
+    def settled(self):
+        """A request has been good at the clock."""
+        return self._lib.host_settled(self._host)
 
     def tick(self, now_ms):
         """What the services do by the clock. True if they want another
@@ -572,6 +631,48 @@ class Stick:
     def kbd_unread(self):
         """Keys typed that the nesp32 has not handed on."""
         return self._lib.host_kbd_unread(self._host)
+
+    def drop_service(self, svc):
+        """The nesp32 as a firmware from before a service."""
+        self._lib.host_drop_service(self._host, svc)
+
+    def files_absent(self):
+        """The nesp32 as a board that keeps no files for a ROM."""
+        self._lib.host_files_absent(self._host)
+
+    def put_file(self, name, data):
+        """A file among those a ROM keeps (TAPE), in place of any of that
+        name."""
+        data = bytes(data)
+        if not self._lib.host_file_put(self._host, name.encode(), data, len(data)):
+            raise ValueError("no room for %s" % name)
+
+    def file(self, name):
+        """A file's bytes, or None if there is none of that name."""
+        size = self._lib.host_file_size(self._host, name.encode())
+        if size < 0:
+            return None
+        out = ctypes.create_string_buffer(max(size, 1))
+        count = self._lib.host_file_get(self._host, name.encode(), out, size)
+        return out.raw[:count]
+
+    @property
+    def file_names(self):
+        """The files' names, in the order they are listed."""
+        out = ctypes.create_string_buffer(FILE_NAME)
+        names = []
+        for index in range(self._lib.host_file_count(self._host)):
+            self._lib.host_file_name(self._host, index, out)
+            names.append(out.value.decode())
+        return names
+
+    @property
+    def file_writes(self):
+        return self._lib.host_file_writes(self._host)
+
+    def fail_files(self, failing=True):
+        """Every write of a file fails from now on, or no more."""
+        self._lib.host_files_fail(self._host, failing)
 
     def add_track(self, data):
         """A file among the nesp32's tracks, after those already there. A
@@ -793,6 +894,13 @@ class Stick:
         self._lib.host_set_rendezvous(self._host, self._url)
 
     @property
+    def peer_dump(self):
+        """The console's RAM as PEER's last DUMP left it."""
+        buffer = ctypes.create_string_buffer(proto.NESP_PEER_DUMP_BYTES)
+        self._lib.host_peer_dump(self._host, buffer)
+        return buffer.raw
+
+    @property
     def peer_requests(self):
         """PEER: TICKS requests in this session, and how many of them
         brought nothing new."""
@@ -849,6 +957,18 @@ class Stick:
     def watched(self):
         """The last line a service gave for the nesp32's log."""
         return self._lib.host_watched(self._host).decode("ascii")
+
+    @property
+    def watch_count(self):
+        """How many lines the services have given the log, in all."""
+        return self._lib.host_watch_count(self._host)
+
+    @property
+    def watched_lines(self):
+        """The last few lines for the log, oldest first."""
+        lines = [self._lib.host_watched_back(self._host, back).decode("ascii")
+                 for back in range(8)]
+        return [line for line in reversed(lines) if line]
 
     @property
     def tuner_page(self):
@@ -993,6 +1113,10 @@ class Stick:
     @property
     def noise(self):
         return self._lib.host_counter(self._host, 3)
+
+    @property
+    def hunts(self):
+        return self._lib.host_counter(self._host, 4)
 
 
 ARQ_NOTE = 4

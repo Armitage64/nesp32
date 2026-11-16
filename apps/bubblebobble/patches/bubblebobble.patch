@@ -1,0 +1,120 @@
+--- a/src/bubblebobble.asm
++++ b/src/bubblebobble.asm
+@@ -4,0 +5,3 @@
++.ifdef NETPLAY
++.include "fill.inc"             ; the netplay's code in the game's empty space
++.endif
+@@ -10222,0 +10226 @@
++.ifndef NETPLAY
+@@ -10223,0 +10228 @@
++.endif
+@@ -11177,0 +11183,3 @@
++.ifdef NETPLAY
++    jsr net_logo                ; or, in a session just begun, past it and the title
++.else
+@@ -11178,0 +11187 @@
++.endif
+@@ -11610,0 +11620,5 @@
++.ifdef NETPLAY
++    jsr net_title_cursor        ; on 2P START in a session
++    nop
++    nop
++.else
+@@ -11612,0 +11627 @@
++.endif
+@@ -11628,0 +11644,3 @@
++.ifdef NETPLAY
++    jsr net_title_select        ; in a session, past the choices for one
++.else
+@@ -11629,0 +11648 @@
++.endif
+@@ -11649,0 +11669,3 @@
++.ifdef NETPLAY
++    jsr net_title_start         ; 2P START goes to the netplay's menu first
++.else
+@@ -11650,0 +11673 @@
++.endif
+@@ -12195,0 +12219,3 @@
++.ifdef NETPLAY
++    jsr net_ctrl_hook           ; the game's read, or in a session the exchange; the sound
++.else
+@@ -12196,0 +12223 @@
++.endif
+@@ -12219,0 +12247,3 @@
++.ifdef NETPLAY
++    jsr net_nmi_done            ; the random number, and the NMI no longer under way
++.else
+@@ -12220,0 +12251 @@
++.endif
+@@ -12638,0 +12670,3 @@
++.ifdef NET_FAST
++    jmp net_tile                ; the same, sooner (net/fast.inc)
++.else
+@@ -12639,0 +12674 @@
++.endif
+@@ -14227,0 +14263,3 @@
++.ifdef NET_FAST
++    jmp net_push                ; the same, sooner (net/fast.inc)
++.else
+@@ -14228,0 +14267 @@
++.endif
+@@ -16402,0 +16442,3 @@
++.ifdef NETPLAY
++    jsr net_reset_hook          ; the game's setting up, then the netplay's
++.else
+@@ -16403,0 +16446 @@
++.endif
+@@ -18527,0 +18571,4 @@
++.ifdef NETPLAY
++    NET_AT_F821
++    .res $F82C - $F821 - (* - CTRL_READ_UNUSED), $FF
++.else
+@@ -18531,0 +18579 @@
++.endif
+@@ -18549,0 +18598,4 @@
++.ifdef NETPLAY
++    NET_AT_F83D
++    .res $F853 - $F83D - (* - CTRL_READ_UNUSED2), $FF
++.else
+@@ -18562,0 +18615 @@
++.endif
+@@ -18585,0 +18639,4 @@
++.ifdef NETPLAY
++    NET_AT_F86F
++    .res $F88B - $F86F - (* - CTRL_READ_UNUSED3), $FF
++.else
+@@ -18602,0 +18660 @@
++.endif
+@@ -18620,0 +18679,4 @@
++.ifdef NETPLAY
++    NET_AT_F89B
++    .res $F8B5 - $F89B - (* - RENDERING_UNUSED), $FF
++.else
+@@ -18627,0 +18690 @@
++.endif
+@@ -18953,0 +19017,3 @@
++.ifdef NETPLAY
++    ; The sound engine runs in every NMI instead (net_ctrl_hook), and this
++    ; task only sleeps.
+@@ -18955,0 +19022,10 @@
++    jmp SOUND_TASK
++; The sound engine, once.
++net_sound:
++    lda #SOUND_BANK
++    jsr BANK_SWITCH
++    jsr $8003
++    jmp BANK_HOME
++.else
++    lda #$01
++    jsr TASK_SLEEP
+@@ -18960,0 +19037 @@
++.endif
+@@ -19460,0 +19538,3 @@
++.ifdef NETPLAY
++    .addr net_nmi, RESET, IRQ   ; the netplay's NMI, which goes on to the game's
++.else
+@@ -19461,0 +19542,4 @@
++.endif
++.ifdef NETPLAY
++.include "net.asm"              ; the end of bank 6
++.endif

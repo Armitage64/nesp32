@@ -1,0 +1,6 @@
+--- a/src/bank1.asm
++++ b/src/bank1.asm
+@@ -50,0 +51,3 @@
++.ifdef NETPLAY
++net_sprites_draw_return: ;where a full OAM's return takes A from (net/fast.inc)
++.endif

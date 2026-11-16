@@ -60,8 +60,13 @@ $(ROM): $(BUILD)/lobby.o nes/nrom.cfg
 	ld65 -C nes/nrom.cfg -o $@ -Ln $(BUILD)/lobby.labels \
 		--dbgfile $(BUILD)/lobby.dbg -m $(BUILD)/lobby.map $<
 
+# On every core if this Python has pytest-xdist (conftest.py at the top of
+# nesp32 starts the longest first).
+XDIST = $(shell $(PYTHON) -c 'import xdist' 2>/dev/null \
+	&& printf '%s' '-n auto --dist load --maxschedchunk 1')
+
 test:
-	$(PYTHON) -m pytest -q tests
+	$(PYTHON) -m pytest $(XDIST) -q tests
 
 preview: | $(BUILD)
 	mkdir -p docs

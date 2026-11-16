@@ -14,7 +14,8 @@ git submodule update --init    # for the two games and nes-radar only
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 make            # build/setup.nes, and the firmware's code for this computer
 make cart       # build/nesp32.nes: the cartridge (needs the nes-radar submodule)
-make test       # about three and a half minutes
+make test       # under a minute, on every core (pytest-xdist)
+make test-apps  # each program's own tests, on every core
 ```
 
 The nesp32's firmware is built with ESP-IDF, from `firmware/`
@@ -43,6 +44,23 @@ server's code beside the service, from a copy in `tests/fixtures`. None of
 the games is on the cartridge; NES Radar is, so the cartridge's build needs
 that submodule. Nothing else here needs any of the four.
 
+[Bubble Bobble](../apps/bubblebobble) has no disassembly to start from, so
+its build makes one: `tools/convert.py` writes ca65 source of the game
+from the copy of it that whoever builds supplies (`baserom.nes`), with the
+names and comments of its `tools/game.map` and the addresses its
+`tools/trace.py` saw the game run at in the simulation
+(`tools/entries.txt`). Neither file holds any of the game. The original
+built from that source is checked against the ROM's SHA-512.
+[River City Ransom](../apps/rcr) is built the same way, from its own
+`tools/convert.py`, `tools/game.map` and `tools/entries.txt`.
+
+[Jackal](../apps/jackal) is built from RayofJay's disassembly, a submodule
+at `third_party/NES-Jackal_Disassembly_Fully_Commented`, which is for
+ASM6 and leaves out the graphics: its `tools/convert.py` writes ca65
+source of it, and takes what the disassembly leaves out from the copy of
+the game that whoever builds supplies. The original built from that
+source is checked against the ROM's SHA-512.
+
 ### Changing a borrowed program's code
 
 NES Radar's is changed in nes-radar itself, and the submodule moved to the
@@ -50,7 +68,8 @@ commit ([its README](../apps/nes-radar/README.md) has how). For the three
 games, the build copies the submodule's sources into the program's
 `build/` (`build/src` for Contra, `build/upstream` for Dr. Mario and
 Tetris) and applies its `patches/` there; the submodule is never
-written to. To change what nesp32 adds to their own files, edit the
+written to. Bubble Bobble's, River City Ransom's and Jackal's builds apply their `patches/` to a
+copy of their converted source, `build/gen` copied to `build/src`. To change what nesp32 adds to their own files, edit the
 copies, then
 
 ```sh
@@ -62,6 +81,41 @@ and none of the original. That is why each submodule is kept at one commit
 (`CONTRA_COMMIT`, `DRMARIO_COMMIT` and `TETRIS_COMMIT` in the Makefiles): the
 patches are line numbers in that commit's files. `make clean` will not
 delete copies that have changes `patches/` has not.
+
+Bubble Bobble's patches are line numbers in the converted source, so a
+change to its `tools/game.map` or `tools/entries.txt`, which moves the
+converted lines, can put a patch's lines in the wrong place. After one,
+make `build/src` again from `build/gen` with the edits, mark it up to date
+(`touch build/upstream.stamp`) before `make patches`, and check the
+build: `make patches` first remakes `build/src` from the old patches when
+the converted source is newer than it.
+
+### The games' patches for players
+
+Players don't build the games: each game's `dist/` has the netplay ROM
+(Family BASIC's ROM) as a BPS patch to the original, which they apply to
+their own copy. `make bps` in the app writes it, from the original as
+built and verified (Dr. Mario, Tetris, Contra, TMNT II, Bubble Bobble,
+Jackal, River City Ransom) or from `baserom.nes` (Family BASIC); `tools/gen_patch.py` copies
+what it can from the player's ROM and refuses a patch that carries sixteen
+bytes in a row of the game. `make web` puts all eight, as committed, on
+the web site's ROM patches page (`patches/`, from
+`web/patches/index.html`), which says which release of each game a player
+needs and how to apply the patch. The site's workflow has no copy of any
+game, so it builds none of the patches: after a change to a game, run
+`make bps` and commit what it writes. `tests/test_patch.py` in each app
+fails while a patch is out of date. Each patch's entry in `PATCHES` in
+`tools/gen_web.py` gives the first firmware release it works with
+([RELEASING.md](RELEASING.md)). A new game's patch needs an entry there
+and a card on `web/patches/index.html`, or the site's build stops.
+
+### Versions and releases
+
+The firmware and the cartridge are released together, as a tag on main
+cut by `tools/release.py`, and the web site has the latest release.
+[RELEASING.md](RELEASING.md) has how. A pull request that changes
+something a player or a ROM sees adds a line to `CHANGELOG.md` under
+Unreleased.
 
 ## The cartridge
 
@@ -106,6 +160,14 @@ pages they were timed on. `nes/cart/gen_cart.py` has where everything is
 and the few bytes that are not as built: six in each program's padding and
 its reset vector, which make reset the menu.
 
+A program that fits in 16 KB is built as an NROM-128, one bank, to leave
+room on the cartridge (five banks are free), and NES Radar's build for it
+is one bank too. An NROM-128 has its bank at `$C000` and again at `$8000`;
+on the cartridge the MMC1 has the setup ROM at `$8000` under it instead,
+so a program in one bank may read nothing below `$C000`, and the tests
+hold each one to that. A program of 32 KB starts at an even
+bank, since the MMC1 leaves out the low bit in that mode.
+
 NES Radar is not an NROM: it has two pages of tiles, its
 splash's and its scope's, and changes between them. By itself it is a
 CN-ROM, whose latch is a write to the ROM, and on an MMC1 that write would
@@ -127,15 +189,16 @@ What is still to do on the hardware and the firmware is in
 
 | Part | State |
 |---|---|
-| The protocol ([`PROTOCOL.md`](PROTOCOL.md)) | version 1: frames, short frames, hello, and the services SYS, NET, RAW, PEER, DIAG, KBD, JUKE, WIKI, RADAR, TUNER, WEATHER and BSKY |
+| The protocol ([`PROTOCOL.md`](PROTOCOL.md)) | version 1: frames, short frames, hello, and the services SYS, NET, RAW, PEER, DIAG, KBD, HTTP, JUKE, WIKI, RADAR, TUNER, WEATHER, BSKY and TAPE |
 | The link and services in C (`firmware/components/`) | done; tested on a computer |
 | The console's library (`nes/lib/`) | done; every read and write timed on py65 |
 | The firmware (`firmware/main/`): UART, Wi-Fi, HTTPS, the screen, the files, the USB drive, the connection to another nesp32 | working on a StickS3 and on a StickC Plus2, with the MiSTer and with a real NES ([its README](../firmware/README.md)) |
 | The nesp32's files, in a FAT filing system, with rips converted on the nesp32 itself | working on hardware: written over USB with `tools/put_files.py` to a StickC Plus2, and copied to a StickS3 as a USB drive |
 | A computer in place of a nesp32 (`host/serial_host.py`) | written, not run on a cable |
+| A nesp32 in the Mesen emulator ([`host/mesen/`](../host/mesen)): a Lua script and a bridge to the firmware's code, with the computer's keyboard as the Bluetooth keyboard | working in MesenCE: the cartridge's programs, HTTP and the keyboard; PEER not yet |
 | The cartridge (`nes/cart/`): eight programs and a menu, on an MMC1 | working on hardware with the first five, a real NES and the MiSTer, with each board. NESradio, Weather and Bluesky start from the menu on a simulated console; the cartridge with them has not yet run on hardware |
 | [Setup](../apps/setup), SYS, NET, DIAG | working on hardware |
-| A Bluetooth keyboard: KBD, [Setup](../apps/setup)'s screen for it, [NESpedia](../apps/wiki)'s search and reader, and [Weather](../apps/weather)'s zip code; every program on the cartridge asks for KBD, to keep the keyboard connected, and takes its keys as the controller's buttons (NESradio's until its station plays) | working on hardware: a StickS3 with a Logitech MX Keys S, paired from Setup, typing NESpedia's searches and Weather's zip codes, and paging NESpedia's articles |
+| A Bluetooth keyboard: KBD, [Setup](../apps/setup)'s screen for it and its Wi-Fi password, [NESpedia](../apps/wiki)'s search and reader, and [Weather](../apps/weather)'s zip code; every program on the cartridge asks for KBD, to keep the keyboard connected, and takes its keys as the controller's buttons (NESradio's until its station plays) | working on hardware: a StickS3 with a Logitech MX Keys S, paired from Setup, typing NESpedia's searches and Weather's zip codes, and paging NESpedia's articles |
 | [NESpedia](../apps/wiki), WIKI | working on hardware |
 | [Jukebox](../apps/jukebox), JUKE and RAW | working on hardware |
 | [Throughput](../apps/throughput), RAW | working on hardware |
@@ -145,6 +208,8 @@ What is still to do on the hardware and the firmware is in
 | [NESradio](../apps/npr), TUNER | working on hardware, and for long runs |
 | [Weather](../apps/weather), WEATHER | working on hardware, the ROM by itself |
 | [Bluesky](../apps/bluesky), BSKY | on a simulated console against the firmware's code; not yet on hardware |
+| [Family BASIC](../apps/family-basic), KBD (and its KEYS_ALL) | a prototype, working on hardware, the MiSTer and an EverDrive N8: programs typed in on a Bluetooth keyboard, every key of the Famicom's that a computer's has, edited and run, and kept over a reset (on the N8, after `SYSTEM`) |
+| [Family BASIC](../apps/family-basic)'s SAVE and LOAD, TAPE | working on hardware, the MiSTer and a real NES: a program saved, the console reset, and loaded again; BG GRAPHIC's not tried |
 
 ## What is where
 
@@ -156,7 +221,8 @@ What is still to do on the hardware and the firmware is in
 | `firmware/components/nesp_services` | every service, the text code WIKI lays articles out with, and the MP3 decoder TUNER plays a station with |
 | `firmware/main` | the board: UART and link task, Wi-Fi, HTTPS fetches, the connection to another nesp32, files, screen and buttons |
 | `hardware/` | the hat's board, its parts and pictures |
-| `web/` | the product page and the page that flashes a nesp32 from a browser (`make web`); `.github/workflows/web.yml` builds the firmware and the cartridge and puts the site on GitHub Pages whenever either changes on main |
+| `web/` | the product page and the page that flashes a nesp32 from a browser (`make web`); `.github/workflows/web.yml` puts the site on GitHub Pages with the latest release's firmware and cartridge ([RELEASING.md](RELEASING.md)) |
+| `VERSION`, `CHANGELOG.md` | the version of the firmware and the cartridge, and what changed in each release ([RELEASING.md](RELEASING.md)) |
 | `tools/put_files.py` | puts the jukebox's tracks on a nesp32, over USB, for a board that cannot be a drive |
 | `tools/lcd.py` | pictures of the nesp32's own screen, for trying a layout before flashing it |
 | `nes/lib/nesp.inc`, `nes/lib/gen_link.py` | the console's library, and its cycle-timed serial routines |
@@ -165,8 +231,9 @@ What is still to do on the hardware and the firmware is in
 | `nes/cart/` | the cartridge: its menu, and the tool that puts the programs on it |
 | `host/nesp_host.c`, `host/nesp.py` | the firmware's code as a library for this computer, with a stand-in for the hardware |
 | `host/serial_host.py` | that, on a USB serial cable in place of a nesp32 |
+| `host/mesen/` | that, in the Mesen emulator: `nesp32.lua` on controller port 2, and `nesp32_bridge.py`, the nesp32 it talks to |
 | `host/peer_net.py` | for it, PEER's connection to another nesp32 on this computer's sockets, and an opponent who never presses a button |
-| `host/peer_player.py` | a second player with no second console: the other nesp32 and its console, for trying a netplay ROM on one NES, in a room at the real rendezvous or by address |
+| `host/peer_player.py` | a second player with no second console: the other nesp32 and its console, for trying a netplay ROM on one NES, in a room at the real rendezvous or by address. `--app` is the game's id (TMN2, CNTR, DRMA, TTRS, BUBL, JACK); each game's version is its builds' own (`VERSIONS`), and a room is met only at the same one |
 | `tests/console.py`, `tests/wire.py`, `tests/drive.py` | a console on py65, the serial line, and a hand on the controller |
 
 ## Tests
@@ -174,6 +241,30 @@ What is still to do on the hardware and the firmware is in
 ```sh
 make test
 ```
+
+`make test` runs them on every core (pytest-xdist): `tests/conftest.py`
+builds the host library once, and the ROMs once under a lock, in a
+directory the workers share. `make test-apps` runs each program's and
+sample's own tests the same way, one after the other
+(`make test-apps APPS="jackal contra"` for some), and `make test-all` runs
+both. `conftest.py` at the top keeps each test's time in pytest's cache,
+and the next run starts with the longest, one to a worker, so the run does
+not end waiting on one. Plain `pytest` runs them one at a time, which is
+what to use with `-s` or `--pdb`, or for a file or two.
+
+A new program's tests in `apps/<name>/tests` are found by `make test-apps`
+as they are. Written for it, a test has to stand other tests running at
+the same time, in other processes:
+
+- No fixed port: bind port 0, or find a free one as
+  `tests/test_peer_net.py`'s `free_port()` does.
+- No fixed path: what a test writes goes in `tmp_path`, or a directory of
+  its own from `tempfile`, never the tree or the home directory.
+- What a conftest builds goes in a directory of its own, as each one's
+  `build` fixture does: each worker builds its own, or, as
+  `tests/conftest.py` does, one builds and the rest wait on a lock.
+- No test counts on another having run before it, or after: they are
+  started longest first, on whichever worker is free.
 
 - `test_core.py`: the C link and services, bytes in and bytes out.
 - `test_link_timing.py`: every sample and every bit of the console's two
@@ -194,7 +285,8 @@ make test
 - `test_peer_net.py`: a computer's stand-in for that network, on real
   sockets on this machine.
 - `test_peer_player.py`: `host/peer_player.py` against a console of the
-  test's: the digest sent back, and what player 2 does.
+  test's: the digest sent back, what player 2 does, and each game's
+  version held to the apps' sources.
 - `test_radar.py`: where an airport is from Wikidata's answer, a reply
   from adsb.fi to a scene and its names, held to the bytes nes-radar's own
   server makes of it and of 40 made up, and the fetches by the clock, with
@@ -220,6 +312,11 @@ make test
   failed, with the test as the site. The HTTPS sample's ROM is run
   against this code in its own tests.
 - `test_put_files.py`: the image of the tracks that goes over USB.
+- `test_mesen.py`: `host/mesen/nesp32_bridge.py`, the nesp32 for Mesen: a
+  keyboard's reports to characters, held to `firmware/main/keyboard.c`;
+  pairing, forgetting and typing through KBD; a ROM's files kept and
+  loaded again; and fetches as the firmware makes them, with the test
+  as the site.
 - `test_vgm.py`: the converter of rips, held to the same bytes as
   nes-jukebox's Python over its rips, over made-up ones, and over 300 made
   at random.

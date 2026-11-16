@@ -12,9 +12,11 @@
 #   make web        build/web: the product page, and under flash/ the page
 #                   that flashes a nesp32 from a browser, with the firmware
 #                   as firmware/deploy.sh build left it. It builds the
-#                   cartridge and puts it there to be downloaded.
+#                   cartridge and puts it there to be downloaded. The web
+#                   site itself has the latest release's (docs/RELEASING.md).
 #                   make web-serve serves it at http://localhost:8032
-#   make test
+#   make test       tests/, on every core
+#   make test-apps  each program's and sample's own tests; test-all, both
 #
 # The Stick's firmware itself is built with ESP-IDF, from firmware/.
 
@@ -35,7 +37,7 @@ HOST_HEADERS := $(CORE)/include/nesp_core.h $(wildcard $(SERVICES)/include/*.h) 
 
 ROM := $(BUILD)/setup.nes
 
-.PHONY: all proto host rom timeout-rom verify cart verify-cart web web-serve test clean FORCE
+.PHONY: all proto host rom timeout-rom verify cart verify-cart web web-serve test test-apps test-all clean FORCE
 
 all: proto host rom
 
@@ -52,7 +54,18 @@ $(PROTO): $(BUILD)/proto.stamp ;
 
 proto: $(PROTO)
 
-$(HOST_LIB): $(HOST_SOURCES) $(HOST_HEADERS) $(BUILD)/nesp_proto.h
+# The version, from VERSION and the commit (tools/version.py), looked at on
+# every build and rewritten only if what it says changed.
+VERSION_H := $(BUILD)/nesp_version.h
+VERSION_INC := $(BUILD)/nesp_version.inc
+
+$(VERSION_H): FORCE | $(BUILD)
+	$(PYTHON) tools/version.py header $@
+
+$(VERSION_INC): FORCE | $(BUILD)
+	$(PYTHON) tools/version.py inc $@
+
+$(HOST_LIB): $(HOST_SOURCES) $(HOST_HEADERS) $(BUILD)/nesp_proto.h $(VERSION_H)
 	$(CC) $(CFLAGS) -shared -I $(BUILD) -I $(CORE)/include -I $(SERVICES)/include \
 		-I $(MINIMP3) -o $@ $(HOST_SOURCES) -lm
 
@@ -151,8 +164,9 @@ $(CART_TABLES): $(CART_BUILD)/tables.stamp ;
 $(CART_BUILD)/link.inc: nes/lib/gen_link.py $(PROTO) | $(CART_BUILD)/tables.stamp
 	$(PYTHON) nes/lib/gen_link.py $(BUILD) $@
 
-$(CART_BUILD)/menu.o: nes/cart/menu.s $(CART_TABLES) $(CART_BUILD)/link.inc nes/lib/nesp.inc nes/lib/badge.inc $(PROTO)
-	ca65 -g -I $(CART_BUILD) -I $(BUILD) -I nes/lib --bin-include-dir $(CART_BUILD) -o $@ $<
+$(CART_BUILD)/menu.o: nes/cart/menu.s nes/cart/update.inc $(CART_TABLES) $(CART_BUILD)/link.inc \
+		nes/lib/nesp.inc nes/lib/badge.inc $(PROTO) $(VERSION_INC)
+	ca65 -g -I $(CART_BUILD) -I $(BUILD) -I nes/cart -I nes/lib --bin-include-dir $(CART_BUILD) -o $@ $<
 
 $(CART_BUILD)/menu.prg: $(CART_BUILD)/menu.o nes/cart/menu.cfg
 	ld65 -C nes/cart/menu.cfg -o $@ -Ln $(CART_BUILD)/menu.labels \
@@ -176,8 +190,33 @@ web-serve: web
 
 FORCE:
 
+# On every core: tests/conftest.py builds once and the workers share it.
+# The longest tests go first, one to each worker, from their times the
+# last run (conftest.py, at the top), so the run does not wait on one.
+# A Python without pytest-xdist runs them one at a time.
+XDIST = $(shell $(PYTHON) -c 'import xdist' 2>/dev/null \
+	&& printf '%s' '-n auto --dist load --maxschedchunk 1')
+
 test:
-	$(PYTHON) -m pytest
+	$(PYTHON) -m pytest $(XDIST)
+
+# Each program's and sample's own tests, one after the other, each on every
+# core. They cannot share one pytest: each has its own conftest.py and
+# helpers of the same names. Each worker builds the host library and the
+# ROMs for itself, into its own directory: a few seconds. All of them, or
+# some: make test-apps APPS="jackal contra"
+APP_TESTS := $(if $(APPS),$(addsuffix /tests,$(addprefix apps/,$(APPS))),\
+	$(wildcard apps/*/tests samplecode/*/tests))
+
+test-apps:
+	@failed=""; for dir in $(APP_TESTS); do \
+		echo "== $$dir"; \
+		$(PYTHON) -m pytest -q $(XDIST) $$dir; status=$$?; \
+		[ $$status = 0 ] || [ $$status = 5 ] || failed="$$failed $$dir"; \
+	done; \
+	[ -z "$$failed" ] || { echo "failed:$$failed"; exit 1; }
+
+test-all: test test-apps
 
 clean:
 	rm -rf $(BUILD)

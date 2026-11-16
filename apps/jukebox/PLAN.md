@@ -50,7 +50,8 @@ Non-goals for v1:
   its own came later and goes another way: see phase 5.)
 - Expansion audio (VRC6, VRC7, N163, MMC5, 5B). VGM does not carry it. FDS is
   representable in VGM but needs the FDS hardware.
-- PAL consoles. As in nes-radar, only NTSC is in scope.
+- PAL consoles. As in nes-radar, only NTSC is in scope. (Since done in
+  the nesp32's firmware, with no change here: ../../docs/PAL.md.)
 
 ## Key findings that shape the design
 

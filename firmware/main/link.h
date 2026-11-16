@@ -20,10 +20,15 @@ typedef struct {
     uint32_t turnaround_us;
     uint32_t turnaround_max_us;
     uint32_t last_request_ms;       /* when the console was last heard; 0 if never */
+    uint32_t hunts;                 /* times the clock was changed for the other */
+    uint8_t region;                 /* the console's clock (NESP_REGION_*), as heard */
+    bool settled;                   /* a request has been good at it */
 } link_stats_t;
 
-/* Open the UART, so that TX rests at mark. Call it before anything slow. */
-void link_open(void);
+/* Open the UART, so that TX rests at mark, at the link's rate for a console
+ * of this region (NESP_REGION_*): the one last settled on. Call it before
+ * anything slow. */
+void link_open(uint8_t region);
 
 /* Start answering the console. */
 void link_start(const nesp_hal_t *hal);

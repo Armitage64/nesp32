@@ -1,4 +1,5 @@
-/* The nesp32's files: the jukebox's tracks (nesp_hal_t's tracks). */
+/* The nesp32's files: the jukebox's tracks (nesp_hal_t's tracks), and the
+ * files a ROM keeps (its file_*). */
 #ifndef STORE_H
 #define STORE_H
 
@@ -30,6 +31,13 @@ void store_unmount(void);
 uint16_t store_tracks(void *ctx);
 uint32_t store_track_size(void *ctx, uint16_t track);
 size_t store_track_read(void *ctx, uint16_t track, uint32_t offset, uint8_t *out, size_t len);
+
+/* nesp_hal_t's file_read, file_write and file_name: the files a ROM keeps
+ * (TAPE), in /files/basic. They read and write flash, and are for the link
+ * task alone, between a reply and the next request. */
+size_t store_file_read(void *ctx, const char *name, uint32_t offset, uint8_t *out, size_t len);
+bool store_file_write(void *ctx, const char *name, const uint8_t *data, size_t len, bool append);
+bool store_file_name(void *ctx, uint16_t index, char *out, size_t max);
 
 #ifdef __cplusplus
 }

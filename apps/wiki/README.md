@@ -60,7 +60,8 @@ make preview                 # build/search.png and build/reader.png
   a Bluetooth keyboard's, which it does without on a firmware that has
   none.
 
-Both are NROM-256 (mapper 0) with vertical mirroring.
+Both are mapper 0 with vertical mirroring: `nespedia.nes` an NROM-256, for
+its article, and `nespedia_link.nes` an NROM-128, which needs no more.
 
 ## Using it
 

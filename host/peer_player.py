@@ -6,7 +6,8 @@ nesp32 and the console behind it, for trying a netplay ROM on one NES.
     host/peer_player.py HOST                    open a room, for the console to join
     host/peer_player.py JOIN 192.168.1.23       or meet by address: call the console's nesp32
     host/peer_player.py HOST --by-address       or wait for its call
-    host/peer_player.py JOIN K7QF --app CNTR    another game (TMN2 by default)
+    host/peer_player.py JOIN K7QF --app CNTR    another game (TMN2 by default), at its version (VERSIONS)
+    host/peer_player.py JOIN K7QF --pal         to a PAL console: two of a region play (docs/PAL.md)
 
 The nesp32 is the firmware's own code (build/libnesp_host, from `make
 host`) on this computer's sockets (peer_net.py), so a room is met at the
@@ -43,7 +44,7 @@ import peer_net
 PEER = p.NESP_SVC_PEER
 CHECK_TICK = 0xFF               # of every 256, the one that carries the digest
 LEAD = 4                        # ticks sent ahead of the console's
-COPY_LAG = 30                   # ticks the copy is behind
+COPY_LAG = 30                   # in ticks, at a frame a tick
 STEP_S = 0.002
 STATUS_S = 0.05                 # between two questions to the lobby
 BTN_A, BTN_B, BTN_SELECT, BTN_START = 0x80, 0x40, 0x20, 0x10
@@ -54,9 +55,17 @@ STATES = {p.NESP_LOBBY_NO_WIFI: "no network", p.NESP_LOBBY_IDLE: "idle",
           p.NESP_LOBBY_HOSTING: "waiting", p.NESP_LOBBY_CONNECTING: "calling",
           p.NESP_LOBBY_HOST: "connected, player 1", p.NESP_LOBBY_GUEST: "connected, player 2",
           p.NESP_LOBBY_FAILED: "failed", p.NESP_LOBBY_MEETING: "meeting"}
+# Each game's NESP_APP_VERSION as its builds now say it: a room is met only
+# by the same game at the same version.
+VERSIONS = {"TMN2": 2, "CNTR": 2, "DRMA": 3, "TTRS": 2, "BUBL": 2, "JACK": 2, "RIVR": 1}
+# Ticks a second, where a game's tick is not a frame: River City Ransom's
+# is a pass of its main loop, two frames.
+TICKS_PER_S = {"RIVR": 30}
+
 WHYS = {p.NESP_MEET_NO_SERVER: "the rendezvous could not be asked",
         p.NESP_MEET_NO_ROOM: "there is no room of that code",
-        p.NESP_MEET_MISMATCH: "the room is another game's, or another version's",
+        p.NESP_MEET_MISMATCH: "the room is another game's, or another version's,"
+                              " or a console of the other region's (--pal)",
         p.NESP_MEET_FULL: "player 2 is already in the room",
         p.NESP_MEET_UNREACHABLE: "the two could not reach each other",
         p.NESP_MEET_GONE: "the room was given up"}
@@ -66,8 +75,9 @@ class Player:
     """The console's side of a session: its ticks of buttons out, the
     other's in, by PEER's TICKS on `stick`."""
 
-    def __init__(self, play="copy", seed=None):
+    def __init__(self, play="copy", seed=None, ticks_per_s=60):
         self.play = play
+        self.copy_lag = round(COPY_LAG * ticks_per_s / 60)
         self.random = random.Random(seed)
         self.mine = bytearray()     # this side's buttons, by tick
         self.theirs = bytearray()   # the console's
@@ -76,7 +86,7 @@ class Player:
 
     def buttons(self, tick):
         if self.play == "copy":
-            back = tick - COPY_LAG
+            back = tick - self.copy_lag
             if back < 0:
                 return 0
             if back % 256 == CHECK_TICK:
@@ -123,9 +133,14 @@ def main(argv=None):
                         help="JOIN: the room's code, or the console's nesp32's address")
     parser.add_argument("--by-address", action="store_true",
                         help="HOST: wait for a call to this computer's address, not in a room")
-    parser.add_argument("--app", default="TMN2", help="the game's id (TMN2, CNTR, DRMA, TTRS)")
-    parser.add_argument("--version", type=int, default=1, help="the game's version (DRMA is 2)")
+    parser.add_argument("--app", default="TMN2", type=str.upper, choices=sorted(VERSIONS),
+                        help="the game's id: TMNT II is TMN2 (the default)")
+    parser.add_argument("--version", type=int,
+                        help="the game's version, if not the one its builds now say (VERSIONS)")
     parser.add_argument("--play", choices=("copy", "still", "random"), default="copy")
+    parser.add_argument("--pal", action="store_true",
+                        help="be the nesp32 of a PAL console, for one: a PAL console's and an"
+                             " NTSC one's are not let play each other")
     parser.add_argument("--rendezvous", metavar="URL",
                         help="where rooms are met in place of the firmware's own")
     parser.add_argument("--port", type=int,
@@ -138,12 +153,16 @@ def main(argv=None):
         parser.error("this computer is on no network")
 
     stick = nesp.Stick()
+    # Its console is no console, and is never heard: the region is said.
+    stick.region = p.NESP_REGION_PAL if args.pal else p.NESP_REGION_NTSC
     stick.set_saved(b"This computer")
     stick.set_wifi(p.NESP_WIFI_JOINED, rssi=-50, address=address)
     network = peer_net.SocketNetwork(stick, port=args.port)
     if args.rendezvous:
         stick.set_rendezvous(args.rendezvous)
     app = args.app.upper().encode("ascii")
+    if args.version is None:
+        args.version = VERSIONS.get(args.app.upper(), 1)
     if not stick.hello(app=app, version=args.version, services=[PEER]).ok:
         parser.error("the nesp32's code would not take the hello")
 
@@ -159,10 +178,10 @@ def main(argv=None):
     else:
         order, payload = p.NESP_PEER_JOIN, socket.inet_aton(args.where)
     status = p.NESP_PEER_ROOM if room else p.NESP_PEER_STATUS
-    print("%s v%d at %s, as %s" % (args.app.upper(), args.version, socket.inet_ntoa(address),
-                                   "a room" if room else "an address"))
+    print("%s v%d%s at %s, as %s" % (args.app.upper(), args.version, " PAL" if args.pal else "",
+                                     socket.inet_ntoa(address), "a room" if room else "an address"))
 
-    player = Player(args.play)
+    player = Player(args.play, ticks_per_s=TICKS_PER_S.get(args.app, 60))
     said = None
     asked = 0.0
     shown = 0.0

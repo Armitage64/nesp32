@@ -39,7 +39,7 @@
 ; The link's library, before the font below is in force: its hello carries
 ; the name as it is written here.
 .define NESP_APP "DRMA"
-NESP_APP_VERSION = 2            ; 2: a check tick in 256, which both consoles must keep
+NESP_APP_VERSION = 3            ; 2: a check tick in 256, which both consoles must keep; 3: its digest loses nothing
 .include "nesp.inc"
 
 ; The font, in the CHR page the game's options screen uses. By number: a

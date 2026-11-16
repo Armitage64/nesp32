@@ -28,7 +28,15 @@
  * Every op may be asked again with nothing done twice: an order that is
  * already what the nesp32 is doing changes nothing, and buttons it has
  * taken are passed over. So no reply here is held for a repeat.
+ *
+ * A session's line may run faster than the link's (RATE), when the console
+ * asks: its serial routines are built for one rate, and a ROM that does not
+ * ask is never at another. The answer goes at the link's rate, and the
+ * UART changes once it has gone. It goes back to the link's when no good
+ * frame has come for PEER_RATE_QUIET_MS: a console that was reset begins
+ * again at the link's rate, and is heard only there.
  */
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,8 +46,11 @@
 #define GREETING NESP_PEER_GREETING
 _Static_assert(1 + NESP_PEER_PER_FRAME <= NESP_SHORT_DATA, "TICKS does not fit a short frame");
 _Static_assert(NESP_PEER_PER_FRAME == 2, "a short frame's length is by counts of 2 and under");
+#define DUMP_LINES (NESP_PEER_DUMP_BYTES / NESP_PEER_DUMP_LINE)
+_Static_assert(DUMP_LINES < 255, "a dump's lines, and the one before them, are counted in a byte");
 #define SHOW_MS 500
 #define WATCH_MS 2000
+#define STOPPED_MS 1000            /* a session's console that has not asked for this long has stopped */
 #define RADIO_TEXT 256             /* a line of the log */
 #define RENDEZVOUS "https://nesp32-rendezvous.retrobits.workers.dev"
 #define AGENT "nesp32-peer/0.1 (PEER on a nesp32; +https://github.com/Armitage64/nesp32)"
@@ -95,6 +106,35 @@ static void unlock(nesp_peer_t *peer)
     peer->hal->unlock(peer->hal->ctx);
 }
 
+/* For the log: the line's rate changed, and why. */
+static void rate_said(nesp_peer_t *peer, const char *why)
+{
+    char text[96];
+    if (peer->hal->watch == NULL) {
+        return;
+    }
+    snprintf(text, sizeof(text), "line at %u cycles a bit: %s",
+             (unsigned)(peer->rate != 0 ? peer->rate : NESP_PERIOD), why);
+    peer->hal->watch(peer->hal->ctx, text);
+}
+
+/* The line at the link's rate again, if a session had it at its own. */
+static void rate_off(nesp_peer_t *peer, const char *why)
+{
+    peer->rate_wanted = 0;
+    if (peer->rate != 0) {
+        peer->rate = 0;
+        peer->hal->line_rate(peer->hal->ctx, NESP_PERIOD);
+        rate_said(peer, why);
+    }
+}
+
+/* A good frame, at whatever rate the line is. */
+static void heard(nesp_peer_t *peer)
+{
+    peer->rate_heard_at = peer->now;
+}
+
 /* No fetch is wanted any more: a sink hears no more of the last. */
 static void unask(nesp_peer_t *peer)
 {
@@ -108,8 +148,11 @@ static void unask(nesp_peer_t *peer)
     peer->asking = false;
 }
 
+static void farewell(nesp_peer_t *peer, const char *why);
+
 static void drop(nesp_peer_t *peer)
 {
+    farewell(peer, "left");
     peer->hal->peer_close(peer->hal->ctx);
     unask(peer);
     peer->meet = MEET_NONE;
@@ -127,7 +170,11 @@ static void drop(nesp_peer_t *peer)
 static void greeting(const nesp_peer_t *peer, uint8_t *out)
 {
     memcpy(out, greeting_mark, sizeof(greeting_mark));
-    out[4] = NESP_PEER_VERSION;
+    /* A PAL console runs the game at 50 ticks a second, and an NTSC one
+     * at 60: two of a region play, and only two of a region (docs/PAL.md).
+     * An NTSC one's greeting is as it was before there were PAL ones. */
+    out[4] = (uint8_t)(NESP_PEER_VERSION
+                       | (peer->sys->link->region == NESP_REGION_PAL ? NESP_PEER_PAL : 0));
     memcpy(out + 5, peer->sys->app, NESP_APP_ID);
     out[5 + NESP_APP_ID] = peer->sys->app_version;
 }
@@ -183,6 +230,11 @@ static void greet(nesp_peer_t *peer, uint8_t conn, uint32_t now)
         peer->pad = 0;
         peer->pads = 0;
         peer->pad_changes = 0;
+        peer->over = false;
+        peer->sent_ticks = peer->came_ticks = 0;
+        peer->exchanged_at = peer->came_at = peer->lost_at = now;
+        peer->alike = 0;
+        peer->ours_at = peer->theirs_at = peer->differed_at = 0;
         memset(peer->spread, 0, sizeof(peer->spread));
         memset(peer->since, 0, sizeof(peer->since));
         {
@@ -198,6 +250,147 @@ static void greet(nesp_peer_t *peer, uint8_t conn, uint32_t now)
     }
 }
 
+/* --- the end ------------------------------------------------------------------- */
+
+/* When a session ends, one line for the log, to tell why from: how far
+ * each console's buttons got, whether the digests were alike, and when
+ * the other's buttons last came and the connection went, each counted
+ * back from this console's last exchange.
+ *
+ * Each of nesp32's netplay games sends a digest of its game in place of
+ * its buttons at every tick whose low byte is FF, and gives the session up
+ * when the two differ; or when it has had none of the other's buttons for
+ * 240 NMIs, or the connection is gone. The console says nothing of which,
+ * and goes back to its title, where it makes no more exchanges: so the
+ * line is said once it has made none for STOPPED_MS, as well as when the
+ * session is left or the console says hello. */
+
+/* A digest: this console's (ours) or the other's, at its tick. */
+static void digest(nesp_peer_t *peer, bool ours, uint32_t tick, uint8_t value)
+{
+    if (ours) {
+        peer->ours_at = tick;
+        peer->ours = value;
+    } else {
+        peer->theirs_at = tick;
+        peer->theirs = value;
+    }
+    if (peer->ours_at != peer->theirs_at) {
+        return;                     /* the other of the two is still to come */
+    }
+    if (peer->ours == peer->theirs) {
+        peer->alike++;
+    } else if (peer->differed_at == 0) {
+        peer->differed_at = tick;
+        peer->differed[0] = peer->ours;
+        peer->differed[1] = peer->theirs;
+    }
+}
+
+/* How long before this console's last exchange `at` was, or after it,
+ * into out. */
+static size_t from_end(char *out, size_t size, const nesp_peer_t *peer, uint32_t at)
+{
+    int32_t before = (int32_t)(peer->exchanged_at - at);
+    int written = snprintf(out, size, "%ld ms %s the end", (long)(before < 0 ? -before : before),
+                           before < 0 ? "after" : "before");
+    return written < 0 ? 0 : (size_t)written;
+}
+
+static void farewell(nesp_peer_t *peer, const char *why)
+{
+    if (peer->over || peer->requests == 0
+        || (peer->lobby != NESP_LOBBY_HOST && peer->lobby != NESP_LOBBY_GUEST)) {
+        return;
+    }
+    peer->over = true;
+    if (peer->hal->watch == NULL) {
+        return;
+    }
+    char text[RADIO_TEXT];
+    size_t length = (size_t)snprintf(text, sizeof(text), "session over, %s: ticks %lu sent, %lu came",
+                                     why, (unsigned long)peer->sent_ticks,
+                                     (unsigned long)peer->came_ticks);
+    if (peer->came_ticks != 0 && length < sizeof(text)) {
+        length += (size_t)snprintf(text + length, sizeof(text) - length, ", the last ");
+    }
+    if (peer->came_ticks != 0 && length < sizeof(text)) {
+        length += from_end(text + length, sizeof(text) - length, peer, peer->came_at);
+    }
+    if (peer->differed_at != 0 && length < sizeof(text)) {
+        length += (size_t)snprintf(text + length, sizeof(text) - length,
+                                   "; digests alike %lu, then differed at tick %lu: this %02x, the other %02x",
+                                   (unsigned long)peer->alike, (unsigned long)peer->differed_at,
+                                   peer->differed[0], peer->differed[1]);
+    } else if (length < sizeof(text)) {
+        length += (size_t)snprintf(text + length, sizeof(text) - length, "; digests alike %lu",
+                                   (unsigned long)peer->alike);
+    }
+    if (peer->differed_at == 0 && peer->ours_at > peer->theirs_at && length < sizeof(text)) {
+        length += (size_t)snprintf(text + length, sizeof(text) - length,
+                                   ", the other's at tick %lu not come", (unsigned long)peer->ours_at);
+    }
+    if (peer->lost && length < sizeof(text)) {
+        length += (size_t)snprintf(text + length, sizeof(text) - length, "; connection lost ");
+    }
+    if (peer->lost && length < sizeof(text)) {
+        from_end(text + length, sizeof(text) - length, peer, peer->lost_at);
+    }
+    peer->hal->watch(peer->hal->ctx, text);
+}
+
+/* DUMP: a piece of the console's RAM, sent when its digest differed from
+ * the other's. The piece that ends at the end finishes it, and its lines
+ * go to the log from the next tick, the first of them saying what it is. */
+static void dump(nesp_peer_t *peer, const nesp_request_t *request, nesp_reply_t *reply)
+{
+    if (request->len < 2) {
+        reply->status = NESP_ST_BAD_ARG;
+        return;
+    }
+    size_t offset = (size_t)request->data[0] | (size_t)request->data[1] << 8;
+    size_t count = (size_t)(request->len - 2);
+    if (offset > NESP_PEER_DUMP_BYTES || count > NESP_PEER_DUMP_BYTES - offset) {
+        reply->status = NESP_ST_BAD_ARG;
+        return;
+    }
+    memcpy(peer->dump + offset, request->data + 2, count);
+    if (count != 0 && offset + count == NESP_PEER_DUMP_BYTES) {
+        peer->dump_lines = DUMP_LINES + 1;
+        peer->dump_at = peer->now;
+        peer->dump_tick = peer->differed_at;
+    }
+}
+
+/* The dump's next line for the log, when it is time. */
+static void dump_said(nesp_peer_t *peer, uint32_t now)
+{
+    if (peer->dump_lines == 0 || (int32_t)(now - peer->dump_at) < 0 || peer->hal->watch == NULL) {
+        return;
+    }
+    char text[RADIO_TEXT];
+    if (peer->dump_lines == DUMP_LINES + 1) {
+        if (peer->dump_tick != 0) {
+            snprintf(text, sizeof(text), "dump of the console's RAM, as it stood at tick %lu, "
+                     "whose digests differed: %u bytes", (unsigned long)peer->dump_tick,
+                     (unsigned)NESP_PEER_DUMP_BYTES);
+        } else {
+            snprintf(text, sizeof(text), "dump of the console's RAM: %u bytes",
+                     (unsigned)NESP_PEER_DUMP_BYTES);
+        }
+    } else {
+        size_t from = (size_t)(DUMP_LINES - peer->dump_lines) * NESP_PEER_DUMP_LINE;
+        size_t length = (size_t)snprintf(text, sizeof(text), "dump %04x:", (unsigned)from);
+        for (size_t index = 0; index < NESP_PEER_DUMP_LINE && length + 3 < sizeof(text); index++) {
+            length += (size_t)snprintf(text + length, sizeof(text) - length, "%s%02x",
+                                       index == 0 ? " " : "", peer->dump[from + index]);
+        }
+    }
+    peer->hal->watch(peer->hal->ctx, text);
+    peer->dump_lines--;
+    peer->dump_at = now + NESP_PEER_DUMP_EVERY_MS;
+}
+
 /* --- a session ------------------------------------------------------------------ */
 
 /* Take what the other nesp32 has sent, as far as there is room for it. */
@@ -208,9 +401,20 @@ static void pump(nesp_peer_t *peer)
         return;
     }
     size_t came = peer->hal->peer_recv(peer->hal->ctx, peer->remote + peer->remote_len, room);
+    for (size_t index = 0; index < came; index++) {
+        uint32_t tick = peer->came_ticks + (uint32_t)index;
+        if ((tick & 0xFF) == 0xFF) {
+            digest(peer, false, tick, peer->remote[peer->remote_len + index]);
+        }
+    }
+    peer->came_ticks += (uint32_t)came;
+    if (came != 0) {
+        peer->came_at = peer->now;
+    }
     peer->remote_len = (uint8_t)(peer->remote_len + came);
-    if (came == 0 && !up(peer->hal->peer_state(peer->hal->ctx))) {
+    if (came == 0 && !peer->lost && !up(peer->hal->peer_state(peer->hal->ctx))) {
         peer->lost = true;          /* and everything it brought is here */
+        peer->lost_at = peer->now;
     }
 }
 
@@ -227,6 +431,8 @@ static uint8_t exchange(nesp_peer_t *peer, uint8_t first, uint8_t wanted,
         peer->hal->peer_spread(peer->hal->ctx, peer->spread);
     }
     peer->requests++;
+    peer->exchanged_at = peer->now;
+    peer->over = false;             /* it goes on after all: a later end has its own line */
     /* Its buttons: those of them not seen before go to the other nesp32. */
     uint8_t skip = (uint8_t)(peer->local_next - first);
     size_t sent = 0;
@@ -239,6 +445,9 @@ static uint8_t exchange(nesp_peer_t *peer, uint8_t first, uint8_t wanted,
         for (size_t index = 0; index < sent; index++) {
             uint8_t tick = (uint8_t)(peer->local_next - sent + index);
             uint8_t pad = buttons[skip + index];
+            if (tick == 0xFF) {
+                digest(peer, true, peer->sent_ticks + (uint32_t)index, pad);
+            }
             if (tick == 0xFF || pad == peer->pad) {
                 continue;
             }
@@ -250,6 +459,7 @@ static uint8_t exchange(nesp_peer_t *peer, uint8_t first, uint8_t wanted,
                 peer->pads++;
             }
         }
+        peer->sent_ticks += (uint32_t)sent;
     }
     if (sent == 0) {
         /* With no buttons the console had none new: its game stood still
@@ -431,6 +641,7 @@ static int quick(void *ctx, uint8_t count, const uint8_t *in, uint8_t *reply_cou
     bool tuning = count == NESP_PEER_TUNE;
     uint8_t sent = tuning ? 1 : count;
     out[0] = 0;
+    heard(peer);
     if (!in_session(peer)) {
         *reply_count = NESP_SHORT_NONE;
         return 1;
@@ -824,10 +1035,32 @@ static void lobby(nesp_peer_t *peer, const nesp_request_t *request, nesp_reply_t
     }
 }
 
+/* RATE: the session's line at `period` cycles a bit, both ways, from once
+ * this answer has gone. The answer is the rate it will be at: the one
+ * asked for, or 0 for the link's own, with no session to have one. */
+static void rate(nesp_peer_t *peer, const nesp_request_t *request, nesp_reply_t *reply)
+{
+    if (request->len != 1 || request->data[0] < NESP_PEER_RATE_MIN
+        || request->data[0] > NESP_PERIOD) {
+        reply->status = NESP_ST_BAD_ARG;
+        return;
+    }
+    uint8_t period = request->data[0];
+    if (!in_session(peer) || peer->lost || period == NESP_PERIOD) {
+        rate_off(peer, "the link's, asked for with no session");
+        period = 0;
+    } else {
+        peer->rate_wanted = period;
+    }
+    reply->data[0] = period;
+    reply->len = 1;
+}
+
 static void handle(void *ctx, const nesp_request_t *request, nesp_reply_t *reply)
 {
     nesp_peer_t *peer = ctx;
     reply->once = true;             /* the same request again is a new question */
+    heard(peer);
     switch (request->op) {
     case NESP_PEER_STATUS:
     case NESP_PEER_HOST:
@@ -841,6 +1074,12 @@ static void handle(void *ctx, const nesp_request_t *request, nesp_reply_t *reply
         break;
     case NESP_PEER_TICKS:
         ticks(peer, request, reply);
+        break;
+    case NESP_PEER_RATE:
+        rate(peer, request, reply);
+        break;
+    case NESP_PEER_DUMP:
+        dump(peer, request, reply);
         break;
     default:
         reply->status = NESP_ST_NO_OP;
@@ -929,14 +1168,17 @@ static void show(nesp_peer_t *peer, uint32_t now)
 static void watch(nesp_peer_t *peer, uint32_t now)
 {
     char text[RADIO_TEXT];
-    if (peer->hal->watch == NULL || !in_session(peer) || now - peer->watched_at < WATCH_MS) {
+    if (peer->hal->watch == NULL || !in_session(peer) || peer->over
+        || now - peer->watched_at < WATCH_MS) {
         return;
     }
     peer->watched_at = now;
     snprintf(text, sizeof(text),
-             "player %d, delay %u, advised %u (%u for longer, %u for shorter); %lu frames, "
+             "player %d, line %u, delay %u, advised %u (%u for longer, %u for shorter); %lu frames, "
              "%lu late, %lu again; network needs 1:%lu 2:%lu 3:%lu 4:%lu 5:%lu more:%lu",
-             peer->lobby == NESP_LOBBY_HOST ? 1 : 2, (unsigned)peer->delay, (unsigned)peer->want,
+             peer->lobby == NESP_LOBBY_HOST ? 1 : 2,
+             (unsigned)(peer->rate != 0 ? peer->rate : NESP_PERIOD), (unsigned)peer->delay,
+             (unsigned)peer->want,
              (unsigned)peer->up, (unsigned)peer->down, (unsigned long)peer->requests,
              (unsigned long)(peer->repeats - peer->again), (unsigned long)peer->again,
              (unsigned long)peer->since[0], (unsigned long)peer->since[1],
@@ -955,11 +1197,34 @@ static void watch(nesp_peer_t *peer, uint32_t now)
     peer->hal->watch(peer->hal->ctx, text);
 }
 
+/* The line's rate: the session's, once the answer that agreed to it has
+ * gone; the link's again once nothing has been heard at it for a while. */
+static bool line(nesp_peer_t *peer, uint32_t now)
+{
+    if (peer->rate_wanted != 0) {
+        if (!peer->hal->line_idle(peer->hal->ctx)) {
+            return true;            /* the answer is still going: soon */
+        }
+        peer->rate = peer->rate_wanted;
+        peer->rate_wanted = 0;
+        peer->rate_heard_at = now;
+        peer->hal->line_rate(peer->hal->ctx, peer->rate);
+        rate_said(peer, "the session's, as its console asked");
+        return false;
+    }
+    if (peer->rate != 0 && now - peer->rate_heard_at >= NESP_PEER_RATE_QUIET_MS) {
+        rate_off(peer, "the link's again, nothing heard at the session's");
+    }
+    return false;
+}
+
 static bool tick(void *ctx, uint32_t now)
 {
     nesp_peer_t *peer = ctx;
     peer->now = now;
+    bool soon = line(peer, now);
     watch(peer, now);
+    dump_said(peer, now);
     uint8_t conn = peer->hal->peer_state(peer->hal->ctx);
     if (peer->meet != MEET_NONE && peer->meet != MEET_PUNCHING
         && peer->lobby != NESP_LOBBY_FAILED) {
@@ -996,16 +1261,22 @@ static bool tick(void *ctx, uint32_t now)
                 peer->show = true;
             }
         }
+        if (now - peer->exchanged_at >= STOPPED_MS) {
+            farewell(peer, "the console stopped");
+        }
         break;
     default:
         break;
     }
     show(peer, now);
-    return peer->greeting;          /* the greetings are a few bytes and soon over */
+    return peer->greeting || soon;  /* the greetings are a few bytes and soon over */
 }
 
 static void reset(nesp_peer_t *peer)
 {
+    if (peer->hal != NULL) {
+        rate_off(peer, "the link's again, at the session's end");
+    }
     const nesp_hal_t *hal = peer->hal;
     const nesp_sys_t *sys = peer->sys;
     const char *rendezvous = peer->rendezvous;
@@ -1014,7 +1285,7 @@ static void reset(nesp_peer_t *peer)
         hal->fetch_stop(hal->ctx);
     }
     hal->lock(hal->ctx);
-    memset(peer, 0, sizeof(*peer));
+    memset(peer, 0, offsetof(nesp_peer_t, dump_lines));    /* the dump goes on being said */
     peer->generation = generation + 1;  /* a fetch that was out is no longer wanted */
     hal->unlock(hal->ctx);
     peer->hal = hal;
@@ -1037,6 +1308,7 @@ static void activate(void *ctx)
 static void deactivate(void *ctx)
 {
     nesp_peer_t *peer = ctx;
+    farewell(peer, "a hello");
     peer->hal->peer_close(peer->hal->ctx);
     reset(peer);
     if (peer->hal->show != NULL) {

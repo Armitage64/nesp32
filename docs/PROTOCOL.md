@@ -23,7 +23,7 @@ writes), which rests at mark.
 
 | | |
 |---|---|
-| Rate | 21 NES CPU cycles a bit, 85227 baud, both ways |
+| Rate | 21 NES CPU cycles a bit, both ways: 85227 baud on an NTSC console, 79172 on a PAL one |
 | Console to nesp32 | 8N1 |
 | nesp32 to console | 8N2: the second stop bit is the console's time to store a byte |
 | CRC | CRC-16/CCITT-FALSE (polynomial `$1021`, start `$FFFF`), high byte first |
@@ -32,6 +32,19 @@ The console bit-bangs both directions by counting CPU cycles
 (`nes/lib/gen_link.py`). Once a frame it also reads its controller, which
 holds OUT0 low for 94 cycles; the nesp32's UART takes that for a byte, and
 the nesp32's decoder passes over it.
+
+**The nesp32 hears which console it has.** The console's routines count
+its own cycles, so the same ROM's rate is a PAL console's on a PAL one,
+7.6% slower, and nothing on the console knows or says so. The two rates
+are too far apart for a UART to hear one at the other, and the nesp32
+finds the console's from that ([`PAL.md`](PAL.md)): bytes of four or more
+between two quiet lines, with no good request in them, are a miss. The
+first miss changes its UART to the other clock, until a request has been
+good at one; after that it takes eight in a row. Only at the link's own
+rate: at a session's (PEER's RATE) what is not heard is that rate's, and
+PEER puts the line back. The clock last settled on is kept over power-off
+and tried first. Every rate the nesp32 sets is then
+that clock's, a run's and PEER's RATE as much as the link's.
 
 ## 2. Frames
 
@@ -112,6 +125,21 @@ library does not keep one to send again (`nesp_short`): the service makes
 the same request again harmless, as PEER does. Like any request it is
 found by its marker and its CRC, in whatever else is on the line, and of
 several requests waiting only the newest is acted on.
+
+**No short request spans a quiet line.** A short request is five bytes or
+six, two of them its CRC. One that loses a byte on the line, and is then
+made up to its length by the first byte of the console's next request, can
+pass that CRC far more often than one damaged at random: where the byte
+lost was 0, about one time in 256, and 0 is the commonest byte a game sends
+(no button down). Found in Jackal's simulation, at 10 cycles a bit with a
+nesp32 whose clock was 1.5% fast: the other console was given buttons
+nobody pressed, and the two games went apart. A console sends a request's
+bytes back to back, so the nesp32 marks where the line has been quiet for
+`LINK_GAP_US` (3 ms) between two bytes (`nesp_link_gap`, from its link
+task, which has an event for every byte), and a short request is never
+found across such a place. A console's next request comes 3 ms or more
+after its last: at the soonest, when its wait for a reply runs out (4.15
+ms). It is the nesp32's alone: no ROM changes for it.
 
 Only PEER has them so far. nes-contra's exchange was 10 bytes out and 11
 back as frames, and 6710 cycles of each frame on the simulated console; as
@@ -209,6 +237,7 @@ nothing done on the nesp32.
 | `$13` | TUNER | a radio station from the Internet, as sampled sound | done |
 | `$14` | WEATHER | the weather at a zip code, as rows for the screen | done |
 | `$15` | BSKY | Bluesky: an account's posts as lines, and favorites | done |
+| `$16` | TAPE | Family BASIC's data recorder: programs and screens kept as files | done |
 | `$80`-`$FF` | | experiments and other people's | |
 
 Multi-byte numbers are low byte first, except the CRC.
@@ -319,11 +348,46 @@ Internet with no port forwarded, by a room's code at the rendezvous
 | `$06` | HOST_ROOM | | `STATE`, `ADDRESS[4]`, `DELAY`, `CODE[4]`, `WHY`: open a room, and wait in it |
 | `$07` | JOIN_ROOM | `CODE[4]` | the same: join the room of that code |
 | `$08` | ROOM | | the same, and nothing done |
+| `$09` | RATE | `PERIOD` | `PERIOD`: the session's line at that rate, both ways, or `0`: the link's |
+| `$0A` | DUMP | `OFFSET[2]`, `BYTES` ... | nothing: the bytes into the console's RAM as the nesp32 keeps it |
 | short | TICKS again, in five bytes and four | `N` ticks: `FIRST` and `WANTED`, `BUTTONS[1 or 2]` | `N` ticks: `BUTTONS[1]` |
 
 In every reply but LAST's, `ADDRESS` is the nesp32's own IPv4 address.
 STATUS and the other first five keep their six bytes; only the three room
 ops have the room's.
+
+**RATE** runs a session's line faster than the link's, for a shorter
+exchange each tick ([`MULTIPLAYER.md`](MULTIPLAYER.md), "A faster
+exchange"). It is asked at the link's rate, once the session has begun:
+`PERIOD` is in CPU cycles a bit, from `PEER_RATE_MIN` (10) to the link's
+own (21), and anything else is `BAD_ARG`. The reply, at the link's rate,
+is the rate the line will be at: the one asked for, or `0` with no session
+(or with the link's own asked for), and the line stays the link's. Once
+the reply has gone the nesp32's UART changes, both ways, and from the next
+request on the console speaks at the new rate. It goes back to the link's
+when no good frame has come for `PEER_RATE_QUIET_MS` (500): a console that
+was reset, or whose session ended, begins again at the link's rate, and
+its hello is heard once that time is up. A new hello puts it back at once
+too, as do PEER's other ends. A console that asks for no rate is never at
+another, so a netplay ROM built before RATE is not touched by it; a
+nesp32 whose firmware has no RATE answers `NO_OP`, and its console stays
+at the link's rate.
+
+**DUMP** is for finding out why two games stopped being the same. A
+netplay ROM whose digest differs from the other's sends its RAM before it
+gives the session up, `PEER_DUMP_BYTES` bytes (2048, `$0000-$07FF`) in pieces:
+`OFFSET` (low byte first) is where in it the piece's bytes go, and a piece
+that would go past the end is `BAD_ARG`. The one that ends at the end
+finishes it, and the nesp32 writes the whole of it to its log, a line of
+`PEER_DUMP_LINE` (64) bytes in hex every `PEER_DUMP_EVERY_MS` (100):
+
+```
+peer: dump 0000: 0b1c...
+```
+
+With both consoles' logs, the two dumps say which bytes differ. A nesp32
+whose firmware has no DUMP answers `NO_OP`, and the console goes on as
+before.
 
 | `STATE` | Name | |
 |---|---|---|
@@ -445,10 +509,13 @@ a stream of bytes each way, in order and all of it. Each nesp32 says what
 it is in that stream before either calls it a game:
 
 ```text
-'N', 'E', 'S', 'P', 1, APP[4], APP_VERSION
+'N', 'E', 'S', 'P', VERSION, APP[4], APP_VERSION
 ```
 
-the application and its version being its console's, from the hello. One
+`VERSION` being 1, with bit 7 set for a PAL console, and the application
+and its version being its console's, from the hello. A PAL console runs a
+game at 50 ticks a second and an NTSC one at 60, so the two do not play
+each other: the greetings differ. One
 that hears anything else within two seconds, or nothing, hangs up: so
 something else that finds the port is not taken for a console, and neither
 is another game, or another version of this one. A nesp32 that hosts goes
@@ -647,6 +714,10 @@ from the reply that agreed to it:
 | at 175 | sends its first byte, if the run is its own | |
 | at the end | puts its UART's rate back | waits 30 ms, then asks for whatever is next |
 
+The console counts its 150 and its 30 in its own cycles, so on a PAL
+console they are 161 and 32, and the nesp32's first byte comes at 189 in
+place of 175.
+
 **The nesp32 cannot see that the console heard the reply**, and must not
 change its rate under one that did not. So it listens first. A console that
 missed the reply asks again a frame later, with the same request, and the
@@ -711,6 +782,7 @@ hears characters.
 | `$03` | FOUND | `INDEX` | `INDEX`, `SIGNAL`, `NAME_LEN`, `NAME` |
 | `$04` | PAIR | `INDEX` | status only; FAILED if there is no such keyboard |
 | `$05` | FORGET | | status only |
+| `$06` | KEYS_ALL | | as KEYS, with the keys KEYS leaves out |
 
 - `KEYBOARD`: 0 this board cannot have one, 1 Bluetooth is starting (or
   off, with one paired), 2 no keyboard is paired, 3 one is paired and not connected (a key pressed
@@ -722,9 +794,20 @@ hears characters.
   `$13` Left, `$14` Right, `$15` Page Up, `$16` Page Down, `$17` Start
   (Ctrl and Enter), `$18` Select (Ctrl and Escape), `$1B` Escape. A key
   held down comes again after half a second, and 25 times a second from
-  then on, as on a computer; Enter and Escape do not, nor Start and
-  Select. Any other key pressed with Ctrl, Alt or the Windows or Command
-  key is none.
+  then on, as on a computer, but only when every character before it has
+  been taken by a KEYS: a ROM that asks for KEYS only when it has done
+  with the last reply's has the repeats at its own pace. Enter and Escape
+  do not repeat, nor Start and Select. Any other key pressed with the
+  Windows or Command key is none.
+- KEYS_ALL has, besides, the keys of a Famicom's keyboard that a
+  computer's has too, for [Family BASIC](../apps/family-basic): `$01` to
+  `$07` F1 to F7, `$0E` F8, `$19` F12, `$0B` Home, `$0C` Shift and Home,
+  `$0F` Insert, `$10` Delete; and a key pressed with Ctrl or Alt (Enter and
+  Escape with Ctrl alone aside) comes after `$1C` (with Ctrl) or `$1D`
+  (with Alt), or both. Delete and Insert repeat, and a key with Ctrl or
+  Alt does not. KEYS leaves all of these out, and a key that comes after
+  `$1C` or `$1D` with them, so a ROM that asks for KEYS has what it had
+  before there were any.
 - A KEYS reply has up to 16 characters, fewer if `REPLY_MAX` is smaller;
   more typed come in the next. They are taken off the nesp32 when they
   are sent, and the same request again gets the same reply again, so a
@@ -745,7 +828,8 @@ until KBD is let go of, and from the pairing on there is one paired. It shares t
 with Wi-Fi. The nesp32 does not turn it off for a hello that asks for
 KBD again, so every program on nesp32's cartridge asks for it, whether or
 not it takes keys, and so does the cartridge's menu, as `MENU` with KBD
-alone: the keyboard then stays connected from one to the next. In a sound
+and HTTP (for its update check): the keyboard then stays connected from
+one to the next. In a sound
 (RAW) the console asks nothing, so the jukebox and NESradio take keys only
 outside one. A game for two leaves KBD out.
 
@@ -1405,6 +1489,60 @@ takes replies of 63 (a shorter `REPLY_MAX` is BAD_ARG). A reply from
 Bluesky is a few dozen kilobytes, most of it what no console has a use
 for; the nesp32 reads it as it comes, and keeps only the 25 posts it lays
 out, 12 KB.
+
+### TAPE `$16`: Family BASIC's data recorder
+
+[Family BASIC](../apps/family-basic) saved to tape and loaded from it, on
+a data recorder plugged into the Famicom's keyboard. Here what it would
+have written to tape is kept as a file on the nesp32, and found again by
+its name.
+
+The game writes in pairs of blocks: a header of 128 bytes, then the data
+block it describes. The header has the file's `TYPE` at byte 0 (2 a
+program, 3 a BG GRAPHIC screen), its name at bytes 1 to 16 (ended with a 0
+if it is shorter, and spaces after that), and the data block's length,
+low byte first, at bytes `$12` and `$13`; the rest is the game's. A
+program is one pair, a screen four, one for each page of it.
+
+| `OP` | Name | Request | Reply |
+|---|---|---|---|
+| `$00` | PUT | `AT[2]`, then up to 125 bytes | status only: they are in the pair being sent, from `AT` on |
+| `$01` | SAVE | `ID`, `PAIR`, `LENGTH[2]` | `STATE`, `ID` |
+| `$02` | FIND | `ID`, `TYPE`, `PAIR`, then the 16 bytes of a name, or none | `STATE`, `ID` |
+| `$03` | GET | `AT[2]`, `COUNT` | up to `COUNT` bytes of the pair found, from `AT` on: fewer at its end |
+
+| `STATE` | Name | Meaning |
+|---|---|---|
+| `$00` | IDLE | nothing asked since the hello |
+| `$01` | BUSY | under way: ask again |
+| `$02` | DONE | |
+| `$03` | NOT_FOUND | FIND: no such file, or no such pair in it |
+| `$04` | FAILED | the file could not be written or read, or what was sent is not a pair |
+
+- **Saving.** The console PUTs the header at 0 and the data block at 128,
+  then asks SAVE, with `LENGTH` the data block's, which must be what the
+  header says, up to 4096. `PAIR` 0 is kept as a file in place of any of
+  its name and type; each pair after it goes onto that file's end.
+- **Finding.** FIND reads the `PAIR`-th pair of the file of that type and
+  name into the nesp32's memory, and GET reads it out, the header at 0.
+  With no name, it is the first file of the type the nesp32 lists. The
+  header GET gives has the type and the name asked for, whatever the file
+  had: a file renamed on a computer loads by its new name.
+- **SAVE and FIND are each both "do this" and "how is it going"**, by an
+  id, as WIKI's SEARCH is: the console sends the same request until it
+  has ended, and the nesp32 starts on one only when its id is new. The
+  writing and the reading are done once the reply has gone, and the
+  nesp32 answers nothing while it writes or reads its flash. One is under
+  way at a time: anything else asked meanwhile is BUSY, and PUT too.
+- A PUT after a FIND loses what it found, as the two share the nesp32's
+  memory for a pair, 4224 bytes.
+
+The files are in `basic` on the nesp32's drive, named for the name in the
+header and the type: `HELLO.fbp` for a program, `HELLO.fbg` for a
+screen, and `.tNNN` for any other type. A character a filing system may
+not take, or would take for another (a small letter, a kana, a sign such
+as `/`), is `%` and its two hex digits, as is a space at the start; a
+name of nothing is `%20`. A board that keeps no files answers FAILED.
 
 ## 6. Timing
 

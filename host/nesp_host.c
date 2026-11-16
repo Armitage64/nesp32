@@ -17,8 +17,10 @@
 
 #define HOST_TRACKS_MAX 64
 #define HOST_SHOWN_MAX 96
+#define HOST_WATCH_LOG 8           /* lines for the log kept, the last of them first */
 #define HOST_CONN_MAX 256
 #define HOST_TYPED_MAX 256
+#define HOST_FILES_MAX 32
 
 typedef struct {
     nesp_stick_t stick;
@@ -82,6 +84,8 @@ typedef struct {
     bool answering;                 /* in a feed: a file read now would hold up the reply */
     char shown[2][HOST_SHOWN_MAX];  /* the application's lines of the screen */
     char watched[256];              /* the last line for the log (the hal's watch) */
+    char watch_log[HOST_WATCH_LOG][256];    /* and the ones before it, the latest first */
+    uint32_t watch_count;           /* lines said, in all */
     /* The connection to another nesp32. The caller is the network: it says
      * when a call is answered, takes what was sent and gives what comes. */
     uint8_t conn;                   /* NESP_CONN_* */
@@ -130,6 +134,16 @@ typedef struct {
     uint32_t kbd_forgets;
     uint8_t kbd_typed[HOST_TYPED_MAX];
     size_t kbd_typed_len;
+    /* The files a ROM keeps (TAPE), in the order they were first written,
+     * as a FAT directory lists them; the caller may add some and look. */
+    struct {
+        char name[NESP_TAPE_FILE_NAME];
+        uint8_t *data;
+        size_t len;
+    } files[HOST_FILES_MAX];
+    uint16_t file_count;
+    uint32_t file_writes;
+    bool files_failing;             /* set by the caller: a write fails */
 } host_t;
 
 static uint8_t hal_board(void *ctx)
@@ -306,6 +320,7 @@ static void hal_unlock(void *ctx)
 static void hal_line_rate(void *ctx, uint8_t period)
 {
     host_t *host = ctx;
+    nesp_link_line_period(&host->stick.link, period);     /* as firmware/main/link.c does */
     if (host->line_rate != NULL) {
         host->line_rate(period);
     }
@@ -366,6 +381,10 @@ static void hal_watch(void *ctx, const char *text)
 {
     host_t *host = ctx;
     snprintf(host->watched, sizeof(host->watched), "%s", text);
+    memmove(host->watch_log[1], host->watch_log[0],
+            sizeof(host->watch_log) - sizeof(host->watch_log[0]));
+    snprintf(host->watch_log[0], sizeof(host->watch_log[0]), "%s", text);
+    host->watch_count++;
 }
 
 static uint8_t hal_peer_state(void *ctx)
@@ -564,6 +583,85 @@ static size_t hal_kbd_read(void *ctx, uint8_t *out, size_t max)
     return count;
 }
 
+static int find_file(const host_t *host, const char *name)
+{
+    for (uint16_t index = 0; index < host->file_count; index++) {
+        if (strcmp(host->files[index].name, name) == 0) {
+            return index;
+        }
+    }
+    return -1;
+}
+
+/* Flash, as with the tracks: never on the way to a reply. */
+static size_t hal_file_read(void *ctx, const char *name, uint32_t offset, uint8_t *out,
+                            size_t len)
+{
+    host_t *host = ctx;
+    if (host->answering) {
+        abort();
+    }
+    int index = find_file(host, name);
+    if (index < 0 || offset >= host->files[index].len) {
+        return 0;
+    }
+    if (len > host->files[index].len - offset) {
+        len = host->files[index].len - offset;
+    }
+    memcpy(out, host->files[index].data + offset, len);
+    return len;
+}
+
+static bool put_file(host_t *host, const char *name, const uint8_t *data, size_t len,
+                     bool append)
+{
+    if (strlen(name) >= NESP_TAPE_FILE_NAME) {
+        return false;
+    }
+    int index = find_file(host, name);
+    if (index < 0) {
+        if (host->file_count == HOST_FILES_MAX) {
+            return false;
+        }
+        index = host->file_count++;
+        memset(&host->files[index], 0, sizeof(host->files[index]));
+        strcpy(host->files[index].name, name);
+    }
+    size_t kept = append ? host->files[index].len : 0;
+    uint8_t *grown = realloc(host->files[index].data, kept + len + 1);
+    if (grown == NULL) {
+        return false;
+    }
+    memcpy(grown + kept, data, len);
+    host->files[index].data = grown;
+    host->files[index].len = kept + len;
+    return true;
+}
+
+static bool hal_file_write(void *ctx, const char *name, const uint8_t *data, size_t len,
+                           bool append)
+{
+    host_t *host = ctx;
+    if (host->answering) {
+        abort();
+    }
+    host->file_writes++;
+    return !host->files_failing && put_file(host, name, data, len, append);
+}
+
+static bool hal_file_name(void *ctx, uint16_t index, char *out, size_t max)
+{
+    host_t *host = ctx;
+    if (host->answering) {
+        abort();
+    }
+    if (index >= host->file_count || strlen(host->files[index].name) >= max) {
+        return false;
+    }
+    strcpy(out, host->files[index].name);
+    return true;
+}
+
 static bool hal_airport_last(void *ctx, char *code, int32_t *latitude, int32_t *longitude)
 {
     host_t *host = ctx;
@@ -705,6 +803,9 @@ host_t *host_new(void)
     host->hal.kbd_pair = hal_kbd_pair;
     host->hal.kbd_forget = hal_kbd_forget;
     host->hal.kbd_read = hal_kbd_read;
+    host->hal.file_read = hal_file_read;
+    host->hal.file_write = hal_file_write;
+    host->hal.file_name = hal_file_name;
     host->battery = 0xFF;
     host->drive = NESP_DRIVE_OFF;
     host->screen = NESP_SCREEN_FLIPPED;     /* as the firmware is built */
@@ -721,6 +822,9 @@ void host_free(host_t *host)
     for (uint16_t index = 0; index < host->track_count; index++) {
         free(host->tracks[index].data);
     }
+    for (uint16_t index = 0; index < host->file_count; index++) {
+        free(host->files[index].data);
+    }
     free(host);
 }
 
@@ -731,6 +835,30 @@ size_t host_feed(host_t *host, const uint8_t *data, size_t len, uint8_t *out)
     size_t sent = nesp_stick_feed(&host->stick, data, len, out);
     host->answering = false;
     return sent;
+}
+
+/* The line went quiet for NESP_LINK_GAP_US before what is fed next. True
+ * if the console's clock was changed for the other there. */
+bool host_gap(host_t *host)
+{
+    return nesp_link_gap(&host->stick.link);
+}
+
+/* The console's clock (NESP_REGION_*), and whether a request has been good
+ * at it; and the one to start at, as the firmware's kept one is. */
+uint8_t host_region(const host_t *host)
+{
+    return host->stick.link.region;
+}
+
+bool host_settled(const host_t *host)
+{
+    return host->stick.link.settled;
+}
+
+void host_set_region(host_t *host, uint8_t region)
+{
+    nesp_link_set_region(&host->stick.link, region);
 }
 
 /* The clock, in milliseconds: what the services do between requests. */
@@ -887,6 +1015,64 @@ uint32_t host_kbd_pairs(const host_t *host) { return host->kbd_pairs; }
 uint8_t host_kbd_pair_index(const host_t *host) { return host->kbd_pair_index; }
 uint32_t host_kbd_forgets(const host_t *host) { return host->kbd_forgets; }
 size_t host_kbd_unread(const host_t *host) { return host->kbd_typed_len; }
+
+/* A firmware from before a service: it is not there to be asked for. */
+void host_drop_service(host_t *host, uint8_t id)
+{
+    nesp_link_t *link = &host->stick.link;
+    for (uint8_t index = 0; index < link->count; index++) {
+        if (link->slots[index].service->id == id) {
+            memmove(&link->slots[index], &link->slots[index + 1],
+                    (link->count - index - 1u) * sizeof(link->slots[0]));
+            link->count--;
+            return;
+        }
+    }
+}
+
+void host_files_absent(host_t *host)
+{
+    host->hal.file_read = NULL;
+    host->hal.file_write = NULL;
+    host->hal.file_name = NULL;
+}
+
+bool host_file_put(host_t *host, const char *name, const uint8_t *data, size_t len)
+{
+    return put_file(host, name, data, len, false);
+}
+
+/* A file's length, or -1 if there is none of that name. */
+long host_file_size(const host_t *host, const char *name)
+{
+    int index = find_file(host, name);
+    return index < 0 ? -1 : (long)host->files[index].len;
+}
+
+size_t host_file_get(const host_t *host, const char *name, uint8_t *out, size_t max)
+{
+    int index = find_file(host, name);
+    if (index < 0) {
+        return 0;
+    }
+    size_t len = host->files[index].len < max ? host->files[index].len : max;
+    memcpy(out, host->files[index].data, len);
+    return len;
+}
+
+uint16_t host_file_count(const host_t *host) { return host->file_count; }
+
+/* The index-th file's name into out, NESP_TAPE_FILE_NAME bytes. */
+void host_file_name(const host_t *host, uint16_t index, char *out)
+{
+    out[0] = 0;
+    if (index < host->file_count) {
+        strcpy(out, host->files[index].name);
+    }
+}
+
+uint32_t host_file_writes(const host_t *host) { return host->file_writes; }
+void host_files_fail(host_t *host, bool failing) { host->files_failing = failing; }
 
 void host_set_line(host_t *host, void (*rate)(uint8_t), size_t (*write)(const uint8_t *, size_t),
                    bool (*idle)(void))
@@ -1130,6 +1316,11 @@ void host_arq_note(nesp_arq_t *arq, const uint8_t *note) { memcpy(arq->note_out,
 void host_arq_noted(const nesp_arq_t *arq, uint8_t *out) { memcpy(out, arq->note_in, NESP_ARQ_NOTE); }
 
 uint32_t host_peer_requests(const host_t *host) { return host->stick.peer.requests; }
+/* The console's RAM as the last DUMP left it. */
+void host_peer_dump(const host_t *host, uint8_t *out)
+{
+    memcpy(out, host->stick.peer.dump, sizeof(host->stick.peer.dump));
+}
 uint32_t host_peer_repeats(const host_t *host) { return host->stick.peer.repeats; }
 uint8_t host_peer_lobby(const host_t *host) { return host->stick.peer.lobby; }
 
@@ -1145,6 +1336,12 @@ uint32_t host_tuner_held(const host_t *host) { return host->stick.tuner.held; }
 uint32_t host_tuner_dropped(const host_t *host) { return host->stick.tuner.dropped; }
 uint32_t host_tuner_dry(const host_t *host) { return host->stick.tuner.dry; }
 const char *host_watched(const host_t *host) { return host->watched; }
+uint32_t host_watch_count(const host_t *host) { return host->watch_count; }
+/* The line said `back` lines before the last (0: the last); "" if none. */
+const char *host_watched_back(const host_t *host, uint32_t back)
+{
+    return back < HOST_WATCH_LOG && back < host->watch_count ? host->watch_log[back] : "";
+}
 uint32_t host_tuner_page(const host_t *host) { return host->stick.tuner.page_title; }
 
 /* A page that is waiting may go now, where a station waits a couple of
@@ -1185,7 +1382,7 @@ bool host_active(const host_t *host, uint8_t service)
     return nesp_link_active(&host->stick.link, service);
 }
 
-/* 0 requests, 1 repeats, 2 dropped, 3 noise. */
+/* 0 requests, 1 repeats, 2 dropped, 3 noise, 4 hunts. */
 uint32_t host_counter(const host_t *host, int which)
 {
     const nesp_counters_t *counters = &host->stick.link.counters;
@@ -1194,6 +1391,7 @@ uint32_t host_counter(const host_t *host, int which)
     case 1: return counters->repeats;
     case 2: return counters->dropped;
     case 3: return counters->noise;
+    case 4: return counters->hunts;
     default: return 0;
     }
 }

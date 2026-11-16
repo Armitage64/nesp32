@@ -267,7 +267,10 @@ The receiver keeps the byte in A and folds each read of the port into it
 ends up with the byte's bits reversed and inverted, and with the `$40` that
 the port's unused bits read left in from the last two reads. Nothing puts
 that right on the console: a file holds each sample as the byte this turns
-into its level (`pcm.sample_byte`), and the nesp32 sends the file as it is.
+into its level (`pcm.sample_byte`), and the nesp32 sends the file as it is
+to an NTSC console. A file's rates are an NTSC console's, so to a PAL one,
+whose same period is 7.6% slower, the nesp32 sends it resampled to the PAL
+rate, every byte with bit 7 as here ([`docs/PAL.md`](../../../docs/PAL.md)).
 
 Bit 7 of what the console ends up with says there is more, and `$4011`
 ignores it. The stream ends at the first byte without it, which is also

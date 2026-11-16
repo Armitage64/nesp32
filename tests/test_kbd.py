@@ -80,6 +80,38 @@ def test_what_was_typed_before_a_rom_asked_is_dropped(stick):
     assert keys(stick) == b""
 
 
+def keys_all(stick):
+    reply = stick.ask(KBD, p.NESP_KBD_KEYS_ALL)
+    assert reply.ok
+    assert len(reply.payload) == 1 + reply.payload[0]
+    return reply.payload[1:]
+
+
+# The keys only KEYS_ALL hands on, and a key typed with Ctrl and with Alt.
+FAMICOM = bytes((p.NESP_KEY_F1, p.NESP_KEY_F7, p.NESP_KEY_F8, p.NESP_KEY_F12, p.NESP_KEY_HOME,
+                 p.NESP_KEY_SHIFT_HOME, p.NESP_KEY_INSERT, p.NESP_KEY_DELETE))
+CHORDS = bytes((p.NESP_KEY_WITH_CTRL, ord("c"), p.NESP_KEY_WITH_ALT, ord("g"),
+                p.NESP_KEY_WITH_CTRL, p.NESP_KEY_WITH_ALT, ord("x")))
+
+
+def test_keys_all_has_the_famicom_s_keys_and_chords(kbd):
+    kbd.kbd_type(b"a" + FAMICOM + CHORDS + b"b")
+    typed = b"a" + FAMICOM + CHORDS + b"b"
+    assert keys_all(kbd) + keys_all(kbd) == typed
+
+
+def test_keys_leaves_them_out_as_it_always_has(kbd):
+    kbd.kbd_type(b"a" + FAMICOM + b"b" + CHORDS + b"c" + bytes((p.NESP_KEY_ENTER,)))
+    assert keys(kbd) + keys(kbd) == b"abc\n"
+
+
+def test_keys_leaves_out_a_chord_s_key_that_comes_in_the_next_reply(kbd):
+    kbd.kbd_type(b"x" * (KEYS_MAX - 1) + bytes((p.NESP_KEY_WITH_CTRL,)))
+    assert keys(kbd) == b"x" * (KEYS_MAX - 1)
+    kbd.kbd_type(b"cd")
+    assert keys(kbd) == b"d"
+
+
 def test_a_scan_finds_keyboards_strongest_first(kbd):
     assert kbd.ask(KBD, p.NESP_KBD_SCAN).ok
     assert kbd.ask(KBD, p.NESP_KBD_SCAN).ok and kbd.kbd_scans == 1     # already at it

@@ -15,8 +15,22 @@ from rendezvous import FakeRendezvous
 from test_meet import HOST_ROOM, JOIN_ROOM, room
 from test_peer import AWAY, HOME, HOST, JOIN, LEAVE, PLAYER_1, PLAYER_2, lobby, online, ticks
 
-TCP_PORT = 46502
-MEET_PORTS = (46510, 46511)     # one machine, so the two meeting sockets need a port each
+
+
+def free_port():
+    """A port no one here has, for TCP and UDP both: tests run side by side
+    (make test), and each has its own."""
+    while True:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp:
+            tcp.bind(("0.0.0.0", 0))
+            port = tcp.getsockname()[1]
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp:
+                    udp.bind(("0.0.0.0", port))
+            except OSError:
+                continue
+            return port
+
 LOCALHOST = bytes((127, 0, 0, 1))
 
 
@@ -38,9 +52,10 @@ def until(condition, *ends, seconds=5.0):
 @pytest.fixture
 def pair(tmp_path):
     ends = []
+    port = free_port()          # the one the host listens on and the guest calls
     for name in ("a", "b"):
         stick = online(Stick(), HOME)
-        ends.append((stick, SocketNetwork(stick, port=TCP_PORT, last_path=str(tmp_path / name))))
+        ends.append((stick, SocketNetwork(stick, port=port, last_path=str(tmp_path / name))))
     yield ends
     for _, network in ends:
         network.close()
@@ -59,7 +74,7 @@ def test_host_and_join_on_this_machine(pair, tmp_path):
     # The one that joined keeps the address, over power-off.
     assert guest.last == LOCALHOST
     again = Stick()
-    SocketNetwork(again, port=TCP_PORT, last_path=str(tmp_path / "b"))
+    SocketNetwork(again, port=pair[1][1].port, last_path=str(tmp_path / "b"))
     assert again.last == LOCALHOST
     # One side leaves, and the other finds out.
     lobby(guest, LEAVE)
@@ -99,7 +114,8 @@ def rendezvous():
 @pytest.fixture
 def met_pair(tmp_path, rendezvous):
     ends = []
-    for name, address, port in (("a", HOME, MEET_PORTS[0]), ("b", AWAY, MEET_PORTS[1])):
+    # One machine, so the two meeting sockets need a port each.
+    for name, address, port in (("a", HOME, free_port()), ("b", AWAY, free_port())):
         stick = online(Stick(), address)
         stick.set_rendezvous(rendezvous.url)
         ends.append((stick, SocketNetwork(stick, port=port, last_path=str(tmp_path / name),
@@ -170,7 +186,7 @@ def test_a_computers_meeting_says_what_stun_saw(tmp_path, rendezvous):
     threading.Thread(target=answer, daemon=True).start()
     stick = online(Stick(), HOME)
     stick.set_rendezvous(rendezvous.url)
-    network = SocketNetwork(stick, port=MEET_PORTS[0], last_path=str(tmp_path / "a"),
+    network = SocketNetwork(stick, port=free_port(), last_path=str(tmp_path / "a"),
                             stun=[("127.0.0.1", server.getsockname()[1])])
     try:
         room(stick, HOST_ROOM)

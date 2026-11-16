@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "nesp_services.h"
+#include "nesp_version.h"
 
 /* A hello's payload: protocol, application id, its version, the longest
  * reply payload the ROM takes, then the services it needs. */
@@ -242,6 +243,7 @@ void nesp_stick_init(nesp_stick_t *stick, const nesp_hal_t *hal)
     nesp_bsky_service(&stick->services[10], &stick->bsky, hal);
     nesp_kbd_service(&stick->services[11], &stick->kbd, hal);
     nesp_http_service(&stick->services[12], &stick->http, hal);
+    nesp_tape_service(&stick->services[13], &stick->tape, hal);
     for (size_t index = 0; index < sizeof(stick->services) / sizeof(stick->services[0]);
          index++) {
         nesp_link_register(&stick->link, &stick->services[index]);

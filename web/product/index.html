@@ -9,14 +9,16 @@
 </head>
 <body>
 <main class="wide">
-  <h1><picture><source srcset="img/logo-dark.png" media="(prefers-color-scheme: dark)"><img class="logo" src="img/logo.png" alt="NESP32" width="360" height="128"></picture></h1>
+  <h1><picture><img class="logo" src="img/logo.png" alt="NESP32" width="360" height="128"></picture></h1>
   <p class="lead">An inexpensive, DIY wireless network interface for the Nintendo Entertainment System (NES) based on the ESP32 microcontroller.</p>
 
   <div class="actions">
-    <a class="button" href="flash/">Install the firmware</a>
-    <a class="button" href="nesp32.nes" download>Download the cartridge</a>
+    <a class="button" href="flash/">Install firmware</a>
+    <a class="button" href="nesp32.nes" download>Download cartridge</a>
+    <a class="button" href="patches/">ROM patches</a>
     <a class="button quiet" href="https://github.com/Armitage64/nesp32">Project on GitHub</a>
   </div>
+  <p class="dim version"><small>Firmware/cart {version} &middot; <a href="{notes}">What's new</a></small></p>
 
   <figure class="shots">
     <div class="frames">
@@ -37,6 +39,11 @@
     </div>
   </figure>
 
+  <h2 style="color: var(--accent)">Pre-Order Now!</h2>
+  <div class="card" style="border-color: var(--accent)">
+  Looking to purchase a complete pre-built NESP32 or a DIY kit? We have partnered with Joe's Computer Museum so <a href="https://jcm-1.com/product/nesp32-v1/">sign up now</a> to be notified when they become available! 
+  </div>
+
   <h2>About</h2>
   <ul>
   <li>Provides Internet access, media streaming, and online gaming capabilities to NES software.</li>
@@ -51,7 +58,7 @@
 
   <li>The NESP32 grew out of <a href="https://github.com/k6lcm/nes-radar">NES Radar</a> and <a href="https://github.com/hxlnt/connectedNES">connectedNES</a>, projects that first explored the use of the NES controller port as a data link.</li>
 
-  <li>NTSC-only for now. PAL support is planned.</li>
+  <li>NTSC and PAL are supported. Online play requires two of the same console.</li>
   </ul>
 
   <sup>1</sup> The M5 StickC-Plus2 is also fully supported or you can use a generic ESP32 without a screen.
@@ -70,9 +77,11 @@
     <div class="card"><h3>Weather</h3>
       <p>Current conditions and a 5-day forecast for your US zip code, with pictures.</p></div>
     <div class="card"><h3>Online Gaming</h3>
-      <p>Play Dr. Mario, Tetris, Contra, and TMNT2 online using room codes, no firewall changes required!</p></div>
+      <p>Play Dr. Mario, Tetris, Contra, TMNT2, Bubble Bobble, Jackal, and River City Ransom online using room codes, no firewall changes required!</p></div>
     <div class="card"><h3>Bluesky</h3>
       <p>Read the latest posts from your favorite Bluesky accounts, after ConnectedNES.</p></div>
+    <div class="card"><h3>Family BASIC</h3>
+      <p>Family BASIC V3 using a Bluetooth keyboard. Save and load programs to the NESP32 instead of cassette!</p></div>
     <div class="card"><h3>Setup</h3>
       <p>Configure Wi-Fi/USB and test connectivity directly from the console.</p></div>
     <div class="card"><h3>Throughput Test</h3>
@@ -82,18 +91,21 @@
   <h2>Getting started</h2>
   <div class="card">
     <ol>
-      <li><strong>Get the parts.</strong> An <a href="https://amzn.to/3TVUV0y">M5 StickS3</a> and the <a href="https://www.pcbway.com/project/shareproject/NESP32_Hat_for_M5_StickS3_d23db4e5.html">NESP32 hat</a> to go with it.</li>
+      <li><strong>Get the </strong><a href="https://amzn.to/3TVUV0y">M5 StickS3</a> and the <a href="https://www.pcbway.com/project/shareproject/NESP32_Hat_for_M5_StickS3_d23db4e5.html">NESP32 hat</a> to go with it.</li>
 
-      <li><strong>Install the software</strong> from the
+      <li><strong>Install the NESP32</strong> from the
         <a href="flash/">firmware</a> page right from your browser.</li>
 
-      <li><strong>Get the cartridge </strong> <a href="nesp32.nes" download>
-        ROM</a>. Use it with a flash cart or MiSTer FPGA w/SNAC adapter.</li>
+      <li><strong>Get the </strong> <a href="nesp32.nes" download>
+        Cartridge ROM</a>. Use it with a flash cart or MiSTer FPGA w/SNAC adapter.</li>
 
-      <li><strong>Plug it in.</strong> Attach the hat to the S3's bottom GPIO header, furthest from the LCD screen, and connect the NESP32 to controller
+      <li><strong>Get the </strong><a href="patches/">ROM patches</a> and apply
+        them to your original copies of the game software using a BPS patcher.</li>
+
+      <li><strong>Attach the hat </strong>to the S3's bottom GPIO header, furthest from the LCD screen, and connect the NESP32 to controller
         port 2.</li>
 
-      <li><strong>Boot it up!</strong> Power up the NESP32 and the NES, then run the Setup utility to join a Wi-Fi network.</li>
+      <li><strong>Power up </strong>the NESP32 and the NES, then run the Setup utility to join a Wi-Fi network and pair your Bluetooth LE keyboard.</li>
     </ol>
     <p>New to the NESP32? The <a href="https://github.com/Armitage64/nesp32/blob/main/docs/USER_GUIDE.md">user guide</a>
       covers each of these steps and every program, and the
@@ -110,7 +122,7 @@
   <div class="videos">
     <iframe src="https://www.youtube-nocookie.com/embed/eGUmaMX9nOs" title="NESP32 video" loading="lazy"
       allow="accelerometer; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-    <iframe src="https://www.youtube-nocookie.com/embed/hZ8sniz4Z2M" title="NESP32 video" loading="lazy"
+    <iframe src="https://www.youtube-nocookie.com/embed/uLnXXAwg5ic" title="NESP32 video" loading="lazy"
       allow="accelerometer; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
   </div>
 

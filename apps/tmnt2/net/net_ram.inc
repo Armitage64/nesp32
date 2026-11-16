@@ -98,6 +98,17 @@ nesp_rx         = NET_RAM + 46
 nesp_tx         = nesp_rx + NESP_RX_MASK + 1 + 7
 NET_RAM_END     = nesp_tx + NESP_TX_MAX + 7
 
+; A session's line at its own rate (net_rate, net/net.asm).
+nesp_fast       = NET_RAM + $E0 ; bit 7: a session's exchanges at its own rate
+net_rate_ask    = NET_RAM + $E1 ; not 00: ask for it this many NMIs of the session on, less one
+net_rate_tries  = NET_RAM + $E2 ; times it has been asked for in this session
+net_rate_misses = NET_RAM + $E3 ; exchanges in a row that had no reply, at it
+NET_RATE_TRIES  = 3
+NET_RATE_MISSES = 30            ; half a second: and the line is the link's again
+NET_RATE_WAIT   = 46            ; and asked for again after 3/4 of a second, once the nesp32
+                                ; has gone back to the link's (PEER_RATE_QUIET_MS)
+.assert NET_RAM_END <= nesp_fast, error
+
 ; The sort of the objects (net_sort, net/sprites.inc): the one being put
 ; in its place.
 net_sort_key    = NET_RAM + $F0

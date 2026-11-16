@@ -1,0 +1,97 @@
+# Bubble Bobble (USA): names and comments for tools/convert.py. Addresses
+# only, none of the game's bytes. The form is convert.py's (Map):
+#
+#   code  B:ADDR  NAME  comment     code, and its name
+#   entry B:ADDR                    code, with no name
+#   data  B:ADDR  NAME  comment     a name for data
+#   ram   ADDR    NAME  comment     a variable, or the first of several
+#   note  B:ADDR        comment     a comment over the line there
+#
+# B is the bank, 7 the fixed one at $C000.
+
+# --- the memory ---------------------------------------------------------------
+
+ram 000F SOUND_ARG          the sound to make, for SOUND_REQUEST
+ram 0010 TASK_TIMERS        6: frames each task sleeps for; 0 is no task
+ram 0016 TASK_STACKS        6: each task's stack pointer while it sleeps
+ram 001C TASK_CURRENT       the task running
+ram 001D TASK_MAIN_SP       the NMI's stack pointer while a task runs
+ram 001E TASK_TEMP
+ram 001F FRAME_COUNT        counted once a frame of the game, and read as a random number
+ram 0020 PPU_STATUS_SEEN    PPUSTATUS as the NMI read it: its sprite overflow resets the flicker
+ram 002E P1_LIVES
+ram 0042 P2_LIVES
+ram 0062 RNG                2: a shift register, stepped once a frame of the game with FRAME_COUNT
+ram 0086 CONTINUE_ROUND     the round a continue's choice shows
+ram 00F5 PAD_PRESSED        2: buttons newly pressed, players 1 and 2
+ram 00F7 PAD_HELD           2: buttons held
+ram 00FB JOY1_OUT           what the controller read writes to JOY1, plus 1 while it strobes
+ram 00FC SCROLL_Y
+ram 00FD SCROLL_X
+ram 00FE PPUMASK_COPY
+ram 00FF PPUCTRL_COPY
+ram 0301 PPU_BUFFER_END
+ram 0302 PPU_BUFFER         the NMI's list of writes to the PPU: address, length, bytes; ends with a byte of bit 7
+ram 0400 NAMETABLE_BITS     ORed into PPUCTRL by the NMI
+ram 0401 ROUND              the round, from 1; a continue starts at it
+ram 0402 TITLE_CURSOR       the title's choice: 1P START, 2P START, 1P CONTINUE, 2P CONTINUE, PASSWORD
+ram 0454 IDLE_COUNT         counted up to $FF by the main loop, from the reset
+ram 046D OAM_FIXED          not 0: the OAM's DMA always begins at 0
+ram 049C ROUND_REACHED      the furthest round a continue may start at
+ram 049F OAM_DMA_START      where the OAM's DMA begins: moved on each NMI, for the sprites' flicker
+ram 04A3 HOME_BANK          the PRG bank the game keeps at $8000
+
+# --- the fixed bank -------------------------------------------------------------
+
+code 7:E882 RESET
+code 7:E90C IDLE            the main loop: IDLE_COUNT up to $FF, then nothing; all of the game is in the NMI
+code 7:CE07 NMI             turns the NMI off, the picture's writes, the controllers, the tasks, and the NMI on again
+code 7:CE50 NMI_END
+code 7:CE61 IRQ             nothing: the cartridge raises none
+code 7:CE62 OAM_DMA
+code 7:CE8C TASKS_RUN       each task whose timer runs out runs, on its own stack, until it sleeps again
+code 7:CEAF TASK_START      Y = the task: from its entry in TASK_ENTRIES, on its own stack
+data 7:CEFA TASK_ENTRIES    each task's first instruction, less 1, as RTS takes it
+code 7:CEE3 TASK_SLEEP      A = frames: back to TASKS_RUN, to go on from here when they have passed
+code 7:C658 TASK_MAIN       task 0: the title, the rounds between, the game over
+code 7:C205 LOGO            the logo, scrolled in, until Start alone is held
+code 7:C282 LOGO_SET_UP     after the logo's Start: the screens cleared, the CHR banks and the palette for the title
+code 7:C67A MAIN_CHOICES    task 0, at the title's choices
+code 7:C985 TITLE_CHOICES   the title's choices, after Start
+code 7:C9A1 TITLE_WAIT      Start or Select on controller 1, alone
+code 7:C9CE TITLE_SELECT
+code 7:C9F1 TITLE_START
+code 7:CA34 GAME_BEGIN      ROUND + 1 is the round to begin at: lives, and the game's tasks
+code 7:CA53 TITLE_CONTINUE  a round to choose, up to ROUND_REACHED
+code 7:D1BE TASK_2
+code 7:D882 TASK_4
+code 7:E7A7 TASK_3
+code 7:F74A ROUND_DATA_BANK
+code 7:F76A BANK_SET_HOME   A = bank, kept in HOME_BANK
+code 7:F76D BANK_SWITCH     A = bank, for a while
+code 7:F777 BANK_HOME       HOME_BANK back at $8000
+code 7:F794 SET_SCROLL
+code 7:F7A7 PPU_BUFFER_FLUSH
+code 7:F7F2 CTRL_READ_ONCE  both controllers, and the Famicom's expansion pads
+code 7:F814 CTRL_OR_EXPANSION
+code 7:F821 CTRL_READ_UNUSED never called: the Famicom Disk System's game had these
+code 7:F82C CTRL_EDGES
+code 7:F83D CTRL_READ_UNUSED2 never called
+code 7:F853 CTRL_READ       the NMI's: read until two reads are alike
+code 7:F86F CTRL_READ_UNUSED3 never called
+code 7:F88B RENDERING_OFF
+code 7:F895 RENDERING_ON
+code 7:F89B RENDERING_UNUSED never called: the sprites or the background alone, on or off
+code 7:F903 RNG_STEP
+inline 7:F992 2 PRINT_DIRECT   A,X = the PPU's address, Y = length: the text the inline address has, straight to the PPU
+inline 7:FA04 2 PRINT          A,X = the PPU's address, Y = length: the text the inline address has, into PPU_BUFFER
+inline 7:FA13 2 PRINT_COUNTED  A,X = the PPU's address: the inline address has the text, its length first
+code 7:F922 INLINE_ADDRESS  the 2 bytes after the caller's JSR into $00, and its return past them
+code 7:FA81 SOUND_REQUEST   A = the sound: bank 4's SOUND_PLAY
+code 7:FA97 SOUND_TASK      a task: the sound engine once a frame of the game
+code 7:FAAA SOUND_SILENCE
+
+# --- bank 4, the sound engine -----------------------------------------------------
+
+code 4:8000 SOUND_PLAY      SOUND_ARG: a sound or a piece of music to begin
+code 4:8003 SOUND_UPDATE    once a frame: the engine's memory is $CA-$F0, which the game never reads

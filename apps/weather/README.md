@@ -36,7 +36,7 @@ Needs [cc65](https://cc65.github.io/) (`ca65`, `ld65`), a C compiler,
 Python 3, and nesp32, the top of this repository.
 
 ```sh
-make            # build/weather.nes (NROM-256, mapper 0)
+make            # build/weather.nes (NROM-128, mapper 0)
 make test
 make preview    # docs/screen.png and docs/screen-form.png
 ```

@@ -24,7 +24,7 @@ NET_IMAGE       = $8100         ; where it is in bank 8
 NET_IMAGE_RUN   = $6000         ; and where it runs
 ; As many pages whatever is in them, so that every build takes as long to
 ; boot, and the tests can hold one to another tick by tick from power-on.
-NET_IMAGE_PAGES = $18
+NET_IMAGE_PAGES = $1B
 .assert net_image_end <= NET_IMAGE_RUN + NET_IMAGE_PAGES * $100, error, "net_cart_reset copies too little"
 
 .pushseg
@@ -117,7 +117,7 @@ net_cart_start:
     jmp reset_vector
 
 ; From the reset code, once it has cleared the memory: netplay's code into
-; the PRG RAM, and then net_reset there. It takes two frames. The
+; the PRG RAM, and then net_reset there. It takes a little over two frames. The
 ; bank in place is put back, and nothing of the game's memory is used: a
 ; vblank in the middle of it finds the memory as it would be without it.
 net_cart_reset:

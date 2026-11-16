@@ -12,6 +12,8 @@
 #   make verify     check the original against the ROM's SHA-512
 #   make test       the simulation's tests (needs requirements-dev.txt)
 #   make patches    write patches/ again from the sources in build/src
+#   make bps        dist/contra_net.bps again, the netplay ROM as a patch
+#                   to the game, which players apply to their own
 #   make clean
 #
 # The game is not here. Its disassembly is vermiceli's nes-contra-us, a
@@ -36,6 +38,11 @@ NESP_LIB := $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/gen_link.py
 ROM := $(BUILD)/contra.nes
 NET_ROM := $(BUILD)/contra_net.nes
 SLOW_ROM := $(BUILD)/contra_net_slow.nes
+# The netplay ROM as a patch to the US release, for players who build
+# nothing: kept in the repository, as it holds none of the game
+# (tools/gen_patch.py refuses one that would).
+DIST := dist
+GEN_PATCH := $(NESP32)/tools/gen_patch.py
 SHA512_ORIGINAL := 1c747c78c678f14a68d4e5fcae065298a103f833638775860f0e5c5ffaa061f62d45fd8942148b1507c1fd57fde950a5d83f9f84a9782ec048a56067740c48e9
 # The disassembly, and the commit of it that patches/ was made against: a
 # patch has line numbers and none of the disassembly's lines to go by.
@@ -54,7 +61,7 @@ NET_SOURCES := $(wildcard net/*.inc) $(BUILD)/link.inc $(NESP_LIB) $(NESP)
 NET_INCLUDES := -I net -I $(BUILD) -I $(NESP_BUILD) -I $(NESP32)/nes/lib
 ASSETS := $(BUILD)/assets.stamp
 
-.PHONY: all ines verify test patches clean FORCE
+.PHONY: all ines verify test patches bps clean FORCE
 
 all: $(ROM) $(NET_ROM) $(SLOW_ROM)
 
@@ -90,11 +97,19 @@ $(NESP): FORCE | $(BUILD)
 	$(MAKE) -s -C $(NESP32) BUILD=$(NESP_BUILD) proto host
 	@test -f $@ || touch $@
 
+# A session's line, in CPU cycles a bit, once the nesp32 has agreed to it
+# (PEER's RATE): its exchanges at that rate, and everything else at the
+# link's own, 21. Jackal has played at 14 on hardware with its samples on,
+# 0.6% of replies misheard (its README, "The session's line").
+NET_RATE ?= 14
+
 # The library's serial routines: the receiver that gives up by counting,
 # since every exchange is made in an NMI, and both routines on the one page
-# net/contra_net.cfg has for them.
-$(BUILD)/link.inc: $(NESP_LIB) $(NESP)
-	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $@ --timeout --pack $(LINK_OPTIONS)
+# net/contra_net.cfg has for them; and the session's pair at NET_RATE, on
+# pages of their own.
+$(BUILD)/link.inc: $(NESP_LIB) $(NESP) Makefile
+	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $@ --timeout --pack \
+		--short-period=$(NET_RATE) $(LINK_OPTIONS)
 
 # Each ROM is assembled from the same sources: the original as it is, and
 # the netplay one with NETPLAY defined.
@@ -129,8 +144,19 @@ verify: $(ROM)
 		&& echo "$(ROM) matches the original" \
 		|| { echo "$(ROM) differs from the original"; exit 1; }
 
+# On every core if this Python has pytest-xdist (conftest.py at the top of
+# nesp32 starts the longest first).
+XDIST = $(shell $(PYTHON) -c 'import xdist' 2>/dev/null \
+	&& printf '%s' '-n auto --dist load --maxschedchunk 1')
+
 test:
-	$(PYTHON) -m pytest -q tests
+	$(PYTHON) -m pytest $(XDIST) -q tests
+
+# From the original as built, once it is known to be the game: the patch
+# is for the US release and no other.
+bps: verify $(NET_ROM)
+	mkdir -p $(DIST)
+	$(PYTHON) $(GEN_PATCH) $(ROM) $(NET_ROM) $(DIST)/contra_net.bps
 
 # What a source in build/src has that the disassembly's has not.
 PATCH_OF = diff -U0 --label a/src/$(1).asm --label b/src/$(1).asm \

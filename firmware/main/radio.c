@@ -49,12 +49,13 @@
 static const char *TAG = "radio";
 
 typedef enum { ORDER_SCAN, ORDER_JOIN, ORDER_FORGET, ORDER_AIRPORT, ORDER_ZIP,
-               ORDER_SCREEN, ORDER_FAVORITES } order_kind_t;
+               ORDER_SCREEN, ORDER_FAVORITES, ORDER_REGION } order_kind_t;
 #define SETTINGS "nesp32"           /* conn.c's too */
 #define SETTING_AIRPORT "airport"
 #define SETTING_ZIP "zip"
 #define SETTING_FAVORITES "bsky"    /* BSKY's favorites, a nesp_bsky_favorites_t */
 #define SETTING_SCREEN "screen"     /* NESP_SCREEN_UPRIGHT or _FLIPPED */
+#define SETTING_REGION "region"     /* NESP_REGION_*: the console's clock last settled on */
 
 typedef struct {
     order_kind_t kind;
@@ -91,6 +92,7 @@ static bool have_favorites;                 /* under lock */
 /* Which way up the screen is: the build's, until the console chooses. */
 static uint8_t screen = CONFIG_NESP_DISPLAY_FLIPPED ? NESP_SCREEN_FLIPPED
                                                     : NESP_SCREEN_UPRIGHT;  /* under lock */
+static uint8_t region = NESP_REGION_NTSC;   /* under lock */
 static nesp_wifi_t wifi;                    /* under lock */
 static uint8_t scan_state = NESP_SCAN_IDLE; /* under lock */
 static uint8_t scan_count;                  /* under lock */
@@ -98,8 +100,10 @@ static nesp_network_t networks[NESP_SCAN_MAX];  /* under lock */
 static uint8_t battery = 0xFF;
 static char app_id[NESP_APP_ID] = {' ', ' ', ' ', ' '};
 static char shown[2][RADIO_SHOWN_MAX];      /* under lock: the application's lines */
-static char watched[RADIO_WATCH_MAX];       /* under lock: its line for the log */
-static bool watch_news;
+#define WATCH_LINES 8                       /* lines for the log not yet taken, at most */
+static char watched[WATCH_LINES][RADIO_WATCH_MAX];  /* under lock: they, oldest first from */
+static uint8_t watch_first;                 /* this one */
+static uint8_t watch_count;
 static uint8_t app_version;
 static QueueHandle_t orders;
 static nesp_hal_t hal;
@@ -243,9 +247,15 @@ static void hal_watch(void *ctx, const char *text)
 {
     (void)ctx;
     portENTER_CRITICAL(&lock);
-    strncpy(watched, text, RADIO_WATCH_MAX - 1);
-    watched[RADIO_WATCH_MAX - 1] = 0;
-    watch_news = true;
+    if (watch_count == WATCH_LINES) {
+        /* None taken for a while: the oldest goes, to keep the latest. */
+        watch_first = (uint8_t)((watch_first + 1) % WATCH_LINES);
+        watch_count--;
+    }
+    char *line = watched[(watch_first + watch_count) % WATCH_LINES];
+    strncpy(line, text, RADIO_WATCH_MAX - 1);
+    line[RADIO_WATCH_MAX - 1] = 0;
+    watch_count++;
     portEXIT_CRITICAL(&lock);
 }
 
@@ -411,6 +421,22 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 
 /* --- the worker: everything that takes time ---------------------------------- */
 
+/* One network often has several access points under the same name. The
+ * default fast scan joins the first of them it hears, going up from channel
+ * 1, however far away that one is, and a network that lets a client join
+ * only its nearest AP is then not joined at all. Scan every channel and take
+ * the strongest; the others stay as fallbacks. The join takes about one scan
+ * of the band longer. esp_wifi keeps these with the network, so the joins at
+ * start and after a drop do the same. True: config was changed. */
+static bool prefer_strongest(wifi_config_t *config)
+{
+    bool changed = config->sta.scan_method != WIFI_ALL_CHANNEL_SCAN
+                   || config->sta.sort_method != WIFI_CONNECT_AP_BY_SIGNAL;
+    config->sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
+    config->sta.sort_method = WIFI_CONNECT_AP_BY_SIGNAL;
+    return changed;
+}
+
 static void begin_join(void)
 {
     portENTER_CRITICAL(&lock);
@@ -535,6 +561,18 @@ static void do_order(order_t *order)
         }
         break;
     }
+    case ORDER_REGION: {
+        nvs_handle_t settings;
+        portENTER_CRITICAL(&lock);
+        uint8_t kept = region;
+        portEXIT_CRITICAL(&lock);
+        if (nvs_open(SETTINGS, NVS_READWRITE, &settings) == ESP_OK) {
+            nvs_set_u8(settings, SETTING_REGION, kept);
+            nvs_commit(settings);
+            nvs_close(settings);
+        }
+        break;
+    }
     case ORDER_ZIP: {
         zip_t kept;
         nvs_handle_t settings;
@@ -590,6 +628,7 @@ static void do_order(order_t *order)
         memcpy(config.sta.password, order->password, order->password_len);
         config.sta.threshold.authmode =
             order->password_len == 0 ? WIFI_AUTH_OPEN : WIFI_AUTH_WEP;
+        prefer_strongest(&config);
         /* Leaving the old network raises a disconnect, which is not this
          * network's failure. If it comes late it costs one of the tries. */
         portENTER_CRITICAL(&lock);
@@ -673,6 +712,10 @@ void radio_settings(void)
             && (kept == NESP_SCREEN_UPRIGHT || kept == NESP_SCREEN_FLIPPED)) {
             screen = kept;
         }
+        if (nvs_get_u8(settings, SETTING_REGION, &kept) == ESP_OK
+            && (kept == NESP_REGION_NTSC || kept == NESP_REGION_PAL)) {
+            region = kept;
+        }
         nvs_close(settings);
     }
 }
@@ -700,8 +743,13 @@ void radio_start(void)
     wifi.state = length == 0 ? NESP_WIFI_NONE : NESP_WIFI_IDLE;
     wifi.name_len = (uint8_t)length;
     memcpy(wifi.name, saved.sta.ssid, length);
-    memset(&saved, 0, sizeof(saved));
     want_joined = length != 0;
+    /* A network saved by an older firmware was saved for the fast scan:
+     * save it again for the strongest AP, once. */
+    if (want_joined && prefer_strongest(&saved)) {
+        esp_wifi_set_config(WIFI_IF_STA, &saved);
+    }
+    memset(&saved, 0, sizeof(saved));
 
     ESP_ERROR_CHECK(esp_wifi_start());
     if (want_joined) {
@@ -748,6 +796,9 @@ const nesp_hal_t *radio_hal(void)
     hal.tracks = store_tracks;
     hal.track_size = store_track_size;
     hal.track_read = store_track_read;
+    hal.file_read = store_file_read;
+    hal.file_write = store_file_write;
+    hal.file_name = store_file_name;
     hal.show = hal_show;
     hal.watch = hal_watch;
     hal.peer_state = conn_state;
@@ -791,6 +842,26 @@ bool radio_screen_flipped(void)
     return flipped;
 }
 
+uint8_t radio_region(void)
+{
+    portENTER_CRITICAL(&lock);
+    uint8_t kept = region;
+    portEXIT_CRITICAL(&lock);
+    return kept;
+}
+
+void radio_keep_region(uint8_t settled)
+{
+    portENTER_CRITICAL(&lock);
+    bool changed = settled != region;
+    region = settled;
+    portEXIT_CRITICAL(&lock);
+    if (changed && orders != NULL) {
+        order_t order = {.kind = ORDER_REGION};
+        xQueueSend(orders, &order, 0);  /* the flash is the worker's to write */
+    }
+}
+
 void radio_set_battery(uint8_t percent)
 {
     battery = percent;
@@ -812,9 +883,12 @@ void radio_app(char *id, uint8_t *version)
 bool radio_watch(char *out)
 {
     portENTER_CRITICAL(&lock);
-    bool news = watch_news;
-    watch_news = false;
-    memcpy(out, watched, RADIO_WATCH_MAX);
+    bool news = watch_count != 0;
+    if (news) {
+        memcpy(out, watched[watch_first], RADIO_WATCH_MAX);
+        watch_first = (uint8_t)((watch_first + 1) % WATCH_LINES);
+        watch_count--;
+    }
     portEXIT_CRITICAL(&lock);
     return news;
 }

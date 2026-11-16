@@ -13,8 +13,8 @@ extern "C" {
 const nesp_hal_t *radio_hal(void);
 
 /* Open the settings kept in flash and read what is kept there: the screen's
- * way up, RADAR's airport and WEATHER's zip code. Before radio_start, and
- * before anything is drawn. */
+ * way up, RADAR's airport, WEATHER's zip code and the console's clock.
+ * Before radio_start, and before anything is drawn. */
 void radio_settings(void);
 
 /* Start Wi-Fi and join the saved network, if there is one. */
@@ -25,6 +25,12 @@ void radio_start(void);
  * console chooses (SYS SCREEN), and then the console's, kept over
  * power-off. Read by the task that owns M5Unified. */
 bool radio_screen_flipped(void);
+
+/* The console's clock (NESP_REGION_*) last settled on, kept over
+ * power-off, for the link to start at; and the one it has settled on now,
+ * to keep. NTSC until one has been kept. */
+uint8_t radio_region(void);
+void radio_keep_region(uint8_t region);
 
 /* The battery's charge, 0 to 100, or 0xFF if not known. Set by the task
  * that owns M5Unified; read by the link task. */
@@ -39,9 +45,10 @@ void radio_app(char *id, uint8_t *version);
 #define RADIO_SHOWN_MAX 80          /* a line of the screen, or one that main.cpp makes two of */
 void radio_shown(uint8_t row, char *out);
 
-/* What the service in use last had to say for the log (nesp_hal_t's
- * watch), into out, which holds RADIO_WATCH_MAX bytes. False: nothing new
- * since the last call. */
+/* The oldest line the service in use had to say for the log (nesp_hal_t's
+ * watch) that has not been taken, into out, which holds RADIO_WATCH_MAX
+ * bytes. A few are kept: two said between calls are both there, such as
+ * the line's rate and a session's end. False: none. */
 #define RADIO_WATCH_MAX 256
 bool radio_watch(char *out);
 

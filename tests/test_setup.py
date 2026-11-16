@@ -11,6 +11,7 @@ import gen_screen as layout
 import nesp
 import nesp_proto as p
 import pytest
+import version
 from console import VBLANK_CYCLES
 from drive import (PAD_A, PAD_B, PAD_DOWN, PAD_SELECT, PAD_START, PAD_UP, STATE_FAILED,
                    STATE_JOINING, STATE_KBD, STATE_KBD_LIST, STATE_KEYS, STATE_LIST, STATE_SCAN,
@@ -62,7 +63,7 @@ def test_the_header_is_the_name_and_what_this_is(console):
     # The logo's two palettes over the header, the text's under it.
     attributes = layout.header_attributes()
     assert bytes(c.vram[0x23C0:0x2400]) == attributes + bytes(64 - len(attributes))
-    assert {layout.palette_of(row, 0) for row in range(layout.HEADER_ROWS)} == {
+    assert {layout.palette_of(row, 0) for row in range(layout.TITLE_ROW)} == {
         layout.PALETTE_LOGO}
     assert layout.palette_of(layout.LOGO_ROW, 31) == layout.PALETTE_RED
     # What this is, under the name: a picture, set to the pixel, in the
@@ -71,8 +72,12 @@ def test_the_header_is_the_name_and_what_this_is(console):
     assert layout.TITLE_ROW == layout.LOGO_ROW + layout.LOGO_ROWS + 1
     title = [header.tiles[tile] for tile in header.names[32 * layout.TITLE_ROW:][:32]]
     assert any(any(tile) for tile in title) and not any(any(tile[:8]) for tile in title)
-    assert {layout.palette_of(layout.TITLE_ROW, column) for column in range(32)} == {
-        layout.PALETTE_LOGO}
+    # Its rows' palette has the logo's cyan where the title is drawn, and red
+    # for the update line under it.
+    assert {layout.palette_of(row, column) for row in (layout.TITLE_ROW, layout.UPDATE_ROW)
+            for column in range(32)} == {layout.PALETTE_TITLE}
+    assert layout.PALETTES[layout.PALETTE_TITLE][layout.TITLE_COLOR - 1] == \
+        layout.PALETTES[layout.PALETTE_LOGO][layout.TITLE_COLOR - 1]
     # The logo is a picture, of tiles that are not characters.
     for row in range(layout.LOGO_ROW, layout.LOGO_ROW + layout.LOGO_ROWS):
         assert c.text(row, 0, 32).strip(" ^") == "" and "^" in c.text(row, 0, 32)
@@ -85,7 +90,7 @@ def test_a_stick_is_greeted_and_shown(setup):
     s.stick.set_battery(83)
     s.settle(80)
     assert s.values() == {
-        "NESP32": "CONNECTED", "FIRMWARE": "0.1.0", "BOARD": "Computer", "WI-FI": "JOINED",
+        "NESP32": "CONNECTED", "FIRMWARE": version.text(), "BOARD": "Computer", "WI-FI": "JOINED",
         "NETWORK": "Home Network", "ADDRESS": "192.168.1.77", "SIGNAL": "-61 DBM",
         "BATTERY": "83%"}
     assert s.stick.app == (b"SETP", 1)
@@ -97,7 +102,7 @@ def test_a_stick_with_no_network_and_no_battery_gauge(setup):
     s = setup()
     s.settle(80)
     assert s.values() == {
-        "NESP32": "CONNECTED", "FIRMWARE": "0.1.0", "BOARD": "Computer", "WI-FI": "NOT SET UP",
+        "NESP32": "CONNECTED", "FIRMWARE": version.text(), "BOARD": "Computer", "WI-FI": "NOT SET UP",
         "NETWORK": "-", "ADDRESS": "-", "SIGNAL": "-", "BATTERY": "-"}
 
 
@@ -142,6 +147,16 @@ def test_a_stick_from_another_protocol_is_not_used(console):
     c.press(PAD_A)
     c.run(10)
     assert s.state == STATE_STATUS
+
+
+def test_setup_does_not_ask_the_web_site_for_updates(setup):
+    # The cartridge's menu does (nes/cart/update.inc): Setup asks for no HTTP.
+    s = setup()
+    joined(s.stick, b"Home Network")
+    s.settle(300)
+    assert s.value("NESP32") == "CONNECTED"
+    assert not s.stick.active(p.NESP_SVC_HTTP) and s.stick.fetches == 0
+    assert s.c.line(layout.UPDATE_ROW) == ""
 
 
 # --- choosing a network ----------------------------------------------------------
@@ -963,6 +978,61 @@ def test_the_keyboards_arrows_enter_and_escape_are_the_d_pad_a_and_b(setup):
     s.stick.kbd_type(bytes((p.NESP_KEY_ESCAPE,)))
     s.wait_for(STATE_STATUS)
     assert s.stick.kbd_unread == 0
+
+
+def kbd_typing(s, typed):
+    """Type on the Bluetooth keyboard, a reply's worth at a time."""
+    for start in range(0, len(typed), p.NESP_KBD_KEYS_MAX):
+        s.stick.kbd_type(typed[start:start + p.NESP_KBD_KEYS_MAX])
+        s.c.run_until(lambda: s.stick.kbd_unread == 0, 30)
+
+
+def test_a_password_is_typed_on_the_bluetooth_keyboard(setup):
+    s = setup()
+    s.scan(NETWORKS)
+    s.choose(0)
+    s.wait_for(STATE_KEYS)
+    s.c.run_until(lambda: s.stick.kbd_on, 60)
+    backspace, enter = bytes((p.NESP_KEY_BACKSPACE,)), bytes((p.NESP_KEY_ENTER,))
+    kbd_typing(s, b"Tr0ub4dor & 4" + backspace + b"3")
+    s.settle(4)
+    assert s.field == "Tr0ub4dor & 3_"
+    kbd_typing(s, enter)
+    s.wait_for(STATE_JOINING)
+    assert (s.stick.joined_name, s.stick.joined_password) == (b"Home Network", b"Tr0ub4dor & 3")
+
+
+def test_a_hidden_network_and_its_password_are_typed_at_once(setup):
+    """The name, Enter, and the password, in one reply: the password goes to
+    the password's keyboard, and what comes after its Enter to none."""
+    name, password = PRINTABLE[1:p.NESP_NAME_MAX + 1], PRINTABLE[-p.NESP_PASSWORD_MAX:]
+    s = setup()
+    s.scan(NETWORKS)
+    s.choose(len(NETWORKS))             # OTHER NETWORK...
+    s.wait_for(STATE_KEYS)
+    s.c.run_until(lambda: s.stick.kbd_on, 60)
+    enter = bytes((p.NESP_KEY_ENTER,))
+    typed = name.encode() + b"!" + enter + password.encode() + b"!" + enter + b"x"
+    kbd_typing(s, typed)                # one more than fits is not taken, twice
+    s.wait_for(STATE_JOINING)
+    assert (s.stick.joined_name, s.stick.joined_password) == (name.encode(), password.encode())
+
+
+def test_backspace_deletes_and_escape_goes_back(setup):
+    s = setup()
+    s.scan(NETWORKS)
+    s.choose(0)
+    s.wait_for(STATE_KEYS)
+    s.c.run_until(lambda: s.stick.kbd_on, 60)
+    backspace, escape = p.NESP_KEY_BACKSPACE, p.NESP_KEY_ESCAPE
+    kbd_typing(s, b"ab" + bytes((backspace,) * 3))
+    s.settle(4)
+    assert s.state == STATE_KEYS and s.field == "_"     # Backspace leaves nothing
+    kbd_typing(s, b"a" + bytes((escape,)))
+    s.settle(4)
+    assert s.state == STATE_KEYS and s.field == "_"     # Escape is B: a deletion
+    kbd_typing(s, bytes((escape,)))
+    s.wait_for(STATE_LIST)                              # and then back
 
 
 def badge(s):

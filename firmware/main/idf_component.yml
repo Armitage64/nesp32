@@ -1,6 +1,13 @@
 dependencies:
   idf: ">=5.1"
-  m5stack/m5unified: "*"
+  # M5Unified and M5GFX pinned to the pair the 0.2.0 release was built and
+  # played with. dependencies.lock is not kept, so "*" took whatever was
+  # newest: M5GFX 0.3.0 includes esp_psram.h without asking for the
+  # component that has it, and the StickS3's build failed (November 2026);
+  # and M5GFX pinned alone took M5Unified back to 0.2.25, whose StickS3
+  # crashed as it started. Move both together, and try them on both boards.
+  m5stack/m5unified: "0.2.29"
+  m5stack/m5gfx: "0.2.36"
   # The files as a USB drive, on the board whose USB port is the chip's own.
   espressif/esp_tinyusb:
     version: "^2.0.0"

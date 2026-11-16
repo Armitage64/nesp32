@@ -18,3 +18,7 @@
 	path = third_party/TMNT2-NES-Reverse-Engineered
 	url = https://github.com/AaronBottegal/TMNT2-NES-Reverse-Engineered.git
 	shallow = true
+[submodule "third_party/NES-Jackal_Disassembly_Fully_Commented"]
+	path = third_party/NES-Jackal_Disassembly_Fully_Commented
+	url = https://github.com/RayofJay/NES-Jackal_Disassembly_Fully_Commented.git
+	shallow = true

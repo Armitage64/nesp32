@@ -167,12 +167,18 @@ session_store:
 ; A digest of the game into A: of the zero page, less the link's own
 ; bytes in it, the sound engine's, and the flag the main loop waits on.
 ; Both consoles work it out at the start of the same tick, CHECK_AT.
+; Each byte goes in with A rotated, its bits round and not through the
+; carry, and EORed: a step that loses nothing, so that one byte that
+; differs always makes the digest differ. (A rotate through the carry and
+; an ADC, as it was, lost what came early: a byte that differed went
+; unseen some 255 times in 256.)
 .macro session_digest_run from, to
     .local @byte
     LDX #from
 @byte:
+    CMP #$80                    ; bit 7 into carry: a rotate of A alone
     ROL
-    ADC $00,X
+    EOR $00,X
     INX
     CPX #<(to)
     BNE @byte

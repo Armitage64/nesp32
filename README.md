@@ -32,7 +32,7 @@ to be configured from the NES itself.
 
 - The NESP32 grew out of [NES Radar](https://github.com/k6lcm/nes-radar) and [connectedNES](https://github.com/hxlnt/connectedNES), projects that first explored the use of the NES controller port as a data link.
 
-- NTSC-only for now. PAL support is planned.
+- NTSC and PAL are supported. Online play requires two of the same console.
 
 ## Quick Links
 
@@ -42,6 +42,8 @@ to be configured from the NES itself.
 
 - [Build Guide](docs/BUILD_GUIDE.md): building and checking the hat
 
+- [Mesen](host/mesen/): a nesp32 in the emulator, for running its programs and trying a ROM with no hardware
+
 - [Purchase the M5 StickS3](https://amzn.to/3TVUV0y)*
 
 - [Order Hat from PCBWay](https://www.pcbway.com/project/shareproject/NESP32_Hat_for_M5_StickS3_d23db4e5.html)
@@ -49,6 +51,8 @@ to be configured from the NES itself.
 - [Hardware Requirements and Gerber Files](hardware/)
 
 - [Online Firmware Installer](https://nesp32.retrobits.tv/flash/)
+
+- [Releases](https://github.com/Armitage64/nesp32/releases) and [what changed in each](CHANGELOG.md)
 
 \* Generic ESP32 boards can be used as well.
 
@@ -62,7 +66,7 @@ Please join our [Discord](https://discord.gg/kwSC7pwtmb)!
 
 <p>
   <a href="https://www.youtube.com/watch?v=eGUmaMX9nOs"><img src="https://img.youtube.com/vi/eGUmaMX9nOs/maxresdefault.jpg" alt="NESP32 video" width="49%"></a>
-  <a href="https://www.youtube.com/watch?v=hZ8sniz4Z2M"><img src="https://img.youtube.com/vi/hZ8sniz4Z2M/maxresdefault.jpg" alt="NESP32 video" width="49%"></a>
+  <a href="https://www.youtube.com/watch?v=uLnXXAwg5ic"><img src="https://img.youtube.com/vi/uLnXXAwg5ic/maxresdefault.jpg" alt="NESP32 video" width="49%"></a>
 </p>
 
 ## Demonstration Apps
@@ -73,16 +77,14 @@ Please join our [Discord](https://discord.gg/kwSC7pwtmb)!
 | [NESpedia](apps/wiki) | Search and display Wikipedia articles |
 | [Jukebox](apps/jukebox) | Stream VGM/VGZ music files and PCM audio to the NES sound chip |
 | [Throughput](apps/throughput) | Test the bandwidth of the NES<>ESP32 interface |
-| [Dr. Mario](apps/drmario)* | Dr. Mario online VS |
-| [Contra](apps/contra)* | Contra online co-op, with framerate optimizations |
-| [Tetris](apps/tetris)* | Tetris online VS |
-| [TMNT2 Arcade](apps/tmnt2)* | Teenage Mutant Ninja Turtles 2 Arcade online co-op, with framerate optimizations |
+| Games* | [Dr. Mario](apps/drmario), [Contra](apps/contra), [Tetris](apps/tetris), [TMNT2 Arcade](apps/tmnt2), [Bubble Bobble](apps/bubblebobble), [Jackal](apps/jackal), and [River City Ransom](apps/rcr) 2-player over the network
 | [NES Radar](apps/nes-radar) | [k6lcm](https://github.com/k6lcm)'s live air traffic scope, no PC required |
 | [NESradio](apps/npr) | Live .mp3 radio stations on a radio dial, with what is playing |
 | [Weather](apps/weather) | Current conditions and a 5-day forecast for a US zip code, which the NESP32 remembers |
 | [Bluesky](apps/bluesky) | Bluesky posts from a list of favorite accounts the NESP32 remembers, after [ConnectedNES](https://github.com/hxlnt/connectedNES) |
+| [Family BASIC](apps/family-basic)* | Family BASIC V3 using a Bluetooth keyboard. Save and load programs to the NESP32 instead of cassette |
 
-\* These games contain copyrighted material. You must build the ROM yourself using the publicly available disassembly and the NESP32 patch provided here.
+\* These titles contains copyrighted material and cannot be provided. Instead, download the patches from the [ROM patches](https://nesp32.retrobits.tv/patches/) page, and apply them to your own original ROM files.
 
 ## How it works
 
@@ -98,8 +100,13 @@ Please join our [Discord](https://discord.gg/kwSC7pwtmb)!
 
 **Just want to install the firmware?** You don't need to build anything: connect the StickS3
 (or StickC-Plus2) over USB and flash the latest release from your browser with the
-[Online Firmware Installer](https://nesp32.retrobits.tv/flash/). The steps below are for
-building the firmware and ROMs from source.
+[Online Firmware Installer](https://nesp32.retrobits.tv/flash/).
+
+**Just want to play the online games or Family BASIC?** You don't need to build those either:
+download the patches from the [ROM patches](https://nesp32.retrobits.tv/patches/) page and apply each to
+your own copy of the game ([User Guide](docs/USER_GUIDE.md#11-playing-online-with-a-friend)).
+
+The steps below are for building the firmware and ROMs from source.
 
 You will need [cc65](https://cc65.github.io/) (`ca65`, `ld65`), a C compiler, `make`, `patch`,
 Python 3, and for the firmware [ESP-IDF 5.x](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/)
@@ -133,19 +140,30 @@ make cart                   # the cartridge
 make -C apps/drmario        # Dr. Mario 2P
 make -C apps/contra         # Contra 2P
 make -C apps/tetris         # Tetris 2P
+make -C apps/tmnt2          # TMNT II 2P
+make -C apps/jackal         # Jackal 2P
+make -C apps/rcr            # River City Ransom 2P
+make -C apps/family-basic   # Family BASIC
 ```
 
-Contra's build needs your own copy of the game (US release) at `apps/contra/baserom.nes`.
+Contra, TMNT II, Jackal, River City Ransom and Family BASIC need your own copy of the game at `apps/<name>/baserom.nes`
+(each app's README says which release). Dr. Mario and Tetris are built from their disassemblies
+alone. After changing a game, `make -C apps/<name> bps` writes its patch for players in
+`apps/<name>/dist/` again; commit it, since the web site ships the patches as committed.
 
 **4. Find the ROM images**
 
 | File | What it is |
 |---|---|
-| `build/nesp32.nes` | The cartridge: every program above but the two games, behind one menu (MMC1, 256 KB PRG, 128 KB CHR) |
+| `build/nesp32.nes` | The cartridge: every program above but the games, behind one menu (MMC1, 256 KB PRG, 128 KB CHR) |
 | `build/setup.nes` | Setup as a ROM of its own. For any other program on the cartridge, `make -C apps/<name>` builds one into `apps/<name>/build/` |
 | `apps/drmario/build/drmario_net.nes` | Dr. Mario 2P, which is not on the cartridge |
 | `apps/tetris/build/tetris_net.nes` | Tetris 2P, which is not on the cartridge |
 | `apps/contra/build/contra_net.nes` | Contra 2P, which is not on the cartridge. `make -C apps/contra ines` also makes `contra_net_ines.nes`, with an iNES header in place of the NES 2.0 one |
+| `apps/tmnt2/build/tmnt2_net.nes` | TMNT II 2P, which is not on the cartridge |
+| `apps/jackal/build/jackal_net.nes` | Jackal 2P, which is not on the cartridge |
+| `apps/rcr/build/rcr_net.nes` | River City Ransom 2P, which is not on the cartridge |
+| `apps/family-basic/build/fbasic.nes` | Family BASIC, which is not on the cartridge |
 
 ## Further Reading
 
@@ -155,13 +173,15 @@ Contra's build needs your own copy of the game (US release) at `apps/contra/base
 | [docs/BUILD_GUIDE.md](docs/BUILD_GUIDE.md) | building the hat and checking it, step by step |
 | [docs/WIRING.md](docs/WIRING.md) | the hat: its pins, the level shifter, and why it is needed |
 | [docs/PROTOCOL.md](docs/PROTOCOL.md) | the link: the line, frames, the hello, every service, timing, and the console's library |
+| [CHANGELOG.md](CHANGELOG.md) | what changed in each release of the firmware and the cartridge |
+| [docs/RELEASING.md](docs/RELEASING.md) | version numbers, the changelog, cutting a release, and how the web site gets it |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | building, the cartridge, what is where in the repository, the tests, and how far each part has got |
 | [docs/TODO.md](docs/TODO.md) | what is still to do on the hardware and the firmware |
 | [firmware/README.md](firmware/README.md) | the nesp32's firmware: building and flashing it, how it keeps time, and what was seen on hardware |
 | [hardware/](hardware/) | the hat's board and its parts |
 | [apps/](apps/) | each program's self-contained documentation and to-do list |
 | [samplecode/](samplecode/) | small, documented ROMs to learn from or copy: a two-player game's lobby and session, an HTTPS fetch, and a Bluetooth keyboard |
-| [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md) | the netplay games (Contra, Dr. Mario, Tetris): how they are played, and how two consoles are kept in the same game |
+| [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md) | the netplay games (Dr. Mario, Tetris, Contra, TMNT II, Bubble Bobble, Jackal, River City Ransom): how they are played, and how two consoles are kept in the same game |
 | [apps/contra/docs/Netplay.md](apps/contra/docs/Netplay.md) | Contra's netplay, with figures from sessions on hardware |
 | [docs/PHANTOM-RIGHT.md](docs/PHANTOM-RIGHT.md) | a netplay bug found on a real NES: a Right that nobody pressed |
 
@@ -177,11 +197,17 @@ Not everything in the repository is nesp32's to license:
 - **`third_party/`** is other people's, each under its own terms:
   [nes-radar](https://github.com/k6lcm/nes-radar) (GPL-3.0, as this is),
   [minimp3](third_party/minimp3/LICENSE) (CC0), and the disassemblies of
-  Dr. Mario, Contra and Tetris that the two-player ROMs are built from.
-- **The games.** `apps/drmario`, `apps/contra` and `apps/tetris` hold
+  Dr. Mario, Contra, Tetris, TMNT II and Jackal that the two-player ROMs are
+  built from.
+- **The games.** `apps/drmario`, `apps/contra`, `apps/tetris`,
+  `apps/tmnt2`, `apps/jackal`, `apps/rcr` and `apps/family-basic` hold
   nesp32's patches and the code they add, which are under this licence;
-  Dr. Mario, Contra and Tetris are their publishers', and no ROM of any of
-  them is here. Contra's build wants your own copy.
+  Dr. Mario, Contra, Tetris, TMNT II, Jackal, River City Ransom and Family
+  BASIC are their publishers',
+  and no ROM of any of them is here. Each app's `dist/` has a BPS patch,
+  which holds none of the game and is applied to your own copy. Building
+  Contra, TMNT II, Jackal, River City Ransom or Family BASIC also needs
+  your own copy.
 - **Tetris's game for two** follows ejona86's
   [TAUS](https://github.com/ejona86/taus) twoplayer mod, Eric Anderson's,
   under the MIT License ([its terms](apps/tetris/net/TAUS-LICENSE)): its

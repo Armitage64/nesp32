@@ -36,7 +36,8 @@ software can reach the Internet, so the console can:
 - show live air traffic around an airport,
 - play live Internet radio and NES music through its own sound chip,
 - read Bluesky posts,
-- play Dr. Mario, Tetris, Contra and TMNT II online against a friend.
+- play Dr. Mario, Tetris, Contra, TMNT II, Bubble Bobble, Jackal and River
+  City Ransom online with a friend.
 
 A NESP32 is an **M5Stack StickS3** (a small ready-made computer, about
 $20, with its own screen, battery and buttons) plus a little circuit board
@@ -55,8 +56,17 @@ The older **M5Stack StickC Plus2** works too, with two limits:
 
 This guide describes the StickS3 and points out where the Plus2 differs.
 
-> **Note:** the NESP32 is for **NTSC** consoles (North American and
-> Japanese) for now. PAL support is planned.
+> **Note:** the NESP32 works with both **NTSC** consoles (North American
+> and Japanese) and **PAL** consoles (European and Australian). It tells
+> which one it is plugged into by itself, and the Stick's screen shows
+> **PAL:** in place of **NES:** for a PAL console. On a PAL console:
+>
+> - Games made for NTSC consoles, which include the online games, run at
+>   5/6 of their speed and their music a little lower, as any NTSC game
+>   does on a PAL console. The jukebox's NTSC music does the same.
+>   Recorded (sampled) sound plays at its proper speed.
+> - Online play is between two consoles of the same kind: two NTSC or
+>   two PAL.
 
 > **Note:** the NESP32 is a hobby project that's still growing, not a
 > finished store-bought product. A few features are marked as
@@ -78,7 +88,7 @@ This guide describes the StickS3 and points out where the Plus2 differs.
 
 | Item | Notes |
 |---|---|
-| An NES | NTSC. A MiSTer FPGA running the NES core with a SNAC adapter also works |
+| An NES | NTSC or PAL. A MiSTer FPGA running the NES core with a SNAC adapter also works, in either region |
 | An M5Stack StickS3 | [Buy one here](https://amzn.to/3TVUV0y). The StickC Plus2 also works, without Bluetooth or the USB drive |
 | The NESP32 hat, with its cable | Build it with the [Build Guide](BUILD_GUIDE.md), or get one already built and tested |
 | A way to run a ROM file on the NES | A flash cartridge such as an Everdrive, or a MiSTer |
@@ -121,18 +131,22 @@ need to download or build anything.
 1. Open the **[Online Firmware Installer](https://nesp32.retrobits.tv/flash/)**
    in **Chrome, Edge or Opera** on a computer. Safari and Firefox can't
    reach USB devices.
-2. Connect the Stick to the computer with a USB data cable.
-3. **The first time on a StickS3 only:** put it in "boot mode". Press and
+2. Choose **NESP32 hat (inverting)**, for a Stick with the NESP32 hat.
+   (**Resistors (non‑inverting)** is for an ESP32‑S3 board wired to the
+   controller port with three resistors instead, as in
+   [WIRING.md](WIRING.md#diy-resistor-network).)
+3. Connect the Stick to the computer with a USB data cable.
+4. **The first time on a StickS3 only:** put it in "boot mode". Press and
    hold the **power button** on its side until the **green light
    flashes**. The StickC Plus2 doesn't need this.
-4. Press **Connect** and choose the Stick from the list. The right
+5. Press **Connect** and choose the Stick from the list. The right
    firmware for your Stick is picked for you.
-5. The browser asks whether to **erase** the Stick first:
+6. The browser asks whether to **erase** the Stick first:
    - **First install:** either answer is fine.
    - **Updating an existing NESP32:** answer **No**. Answering Yes wipes
      your saved Wi-Fi, your paired keyboard, your settings and your
      music.
-6. Wait for the installation to finish, then unplug the Stick.
+7. Wait for the installation to finish, then unplug the Stick.
 
 > **Good to know:** installing the firmware replaces whatever was on the
 > Stick before, including M5Stack's own UIFlow software. M5Stack's
@@ -150,6 +164,21 @@ need to download or build anything.
 4. Run **Setup** and check that the NESP32 line says **CONNECTED** and
    the firmware version is the new one.
 
+The firmware installer and the home page give the current release's
+number, with a link to what's new in it. The Stick shows its own version
+on the top line of its screen (**NESP32 0.2.0**), and Setup shows it as
+**FIRMWARE**. A version that ends in **-dev** is a build from the source
+between releases, not a release. Every release is also on
+[GitHub](https://github.com/Armitage64/nesp32/releases).
+
+You don't have to check by hand: the cartridge menu compares the
+cartridge's version with the Stick's firmware, and, once the NESP32 is on
+Wi-Fi, with the latest release on the web site. If either is behind, it
+says so under the **MAIN MENU** title
+([Chapter 6](#6-first-power-on-and-the-cartridge-menu)). The Stick asks too, whenever it is on Wi-Fi and no program is running on
+the console, and then says **Firmware update available** in red at the
+bottom of its own screen.
+
 ---
 
 ## 5. Getting the cartridge onto your NES
@@ -160,13 +189,20 @@ ROM**, `nesp32.nes`. Download it from the
 cartridge") and copy it to your flash cartridge's SD card, or to your
 MiSTer, as you would any NES game.
 
-The online games (Dr. Mario, Tetris, Contra and TMNT II) are **not** on
+The online games (Dr. Mario, Tetris, Contra, TMNT II, Bubble Bobble,
+Jackal and River City Ransom) are **not** on
 the cartridge, because they contain the original games. See
-[Chapter 11](#11-playing-online-with-a-friend).
+[Chapter 11](#11-playing-online-with-a-friend). Nor is
+[Family BASIC](#family-basic-not-on-the-cartridge), for the same reason.
+For these you patch your own copy of each game instead, with the
+[ROM patches](https://nesp32.retrobits.tv/patches/) from the NESP32 home
+page ("ROM patches").
 
 > **Keep the firmware and the cartridge in step.** When you update one,
 > update the other too, from the same release. A mismatched pair can show
-> **UPDATE NESP32** or **NEEDS AN UPDATE**, or behave oddly.
+> **UPDATE NESP32** or **NEEDS AN UPDATE**, or behave oddly. The ROM
+> patches are updated on their own; the ROM patches page gives the oldest
+> firmware they work with.
 
 ---
 
@@ -186,6 +222,21 @@ the cartridge, because they contain the original games. See
 
 In most programs, **Select** (or **Ctrl+Esc** on a keyboard) brings you
 back to this menu. **Reset** on the console always does.
+
+Under the **MAIN MENU** title, in red, the menu says when something
+needs updating ("Updating later" in [Chapter 4](#updating-later)):
+
+| It says | What to do |
+|---|---|
+| **FIRMWARE UPDATE AVAILABLE** | Install the latest firmware on the Stick |
+| **CARTRIDGE UPDATE AVAILABLE** | Download the latest `nesp32.nes` and replace your copy |
+| **UPDATES AVAILABLE** | Both: install the latest firmware, and replace your `nesp32.nes` |
+
+The firmware and the cartridge come out together, with one version
+number, so the menu can tell from the Stick alone when one was updated
+and the other wasn't. Once the NESP32 is on Wi-Fi it also asks the web
+site for the latest release, each time the menu comes up. If the site
+can't be reached, the menu says only what the Stick told it.
 
 A small **Bluetooth badge** in the top-right corner shows whether a
 keyboard is connected ([Chapter 8](#8-pairing-a-bluetooth-keyboard)).
@@ -259,10 +310,10 @@ If it fails you'll see **WRONG PASSWORD**, **NETWORK NOT FOUND**,
 **COULD NOT JOIN** or **CANNOT JOIN THAT KIND** (a type of network
 security it can't use). Press **A** to try again or **B** to go back.
 
-> **Tip:** a Bluetooth keyboard doesn't type letters straight into the
-> password. On this screen its arrow keys move around the on-screen
-> keyboard and **Enter** types the highlighted key, just like the
-> controller.
+> **Tip:** with a Bluetooth keyboard paired, just type the password (or a
+> hidden network's name) on it. **Backspace** deletes and **Enter** joins,
+> as Start does. Its arrow keys still move around the on-screen keyboard,
+> and **Esc** is **B**.
 
 ### Testing the connection to the console
 
@@ -404,12 +455,12 @@ Hold **Ctrl**, tap **Enter** or **Esc**, then let go of Ctrl. A key held
 down repeats, as on a computer (except Enter and Esc).
 
 Where a program has a box to type into, the keyboard types into it
-directly: NESpedia's search, Weather's zip code and NES Radar's airport
-code. There, **Enter** sends what you typed and **Backspace** deletes.
+directly: NESpedia's search, Weather's zip code, NES Radar's airport
+code, and Setup's Wi-Fi password and network name. There, **Enter** sends
+what you typed and **Backspace** deletes.
 
-Two screens don't take typing directly. On the **Wi-Fi password** screen
-and Bluesky's **handle form**, the keyboard works like the controller
-instead: arrows move, Enter picks.
+Bluesky's **handle form** doesn't take typing directly. There the
+keyboard works like the controller instead: arrows move, Enter picks.
 
 ### While sound is playing
 
@@ -574,37 +625,150 @@ minute. When both halves say **DONE**, **A** runs it again.
 If the Stick loses power during the test and the screen freezes, press
 **Reset** on the console.
 
+### Family BASIC (not on the cartridge)
+
+Nintendo's Family BASIC V3 for the Famicom, typed on with your Bluetooth
+keyboard. On a Famicom it needs the Family keyboard, which plugs into a
+port the NES doesn't have; here the NESP32's keyboard takes its place.
+
+**Getting it:** it contains the original program, so it isn't on the
+cartridge and can't be handed out ready-made. Download `fbasic.bps`
+from the [ROM patches](https://nesp32.retrobits.tv/patches/) page (on
+the NESP32 home page, "ROM patches"). Apply it to your own
+copy of Family BASIC V3 (40976 bytes, CRC32 `667F6EA6`) with a BPS
+patcher such as [RomPatcher.js](https://www.marcrobledo.com/RomPatcher.js/)
+(it runs in a web browser) or Floating IPS, and put the result on your
+flash cartridge or MiSTer. It needs:
+
+- a **StickS3** with a keyboard paired ([Chapter 8](#8-pairing-a-bluetooth-keyboard)),
+  and firmware from the same release as the ROM,
+- a flash cartridge or emulator that supports its cartridge type (MMC1)
+  with battery-backed memory. It has been played on an EverDrive N8 and
+  on the MiSTer.
+
+BASIC starts by itself with `NS-HUBASIC V3.0` and `OK`. Type a line and
+press **Enter** to run it, or start it with a number to add it to your
+program. Everything comes out in capitals: Family BASIC has no small
+letters.
+
+| Keyboard | Family keyboard |
+|---|---|
+| Letters, digits and signs | the same, Shift included. `\` types `¥` |
+| **Enter** | RETURN |
+| **Backspace** | DEL: deletes the character before the cursor |
+| **Delete** | deletes the character under the cursor |
+| **Arrow keys** | the cursor keys |
+| **Home** (or **Page Up**) | CLR HOME: the cursor to the top |
+| **Shift + Home** | clears the screen |
+| **Insert** (or **Page Down**) | INS: opens a space |
+| **Esc** | STOP: stops a running program; at the prompt, starts a new line |
+| **F1** to **F8** | F1 to F8: BASIC's own shortcuts (see below) |
+| **F12** | KANA: Japanese kana on or off |
+| **Ctrl** + a key | CTR + that key, for example Ctrl+L clears the screen |
+| **Alt** + a key | GRPH + that key: graphic characters, in kana mode only |
+
+Typing goes over what's under the cursor. Use **Insert** to make room.
+A key held down repeats. `{ | } ~`, the backquote and **Tab** have no
+Family key, so they do nothing.
+
+The function keys type BASIC's own shortcuts, each followed by Enter:
+**F1** to **F4** are `GAME 0` to `GAME 3`, **F5** `SPRITE` (without
+Enter), **F6** `LOAD`, **F7** `LIST` and **F8** `RUN`. **F6** loads the first
+program saved on the NESP32 (see below).
+`GAME 0` is played with the Famicom controller's microphone, which the
+NES doesn't have either, so only its demo works: answer **N** to
+`PLAY ? Y/N`.
+
+**Saving and loading.** Programs are saved on the NESP32 in place of
+the Famicom's cassette recorder. `SAVE "HELLO"` saves your program, and
+`LOAD "HELLO"` loads it back, even after switching off. `LOAD` on its own
+loads the first program saved, and `LOAD? "HELLO"` checks the program you
+have against the saved one. A name that isn't there, or a save that
+couldn't be written, says `?TP ERROR`. The programs are files in the
+`basic` folder of the NESP32's USB drive (`HELLO.fbp`), so you can copy
+them to and from a computer. Saving and loading need the NESP32's
+firmware from the same release as the ROM; with older firmware the
+keyboard still works, and `SAVE` says `?TP ERROR`.
+
+**Keeping your program.** **Reset** on the console keeps your program
+(BASIC says `BASIC HOT START`). Switching off, or a flash cartridge's
+reset that goes back to its own menu, doesn't, unless you tell BASIC to
+keep it first:
+
+1. Type `SYSTEM` and press **Enter**. BASIC asks you to turn on the
+   cartridge's BACKUP switch, which a flash cartridge doesn't have.
+2. Press **Esc**.
+3. Now switch off, or go back to the flash cartridge's menu.
+
+The next time Family BASIC starts, it says `BASIC HOT START` and your
+program is back. Do it again each time before switching off. The flash
+cartridge must keep the cartridge's battery memory, as the EverDrive N8
+does.
+
+> **Experimental:** Family BASIC is new, and not yet part of a release.
+
 ---
 
 ## 11. Playing online with a friend
 
-Dr. Mario, Tetris, Contra and TMNT II have special two-console versions.
+Dr. Mario, Tetris, Contra, TMNT II, Bubble Bobble, Jackal and River City
+Ransom have special two-console versions.
 Each player needs:
 
 - their own NES, with a NESP32 in port 2 and a controller in port 1,
+  both NTSC or both PAL (an NTSC console and a PAL one can't play
+  together),
 - the same version of the online game on their flash cartridge,
 - working Wi-Fi.
 
 **Getting the games:** these contain the original games, so they can't
-be handed out ready-made:
+be handed out ready-made. Instead, you patch your own copy of each game:
 
-- **TMNT II:** apply the patch `apps/tmnt2/dist/tmnt2_net.bps` to your own
-  copy of the US game with a BPS patcher such as Floating IPS or
-  RomPatcher.js (it runs in a web browser). Then put the result on your
-  flash cartridge.
-- **Dr. Mario, Tetris and Contra** have to be built from source
-  ([the README](../README.md#building)). Contra also needs your own copy
-  of the game. Ask on the [Discord](https://discord.gg/kwSC7pwtmb) if you
-  need help.
+1. Download the game's patch from the
+   [ROM patches](https://nesp32.retrobits.tv/patches/) page (on the
+   NESP32 home page, "ROM patches").
+2. Open a BPS patcher, such as
+   [RomPatcher.js](https://www.marcrobledo.com/RomPatcher.js/) (it runs
+   in a web browser) or Floating IPS.
+3. Apply the game's patch to your own copy of the game, below. The
+   patcher refuses a copy that isn't the right release: a different
+   release won't work, and the ROM patches page lists the releases that
+   don't.
+4. Put the patched ROM on your flash cartridge.
 
-Contra and TMNT II need a flash cartridge or emulator that supports their
-cartridge type (MMC3).
+| Game | Patch | Apply it to | Size and CRC32 |
+|---|---|---|---|
+| Dr. Mario | `drmario_net.bps` | Dr. Mario (Japan, USA), the first release (PRG0) | 65552 bytes, `B1F7E3E9` |
+| Tetris | `tetris_net.bps` | Tetris (USA) | 49168 bytes, `6D72C53A` |
+| Contra | `contra_net.bps` | Contra (USA) | 131088 bytes, `C50A8304` |
+| TMNT II | `tmnt2_net.bps` | Teenage Mutant Ninja Turtles II: The Arcade Game (USA) | 524304 bytes, `C9FFBBDB` |
+| Bubble Bobble | `bubblebobble_net.bps` | Bubble Bobble (USA) | 163856 bytes, `D3A91B41` |
+| Jackal | `jackal_net.bps` | Jackal (USA) | 131088 bytes, `2E52D091` |
+| River City Ransom | `rcr_net.bps` | River City Ransom (USA) | 262160 bytes, `C3508F7E` |
+
+Both players need the same patched game. Use the patches from the same
+release as your NESP32's firmware. The online games' patches from November
+2026 on don't play with earlier ones, and a room says `NOT THIS GAME`:
+both players patch again from the ROM patches page. Contra, TMNT II and
+Jackal play a little faster online with firmware newer than 0.2.0, which
+runs their link to the NESP32 faster; with 0.2.0 they play as before.
+River City Ransom needs firmware 0.3.0 or newer. Ask on the
+[Discord](https://discord.gg/kwSC7pwtmb) if you need help.
+
+Contra, TMNT II, Jackal and River City Ransom need a flash cartridge or
+emulator that supports their cartridge type (MMC3); River City Ransom's
+also has 8 KB of RAM and twice the original's program ROM, which its
+header asks for. Bubble Bobble keeps its own (MMC1), but needs the
+8 KB of RAM that one can have, which most flash cartridges and emulators
+give it.
 
 **Starting a game:**
 
 1. On the title screen, choose the two-player option: **2 PLAYERS**
-   (Contra, Tetris), **2 PLAYER GAME** (Dr. Mario) or **2 TURTLES**
-   (TMNT II).
+   (Contra, Tetris), **2 PLAYER GAME** (Dr. Mario), **2 TURTLES**
+   (TMNT II), **2P START** (Bubble Bobble), **2 PLAYERS** chosen with
+   **Select** and then **Start** (Jackal), or **2P PLAY** chosen with
+   **Down** and then **Start** (River City Ransom).
 2. One player chooses **HOST GAME**. Their screen, and the Stick's screen,
    show a **four-character room code**. Codes never use easily confused
    pairs like 0 and O, or 1 and I.
@@ -618,6 +782,33 @@ Internet access, even when both consoles are in the same house.
 
 **LOCAL GAME** is the normal two-controller game on one console. The
 second controller needs port 2, so unplug the NESP32 for this.
+
+**Bubble Bobble after a game over:** the online game carries on. Player 1
+(the host) presses **Start** for the title, and **2P CONTINUE** goes on
+from the furthest round the two of you reached; **Start** shows the round,
+**A** and **B** change it, and **Start** again plays it. Online, the title
+skips the one-player choices, and only the host's controller works it, as
+only player 1's does in the original. With no online game, **2P CONTINUE**
+is skipped.
+
+**Jackal:** online, the title stays on 2 PLAYERS. After a game over the
+continue screen and the title are still part of the online game: player 1
+(the host) answers the continue screen, and **Start** at the title begins
+another game for the two of you. Only player 1 can pause, as in the
+original. With both NESP32s on firmware newer than release 0.2.0, its
+online game talks to the NESP32 faster, which leaves the console more
+time for the game; with 0.2.0 it plays as well, a little slower in its
+busiest moments.
+
+**River City Ransom:** online, the first screen goes straight on with
+2P PLAY. The game runs faster online than the original does with two
+players on one console: the online version's drawing was sped up.
+Still, it can slow down a little when a lot is on screen, and a slow
+moment on the network makes both consoles wait for it. This online
+version is new: fighting through the town has been played, but the
+shops, the bosses and the ending have not been played online yet. If
+you run into a problem there, tell us on the
+[Discord](https://discord.gg/kwSC7pwtmb).
 
 ### Playing by address
 
