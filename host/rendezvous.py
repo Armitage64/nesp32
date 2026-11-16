@@ -71,7 +71,11 @@ class Room:
 
 
 class Rooms:
-    def __init__(self):
+    def __init__(self, rng=None):
+        """`rng` makes the rooms' codes and sessions: the system's own,
+        which no one can guess, unless a test gives one with a seed, for
+        the same codes every run."""
+        self.rng = rng if rng is not None else secrets.SystemRandom()
         self.now = 0.0
         self.rooms = {}
         self.requests = []          # each path asked, for the tests
@@ -100,9 +104,9 @@ class Rooms:
                 game = parse_game(query.get("app"), query.get("ver"))
                 if game is None:
                     return 400, "BAD"
-                session = f"{secrets.randbits(32) | 1:08X}"
+                session = f"{self.rng.getrandbits(32) | 1:08X}"
                 for _ in range(TRIES):
-                    code = "".join(secrets.choice(ALPHABET) for _ in range(CODE_LENGTH))
+                    code = "".join(self.rng.choice(ALPHABET) for _ in range(CODE_LENGTH))
                     if self._room(code) is None:
                         self.rooms[code] = Room(game, candidates, session, self.now)
                         return 200, f"ROOM {code} {session}"

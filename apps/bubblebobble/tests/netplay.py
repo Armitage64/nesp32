@@ -95,7 +95,9 @@ class Lan:
         self.noted = []             # how many notes each had left, as last seen
         self.notes = []             # for each: (cycle, note) on their way to it
         self.up = False
-        self.rooms = Rooms()
+        # Seeded: a room's code is drawn on the menu and crosses the link, so a
+        # code drawn at random made each run's frames a little different.
+        self.rooms = Rooms(rng=random.Random(6502))
         self.meets = []             # each one's meetings, fetches and punches, as last seen
         self.fetches = []
         self.punches = []
