@@ -62,39 +62,54 @@
 +.else
 @@ -91294,0 +91339 @@
 +.endif
-@@ -128457,0 +128503,5 @@
+@@ -128388,0 +128434,12 @@
++.ifdef NETPLAY
++    sei
++    cld
++    lda #$07                             ; the netplay's bank at $A000
++    sta BANK_SELECT_MMC3
++    lda #NET_BANK
++    sta BANK_DATA_MMC3
++    jsr net_reset_keep                   ; what the reset is to clear, kept; X = $FF, A, Y = 0 (net/net.inc)
++    txs
++    ldx #$08
++    nop
++.else
+@@ -128401,0 +128459 @@
++.endif
+@@ -128457,0 +128516,5 @@
 +.ifdef NETPLAY
 +    jsr net_bank_in                      ; the netplay's reset, which makes these writes
 +    jsr net_reset                        ; at its end (net/net.inc)
 +    .res 8, $EA
 +.else
-@@ -128468,0 +128519 @@
+@@ -128468,0 +128532 @@
 +.endif
-@@ -128590,0 +128642,4 @@
+@@ -128590,0 +128655,4 @@
 +.ifdef NETPLAY
 +    jmp net_nmi_check                    ; the same, and a session's tick, stall or lag (net/cart.inc)
 +    nop
 +.else
-@@ -128592,0 +128648 @@
+@@ -128592,0 +128661 @@
 +.endif
-@@ -128759,0 +128816,4 @@
+@@ -128759,0 +128829,4 @@
 +.ifdef NETPLAY
 +    jsr net_sound_hook                   ; the read first, then the same (net/cart.inc)
 +    nop
 +.else
-@@ -128761,0 +128822 @@
+@@ -128761,0 +128835 @@
 +.endif
-@@ -128767,0 +128829,4 @@
+@@ -128767,0 +128842,4 @@
 +.ifdef NETPLAY
 +    jmp net_read_hook                    ; the same, or a session's tick or stall (net/cart.inc)
 +    .res 3, $EA
 +.else
-@@ -128770,0 +128836 @@
+@@ -128770,0 +128849 @@
 +.endif
-@@ -130530,0 +130597,4 @@
+@@ -130530,0 +130610,4 @@
 +.ifdef NETPLAY
 +    NET_FILL_D05F                        ; in place of L_D05F, which nothing calls (net/cart.inc)
 +    .res $D081 - $D05F - (* - net_title_pick), $FF
 +.else
-@@ -130549,0 +130620 @@
+@@ -130549,0 +130633 @@
 +.endif

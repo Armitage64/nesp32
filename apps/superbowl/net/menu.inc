@@ -1529,17 +1529,31 @@ menu_show:
     .assert MODE_MAIN = 0, error
     lda net_why
     cmp #NET_WHYS
-    bcs @shown
+    bcs @resets
     eor #NET_WHY_CHECK
     cmp net_why+1
-    bne @shown                  ; the save RAM as it came, or none kept
+    bne @resets                 ; the save RAM as it came, or none kept
     ldx net_why
-    beq @shown
+    beq @resets
     lda menu_whys_lo,x
     sta menu_ptr
     lda menu_whys_hi,x
     sta menu_ptr+1
     jsr menu_strings
+
+@resets:
+    ; And what the last two resets found (net_resets), in hex.
+    lda #>MENU_RESETS_AT
+    sta NES_PPU_ADDR
+    lda #<MENU_RESETS_AT
+    sta NES_PPU_ADDR
+    ldy #$00
+    jsr menu_reset_row
+    lda #>(MENU_RESETS_AT + 32)
+    sta NES_PPU_ADDR
+    lda #<(MENU_RESETS_AT + 32)
+    sta NES_PPU_ADDR
+    jsr menu_reset_row
 
 @shown:
     ; The scroll back, for the next NMI, which turns the picture on.
@@ -1549,6 +1563,44 @@ menu_show:
     sta NES_PPU_SCROLL
     lda #MENU_PPUCTRL_QUIET    ; on at the frame's end (menu_nmi_on)
     sta NES_PPU_CTRL
+    rts
+
+; One reset's NET_KEEP bytes of net_resets, from Y, in hex, in fours with
+; a blank between. Y past them.
+MENU_RESETS_AT = $2000 + 26 * 32 + 3
+menu_reset_row:
+    ldx #NET_KEEP
+@byte:
+    lda net_resets,y
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    jsr menu_hex
+    lda net_resets,y
+    and #$0F
+    jsr menu_hex
+    iny
+    dex
+    beq @done
+    txa
+    and #$03
+    bne @byte
+    lda #TILE_BLANK
+    sta NES_PPU_DATA
+    bne @byte
+    .assert TILE_BLANK <> 0, error
+@done:
+    rts
+
+; A 0 to F, as its digit's tile.
+menu_hex:
+    cmp #10
+    bcc :+
+    adc #'A' - '0' - 10 - 1     ; the carry set
+:
+    adc #'0'
+    sta NES_PPU_DATA
     rts
 
 ; A screen's lines, as screen_text makes them, from menu_ptr to its 0.

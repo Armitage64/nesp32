@@ -192,7 +192,9 @@ the last session was given up, if it was: LAST: GAMES DIFFERED (the
 digests), OTHER STOPPED (`SILENT_FRAMES` with no tick) or OTHER LEFT (the
 nesp32 says so). Each console keeps it in the save RAM (`net_why`, with
 the tick), and a session's start clears it: a console that stops on its
-own keeps none. It ends with a reset, by a session or not,
+own keeps none. Below that, in hex, is what the last two resets found
+in the RAM before the game's reset cleared it (`net_resets`, To do 3). It
+ends with a reset, by a session or not,
 so it uses the game's RAM: $0500 on (not $0300, where the NMI saves the
 registers) and the sprites' page at $0200. It turns off the MMC3's IRQ,
 which splits the title's screen, and turns on the save RAM's writes, for
@@ -593,9 +595,20 @@ In order. Each step is tested in the simulation before the next.
    either both gave up at a check of the digests and the black one's
    reset went no further, or the black one stopped and its nesp32 told
    the other. Neither is seen in the simulation, nor a reset after a
-   drop going wrong (forced at 15 places in a game). The menu now says
-   why each gave up (above); after the next, both consoles' NETWORK GAME
-   tells which. Next: a
+   drop going wrong (forced at 15 places in a game). The menu then said
+   why each gave up (above), and after the next the black one (the host)
+   said OTHER STOPPED and the other nothing: the joining console went to
+   the title by no drop of the session's, a reset (its own, or a crash
+   into the reset), and the host gave up 4 seconds later and its own
+   reset after the drop went no further. In the simulation both of those
+   go as they should (`test_a_reset_in_play_is_kept_for_the_menu`). So
+   the menu's first screen now also shows, in hex on rows 26 and 27,
+   what the last two resets found before the game's reset cleared the
+   RAM (`net_reset_keep`, `net_resets`): the stack pointer, net_mode,
+   net_tick, net_silent, TASK_BUSY_FLAG, net_nmi_busy, the two banks'
+   shadows and the stack's top four bytes. A console's Reset keeps the
+   RAM, and its power does not: so the hung one is reset by its button.
+   Next: a
    whole game again, the title's choice, the samples against the line at
    14, how the lags feel against a game on one console, and the save's
    time across the Internet. The copy is at the link's rate; PEER's RATE

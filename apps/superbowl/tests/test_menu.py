@@ -503,3 +503,35 @@ def test_a_session_given_up_says_why(net_console):
         assert at_title_soon(table, console, frames=300)
     open_menu(table, 0)
     assert screen_row(table.consoles[0], WHY_ROW).strip() == "LAST: GAMES DIFFERED"
+
+
+RESETS_ROW = 26                 # what the last reset found, and the one before (net_resets)
+NET_KEEP = 12
+
+
+def test_a_reset_in_play_is_kept_for_the_menu(net_console):
+    """A console reset in play by no drop of the session's (on hardware,
+    November 2026, one went to the title so, and the other then hung): what
+    its RAM held is kept through the reset, and NETWORK GAME's first screen
+    shows it, the stack pointer and the session's state first."""
+    table = Table(net_console)
+    table.start()
+    table.to_game()
+    table.play(100, moves(5))
+    console = table.consoles[1]
+    sp = console.mpu.sp
+    tick, stack = sram(console, "net_tick"), bytes(console.ram[0x101 + sp + i] for i in range(4))
+    reset_button(console)
+    console.mpu.sp = (sp - 3) & 0xFF           # the reset's three, with nothing written
+    table.run(INTRO_FRAMES)
+    table.run(3, pads=(0, PAD_START))
+    table.run(TITLE_FRAMES)
+    assert console.byte("net_mode") == 0
+    assert sram(console, "net_why") == 0      # no drop of the session's
+    open_menu(table, 1)
+    kept = bytes.fromhex(screen_row(console, RESETS_ROW).replace(" ", ""))
+    assert len(kept) == NET_KEEP
+    assert kept[0] == sp and kept[1] == IN_SESSION and kept[2] == tick
+    assert kept[8:] == stack
+    before = screen_row(console, RESETS_ROW + 1).replace(" ", "")
+    assert len(before) == 2 * NET_KEEP        # the session's start's own

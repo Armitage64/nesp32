@@ -29,6 +29,7 @@
 ;   $6EFE-$6F1D   for the length of an NMI: the stack that its exchange goes
 ;                 over, and the zero page it works in (net_nmi_read)
 ;   $6F1E-$6FAB   the library's frames, a reply and a request
+;   $6FAC-$6FC3   what the last two resets found (net_resets)
 ;
 ; The menu has the console only at the title and starts it again when it
 ; is done, by a session or not: so it keeps its own memory in the
@@ -196,6 +197,16 @@ nesp_rx         = net_stack_copy + STACK_KEEP + 8
 nesp_tx         = nesp_rx + NESP_RX_MASK + 1 + 7
 NESP_FRAMES_END = nesp_tx + NESP_TX_MAX + 7
 .assert NESP_FRAMES_END <= SAVE_GAP_END, error, "the library's frames run out of the gap"
+
+; What the last two resets found, before the game's reset cleared the RAM
+; (net_reset_keep, net/net.inc), the last first, NET_KEEP bytes each: the
+; stack pointer as it was, net_mode, net_tick, net_silent, TASK_BUSY_FLAG,
+; net_nmi_busy, SOFT_8000_BANK, SOFT_A000_BANK, and the stack's top four
+; bytes. Shown on the menu's first screen, for a console that stopped or
+; was reset in a session on a real console: its Reset keeps the RAM.
+NET_KEEP        = 12
+net_resets      = NESP_FRAMES_END
+.assert net_resets + NET_KEEP * 2 <= SAVE_GAP_END, error, "the resets kept run out of the gap"
 
 NET_MENU_ON     = $80           ; in net_menu
 NET_MENU_FIRST  = $C0

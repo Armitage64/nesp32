@@ -17,6 +17,7 @@ from wire import ms
 GAME_BANKS = 30                 # the game's switchable banks; 30 and 31 are the netplay's
 MMC3_DATA = 0x8001
 FIXED_HOOKS = 0xFF80            # the netplay's hooks in the fixed bank (net/cart.inc)
+RESET_HOOK = range(0xC000, 0xC018)  # the reset's start, which puts the netplay's bank in (net_reset_keep)
 # And its quicker routines' banks (net/flicker.inc, net/coll.inc), which
 # their ways in and out, in bank 22's empty bytes, put in at $A000, and the
 # game's own NMI puts back from the game's shadow if it comes meanwhile.
@@ -51,7 +52,7 @@ def game_banks(table):
             if address & 0xE001 == MMC3_DATA and console.bank_select & 7 in (6, 7):
                 # py65 has taken the opcode, not yet the operand.
                 at = console.mpu.pc - 1
-                ours = at >= FIXED_HOOKS or value in FAST_BANKS or (
+                ours = at >= FIXED_HOOKS or at in RESET_HOOK or value in FAST_BANKS or (
                     at < 0xC000 and GAME_BANKS <= console.bus.bank_at(at) < GAME_BANKS + 2)
                 if not ours:
                     picked.add(value)

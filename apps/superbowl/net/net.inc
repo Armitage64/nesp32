@@ -101,6 +101,56 @@ net_sram_back:
 
 ; --- the reset ------------------------------------------------------------------
 
+; The very first of the game's reset (RESET_START), with this bank put in
+; by it and the stack as the reset found it, but for the reset's 3 bytes
+; and this call's 2: what the reset is to clear, kept (net_resets). On a
+; real console, a session that stopped is told apart by it: a console
+; that went to the title by no drop of the session's, or one that hung,
+; and was then reset by its button, which keeps the RAM. Then the game's
+; write to $A001, and its zero page counter for the clear of the RAM.
+; OUT: X = $FF, for the stack; A, Y = 0.
+net_reset_keep:
+    lda #MMC3_SRAM_WRITE
+    sta MMC3_PRG_RAM
+    ldx #NET_KEEP - 1
+:
+    lda net_resets,x
+    sta net_resets+NET_KEEP,x
+    dex
+    bpl :-
+    tsx
+    txa
+    clc
+    adc #5
+    sta net_resets
+    tax
+    lda net_mode
+    sta net_resets+1
+    lda net_tick
+    sta net_resets+2
+    lda net_silent
+    sta net_resets+3
+    lda TASK_BUSY_FLAG
+    sta net_resets+4
+    lda net_nmi_busy
+    sta net_resets+5
+    lda SOFT_8000_BANK
+    sta net_resets+6
+    lda SOFT_A000_BANK
+    sta net_resets+7
+    .repeat 4, i
+    lda $0101+i,x
+    sta net_resets+8+i
+    .endrepeat
+    lda #MMC3_SRAM_OFF          ; the game's
+    sta MMC3_PRG_RAM
+    lda #$00
+    sta $00
+    sta $01
+    tay
+    ldx #$FF
+    rts
+
 ; From the game's reset, its RAM cleared and before its NMI is on, in place
 ; of its writes to PPUADDR there, which come at the end (net/cart.inc).
 ; OUT0 to mark, and into a session if net_start_session asked for one.
