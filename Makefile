@@ -15,6 +15,11 @@
 #                   cartridge and puts it there to be downloaded. The web
 #                   site itself has the latest release's (docs/RELEASING.md).
 #                   make web-serve serves it at http://localhost:8032
+#   make roms       roms/: the ROMs that are not on the cartridge, each game
+#                   whose BPS patch the web site has (PATCHES in
+#                   tools/gen_web.py), built by its app from the player's
+#                   own copy of the game, apps/<app>/baserom.nes, where it
+#                   needs one. Some: make roms GAMES="contra drmario"
 #   make test       tests/, on every core
 #   make test-apps  each program's and sample's own tests; test-all, both
 #
@@ -37,7 +42,7 @@ HOST_HEADERS := $(CORE)/include/nesp_core.h $(wildcard $(SERVICES)/include/*.h) 
 
 ROM := $(BUILD)/setup.nes
 
-.PHONY: all proto host rom timeout-rom verify cart verify-cart web web-serve test test-apps test-all clean FORCE
+.PHONY: all proto host rom timeout-rom verify cart verify-cart web web-serve roms test test-apps test-all clean FORCE
 
 all: proto host rom
 
@@ -187,6 +192,13 @@ web: $(CART)
 
 web-serve: web
 	$(PYTHON) -m http.server -d $(BUILD)/web -b localhost 8032
+
+# --- the games not on the cartridge -------------------------------------------
+
+ROMS ?= roms
+
+roms:
+	$(PYTHON) tools/build_roms.py $(ROMS) $(GAMES)
 
 FORCE:
 
