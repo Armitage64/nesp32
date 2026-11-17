@@ -16,7 +16,10 @@ standings and the playoffs), the Pro Bowl and TEAM DATA, with the two
 consoles' saves alike after each. The menu (Select at the title) hosts and
 joins a game by a room's code or an address, and makes the two consoles'
 saves the same, player 1's copied to player 2's when player 2 says yes,
-all in the simulation. Nothing has been tried on hardware. "To do", at the
+all in the simulation. On hardware (November 2026, two consoles): the save's
+copy and the season kept across a power-off work; the top of the screen
+broke up in play and the music slowed with the lags, both put right since
+in the simulation and not yet tried again ("What has been learned"). "To do", at the
 end, is where to pick it up.
 
 **The game is not in this repository.** Whoever builds puts a copy of
@@ -262,6 +265,8 @@ into a session that plays the same game on both; the same saves, and
 different ones, with player 2's YES (its save becomes player 1's, and the
 session is one game) and its NO. `tests/test_fast.py`: the netplay ROM's
 quicker routines against `tsb_net_slow.nes` ("Quicker routines").
+`tests/test_frame.py`: in a session's play, the screen's splits taken on
+time and the music in every NMI.
 
 `tests/test_game.py`: a preseason game, MAN VS MAN, played to the fourth
 quarter's whistle, its statistics, and A back to the main menu; a timeout
@@ -438,6 +443,28 @@ wherever a frame ends, and a quicker routine makes a different game.
   menu and crosses the link: frames after it took a little more or less
   time each run, which let the menu's NMI bug pass some runs and fail
   others. The other games' tests still make their rooms at random.
+- **The exchange must be over before the screen's first split** (seen on
+  hardware, November 2026: the top quarter of the screen broke up in play
+  and in many scenes, the fans on the sidelines among them). The game
+  splits the screen with the MMC3's IRQ, the first some 5,000 cycles into
+  the frame in play, near line 24; the exchange holds the IRQ off for
+  some 2,600 cycles, and came after the sound engine, from some 3,300. In
+  the simulation 15% of the splits were taken a line or more late, by up
+  to 21 lines. Now the read and the exchange come before the sound
+  (`net_sound_hook`, in place of the NMI's CLI and call of the sound
+  engine) and end some 4,300 cycles in; and the digest, some 5,000
+  cycles once in 256 ticks, is taken with the IRQ on, leaving out the two
+  bytes the IRQ writes ($49-$4A). No split late in 1,500 frames
+  (`tests/test_frame.py`).
+- **The music runs in every NMI** (seen on hardware too: it slowed down
+  with the lags). The game's NMI runs the sound engine whenever its
+  scheduler is not in the middle of a switch, a task at work or not; a
+  session's lag ran only the splits. Now it runs the music too
+  (`net_lag_sound`), from the fixed bank: the sound engine changes the
+  bank at $A000, and called from the netplay's bank it came back into
+  another (the game's reset, which counts its save's checksum with the
+  NMI on, hung on it). The game's own busy NMI still has none, as in the
+  original: some 0.7% of a session's frames.
 - **A test's ticks are counted from `Table.begun()`**, which now clears
   what was traced before it: one console's session may begin some frames
   before the other's (player 2 copying a save), and ticks taken before it
@@ -472,7 +499,11 @@ In order. Each step is tested in the simulation before the next.
    (`PLAYER_NEARBY_CHECK`), the music, or the players' movement if room
    can be found for it. Each against `tsb_net_slow.nes` in
    `tests/test_fast.py`, then `make bench` again.
-2. **For players**: `make bps` and `dist/tsb_net.bps`, `tests/test_patch.py`,
+2. **For players**: the netplay ROM named `superbowl.nes`, not
+   `tsb_net.nes`, so that it says what it is (and its `_slow` twin, its
+   `.dbg` and `.map`, and the patch to match: the Makefile, the README and
+   `tests/conftest.py` and `test_fast.py` name it today). Then `make bps`
+   and the patch in `dist/`, `tests/test_patch.py`,
    the hello's version, and every document that lists the games (the
    `nes-netplay-port` skill's "Shipping a change"), with `TSBO` in
    `VERSIONS` (`host/peer_player.py`), which `tests/test_peer_player.py`
@@ -483,12 +514,14 @@ In order. Each step is tested in the simulation before the next.
    (its SAVE answers `NO_OP`; the menu now gives the session up after
    `SAVE_TRIES` instead).
 3. **Hardware**: two consoles and two nesp32s, by a room's code, each
-   nesp32 flashed with this branch's firmware. Watch the screen's splits
-   while an exchange holds the IRQ off (the play-call screen has them),
-   and the samples against the line at 14. And the save: the dialogue on
-   both screens, its time across the Internet (player 1's two seconds of
-   SAVE_PUT, player 2's second of SAVE_GET), and that a copied save is the
-   one the game then plays. The copy is at the link's rate; PEER's RATE
+   nesp32 flashed with this branch's firmware. Tried in November 2026 (a
+   MiSTer; the N8 clone multicart showed a gray screen, which may be its
+   SD card's loading, the ROM's 512 KB, or its battery's NES 2.0 header):
+   the save's dialogue, its copy and a season kept work; the screen's
+   splits broke up and the music slowed, put right since in the
+   simulation. Next: those two again, the samples against the line at
+   14, how the lags feel against a game on one console, and the save's
+   time across the Internet. The copy is at the link's rate; PEER's RATE
    could make it some twice as fast.
 4. **River City Ransom's menu** is the same as this one's but for the
    save: check whether its frames can run past an NMI, and whether its

@@ -15,7 +15,9 @@
 ;
 ;   net_nmi_check   the NMI's first test: the menu's, a lag, a stall's
 ;                   NMI after the one that wrote to the PPU, or the game's
-;   net_read_hook   the NMI's read of the controllers (net_read)
+;   net_sound_hook  the NMI's call of the sound engine, with the read of the
+;                   controllers before it (net_nmi_read)
+;   net_read_hook   the NMI's read of the controllers: on into the tasks or not
 ;   net_title_press the title's test for Start, which takes Select to the
 ;                   menu
 ;   net_intro       the intro's first wait, which a reset of the netplay's
@@ -35,6 +37,7 @@ RESET_VECTOR    = $FFFC
 ; The netplay's 8 KB banks, by their place in the file.
 NET_BANK        = 30            ; the session and the library, at $A000
 MENU_BANK       = 31            ; the menu, at $8000 (net_menu_nmi)
+SOUND_BANK      = $1B           ; the sound engine's, at $8000 in the NMI
 
 HAVE_FREE_31_FF80 = 1
 
@@ -65,12 +68,35 @@ net_bank_in:
     sta MMC3_DATA
     rts
 
-; In place of the NMI's read of the controllers (READ_JOYPAD_START): a tick
-; goes on into the game's tasks; a stall leaves the NMI.
-net_read_hook:
+; In place of the NMI's CLI and call of the sound engine: the read of the
+; controllers first (net_nmi_read), and in a session its exchange, which
+; holds the IRQ off, done before the screen's first split comes (some
+; 5,000 cycles into the frame, in play); then the same. The netplay's bank
+; stays at $A000, as the game's tasks find it after a tick's NMI.
+net_sound_hook:
     jsr net_bank_in
     jsr net_nmi_read
-    bcs @stall
+    lda #$00
+    rol a
+    sta net_stall_now
+    cli
+    jmp SOUND_ENGINE_START
+
+; A lag's music (net_nmi), with the sound engine's bank in at $8000: called
+; from here, as the sound engine changes the bank at $A000, and then the
+; end of the game's NMI.
+net_lag_sound:
+    cli
+    jsr SOUND_ENGINE_START
+    lda NMI_BANK_SELECT
+    sta SOFT_BANK_SELECT
+    jmp RETURN_FROM_NMI_ENABLE_INT_RESTORE_BANKS
+
+; In place of the NMI's read of the controllers (READ_JOYPAD_START), after
+; the sound: a tick goes on into the game's tasks; a stall leaves the NMI.
+net_read_hook:
+    lda net_stall_now
+    bne @stall
     jmp NMI_UPDATE_RANDOM_NUMS
 @stall:
     jmp RETURN_FROM_NMI_ENABLE_INT_RESTORE_BANKS

@@ -49,17 +49,24 @@
 +.else
 @@ -128592,0 +128628 @@
 +.endif
-@@ -128767,0 +128804,4 @@
+@@ -128759,0 +128796,4 @@
++.ifdef NETPLAY
++    jsr net_sound_hook                   ; the read first, then the same (net/cart.inc)
++    nop
++.else
+@@ -128761,0 +128802 @@
++.endif
+@@ -128767,0 +128809,4 @@
 +.ifdef NETPLAY
 +    jmp net_read_hook                    ; the same, or a session's tick or stall (net/cart.inc)
 +    .res 3, $EA
 +.else
-@@ -128770,0 +128811 @@
+@@ -128770,0 +128816 @@
 +.endif
-@@ -130530,0 +130572,4 @@
+@@ -130530,0 +130577,4 @@
 +.ifdef NETPLAY
 +    NET_FILL_D05F                        ; in place of L_D05F, which nothing calls (net/cart.inc)
 +    .res $D081 - $D05F - (* - net_title_press), $FF
 +.else
-@@ -130549,0 +130595 @@
+@@ -130549,0 +130600 @@
 +.endif

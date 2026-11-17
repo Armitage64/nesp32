@@ -268,14 +268,23 @@ net_nmi:
     bcc @idle
 @lag:
     ; As the game does when it finds the scheduler busy: the scroll and the
-    ; screen's splits. And the game's banks back, from its shadows, as its
-    ; NMI's end puts them: the task goes on where it was.
+    ; screen's splits. And the music, as the game's NMI does when a task is
+    ; at work and not in the scheduler, which is most of the time: in every
+    ; NMI, or it slows down by the lags. Then the game's banks back, from
+    ; its shadows, as its NMI's end puts them: the task goes on where it was.
     lda #$00
     sta CUR_IRQ_INDEX
     ldy CURR_Y_SCROLL
     lda CURR_Y_SCROLL+1
     jsr UPDATE_IRQ_CHR_BANKS_SCROLL_LOC
-    jmp RETURN_FROM_NMI_ENABLE_INT_RESTORE_BANKS
+    lda SOFT_BANK_SELECT
+    sta NMI_BANK_SELECT
+    lda SOFT_MODE_8000
+    ora #$06
+    sta MMC3_SELECT
+    lda #SOUND_BANK
+    sta MMC3_DATA
+    jmp net_lag_sound           ; from the fixed bank: the engine changes the bank at $A000
 @reset:
     cpy #>WAIT_NUM_FRAMES_RESET
     bne @lag
@@ -515,7 +524,12 @@ net_session:
     lda net_tick
     cmp #CHECK_AT
     bne :+
-    jsr net_digest              ; for both consoles to send when they come to CHECK_TICK
+    ; For both consoles to send when they come to CHECK_TICK. Some 5,000
+    ; cycles: with the IRQ on, so as not to hold the screen's splits back
+    ; (the digest leaves out what the IRQ writes).
+    cli
+    jsr net_digest
+    sei
     sta net_check
 :
     lda net_tick
@@ -616,19 +630,25 @@ net_store:
     rts
 
 ; A digest of the game into A: of the zero page the game keeps, less the
-; netplay's own ($3E-$45) and the sound engine's ($F0-$FF), which keeps the
-; frames' time, and of the sprites. Both
-; consoles work it out at the start of the same tick, CHECK_AT.
+; netplay's own ($3E-$45), the sound engine's ($F0-$FF), which keeps the
+; frames' time, and the IRQ's ($49-$4A), which depend on how far down the
+; screen it has got, and of the sprites. Both consoles work it out at the
+; start of the same tick, CHECK_AT, with the IRQ on.
 ; Each byte goes in with A rotated, its bits round and not through the
 ; carry, and EORed: a step that loses nothing, so that one byte that
 ; differs always makes the digest differ.
 DIGEST_FIRST    = LOCAL_8 + 1    ; past the netplay's own zero page
+.assert IRQ_NAMETABLE = IRQ_Y_SCROLL + 1 && IRQ_Y_SCROLL > DIGEST_FIRST, error
 DIGEST_END      = $F0            ; the sound engine's from here on
 
 net_digest:
     lda #$00
     ldx #DIGEST_FIRST
 @zp:
+    cpx #IRQ_Y_SCROLL
+    bne :+
+    ldx #IRQ_NAMETABLE + 1      ; the IRQ's own, which it writes at each split
+:
     cmp #$80                    ; bit 7 into carry: a rotate of A alone
     rol a
     eor $00,x

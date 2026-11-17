@@ -131,6 +131,7 @@ net_mode        = $067D         ; $80 in a session
 net_menu        = $067E         ; bit 7: the NMI is the menu's; bit 6 too: its first
 net_owed        = $067F         ; not 00: the PPU has not had the last tick's writes
 net_skip        = $067C         ; NET_SKIP_*: where the intro goes (net_intro, net/cart.inc)
+net_stall_now   = $067B         ; this NMI's read: 01 a stall, 00 a tick (net_sound_hook)
 
 ; Where the game goes after a reset of the netplay's own, which sets
 ; net_skip_mark before it and net_reset takes it into net_skip: past the
