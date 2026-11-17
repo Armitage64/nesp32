@@ -266,7 +266,7 @@ different ones, with player 2's YES (its save becomes player 1's, and the
 session is one game) and its NO. `tests/test_fast.py`: the netplay ROM's
 quicker routines against `tsb_net_slow.nes` ("Quicker routines").
 `tests/test_frame.py`: in a session's play, the screen's splits taken on
-time and the music in every NMI.
+time, with replies misheard too, and the music in every NMI.
 
 `tests/test_game.py`: a preseason game, MAN VS MAN, played to the fourth
 quarter's whistle, its statistics, and A back to the main menu; a timeout
@@ -456,6 +456,18 @@ wherever a frame ends, and a quicker routine makes a different game.
   cycles once in 256 ticks, is taken with the IRQ on, leaving out the two
   bytes the IRQ writes ($49-$4A). No split late in 1,500 frames
   (`tests/test_frame.py`).
+- **A misheard reply is asked again only if there is room before the next
+  split** (seen on hardware, November 2026: with the splits fixed, the top
+  of the screen still broke up now and again, with the voice's samples).
+  A sample's fetches can spoil a reply, and `net_ask` asked again at
+  once: a second exchange, which ended some 6,800 cycles in where the
+  first split is at line 32 (some 6,000 cycles), as it is in most of
+  play. In the simulation, with one reply in seven made to fail its
+  check, 20 splits in 641 were late, by up to 21 lines. Now it asks again
+  in the same NMI only if the next split is at line 64 or below, or there
+  is none, and otherwise at the next NMI. No split late; the ticks taken
+  went from 876 to 860 in 300 frames at that rate of mishearing (hardware
+  has been some 0.6%). `tests/test_frame.py`.
 - **The music runs in every NMI** (seen on hardware too: it slowed down
   with the lags). The game's NMI runs the sound engine whenever its
   scheduler is not in the middle of a switch, a task at work or not; a
@@ -518,8 +530,10 @@ In order. Each step is tested in the simulation before the next.
    MiSTer; the N8 clone multicart showed a gray screen, which may be its
    SD card's loading, the ROM's 512 KB, or its battery's NES 2.0 header):
    the save's dialogue, its copy and a season kept work; the screen's
-   splits broke up and the music slowed, put right since in the
-   simulation. Next: those two again, the samples against the line at
+   splits broke up and the music slowed. Then the music was right and the
+   splits broke up only now and again, with the samples: the misheard
+   reply's second exchange, put right since in the simulation. Next: the
+   splits again, the samples against the line at
    14, how the lags feel against a game on one console, and the save's
    time across the Internet. The copy is at the link's rate; PEER's RATE
    could make it some twice as fast.

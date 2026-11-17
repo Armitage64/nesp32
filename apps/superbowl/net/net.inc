@@ -842,11 +842,31 @@ net_exchange_now:
 ; A short request of count A, whose reply is to have Y bytes of data, and
 ; the same once more if no reply to it is heard: a sample's fetch takes
 ; cycles from the serial routines now and again, and a reply is misheard.
+; Once more only if it is over before the screen's next split: the two hold
+; the IRQ off for some 6,500 cycles from the vblank's, and the first split
+; is at line 32 in most of play (some 6,000 cycles). If not, it is asked
+; again at the next NMI, as when the second is misheard too.
 ; Carry and A as nesp_short leaves them.
+; A split's IRQ comes some 2,250 + 114 * (line + 1) cycles from the
+; vblank's. The exchange starts by 2,850 and takes up to 3,000; with a
+; second, 8,850: line 58. Some to spare.
+NET_ASK_AGAIN_LINE = 64
+
 net_ask:
     pha
     jsr nesp_short
     bcc @heard
+    ldx CUR_IRQ_INDEX
+    inx
+    beq @again                  ; $FF: no split left in this frame
+    lda CURR_IRQ_COUNTER-6,x    ; the next split's line, as the NMI set it
+    cmp #NET_ASK_AGAIN_LINE
+    bcs @again
+    pla
+    sec                         ; not heard
+    rts
+
+@again:
     pla
     ldy nesp_count              ; as it was asked
     jmp nesp_short
