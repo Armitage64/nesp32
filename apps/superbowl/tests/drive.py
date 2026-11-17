@@ -7,7 +7,7 @@ PAD_UP, PAD_DOWN, PAD_LEFT, PAD_RIGHT = 0x08, 0x04, 0x02, 0x01
 
 # The font's tiles as text: its space and blank as spaces, and the menus'
 # top and bottom borders, which the menu uses for its marks, as dashes.
-TILES = {0x00: " ", 0x20: " ", 0x2E: ".", 0x0D: "-", 0x0F: "-"}
+TILES = {0x00: " ", 0x20: " ", 0x2E: ".", 0x3A: ":", 0x0D: "-", 0x0F: "-"}
 TILES.update((code, chr(code)) for code in range(ord("A"), ord("Z") + 1))
 TILES.update((code, chr(code)) for code in range(ord("0"), ord("9") + 1))
 

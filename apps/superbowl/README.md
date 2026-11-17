@@ -187,7 +187,12 @@ Start or A on NETWORK GAME opens the menu (`net_title_pick`); Start on
 LOCAL GAME flashes it, where the game flashed START GAME. The title's loop
 waits on, and the NMI is the menu's (`net_menu_nmi`), which the game's
 tasks do not run in. Its question before a save is copied is CONTINUE:
-the game's font has no question mark. It ends with a reset, by a session or not,
+the game's font has no question mark. Its first screen also says why
+the last session was given up, if it was: LAST: GAMES DIFFERED (the
+digests), OTHER STOPPED (`SILENT_FRAMES` with no tick) or OTHER LEFT (the
+nesp32 says so). Each console keeps it in the save RAM (`net_why`, with
+the tick), and a session's start clears it: a console that stops on its
+own keeps none. It ends with a reset, by a session or not,
 so it uses the game's RAM: $0500 on (not $0300, where the NMI saves the
 registers) and the sprites' page at $0200. It turns off the MMC3's IRQ,
 which splits the title's screen, and turns on the save RAM's writes, for
@@ -581,7 +586,16 @@ In order. Each step is tested in the simulation before the next.
    splits and the music were right and the game played well, but both
    consoles stopped in the second quarter, on an interception: an NMI in
    another's own work ("What has been learned"), put right since in the
-   simulation, with LOCAL GAME and NETWORK GAME at the title. Next: a
+   simulation, with LOCAL GAME and NETWORK GAME at the title. Then twice
+   more (the third quarter, then the first): one console's screen black
+   at once, silent the first time and a tone held the second, and the
+   other at the title at once. That is not `SILENT_FRAMES` (4 seconds):
+   either both gave up at a check of the digests and the black one's
+   reset went no further, or the black one stopped and its nesp32 told
+   the other. Neither is seen in the simulation, nor a reset after a
+   drop going wrong (forced at 15 places in a game). The menu now says
+   why each gave up (above); after the next, both consoles' NETWORK GAME
+   tells which. Next: a
    whole game again, the title's choice, the samples against the line at
    14, how the lags feel against a game on one console, and the save's
    time across the Internet. The copy is at the link's rate; PEER's RATE

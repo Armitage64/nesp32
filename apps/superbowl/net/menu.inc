@@ -1522,11 +1522,42 @@ menu_show:
     sta NES_PPU_DATA
     dex
     bne @attributes
+    jsr menu_strings
+    ; On the first screen, why the last session was given up, if it was.
+    lda menu_mode
+    bne @shown
+    .assert MODE_MAIN = 0, error
+    lda net_why
+    cmp #NET_WHYS
+    bcs @shown
+    eor #NET_WHY_CHECK
+    cmp net_why+1
+    bne @shown                  ; the save RAM as it came, or none kept
+    ldx net_why
+    beq @shown
+    lda menu_whys_lo,x
+    sta menu_ptr
+    lda menu_whys_hi,x
+    sta menu_ptr+1
+    jsr menu_strings
+
+@shown:
+    ; The scroll back, for the next NMI, which turns the picture on.
+    lda NES_PPU_STATUS
+    lda #$00
+    sta NES_PPU_SCROLL
+    sta NES_PPU_SCROLL
+    lda #MENU_PPUCTRL_QUIET    ; on at the frame's end (menu_nmi_on)
+    sta NES_PPU_CTRL
+    rts
+
+; A screen's lines, as screen_text makes them, from menu_ptr to its 0.
+menu_strings:
     ldy #$00
 
 @string:
     lda (menu_ptr),y
-    beq @shown
+    beq @done
     sta NES_PPU_ADDR
     iny
     lda (menu_ptr),y
@@ -1545,15 +1576,16 @@ menu_show:
     bne @tile
     beq @string
 
-@shown:
-    ; The scroll back, for the next NMI, which turns the picture on.
-    lda NES_PPU_STATUS
-    lda #$00
-    sta NES_PPU_SCROLL
-    sta NES_PPU_SCROLL
-    lda #MENU_PPUCTRL_QUIET    ; on at the frame's end (menu_nmi_on)
-    sta NES_PPU_CTRL
+@done:
     rts
+
+; Why the last session was given up (net_why, net/net_ram.inc), on the
+; first screen: by NET_WHY_*, from 1.
+menu_whys_lo:
+    .byte 0, <menu_why_differed, <menu_why_stopped, <menu_why_left
+menu_whys_hi:
+    .byte 0, >menu_why_differed, >menu_why_stopped, >menu_why_left
+.assert NET_WHY_DIFFERED = 1 && NET_WHY_STOPPED = 2 && NET_WHY_LEFT = 3 && NET_WHYS = 4, error
 
 ; The menu's palettes, the background's first and the sprites' first:
 ; white on black, and the arrow white. With the picture off. And the
@@ -1610,7 +1642,7 @@ menu_tile:
     beq @own
     cmp #'0'
     bcc @blank
-    cmp #'9' + 1
+    cmp #':' + 1                ; the digits, and the colon after them
     bcc @own
     cmp #'A'
     bcc @blank
@@ -1654,6 +1686,16 @@ SCREEN_SAVE      = 5            ; the saves compared
 SCREEN_ASK       = 6            ; they differ: player 2's
 SCREEN_WAIT      = 7            ; and player 1's
 SCREEN_COPY      = 8            ; player 2's, as its save is replaced
+
+menu_why_differed:
+    screen_text 22, 6, "LAST: GAMES DIFFERED"
+    .byte 0
+menu_why_stopped:
+    screen_text 22, 6, "LAST: OTHER STOPPED"
+    .byte 0
+menu_why_left:
+    screen_text 22, 6, "LAST: OTHER LEFT"
+    .byte 0
 
 menu_screen_main:
     screen_text 4, 10, "NETWORK GAME"

@@ -469,3 +469,37 @@ def test_the_same_saves_are_not_asked_about(net_console):
     table = Table(net_console)
     connect_with_saves(table)
     in_session(table)
+
+
+# --- a session given up ----------------------------------------------------------------
+
+CHECK_AT = 0xFF - 8             # the tick each console takes its digest at (net_ram.inc)
+WHY_DIFFERED, WHY_CHECK = 1, 0x5A
+WHY_ROW = 22
+
+
+def test_a_session_given_up_says_why(net_console):
+    """Their games made to differ, in play: at the next check of the
+    digests both consoles give the session up and come to the title, and
+    each keeps why, which NETWORK GAME's first screen shows. (On hardware,
+    November 2026, one console went black at such a time and the other to
+    the title: this is for telling, after, which stopped first.)"""
+    table = Table(net_console)
+    table.start()
+    table.to_game()
+    for console in table.consoles:
+        assert sram(console, "net_why") == 0      # a session's start clears it
+    at = (table.ticks(0) // 256 + 1) * 256 + CHECK_AT - 2
+    table.at_tick(at, lambda console: console.ram.__setitem__(0x46, console.ram[0x46] ^ 1), sides=(0,))
+    play = moves(5)
+    for _ in range(60):
+        table.play(25, play)
+        if not any(console.byte("net_mode") for console in table.consoles):
+            break
+    for console in table.consoles:
+        assert console.byte("net_mode") == 0
+        assert sram(console, "net_why") == WHY_DIFFERED
+        assert sram(console, "net_why", 1) == WHY_DIFFERED ^ WHY_CHECK
+        assert at_title_soon(table, console, frames=300)
+    open_menu(table, 0)
+    assert screen_row(table.consoles[0], WHY_ROW).strip() == "LAST: GAMES DIFFERED"

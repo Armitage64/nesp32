@@ -133,14 +133,20 @@ net_reset:
     sta net_skip_mark+1
     lda net_boot
     cmp #NET_BOOT_MARK
-    bne @exit
+    bne @no_boot
     lda net_boot+1
     eor net_boot+2
     eor #NET_BOOT_CHECK
     cmp net_boot+3
-    bne @exit
+    beq :+
+@no_boot:
+    jmp @exit
+:
     lda #$00
     sta net_boot
+    sta net_why                 ; no session over, yet
+    lda #NET_WHY_CHECK
+    sta net_why+1
     lda #NET_SKIP_MENU          ; a session begins at the main menu: both
     sta net_skip                ; consoles have shown the intro and the title
     ; The save RAM's scratch the same on both, as the save is (net/menu.inc).
@@ -223,6 +229,20 @@ net_start_session:
     sta net_boot+3
     lda #NET_BOOT_MARK
     sta net_boot
+
+; The session is over, and why (NET_WHY_*), kept for the menu to show
+; (net_why): a console that stops before it comes here keeps none, as a
+; session's start clears it (net_reset).
+net_drop_why:
+    pha
+    lda #MMC3_SRAM_WRITE
+    sta MMC3_PRG_RAM
+    pla
+    sta net_why
+    eor #NET_WHY_CHECK
+    sta net_why+1
+    lda net_tick
+    sta net_why+2
 
 ; The session is over: the other console is gone. Start again as a
 ; console that was reset, at the title (net_skip_mark): or at the main
@@ -581,7 +601,8 @@ net_session:
     lda net_local,x
     cmp net_remote,x
     beq :+
-    jmp net_drop
+    lda #NET_WHY_DIFFERED
+    jmp net_drop_why
 :
     dex
     txa
@@ -638,7 +659,8 @@ net_stall:
     lda net_silent
     cmp #SILENT_FRAMES
     bcc :+
-    jmp net_drop
+    lda #NET_WHY_STOPPED
+    jmp net_drop_why
 :
     sec
     rts
@@ -875,7 +897,8 @@ net_exchange_now:
     jmp net_rate_missed
 
 @drop:
-    jmp net_drop
+    lda #NET_WHY_LEFT
+    jmp net_drop_why
 
 ; A short request of count A, whose reply is to have Y bytes of data, and
 ; the same once more if no reply to it is heard: a sample's fetch takes

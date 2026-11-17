@@ -22,6 +22,7 @@
 ; ($0661-$067F) that the disassembly has no name for and the game was
 ; never seen to write, with one more for the intro (net_skip, $067C). The game's reset clears them, before net_reset
 ; sets them.
+;   $7FE0-$7FE2   why the last session was given up, for the menu (net_why)
 ;   $7FF0-$7FF3   the order to start a session, carried through the reset
 ;   $7FF4-$7FF5   where the game goes after that reset (net_skip_mark)
 ;   $7FFF         net_probe
@@ -150,6 +151,18 @@ NET_BOOT_MARK   = $4E
 NET_BOOT_CHECK  = $B1
 net_skip_mark   = $7FF4         ; and $7FF5: NET_SKIP_*, and its check
 net_probe       = $7FFF         ; flipped and read back: are the writes on?
+
+; Why the last session was given up (net_drop_why), its check (EOR
+; NET_WHY_CHECK), and the tick it was at: shown on the menu's first
+; screen, for a session that stopped on a real console. A session's start
+; makes it none.
+net_why         = $7FE0
+NET_WHY_CHECK   = $5A
+NET_WHY_NONE    = 0
+NET_WHY_DIFFERED = 1            ; the digests differed
+NET_WHY_STOPPED = 2             ; SILENT_FRAMES with no tick
+NET_WHY_LEFT    = 3             ; the nesp32: the other console is gone
+NET_WHYS        = 4
 
 ; The stack the NMI's exchange runs on is the scheduler's idle loop's, 14
 ; bytes at $01F2-$01FF ($01F1 down is the first task's), which the game's
