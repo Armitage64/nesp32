@@ -242,7 +242,7 @@ net_drop:
 
 ; --- the title ------------------------------------------------------------------
 
-; From the menu: LOCAL GAME, or B. The game starts again, at the title.
+; From the menu: B. The game starts again, at the title.
 net_menu_local:
     jmp net_drop
 
@@ -252,7 +252,9 @@ net_menu_local:
 ; the game's TASK_BUSY_FLAG clear, A, X and Y saved.
 net_nmi:
     bit net_menu
-    bmi net_menu_nmi
+    bpl :+
+    jmp net_menu_nmi
+:
     ; A lag unless the NMI came where the main thread waits with nothing
     ; to do: the scheduler's idle loop, where it looks for a task to run,
     ; or the reset's wait for a frame. (At the reset, before there are
@@ -308,6 +310,25 @@ net_nmi:
     tax
     cpx #LAST_TASK_INDEX + TASK_SIZE
     bcc :-
+    ; This NMI's own work, until the tasks or its RTI (net_read_hook): an
+    ; NMI that comes in it gives the registers back and nothing else
+    ; (net_nmi_check). It gives them from NMI_A, X and Y, where this one
+    ; kept the idle loop's: so this one goes back to the loop's start,
+    ; which needs none of them, and not to the middle.
+    lda #$80
+    sta net_nmi_busy
+    tsx
+    lda $0103,x
+    cmp #>CHECK_TASKS
+    bne @owed                   ; the reset's wait
+    lda $0102,x
+    cmp #<CHECK_TASKS
+    bcc @owed
+    cmp #<UPDATE_CURRENT_TASK
+    bcs @owed
+    lda #<CHECK_TASKS
+    sta $0102,x
+@owed:
     lda net_owed
     beq net_stalled             ; the PPU has had the last tick's writes
     lda #$00
@@ -856,12 +877,19 @@ net_ask:
     pha
     jsr nesp_short
     bcc @heard
+    ; Not asked again if none came in the time it waits (nesp_tries run
+    ; out), only if one came misheard: a nesp32 that has not answered in
+    ; 4.15 ms seldom does in the next, and the two waits made this NMI's
+    ; own work some 22,700 cycles of the frame's 29,780.
+    ldx nesp_tries
+    beq @later
     ldx CUR_IRQ_INDEX
     inx
     beq @again                  ; $FF: no split left in this frame
     lda CURR_IRQ_COUNTER-6,x    ; the next split's line, as the NMI set it
     cmp #NET_ASK_AGAIN_LINE
     bcs @again
+@later:
     pla
     sec                         ; not heard
     rts

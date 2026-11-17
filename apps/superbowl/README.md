@@ -13,7 +13,7 @@ main menu through all of the game: a preseason game played to its end in
 each of the six ways to play, the timeouts, the season (TEAM CONTROL, a
 season game for two, a week of the CPU's games skipped through, the
 standings and the playoffs), the Pro Bowl and TEAM DATA, with the two
-consoles' saves alike after each. The menu (Select at the title) hosts and
+consoles' saves alike after each. The menu (NETWORK GAME at the title) hosts and
 joins a game by a room's code or an address, and makes the two consoles'
 saves the same, player 1's copied to player 2's when player 2 says yes,
 all in the simulation. On hardware (November 2026, two consoles): the save's
@@ -176,16 +176,19 @@ plays.
 
 ## The menu
 
-`net/menu.inc` is River City Ransom's lobby (HOST GAME, JOIN GAME by a
-room's code or an address, LOCAL GAME), in bank 31 at $8000 with the
-library at $A000. Select at the title opens it (`net_title_press`): the
-title's task sleeps, and the NMI is the menu's (`net_menu_nmi`), which
+`net/menu.inc` is River City Ransom's lobby (HOST GAME, and JOIN GAME by
+a room's code or an address), in bank 31 at $8000 with the library at
+$A000. The title has LOCAL GAME and NETWORK GAME in place of START GAME
+(`net/title.inc`): its scene's script calls a subscript of ours for the
+two lines, Up, Down and Select move its stars between them through the
+game's PPU buffer, and Start or A on NETWORK GAME opens the menu
+(`net_title_pick`): the title's loop waits on, and the NMI is the menu's (`net_menu_nmi`), which
 the game's tasks do not run in. It ends with a reset, by a session or not,
 so it uses the game's RAM: $0500 on (not $0300, where the NMI saves the
 registers) and the sprites' page at $0200. It turns off the MMC3's IRQ,
 which splits the title's screen, and turns on the save RAM's writes, for
 the library's memory. Its NMI is off while each of its frames is at work
-(below, "The save"). B on its first screen is LOCAL GAME.
+(below, "The save"). B on its first screen goes back to the title.
 
 Its letters are the game's: the font of its menus, CHR bank $20 at $0000,
 has its letters, digits and full stop at their ASCII codes, and the menus'
@@ -194,7 +197,7 @@ being edited. The cursor is the game's menu arrow, tile 0 of bank $0F at
 $1000.
 
 **Past the intro.** The menu leaves by a reset, and a reset plays the
-intro. So a reset of the netplay's own (`net_drop`: LOCAL GAME, B, a
+intro. So a reset of the netplay's own (`net_drop`: the menu's B, a
 session lost, a session's start) leaves a mark in the save RAM
 (`net_skip_mark`), which `net_reset` takes into `net_skip`, in the
 console's RAM, and clears. The intro's first wait for a frame
@@ -468,6 +471,30 @@ wherever a frame ends, and a quicker routine makes a different game.
   is none, and otherwise at the next NMI. No split late; the ticks taken
   went from 876 to 860 in 300 frames at that rate of mishearing (hardware
   has been some 0.6%). `tests/test_frame.py`.
+- **An NMI that comes in another's own work is let be** (seen on
+  hardware, November 2026: both consoles stopped in the second quarter,
+  on an interception, the screen black and a note held). A session's NMI
+  does its own work before the game's tasks: the PPU's writes, the
+  exchange and the music. If that runs past the next vblank, the next NMI
+  comes in the middle of it. That NMI went as a lag: it put the banks back
+  from the game's shadows (`RETURN_FROM_NMI_ENABLE_INT_RESTORE_BANKS`,
+  since the lag's music came in) and returned into the netplay's code
+  with another bank at $A000. In the simulation, an exchange made to take
+  a frame and more crashed the console at the second, running from
+  $0000. The exchange waits up to 4.15 ms for a reply, and asked again
+  after one that did not come: with a nesp32 that did not answer, the
+  NMI's own work was some 22,700 cycles of the frame's 29,780, and a slow
+  frame's PPU writes or the digest would take it past. 720 interceptions
+  forced in the simulation, with and without a nesp32 that went quiet,
+  never crashed: the interception was where it happened, not why. Now
+  the NMI marks its own work (`net_nmi_busy`, until `net_read_hook`), an
+  NMI that comes in it gives back the registers and nothing else
+  (`net_nmi_check`), and the NMI it came in returns to the start of the
+  idle loop, as the registers it kept for the loop are the second's. A
+  reply that does not come is no longer asked for again in the same NMI
+  (one misheard still is). `tests/test_frame.py` stretches an exchange
+  past the vblank once in 37 frames: the session goes on, the same game
+  on both.
 - **The music runs in every NMI** (seen on hardware too: it slowed down
   with the lags). The game's NMI runs the sound engine whenever its
   scheduler is not in the middle of a switch, a task at work or not; a
@@ -532,8 +559,12 @@ In order. Each step is tested in the simulation before the next.
    the save's dialogue, its copy and a season kept work; the screen's
    splits broke up and the music slowed. Then the music was right and the
    splits broke up only now and again, with the samples: the misheard
-   reply's second exchange, put right since in the simulation. Next: the
-   splits again, the samples against the line at
+   reply's second exchange, put right since in the simulation. Then the
+   splits and the music were right and the game played well, but both
+   consoles stopped in the second quarter, on an interception: an NMI in
+   another's own work ("What has been learned"), put right since in the
+   simulation, with LOCAL GAME and NETWORK GAME at the title. Next: a
+   whole game again, the title's choice, the samples against the line at
    14, how the lags feel against a game on one console, and the save's
    time across the Internet. The copy is at the link's rate; PEER's RATE
    could make it some twice as fast.
@@ -562,4 +593,5 @@ In order. Each step is tested in the simulation before the next.
    intro, by a mark in the save RAM that the reset finds (the same mark
    decision 2's session start uses). A power-on or the console's Reset
    clears it, and the intro plays as ever. Done, and B on the menu's
-   first screen goes back to the title too.
+   first screen goes back to the title too. Since November 2026 the menu
+   has no LOCAL GAME: B is the way back, and LOCAL GAME is at the title.

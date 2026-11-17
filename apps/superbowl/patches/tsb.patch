@@ -4,69 +4,85 @@
 +.ifdef NETPLAY
 +.include "net.asm"
 +.endif
-@@ -57307,0 +57311,5 @@
+@@ -21270,0 +21274,5 @@
++.ifdef NETPLAY
++    .byte $FD,<NET_TITLE_SCRIPT,>NET_TITLE_SCRIPT ; LOCAL GAME and NETWORK GAME (net/title.inc)
++    .byte $8A,$47                        ; and the rest of the line as it was, blank
++    .byte $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
++.else
+@@ -21274,0 +21283 @@
++.endif
+@@ -57307,0 +57317,5 @@
 +.ifdef NETPLAY
 +    jsr net_intro                        ; the same, or past the intro (net/cart.inc)
 +    nop
 +    nop
 +.else
-@@ -57309,0 +57318 @@
+@@ -57309,0 +57324 @@
 +.endif
-@@ -57348,0 +57358,4 @@
+@@ -57335,0 +57351,5 @@
 +.ifdef NETPLAY
-+    jsr net_title_press                  ; the same, and Select for the menu (net/cart.inc)
++    jsr net_title_start                  ; the same, LOCAL GAME chosen (net/cart.inc)
++    nop
 +    nop
 +.else
-@@ -57350,0 +57364 @@
+@@ -57337,0 +57358 @@
 +.endif
-@@ -90344,0 +90359,5 @@
+@@ -57348,0 +57370,4 @@
++.ifdef NETPLAY
++    jsr net_title_pick                   ; the same, LOCAL GAME or NETWORK GAME (net/title.inc)
++    nop
++.else
+@@ -57350,0 +57376 @@
++.endif
+@@ -90344,0 +90371,5 @@
 +.ifdef NET_FLICKER
 +    jmp net_flicker                      ; the same, quicker (net/flicker.inc)
 +    nop
 +NET_FLICKER_ORDERS:
 +.else
-@@ -90346,0 +90366 @@
+@@ -90346,0 +90378 @@
 +.endif
-@@ -91292,0 +91313,4 @@
+@@ -91292,0 +91325,4 @@
 +.ifdef NET_COLL
 +    jmp net_coll                         ; the 11 defenders, quicker (net/coll.inc)
 +    nop
 +.else
-@@ -91294,0 +91319 @@
+@@ -91294,0 +91331 @@
 +.endif
-@@ -128457,0 +128483,5 @@
+@@ -128457,0 +128495,5 @@
 +.ifdef NETPLAY
 +    jsr net_bank_in                      ; the netplay's reset, which makes these writes
 +    jsr net_reset                        ; at its end (net/net.inc)
 +    .res 8, $EA
 +.else
-@@ -128468,0 +128499 @@
+@@ -128468,0 +128511 @@
 +.endif
-@@ -128590,0 +128622,4 @@
+@@ -128590,0 +128634,4 @@
 +.ifdef NETPLAY
 +    jmp net_nmi_check                    ; the same, and a session's tick, stall or lag (net/cart.inc)
 +    nop
 +.else
-@@ -128592,0 +128628 @@
+@@ -128592,0 +128640 @@
 +.endif
-@@ -128759,0 +128796,4 @@
+@@ -128759,0 +128808,4 @@
 +.ifdef NETPLAY
 +    jsr net_sound_hook                   ; the read first, then the same (net/cart.inc)
 +    nop
 +.else
-@@ -128761,0 +128802 @@
+@@ -128761,0 +128814 @@
 +.endif
-@@ -128767,0 +128809,4 @@
+@@ -128767,0 +128821,4 @@
 +.ifdef NETPLAY
 +    jmp net_read_hook                    ; the same, or a session's tick or stall (net/cart.inc)
 +    .res 3, $EA
 +.else
-@@ -128770,0 +128816 @@
+@@ -128770,0 +128828 @@
 +.endif
-@@ -130530,0 +130577,4 @@
+@@ -130530,0 +130589,4 @@
 +.ifdef NETPLAY
 +    NET_FILL_D05F                        ; in place of L_D05F, which nothing calls (net/cart.inc)
-+    .res $D081 - $D05F - (* - net_title_press), $FF
++    .res $D081 - $D05F - (* - net_title_pick), $FF
 +.else
-@@ -130549,0 +130600 @@
+@@ -130549,0 +130612 @@
 +.endif

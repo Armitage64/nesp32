@@ -123,3 +123,51 @@ def test_a_reply_misheard_holds_no_split_back(build):
         assert len(console.late) > 400, "the splits were not seen"
         assert not late, "player %d: %d of %d splits a scanline late or more, the worst %d cycles" % (
             side + 1, len(late), len(console.late), max(late))
+
+
+class Late(Console):
+    """A console whose session NMI's exchange takes a frame and more, once
+    in `every` frames, once `late` is set: as one whose nesp32 answered
+    that late would."""
+
+    def __init__(self, *args, every=37, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.late = False
+        self.every = every
+        self.stretched = 0
+        self.nested = 0
+        self.watch("net_exchange_now", Late._long)
+        self.watch(self.labels["RETURN_FROM_NMI_TASK_BUSY"] + 6, Late._back)
+
+    def _long(self):
+        if self.late and len(self.frames) % self.every == 0:
+            self.mpu.processorCycles += 31000      # past the next vblank
+            self.stretched += 1
+
+    def _back(self):
+        self.nested += 1
+
+
+def test_an_nmi_that_runs_into_the_next_is_let_be(build):
+    """On hardware (November 2026) both consoles stopped in a game, the
+    screen black and a note held. An NMI that came while a session's NMI
+    was still at its own work, its exchange having run long, went as a lag:
+    it put the banks back from the game's shadows, and returned into the
+    netplay's code in another bank. Now it gives the registers back and
+    nothing else (net_nmi_check), and the NMI it came in goes back to the
+    start of the idle loop, whose registers it no longer has."""
+    make = functools.partial(Late, str(build / "tsb_net.nes"), str(build / "tsb_net.dbg"))
+    table = Table(make, delay=ms(10))
+    table.start()
+    table.to_game()
+    table.run(60)
+    console = table.consoles[0]
+    console.late = True
+    before = table.ticks(0)
+    table.play(600, moves(7))
+    assert console.stretched >= 10
+    assert console.nested >= 10                 # each of them let be
+    assert table.ticks(0) - before > 400
+    assert table.same_game() > 400
+    for side in range(2):
+        assert table.consoles[side].byte("net_mode") == 0x80, "player %d left the session" % (side + 1)

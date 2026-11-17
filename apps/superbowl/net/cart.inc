@@ -18,8 +18,8 @@
 ;   net_sound_hook  the NMI's call of the sound engine, with the read of the
 ;                   controllers before it (net_nmi_read)
 ;   net_read_hook   the NMI's read of the controllers: on into the tasks or not
-;   net_title_press the title's test for Start, which takes Select to the
-;                   menu
+;   net_title_pick  the title's test for Start or A, which takes NETWORK
+;                   GAME to the menu (net/title.inc)
 ;   net_intro       the intro's first wait, which a reset of the netplay's
 ;                   own goes past (net_skip)
 ;
@@ -39,12 +39,25 @@ NET_BANK        = 30            ; the session and the library, at $A000
 MENU_BANK       = 31            ; the menu, at $8000 (net_menu_nmi)
 SOUND_BANK      = $1B           ; the sound engine's, at $8000 in the NMI
 
+; RETURN_FROM_NMI_TASK_BUSY's LDY NMI_Y, LDX NMI_X, LDA NMI_A and RTI, past
+; its write of the bank select.
+NMI_REGISTERS_BACK = 6
+
 HAVE_FREE_31_FF80 = 1
 
 .macro FILL_FREE_31_FF80
 ; In place of NMI_START's test of TASK_BUSY_FLAG. With no session, that
-; test, and the game's NMI.
+; test, and the game's NMI. An NMI that comes while a session's NMI is
+; still at its own work, before the tasks (net_nmi_busy), the exchange
+; having run long, gives the registers back and nothing else: the banks
+; are that NMI's, which the game's shadows do not know, and putting them
+; back from those, as a lag does, would run the netplay's code from
+; another bank. That frame goes without its splits and its music.
 net_nmi_check:
+    bit net_nmi_busy
+    bpl :+
+    jmp RETURN_FROM_NMI_TASK_BUSY + NMI_REGISTERS_BACK
+:
     bit net_menu
     bmi @netplay
     bit TASK_BUSY_FLAG
@@ -95,6 +108,7 @@ net_lag_sound:
 ; In place of the NMI's read of the controllers (READ_JOYPAD_START), after
 ; the sound: a tick goes on into the game's tasks; a stall leaves the NMI.
 net_read_hook:
+    lsr net_nmi_busy            ; its own work done: the tasks, or the RTI
     lda net_stall_now
     bne @stall
     jmp NMI_UPDATE_RANDOM_NUMS
@@ -125,23 +139,25 @@ net_intro:
 
 ; In place of L_D05F, which nothing calls: 34 bytes.
 .macro NET_FILL_D05F
-; In place of the title's test of the presses for Start or A: A and the
-; flags as that left them. Select takes the console to the menu, and the
-; title's task sleeps until the menu starts the game again.
-net_title_press:
-    lda JOY_PRESS_BOTH
-    and #SELECT_BUTTON
-    beq @plain
-    bit net_mode
-    bmi @plain                  ; not in a session
-    lda #NET_MENU_FIRST
-    sta net_menu
-@sleep:
-    lda #$01
-    jsr DELAY_TASK
-    jmp @sleep
-@plain:
+; In place of the title's test of the presses for Start or A, in its loop
+; (DRAW_START_SCREEN): first the stars moved (net_title_move, net/title.inc),
+; then the test, A and the flags as the game's leaves them, not 0 for the
+; game. With NETWORK GAME chosen, 0, and the console goes to the menu: the
+; title's loop waits on, as the menu has the console until it starts it
+; again. In a session, the game.
+net_title_pick:
+    jsr net_title_move
     lda JOY_PRESS_BOTH
     and #(START_BUTTON + A_BUTTON)
+    beq @exit
+    bit net_mode
+    bmi @exit                   ; in a session
+    ldx net_title_choice
+    beq @exit                   ; LOCAL GAME
+    lda #NET_MENU_FIRST
+    sta net_menu
+    lda #$00
+@exit:
+    ora #$00                    ; the flags as A is
     rts
 .endmacro

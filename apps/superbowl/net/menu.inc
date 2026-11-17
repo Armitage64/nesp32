@@ -2,7 +2,7 @@
 ; net/net.asm includes it. It is River City Ransom's (apps/rcr/net/menu.inc),
 ; which is Jackal's, with Tecmo Super Bowl's letters.
 ;
-; Select at the title comes here (net_title_press, net/cart.inc): the
+; NETWORK GAME at the title comes here (net_title_pick, net/cart.inc): the
 ; title's task sleeps, and from then the NMI is the menu's (net_menu_nmi,
 ; net/net.inc, which brings this bank in at $8000, with the netplay's at
 ; $A000, and calls menu_nmi). The game's tasks do not run. The screens:
@@ -11,8 +11,9 @@
 ;                 for the other. The screen shows the room's code, which
 ;                 player 2 has to enter.
 ;   JOIN GAME     a room's code to edit, and the nesp32 joins that room
-;   LOCAL GAME    back to the title, for two controllers on this console
-;                 (and B, likewise)
+;
+; and B goes back to the title, for a game on this console (LOCAL GAME,
+; at the title, is that).
 ;
 ; Select on either of those screens changes how the two meet: by a room's
 ; code, across the Internet with no port forwarded, or by an address, as
@@ -83,7 +84,6 @@ MENU_PPUCTRL_QUIET = MENU_PPUCTRL & $7F
 IP_TILES        = 15            ; 192.168.001.023
 CODE_TILES      = NESP_PEER_CODE    ; K7QF
 LETTERS         = 32            ; that a code is made of
-ITEM_TILES      = 10            ; LOCAL GAME
 ; What the nesp32 says of itself is one of NESP_LOBBY_*. The menu's own:
 STATE_NONE      = $FF           ; no nesp32 answers
 STATE_OLD       = $FE           ; one answers, and its firmware has no PEER
@@ -104,7 +104,7 @@ menu_pad        = menu_vars + 5
 menu_pad_old    = menu_vars + 6
 menu_press      = menu_vars + 7 ; buttons that went down this frame
 menu_mode       = menu_vars + 8
-menu_cursor     = menu_vars + 9 ; 0-2 on the first screen
+menu_cursor     = menu_vars + 9 ; 0-1 on the first screen
 menu_pos        = menu_vars + 11    ; 0-11: the digit being edited
 menu_want       = menu_vars + 12    ; an op of PEER's to send, 00 none
 menu_sent       = menu_vars + 13    ; the op of the last request, or HELLO
@@ -284,10 +284,10 @@ menu_sprites:
 
 .assert MODE_MAIN = 0, error
 
-; By menu_cursor: beside the first screen's lines, 9, 11 and 13. A
-; sprite is drawn a line below its Y.
+; By menu_cursor: beside the first screen's lines, 9 and 11. A sprite is
+; drawn a line below its Y.
 menu_mark_y:
-    .byte 9 * 8 - 1, 11 * 8 - 1, 13 * 8 - 1
+    .byte 9 * 8 - 1, 11 * 8 - 1
 
 ; Beside YES and NO, on player 2's question.
 ASK_COLUMN      = 15
@@ -359,7 +359,7 @@ menu_mode_main:
     lda menu_press
     and #BTN_B
     beq @up
-    jmp menu_leave_local        ; back to the title, as LOCAL GAME
+    jmp menu_leave_local        ; back to the title
 
 @up:
     lda menu_press
@@ -374,18 +374,15 @@ menu_mode_main:
     and #BTN_DOWN
     beq @pick
     lda menu_cursor
-    cmp #$02
-    beq @pick
+    bne @pick                   ; at JOIN GAME, the last
     inc menu_cursor
 
 @pick:
     lda menu_press
     and #BTN_A | BTN_START
     beq @exit
+    ; Both need a nesp32 that is on a network.
     lda menu_cursor
-    cmp #$02
-    beq menu_leave_local
-    ; The other two need a nesp32 that is on a network.
     ldx menu_state
     beq @exit                   ; NESP_LOBBY_NO_WIFI
     cpx #STATE_OLD
@@ -1662,8 +1659,8 @@ menu_screen_main:
     screen_text 4, 10, "NETWORK GAME"
     screen_text 9, 11, "HOST GAME"
     screen_text 11, 11, "JOIN GAME"
-    screen_text 13, 11, "LOCAL GAME"
     screen_text 18, 7, "THIS NESP32 IS AT"
+    screen_text 24, 12, "B - BACK"
     .byte 0
 
 menu_screen_hosting:
@@ -2122,7 +2119,7 @@ menu_get_piece:
     rts
 
 ; One more try that came to nothing. Too many: the copy is given up, and
-; the console starts again, as LOCAL GAME, with what it has of the save.
+; the console starts again, as B does, with what it has of the save.
 menu_copy_tried:
     inc menu_tries
     bne @exit

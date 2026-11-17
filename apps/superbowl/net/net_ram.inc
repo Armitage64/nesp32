@@ -17,7 +17,7 @@
 ;
 ;   $7F72-$7FD8   the session's memory and the library's
 ;
-; and the three bytes the fixed bank's hooks look at in every NMI are in
+; and the bytes the fixed bank's hooks look at in every NMI are in
 ; the console's RAM, at the end of a run of 31 bytes past the players'
 ; ($0661-$067F) that the disassembly has no name for and the game was
 ; never seen to write, with one more for the intro (net_skip, $067C). The game's reset clears them, before net_reset
@@ -132,6 +132,8 @@ net_menu        = $067E         ; bit 7: the NMI is the menu's; bit 6 too: its f
 net_owed        = $067F         ; not 00: the PPU has not had the last tick's writes
 net_skip        = $067C         ; NET_SKIP_*: where the intro goes (net_intro, net/cart.inc)
 net_stall_now   = $067B         ; this NMI's read: 01 a stall, 00 a tick (net_sound_hook)
+net_title_choice = $067A        ; the title's: 0 LOCAL GAME, 1 NETWORK GAME (net/title.inc)
+net_nmi_busy    = $0679         ; bit 7: a session's NMI is at its own work, before the tasks
 
 ; Where the game goes after a reset of the netplay's own, which sets
 ; net_skip_mark before it and net_reset takes it into net_skip: past the
