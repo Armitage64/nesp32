@@ -44,6 +44,24 @@ def track(directory, name, data):
     return path
 
 
+def test_esp_idf_is_found_where_it_is_cloned_or_installed(tmp_path):
+    def esp_idf(*parts):
+        path = tmp_path.joinpath(*parts, "esp-idf")
+        path.mkdir(parents=True)
+        (path / "export.sh").write_text("")
+        return str(path)
+
+    home = str(tmp_path)
+    assert put_files.idf_path(home, {}) == os.path.join(home, "esp", "esp-idf")
+    esp_idf(".espressif", "v5.10.1")
+    esp_idf(".espressif", "v5.5.1")
+    newest = esp_idf(".espressif", "v6.0.3")
+    assert put_files.idf_path(home, {}) == newest                 # the installer's
+    cloned = esp_idf("esp")
+    assert put_files.idf_path(home, {}) == cloned                 # the guide's first
+    assert put_files.idf_path(home, {"IDF_PATH": "/x"}) == "/x"   # and IDF_PATH's
+
+
 def test_the_partition_is_the_firmwares():
     offset, size = put_files.partition()
     assert (offset, size) == (0x420000, 0x3E0000)

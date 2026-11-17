@@ -114,14 +114,17 @@ You will need:
   and Python 3
 - for the firmware: [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/)
   5.1 or later (5.5.5 and 6.0.3 are the versions it has been built with), installed for both
-  chips, in `~/esp/esp-idf` or wherever `IDF_PATH` points. Only its core tools are needed:
+  chips. Espressif's installer puts it in `~/.espressif/v<version>/esp-idf`; it can be cloned
+  instead, as below, and only its core tools are needed:
 
   ```sh
   git clone --recursive https://github.com/espressif/esp-idf.git ~/esp/esp-idf
   ~/esp/esp-idf/install.sh esp32,esp32s3
   ```
 
-  `firmware/deploy.sh` loads ESP-IDF itself, and says so if it is missing or not installed.
+  `firmware/deploy.sh` and the tests look for ESP-IDF wherever `IDF_PATH` points or, with it
+  not set, in `~/esp/esp-idf`, or else the latest of `~/.espressif/v*/esp-idf`. `deploy.sh`
+  loads ESP-IDF itself, and says so if it is missing or not installed.
 
 **1. Clone the repository and its submodules**
 

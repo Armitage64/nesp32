@@ -19,9 +19,10 @@ the whole of it over whatever the nesp32 had: the tracks named are the
 playlist. They are checked for being tracks at all, since the nesp32 passes
 over one that is not; nothing here knows what is inside them.
 
-The image is made by ESP-IDF's own tool for it, so IDF_PATH must say where
-ESP-IDF is (~/esp/esp-idf if it does not), and this Python needs what that
-tool does, with esptool to write the image:
+The image is made by ESP-IDF's own tool for it, so ESP-IDF must be where
+IDF_PATH says, or with it not set in ~/esp/esp-idf, or else the latest of
+~/.espressif/v<version>/esp-idf (as firmware/deploy.sh looks), and this
+Python needs what that tool does, with esptool to write the image:
 
     pip install construct esptool
 
@@ -37,7 +38,9 @@ sent.
 """
 
 import argparse
+import glob
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -47,7 +50,25 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PARTITIONS = os.path.join(HERE, "..", "firmware", "partitions.csv")
 PARTITION = "storage"
 DIRECTORY = "tracks"
-IDF = os.environ.get("IDF_PATH", os.path.join(os.path.expanduser("~"), "esp", "esp-idf"))
+
+
+def idf_path(home=os.path.expanduser("~"), environ=os.environ):
+    """Where ESP-IDF is: IDF_PATH, or ~/esp/esp-idf (where its guide clones
+    it), or the latest ~/.espressif/v<version>/esp-idf (where its installer
+    puts it); ~/esp/esp-idf when there is none of them."""
+    if environ.get("IDF_PATH"):
+        return environ["IDF_PATH"]
+    cloned = os.path.join(home, "esp", "esp-idf")
+    if os.path.isfile(os.path.join(cloned, "export.sh")):
+        return cloned
+    installed = glob.glob(os.path.join(home, ".espressif", "v*", "esp-idf"))
+    if not installed:
+        return cloned
+    return max(installed, key=lambda path: [int(n) for n in re.findall(
+        r"\d+", os.path.basename(os.path.dirname(path)))])
+
+
+IDF = idf_path()
 FATFS = os.path.join(IDF, "components", "fatfs")
 SECTOR = 512                    # the firmware's CONFIG_WL_SECTOR_SIZE, and its wear
 WEAR_MODE = "safe"              # levelling's mode (firmware/sdkconfig.defaults)

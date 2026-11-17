@@ -13,14 +13,27 @@
 # /dev/cu.usbserial*: that is how each is told from the other. An ESP32-S3
 # board shows up as a StickS3 does, so --generic says which it is.
 #
-# It needs ESP-IDF 5.1 or later, installed for esp32 and esp32s3, in
-# ~/esp/esp-idf or wherever IDF_PATH points.
+# It needs ESP-IDF 5.1 or later, installed for esp32 and esp32s3, wherever
+# IDF_PATH points; or, with IDF_PATH not set, in ~/esp/esp-idf (where its
+# guide clones it), or else ~/.espressif/v<version>/esp-idf (where its
+# installer puts it), the latest version there.
 set -e
 cd "$(dirname "$0")"
 self="$PWD/$(basename "$0")"
 
 # ESP-IDF, with what is wrong said when it is missing or not installed.
-idf="${IDF_PATH:-$HOME/esp/esp-idf}"
+if [ -n "$IDF_PATH" ]; then
+    idf="$IDF_PATH"
+elif [ -f "$HOME/esp/esp-idf/export.sh" ]; then
+    idf="$HOME/esp/esp-idf"
+else
+    idf=$(ls -d "$HOME"/.espressif/v*/esp-idf 2> /dev/null | sort -V | tail -1)
+fi
+if [ -z "$idf" ]; then
+    echo "ESP-IDF is not in ~/esp/esp-idf or ~/.espressif/v*/esp-idf: install it"
+    echo "for esp32 and esp32s3, or set IDF_PATH to where it is."
+    exit 1
+fi
 if [ ! -f "$idf/export.sh" ]; then
     echo "ESP-IDF is not at $idf: clone it there and run its"
     echo "./install.sh esp32,esp32s3, or set IDF_PATH to where it is."
