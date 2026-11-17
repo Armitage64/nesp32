@@ -17,6 +17,7 @@
 - Mesen emulator support for NESP32 added for local testing and development (#74)
 - NESP32 logo displayed on Stick LCD screen at boot (#75)
 - The Stick's log says why each online session ended, and Bubble Bobble sends its RAM to the log when the two games differ
+- `firmware/deploy.sh` says what is wrong when ESP-IDF is missing or not installed, instead of stopping without a word, and the README lists ESP-IDF among what building needs (#93)
 
 ## 0.3.0 — 2026-11-08
 

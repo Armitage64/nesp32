@@ -11,12 +11,32 @@
 #
 # A StickS3 shows up as /dev/cu.usbmodem*, and a StickC Plus2 as
 # /dev/cu.usbserial*: that is how each is told from the other. An ESP32-S3
-# board shows up as a StickS3 does, so --generic says which it is. IDF_PATH
-# is ~/esp/esp-idf unless it is set.
+# board shows up as a StickS3 does, so --generic says which it is.
+#
+# It needs ESP-IDF 5.1 or later, installed for esp32 and esp32s3, in
+# ~/esp/esp-idf or wherever IDF_PATH points.
 set -e
 cd "$(dirname "$0")"
 self="$PWD/$(basename "$0")"
-. "${IDF_PATH:-$HOME/esp/esp-idf}/export.sh" > /dev/null 2>&1
+
+# ESP-IDF, with what is wrong said when it is missing or not installed.
+idf="${IDF_PATH:-$HOME/esp/esp-idf}"
+if [ ! -f "$idf/export.sh" ]; then
+    echo "ESP-IDF is not at $idf: clone it there and run its"
+    echo "./install.sh esp32,esp32s3, or set IDF_PATH to where it is."
+    exit 1
+fi
+# export.sh is quiet when it works; when it fails, what it printed says why.
+if ! out=$(. "$idf/export.sh" 2>&1); then
+    echo "$out" | tail -15
+    echo "ESP-IDF's export.sh failed: has $idf/install.sh esp32,esp32s3 been run?"
+    exit 1
+fi
+. "$idf/export.sh" > /dev/null 2>&1
+if ! command -v idf.py > /dev/null; then
+    echo "$idf/export.sh left no idf.py on the PATH: run $idf/install.sh esp32,esp32s3 again."
+    exit 1
+fi
 
 # A firmware is its target, or for a generic board its target and -generic,
 # and builds in build-<firmware>.
@@ -115,7 +135,7 @@ while True:
     wait
     ;;
 *)
-    sed -n '2,15p' "$self"
+    sed -n '2,17p' "$self"
     exit 1
     ;;
 esac

@@ -16,6 +16,12 @@ With ESP-IDF 5.5.5 the image is about 1.59 MB of the 2 MB slot for a
 StickS3, Bluetooth included, and 1.22 MB for a StickC Plus2, with no
 warnings from this project's code.
 
+Building it needs [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/)
+5.1 or later, installed for both chips (`install.sh esp32,esp32s3`; the
+core tools are enough, without `--enable-pytest` or the others), in
+`~/esp/esp-idf` or wherever `IDF_PATH` points. With two copies, as for
+trying a new release, `IDF_PATH` says which one `deploy.sh` uses.
+
 Each board has its own build directory, since the two have different chips:
 
 ```sh
