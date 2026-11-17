@@ -16,7 +16,7 @@ from wire import ms
 OWN_ROW, HOST_ROW, DIGITS_ROW, MARK_ROW, STATUS_ROW = 20, 14, 12, 13, 16
 TIP_ROW = 26                    # what Select does
 HOST_GAME_ROW, JOIN_GAME_ROW, BACK_ROW = 9, 11, 24
-LOCAL_GAME_ROW, NETWORK_GAME_ROW = 17, 19     # the title's (net/title.inc)
+LOCAL_GAME_ROW, NETWORK_GAME_ROW = 18, 20     # the title's (net/title.inc)
 STARS_COLUMN, TEXT_COLUMN = 8, 12
 TITLE_STARS = bytes([0x1B, 0x1C, 0x19])
 LEFT_AND_B = PAD_LEFT | PAD_B   # at the title: the game's sound mode
@@ -429,7 +429,7 @@ def test_different_saves_player_2_says_yes(net_console):
     table = Table(net_console, console_options=({"sram": hosts_save(net_console)}, {}))
     connect_with_saves(table)
     host, guest = table.consoles
-    assert "GO ON WITH IT" in screen_text(guest)
+    assert "CONTINUE" in screen_text(guest)
     assert screen_row(guest, YES_ROW).strip() == "YES"
     assert marker_row(guest) == YES_ROW
     assert "WAITING FOR PLAYER 2" in screen_text(host)

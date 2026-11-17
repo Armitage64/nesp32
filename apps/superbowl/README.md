@@ -180,10 +180,14 @@ plays.
 a room's code or an address), in bank 31 at $8000 with the library at
 $A000. The title has LOCAL GAME and NETWORK GAME in place of START GAME
 (`net/title.inc`): its scene's script calls a subscript of ours for the
-two lines, Up, Down and Select move its stars between them through the
-game's PPU buffer, and Start or A on NETWORK GAME opens the menu
-(`net_title_pick`): the title's loop waits on, and the NMI is the menu's (`net_menu_nmi`), which
-the game's tasks do not run in. It ends with a reset, by a session or not,
+two lines (rows 18 and 20: above row 18 the title's last split has the
+logo's CHR, and the stars' tiles are other pictures there), Up, Down and
+Select move its stars between them through the game's PPU buffer, and
+Start or A on NETWORK GAME opens the menu (`net_title_pick`); Start on
+LOCAL GAME flashes it, where the game flashed START GAME. The title's loop
+waits on, and the NMI is the menu's (`net_menu_nmi`), which the game's
+tasks do not run in. Its question before a save is copied is CONTINUE:
+the game's font has no question mark. It ends with a reset, by a session or not,
 so it uses the game's RAM: $0500 on (not $0300, where the NMI saves the
 registers) and the sprites' page at $0200. It turns off the MMC3's IRQ,
 which splits the title's screen, and turns on the save RAM's writes, for
@@ -495,6 +499,20 @@ wherever a frame ends, and a quicker routine makes a different game.
   (one misheard still is). `tests/test_frame.py` stretches an exchange
   past the vblank once in 37 frames: the session goes on, the same game
   on both.
+- **A lag's music takes no sound waiting to be played.** The game asks
+  for a sound by `SOUND_ID_TO_PLAY`, which the sound engine clears as it
+  takes it, and `PLAY_SOUND` waits a tick while it is not clear. With the
+  music in a lag's NMI, the engine took a request in the middle of a
+  tick, and the lags come where they will on each console: in a whole
+  game with one console's lags moved, the two took requests at different
+  places 24 and 8 times. A task that asked for a second sound in that
+  tick would have waited on one console and not the other. Now a lag's
+  NMI runs the music only with no request waiting (nor the song after an
+  interception, which the engine moves into it): requests are taken in a
+  tick's NMI or a stall's, between ticks, on both. Not seen to split two
+  games in the simulation; the one hardware stop since (November 2026,
+  one console black at the start of the third quarter, the other at the
+  menus) is not explained by anything found yet.
 - **The music runs in every NMI** (seen on hardware too: it slowed down
   with the lags). The game's NMI runs the sound engine whenever its
   scheduler is not in the middle of a switch, a task at work or not; a

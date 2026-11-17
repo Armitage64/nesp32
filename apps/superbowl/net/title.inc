@@ -16,7 +16,9 @@ HAVE_FREE_6_BD0D  = 1
 HAVE_FREE_16_9FC5 = 1
 
 
-TITLE_STARS     = $2228         ; row 17, column 8: the stars beside LOCAL GAME
+TITLE_STARS     = $2248         ; row 18, column 8: the stars beside LOCAL GAME
+TITLE_LOCAL     = TITLE_STARS + 4   ; LOCAL GAME, where START GAME was
+.assert >TITLE_LOCAL = $22, error, "the flash of LOCAL GAME is drawn at $22xx"
 TITLE_STAR_1    = $1B           ; the title's stars, as they were beside START GAME
 TITLE_STAR_2    = $1C
 TITLE_STAR_3    = $19
@@ -26,8 +28,11 @@ TITLE_MOVE      = UP_DPAD | DOWN_DPAD | SELECT_BUTTON
 .macro FILL_FREE_6_BD0D
 ; The title's two lines, a subscript of its scene (START_SCREEN_SCRIPT):
 ; each at a PPU address ($88 + its high byte - $20, then its low byte), its
-; tiles, and back. Row 17 is LOCAL GAME, with the stars; row 19 NETWORK
-; GAME. Row 18, where START GAME was, is left blank.
+; tiles, and back. Row 18 is LOCAL GAME, with the stars, where START GAME
+; was; row 20 NETWORK GAME. Not row 17: the title's last split changes
+; the background's CHR banks at row 18, and above it the stars' tiles are
+; the logo's. Start on LOCAL GAME flashes it there (FLASH_START_GAME's
+; script, in place of START GAME).
 NET_TITLE_SCRIPT:
     .byte $88 + >TITLE_STARS - $20, <TITLE_STARS
     .byte TITLE_STAR_1, TITLE_STAR_2, TITLE_STAR_3, $20

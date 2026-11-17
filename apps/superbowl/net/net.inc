@@ -279,6 +279,18 @@ net_nmi:
     ldy CURR_Y_SCROLL
     lda CURR_Y_SCROLL+1
     jsr UPDATE_IRQ_CHR_BANKS_SCROLL_LOC
+    ; But not while a sound waits to be taken: the sound engine takes it
+    ; (SOUND_ID_TO_PLAY to 0, or the song after an interception into it),
+    ; and the game's tasks look (PLAY_SOUND waits a tick until it is
+    ; taken). A lag comes in the middle of a tick, where it will on one
+    ; console and not the other, and the games went apart. Taken only in a
+    ; tick's NMI or a stall's, as before the lags had music, it is taken
+    ; between ticks on both. With neither, the engine changes neither.
+    lda SOUND_ID_TO_PLAY
+    ora ON_FIELD_SONG_TO_PLAY_AFTER_INT
+    beq :+
+    jmp net_lag_waits
+:
     lda SOFT_BANK_SELECT
     sta NMI_BANK_SELECT
     lda SOFT_MODE_8000
@@ -334,6 +346,11 @@ net_nmi:
     lda #$00
     sta net_owed                ; it has them now
     jmp NMI_TASK_NOT_BUSY
+
+; A lag's NMI with a sound waiting to be taken: no music (net_nmi), the
+; netplay's bank out.
+net_lag_waits:
+    jmp RETURN_FROM_NMI_ENABLE_INT_RESTORE_BANKS
 
 ; An NMI of a stall after the one that wrote to the PPU: the sprites, and
 ; the rest of the NMI from where the game's goes on after its writes to

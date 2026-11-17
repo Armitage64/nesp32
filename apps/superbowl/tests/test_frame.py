@@ -33,9 +33,11 @@ class Timed(Console):
         self.late = []
         self.nmis = 0
         self.busy = 0               # the game's own NMI for a busy scheduler, which has no music
+        self.waits = 0              # a lag's, with a sound waiting to be taken (net_lag_waits)
         self.sounds = 0
         self._sounded = True
         self.watch("NMI_TASK_BUSY", Timed._busy)
+        self.watch("net_lag_waits", Timed._waits)
         self.watch(SOUND_ENGINE, Timed._sound)
         irq = self.mpu.irq
 
@@ -49,6 +51,10 @@ class Timed(Console):
     def _busy(self):
         if self.timing:
             self.busy += 1
+
+    def _waits(self):
+        if self.timing:
+            self.waits += 1
 
     def _sound(self):
         if self.bus.bank_at(SOUND_ENGINE) == SOUND_BANK and not self._sounded:
@@ -83,10 +89,12 @@ def test_the_splits_on_time_and_the_music_in_every_nmi(build):
         assert len(console.late) > 1000, "the splits were not seen"
         assert not late, "player %d: %d of %d splits a scanline late or more, the worst %d cycles" % (
             side + 1, len(late), len(console.late), max(late))
-        # Each NMI's music, but the last (its frame not over) and the
-        # game's busy ones, as in the original.
-        assert console.sounds >= console.nmis - console.busy - 1, \
+        # Each NMI's music, but the last (its frame not over), the game's
+        # busy ones, as in the original, and a lag's with a sound waiting
+        # to be taken, which few are.
+        assert console.sounds >= console.nmis - console.busy - console.waits - 1, \
             "player %d: the music in %d of %d NMIs" % (side + 1, console.sounds, console.nmis)
+        assert console.waits < console.nmis // 100
 
 
 def mishear(port, every):

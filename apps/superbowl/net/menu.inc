@@ -1709,7 +1709,7 @@ menu_screen_save:
 
 menu_screen_ask:
     save_question
-    screen_text 12, 11, "GO ON WITH IT"
+    screen_text 12, 12, "CONTINUE"                ; (the font has no question mark)
     screen_text 15, ASK_COLUMN, "YES"
     screen_text 17, ASK_COLUMN, "NO"
     .byte 0

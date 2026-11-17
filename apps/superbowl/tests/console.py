@@ -408,8 +408,11 @@ class Console:
     # ($01F2-$01FF), which each NMI pushes its return to; the NMI's and the
     # IRQ's saves of the registers ($0300-$0305), and how far down the
     # screen's splits the IRQ has got ($0306); and the sound engine's
-    # memory ($F0-$FF and $0700-$07FF).
-    UNKEPT = [(0x3E, 0x46), (0xF0, 0x100), (0x1F2, 0x200), (0x300, 0x307), (0x700, 0x800)]
+    # memory ($F0-$FF and $0700-$07FF). And IRQ_Y_SCROLL and IRQ_NAMETABLE
+    # ($49-$4A), which each split writes as it comes (as the digest leaves
+    # them out): a whole game with an NMI run long differed there alone.
+    UNKEPT = [(0x3E, 0x46), (0x49, 0x4B), (0xF0, 0x100), (0x1F2, 0x200), (0x300, 0x307),
+              (0x700, 0x800)]
     # And SOFT_PPU_CTRL's nametable bits ($31, bits 0-1), which each of the
     # screen's splits sets for its own (UPDATE_IRQ_CHR_BANKS_SCROLL_LOC, in
     # the NMI and the IRQ): at a tick they are the last split's to have run,
