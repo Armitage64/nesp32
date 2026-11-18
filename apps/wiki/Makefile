@@ -70,7 +70,9 @@ $(ROM): $(BUILD)/nespedia.o nes/nrom256.cfg
 NESP_LIB := $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/gen_link.py
 
 $(BUILD)/link.inc: $(NESP_LIB) $(NESP)
-	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $@
+# LINK_OPTIONS: nesp32's Famicom cartridge passes --joy2-bit=1 (docs/WIRING.md,
+# the Famicom); empty for the ordinary build.
+	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $@ $(LINK_OPTIONS)
 
 $(BUILD)/nespedia_link.o: $(SOURCES) nes/serial_link.inc $(SCREEN) $(NESP_LIB) \
 		$(BUILD)/link.inc $(NESP)

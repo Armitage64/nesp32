@@ -43,6 +43,7 @@
 ; place of the stream. If the answer is GO, the console does nothing but
 ; receive from there: the NMI is off, the screen stands still, and one of
 ; the routines in pcm_rates.inc writes each byte to $4011 as it arrives, at
+
 ; a rate several times the link's own, until a byte marked as the last.
 ; Then the NMI goes back on and the link carries on where it was.
 ;
@@ -1099,15 +1100,18 @@ row_bit: .byte $01, $02, $04, $08, $10, $20, $40, $80
 
 ; A = the rate to ask for sound at: the one its record named, or
 ; NESP_JUKE_SOUND_REFUSED if this console cannot play it. That is a rate it
-; has no routine for, or a port that does not read as the routines count on
-; (the line is at rest here: the nesp32 only sends when asked).
+; has no routine for, or a port whose Stick's bit is not at rest (the line
+; is at rest here: the nesp32 only sends when asked). On a Famicom the
+; port is read through the Stick's bit alone, for the hardwired controller
+; II's bit 0; and its rates above PCM_LIMIT have no routine, where the
+; fold's 6-cycle sample bought them on a NES.
 .proc sound_rate
     ldx sound_wanted
     dex
-    cpx #PCM_COUNT
+    cpx #PCM_LIMIT
     bcs @refuse
-    lda JOY2
-    cmp #PORT_IDLE
+    lda #<(1 << NESP_PORT_BIT)
+    bit JOY2
     bne @refuse
     txa
     rts
