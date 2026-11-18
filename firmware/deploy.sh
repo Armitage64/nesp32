@@ -13,7 +13,8 @@
 # /dev/cu.usbserial*: that is how each is told from the other. An ESP32-S3
 # board shows up as a StickS3 does, so --generic says which it is.
 #
-# It needs ESP-IDF 5.1 or later, installed for esp32 and esp32s3, wherever
+# It needs ESP-IDF 6.0 or later (older than 6.1.1 for a StickC Plus2, until
+# m5stack/M5GFX#425 is fixed), installed for esp32 and esp32s3, wherever
 # IDF_PATH points; or, with IDF_PATH not set, in ~/esp/esp-idf (where its
 # guide clones it), or else ~/.espressif/v<version>/esp-idf (where its
 # installer puts it), the latest version there.
@@ -148,7 +149,7 @@ while True:
     wait
     ;;
 *)
-    sed -n '2,17p' "$self"
+    sed -n '2,20p' "$self"
     exit 1
     ;;
 esac

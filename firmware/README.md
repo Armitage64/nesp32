@@ -17,12 +17,14 @@ included, built with ESP-IDF 6.1.1, and 1.27 MB for a StickC Plus2,
 built with 6.0.3, with no warnings from this project's code.
 
 Building it needs [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/)
-5.1 or later, installed for both chips (`install.sh esp32,esp32s3`; the
+6.0 or later, installed for both chips (`install.sh esp32,esp32s3`; the
 core tools are enough, without `--enable-pytest` or the others).
 `deploy.sh` uses the ESP-IDF that `IDF_PATH` points to or, with it not
 set, `~/esp/esp-idf`, or else the latest of `~/.espressif/v*/esp-idf`,
 where Espressif's installer puts it. With two copies, as for trying a new
-release, `IDF_PATH` says which one.
+release, `IDF_PATH` says which one. A StickC Plus2 needs an ESP-IDF older
+than 6.1.1 for now (the releases use 6.0.3): M5GFX doesn't build for it
+with 6.1.1 (m5stack/M5GFX#425).
 
 Each board has its own build directory, since the two have different chips:
 
