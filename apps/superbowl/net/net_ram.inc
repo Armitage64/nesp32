@@ -30,6 +30,7 @@
 ;                 over, and the zero page it works in (net_nmi_read)
 ;   $6F1E-$6FAB   the library's frames, a reply and a request
 ;   $6FAC-$6FC3   what the last two resets found (net_resets)
+;   $6FC4-$6FCF   the last session NMI's place (net_crumb)
 ;
 ; The menu has the console only at the title and starts it again when it
 ; is done, by a session or not: so it keeps its own memory in the
@@ -206,7 +207,15 @@ NESP_FRAMES_END = nesp_tx + NESP_TX_MAX + 7
 ; was reset in a session on a real console: its Reset keeps the RAM.
 NET_KEEP        = 12
 net_resets      = NESP_FRAMES_END
-.assert net_resets + NET_KEEP * 2 <= SAVE_GAP_END, error, "the resets kept run out of the gap"
+; And the last session NMI's (net_nmi_read), NET_KEEP bytes too: the stack
+; pointer, net_tick, SOFT_8000_BANK, SOFT_A000_BANK, and the stack's top
+; eight, which hold where the main thread was (the NMI's own return
+; address, past net_nmi_read's and net_sound_hook's). A console that
+; stops dead in a session, its CPU stopped or its NMI off, keeps where it
+; was a frame before: its Reset may clear the RAM (a multicart's loader
+; does), and the save RAM stays.
+net_crumb       = net_resets + NET_KEEP * 2
+.assert net_crumb + NET_KEEP <= SAVE_GAP_END, error, "the resets kept run out of the gap"
 
 NET_MENU_ON     = $80           ; in net_menu
 NET_MENU_FIRST  = $C0

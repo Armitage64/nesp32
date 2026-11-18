@@ -505,7 +505,7 @@ def test_a_session_given_up_says_why(net_console):
     assert screen_row(table.consoles[0], WHY_ROW).strip() == "LAST: GAMES DIFFERED"
 
 
-RESETS_ROW = 26                 # what the last reset found, and the one before (net_resets)
+RESETS_ROW = 25                 # the last reset, the one before (net_resets), the last NMI (net_crumb)
 NET_KEEP = 12
 
 
@@ -521,6 +521,8 @@ def test_a_reset_in_play_is_kept_for_the_menu(net_console):
     console = table.consoles[1]
     sp = console.mpu.sp
     tick, stack = sram(console, "net_tick"), bytes(console.ram[0x101 + sp + i] for i in range(4))
+    last_crumb = bytes(sram(console, "net_crumb", i) for i in range(NET_KEEP))
+    assert last_crumb[1] in (tick, (tick - 1) & 0xFF)      # this tick's NMI, or the last
     reset_button(console)
     console.mpu.sp = (sp - 3) & 0xFF           # the reset's three, with nothing written
     table.run(INTRO_FRAMES)
@@ -535,3 +537,6 @@ def test_a_reset_in_play_is_kept_for_the_menu(net_console):
     assert kept[8:] == stack
     before = screen_row(console, RESETS_ROW + 1).replace(" ", "")
     assert len(before) == 2 * NET_KEEP        # the session's start's own
+    # The last session NMI's, kept through the reset: as it was then.
+    crumb = bytes.fromhex(screen_row(console, RESETS_ROW + 2).replace(" ", ""))
+    assert crumb == last_crumb

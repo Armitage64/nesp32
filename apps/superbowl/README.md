@@ -192,7 +192,8 @@ the last session was given up, if it was: LAST: GAMES DIFFERED (the
 digests), OTHER STOPPED (`SILENT_FRAMES` with no tick) or OTHER LEFT (the
 nesp32 says so). Each console keeps it in the save RAM (`net_why`, with
 the tick), and a session's start clears it: a console that stops on its
-own keeps none. Below that, in hex, is what the last two resets found
+own keeps none. Below that, in hex, is where the last session NMI found
+the console (row 27, `net_crumb`), and above it what the last two resets found
 in the RAM before the game's reset cleared it (`net_resets`, To do 3). It
 ends with a reset, by a session or not,
 so it uses the game's RAM: $0500 on (not $0300, where the NMI saves the
@@ -602,13 +603,21 @@ In order. Each step is tested in the simulation before the next.
    into the reset), and the host gave up 4 seconds later and its own
    reset after the drop went no further. In the simulation both of those
    go as they should (`test_a_reset_in_play_is_kept_for_the_menu`). So
-   the menu's first screen now also shows, in hex on rows 26 and 27,
+   the menu's first screen now also shows, in hex on rows 25 and 26,
    what the last two resets found before the game's reset cleared the
    RAM (`net_reset_keep`, `net_resets`): the stack pointer, net_mode,
    net_tick, net_silent, TASK_BUSY_FLAG, net_nmi_busy, the two banks'
-   shadows and the stack's top four bytes. A console's Reset keeps the
-   RAM, and its power does not: so the hung one is reset by its button.
-   Next: a
+   shadows and the stack's top four bytes. Then (the MiSTer the host,
+   the multicart's console the other) the multicart's went black and the
+   MiSTer gave up after 4 seconds, its reset to the title as it should
+   be (`F9 80 1C F0`: in a session, tick $1C, 240 silent NMIs). The
+   multicart's had no reset between the session's start and its button
+   (whose loader clears the RAM, but not the save RAM): it stopped dead
+   at tick $1B, in place. Every time, the multicart's console is the
+   one that stopped, black or at the title. So row 27 is now where the
+   last session NMI found the console (`net_crumb`): the stack pointer,
+   the tick, the banks' shadows and the stack's top eight bytes, which
+   hold the main thread's place. Next: a
    whole game again, the title's choice, the samples against the line at
    14, how the lags feel against a game on one console, and the save's
    time across the Internet. The copy is at the link's rate; PEER's RATE

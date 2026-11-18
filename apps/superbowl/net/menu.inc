@@ -1542,7 +1542,8 @@ menu_show:
     jsr menu_strings
 
 @resets:
-    ; And what the last two resets found (net_resets), in hex.
+    ; And what the last two resets found (net_resets), and the last session
+    ; NMI (net_crumb, which follows them), in hex.
     lda #>MENU_RESETS_AT
     sta NES_PPU_ADDR
     lda #<MENU_RESETS_AT
@@ -1554,6 +1555,12 @@ menu_show:
     lda #<(MENU_RESETS_AT + 32)
     sta NES_PPU_ADDR
     jsr menu_reset_row
+    lda #>(MENU_RESETS_AT + 64)
+    sta NES_PPU_ADDR
+    lda #<(MENU_RESETS_AT + 64)
+    sta NES_PPU_ADDR
+    jsr menu_reset_row
+    .assert net_crumb = net_resets + NET_KEEP * 2, error
 
 @shown:
     ; The scroll back, for the next NMI, which turns the picture on.
@@ -1567,7 +1574,7 @@ menu_show:
 
 ; One reset's NET_KEEP bytes of net_resets, from Y, in hex, in fours with
 ; a blank between. Y past them.
-MENU_RESETS_AT = $2000 + 26 * 32 + 3
+MENU_RESETS_AT = $2000 + 25 * 32 + 3
 menu_reset_row:
     ldx #NET_KEEP
 @byte:

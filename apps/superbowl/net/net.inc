@@ -484,6 +484,19 @@ net_nmi_read:
 
 @session:
     jsr net_sram_on
+    ; Where this NMI found the console (net_crumb), for one that stops.
+    tsx
+    stx net_crumb
+    lda net_tick
+    sta net_crumb+1
+    lda SOFT_8000_BANK
+    sta net_crumb+2
+    lda SOFT_A000_BANK
+    sta net_crumb+3
+    .repeat 8, i
+    lda a:$0101+i,x
+    sta net_crumb+4+i
+    .endrepeat
     ; The STACK_KEEP bytes below this one's place in the stack, kept: the
     ; first task's are among them. Unrolled, as it is in every tick's NMI
     ; (a loop was some 700 cycles each way). a: keeps $0100-i,x absolute:
