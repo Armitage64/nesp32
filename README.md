@@ -108,9 +108,25 @@ your own copy of the game ([User Guide](docs/USER_GUIDE.md#11-playing-online-wit
 
 The steps below are for building the firmware and ROMs from source.
 
-You will need [cc65](https://cc65.github.io/) (`ca65`, `ld65`), a C compiler, `make`, `patch`,
-Python 3, and for the firmware [ESP-IDF 6.x](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/)
-installed in `~/esp/esp-idf` (or wherever `IDF_PATH` points).
+You will need:
+
+- for the ROMs: [cc65](https://cc65.github.io/) (`ca65`, `ld65`), a C compiler, `make`, `patch`
+  and Python 3
+- for the firmware: [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/)
+  6.0 or later, installed for both chips. The releases are built with 6.1.1 for the ESP32-S3
+  boards and 6.0.3 for the StickC Plus2, which doesn't build with 6.1.1 until
+  m5stack/M5GFX#425 is fixed. Espressif's installer puts it in
+  `~/.espressif/v<version>/esp-idf`; it can be cloned instead, as below, and only its core
+  tools are needed:
+
+  ```sh
+  git clone --recursive https://github.com/espressif/esp-idf.git ~/esp/esp-idf
+  ~/esp/esp-idf/install.sh esp32,esp32s3
+  ```
+
+  `firmware/deploy.sh` and the tests look for ESP-IDF wherever `IDF_PATH` points or, with it
+  not set, in `~/esp/esp-idf`, or else the latest of `~/.espressif/v*/esp-idf`. `deploy.sh`
+  loads ESP-IDF itself, and says so if it is missing or not installed.
 
 **1. Clone the repository and its submodules**
 

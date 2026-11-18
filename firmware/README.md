@@ -16,10 +16,18 @@ The image is about 1.68 MB of the 2 MB slot for a StickS3, Bluetooth
 included, built with ESP-IDF 6.1.1, and 1.27 MB for a StickC Plus2,
 built with 6.0.3, with no warnings from this project's code.
 
+Building it needs [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/)
+5.1 or later, installed for both chips (`install.sh esp32,esp32s3`; the
+core tools are enough, without `--enable-pytest` or the others).
+`deploy.sh` uses the ESP-IDF that `IDF_PATH` points to or, with it not
+set, `~/esp/esp-idf`, or else the latest of `~/.espressif/v*/esp-idf`,
+where Espressif's installer puts it. With two copies, as for trying a new
+release, `IDF_PATH` says which one.
+
 Each board has its own build directory, since the two have different chips:
 
 ```sh
-. ~/esp/esp-idf/export.sh
+. ~/esp/esp-idf/export.sh          # or ~/.espressif/v<version>/esp-idf/export.sh
 # a StickC Plus2
 idf.py -B build-esp32 -D SDKCONFIG=build-esp32/sdkconfig -D IDF_TARGET=esp32 build
 idf.py -B build-esp32 -p /dev/cu.usbserial-XXXX flash monitor

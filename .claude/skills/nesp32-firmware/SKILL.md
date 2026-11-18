@@ -35,8 +35,8 @@ firmware/deploy.sh --generic        # an ESP32-S3 dev board, not a StickS3
 firmware/deploy.sh watch            # every board's log, without restarting it
 ```
 
-`deploy.sh` sources `~/esp/esp-idf/export.sh` itself (`IDF_PATH` to change
-it); `idf.py` is not on the PATH otherwise. For one board by hand, the
+`deploy.sh` sources ESP-IDF's `export.sh` itself, from `IDF_PATH`, else
+`~/esp/esp-idf`, else the latest `~/.espressif/v*/esp-idf`; `idf.py` is not on the PATH otherwise. For one board by hand, the
 `idf.py -B build-<x> -D SDKCONFIG=build-<x>/sdkconfig -D IDF_TARGET=<t>`
 lines are at the top of `firmware/README.md`.
 
