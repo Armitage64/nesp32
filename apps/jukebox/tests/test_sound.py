@@ -54,17 +54,17 @@ def played_levels(machine):
 
 # --- the routines, called by themselves -----------------------------------------
 
-def at_rest(link_rom):
+def at_rest(link_rom, port_bit=0):
     """A console with nothing on its port, and OUT0 at mark, where the ROM
     leaves it: the routines look at button A, which the controller shows
     for as long as OUT0 is high."""
-    machine = LinkConsole(*link_rom, attached=False)
+    machine = LinkConsole(*link_rom, attached=False, port_bit=port_bit)
     machine._strobe = 1
     return machine
 
 
-def play(link_rom, rate, samples, phase=0.0, clock_error=0.0, last=0):
-    machine = at_rest(link_rom)
+def play(link_rom, rate, samples, phase=0.0, clock_error=0.0, last=0, port_bit=0):
+    machine = at_rest(link_rom, port_bit)
     machine.read_log = []
     machine.level_log = []
     period = pcm.PERIODS[rate]
@@ -120,6 +120,48 @@ def test_the_port_is_sampled_mid_bit_and_the_hunt_resumes_in_the_stop_bits(link_
             worst = max(worst, abs(cycle - center))
         resumed = reads[detect + 9][0]
         assert START + phase + 9 * period < resumed <= START + phase + 11 * period
+    assert worst <= 7 / 2 + 1 and worst < period / 2
+
+
+# The Famicom's direct receiver: the Stick's data on bit 1 of $4017, at the
+# rates its 14-cycle sample reaches (the nesp32's three slowest). Every one
+# is measured as the NES's are.
+FAMICOM_RATES = (0, 1, 2)
+
+
+@pytest.mark.parametrize("rate", FAMICOM_RATES)
+def test_the_famicom_reads_its_stick_through_bit_one(famicom_link_rom, rate):
+    """The direct receiver: every sample reaches $4011, at every phase the
+    start bit can fall in, with the Stick's data arriving on bit 1 of
+    $4017 and the hardwired controller II resting the port's bit 0 at one."""
+    samples = levels(0x31 + rate)
+    for phase in PHASES:
+        machine = play(famicom_link_rom, rate, samples, phase, port_bit=1, last=0x55)
+        assert played_levels(machine) == samples + [0x55], "phase %.1f" % phase
+        # All but the last carry the bit that keeps the stream going.
+        assert all(value & pcm.MORE for _, value in machine.level_log[:-1])
+        assert machine.level_log[-1][1] == 0x55
+
+
+@pytest.mark.parametrize("rate", FAMICOM_RATES)
+def test_the_famicom_samples_mid_bit_and_hunts_in_the_stop_bits(famicom_link_rom, rate):
+    """As the NES's do: the samples near the middle of their bits, and the
+    hunt resumed before the next start bit is over. The direct receiver's
+    byte runs a cycle or two past the wire's at 14 cycles a bit, where the
+    fold's ran inside it: the resume can fall in the next byte's start
+    bit, which a period is wide against the hunt's 6 and 7 cycle looks,
+    and is found there all the same."""
+    period = pcm.PERIODS[rate]
+    samples = levels(0x42 + rate, 40)
+    worst = 0.0
+    for phase in PHASES:
+        reads = play(famicom_link_rom, rate, samples, phase, port_bit=1).read_log
+        detect = next(i for i, (_, level) in enumerate(reads) if level == SPACE)
+        centers = [START + phase + (1.5 + k) * period for k in range(8)]
+        for (cycle, _), center in zip(reads[detect + 1:detect + 9], centers):
+            worst = max(worst, abs(cycle - center))
+        resumed = reads[detect + 9][0]
+        assert START + phase + 9 * period < resumed <= START + phase + 12 * period
     assert worst <= 7 / 2 + 1 and worst < period / 2
 
 
@@ -448,13 +490,15 @@ def test_a_sound_goes_through_a_noisy_line_whole(link_rom, demo):
 
 # --- sounds that are not played -------------------------------------------------------
 
-def test_a_console_whose_port_reads_otherwise_refuses_and_the_music_goes_on(link_rom, demo):
-    """The routines count on the port's unused bits. A console where they
-    read something else says so in its request, and the nesp32 passes the
-    sound over."""
-    tracks = [("Demo - One", demo), ("Voices - Hello", sound(11)), ("Demo - Two", demo)]
-    machine = console(link_rom, tracks)
-    machine.port_bits = 0x00
+def test_a_famicom_has_no_routine_for_its_slowest_rates_and_the_music_goes_on(
+        famicom_link_rom, demo):
+    """A Famicom's direct receiver needs 12 cycles a sample, where the
+    fold's 6 bought the nesp32's three fastest rates on a NES: its ROM
+    refuses those, and says so in its request, and the music plays on.
+    (The Stick's line is on the expansion port's joypad 2 /D1, and the
+    hardwired controller II's bit 0 rests under the port's bit 0.)"""
+    tracks = [("Demo - One", demo), ("Voices - Hello", sound(10, period=10)), ("Demo - Two", demo)]
+    machine = console(famicom_link_rom, tracks, port_bit=1)
     wait_for(machine, lambda: asked(machine))
     before = len(machine.played_frames())
     machine.run(300)

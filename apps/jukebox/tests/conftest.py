@@ -37,7 +37,8 @@ def build(tmp_path_factory):
         pytest.skip("no nesp32 checkout at %s" % NESP32)
     out = tmp_path_factory.mktemp("build")
     subprocess.run(["make", "-s", "BUILD=%s" % out, "NESP32=%s" % NESP32,
-                    "NESP_BUILD=%s" % NESP_BUILD, "verify"], cwd=ROOT, check=True)
+                    "NESP_BUILD=%s" % NESP_BUILD, "verify", "famicom-link-rom"],
+                   cwd=ROOT, check=True)
     return out
 
 
@@ -51,3 +52,11 @@ def rom(build):
 def link_rom(build):
     """The link ROM, and its labels."""
     return str(build / "jukebox_link.nes"), str(build / "jukebox_link.labels")
+
+
+@pytest.fixture(scope="session")
+def famicom_link_rom(build):
+    """The link ROM built for a Famicom — the Stick's data on bit 1 of
+    $4017, its expansion port's joypad 2 /D1 — and its labels."""
+    return (str(build / "jukebox_famicom_link.nes"),
+            str(build / "jukebox_famicom_link.labels"))

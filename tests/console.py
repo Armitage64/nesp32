@@ -59,6 +59,9 @@ PAD_UP, PAD_DOWN, PAD_LEFT, PAD_RIGHT = 0x08, 0x04, 0x02, 0x01
 # looks in X and gives up, so only whole looks short of X running out are
 # skipped.
 HUNT = (bytes((0xAD, 0x17, 0x40, 0x4A, 0x90, 0xFA)), 9)             # lda / lsr / bcc
+# The same hunt in the ROM built for a Famicom, whose receiver takes bit 1
+# of $4017 (its expansion port's /D1): one more lsr.
+HUNT_FAMICOM = (bytes((0xAD, 0x17, 0x40, 0x4A, 0x4A, 0x90, 0xF9)), 11)
 # Four looks, each bit / bne, then dex / bne: 29 cycles a count. A run of
 # looks with no dex after the fourth is the window's, where a frame's next
 # byte is due: those are not skipped.
@@ -90,7 +93,7 @@ class Frame:
 
 
 class Console:
-    def __init__(self, rom_path, labels_path, nmi_delay=0):
+    def __init__(self, rom_path, labels_path, nmi_delay=0, joy2_bit=0):
         with open(rom_path, "rb") as handle:
             rom = handle.read()
         self.labels = load_labels(labels_path)
@@ -121,9 +124,11 @@ class Console:
         self.frame = Frame(0.0)     # the time before the first vblank
         self.next_vblank = FRAME_CYCLES
         self.in_nmi = False
-        # The serial line (wire.py): the level of D0 at a cycle, when it
-        # next leaves mark, and where OUT0's writes go.
+        # The serial line (wire.py): the level of the Stick's line at a
+        # cycle, when it next leaves mark, where OUT0's writes go, and
+        # which bit of $4017 the Stick's line is (bit 0, or 1 on a Famicom).
         self.joy2_level = None
+        self.joy2_bit = joy2_bit
         self.joy2_quiet_until = None
         self.on_joy1 = None
         self.joy2_reads = None      # set to a list to record (cycle, pc, level)
@@ -289,8 +294,10 @@ class Console:
     # --- the controller --------------------------------------------------------
 
     def _read_joy2(self, address):
-        # Port 2 with nothing but the link on it: bit 0 is D0 inverted, and
-        # the rest is what the bus last held, the $40 of the address.
+        # Port 2 with nothing but the link on it: the Stick's bit is its
+        # line inverted, and the rest is what the bus last held, the $40 of
+        # the address. (On a Famicom the hardwired controller II idles its
+        # bit 0 where a read after eight sees it, which is 0.)
         mpu = self.mpu
         if self.strict and self.memory[mpu.pc - 1] not in READS_ABS:
             raise AssertionError("$4017 read by opcode $%02X" % self.memory[mpu.pc - 1])
@@ -298,7 +305,7 @@ class Console:
         level = self.joy2_level(cycle) if self.joy2_level is not None else 1
         if self.joy2_reads is not None:
             self.joy2_reads.append((cycle, mpu.pc - 1, level))
-        return 0x40 | (level ^ 1)
+        return 0x40 | ((level ^ 1) << self.joy2_bit)
 
     def _write_joy1(self, address, value):
         mpu = self.mpu
@@ -425,7 +432,7 @@ class Console:
         if pc < PRG_START or self.joy2_quiet_until is None:
             return False
         offset = pc - PRG_START
-        for code, cycles in (HUNT, HUNT_TIMEOUT):
+        for code, cycles in (HUNT, HUNT_TIMEOUT, HUNT_FAMICOM):
             if self.prg[offset:offset + len(code)] != code:
                 continue
             if code is HUNT_TIMEOUT[0] and (

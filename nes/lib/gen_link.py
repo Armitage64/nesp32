@@ -29,6 +29,14 @@ and put right from nesp_fold_table after (the fold receiver).
 
 The link's own routines stay, at the link's rate, for everything else.
 
+With --joy2-bit=N, the Stick's data arrives on bit N of $4017, not bit 0.
+A Famicom's expansion port (DA-15) carries joypad 2's lines, and there its
+joypad 2 /D0 is driven by the hardwired controller II, so on one the Stick's
+wire goes to /D1 (DA-15 pin 7) and the routines read bit 1: every read of
+the port costs an extra lsr a, and the timing follows it. The fold receiver
+takes bit 0 only: it folds the port's whole value in, and on a Famicom the
+hardwired controller II wanders on bit 0 under it.
+
 Each routine sits on a page of its own and must end on it, so no branch pays
 the page-crossing cycle; tests/test_link_timing.py measures every read of
 $4017 and write of $4016 on py65. nesp.inc includes the file, after it has
@@ -81,6 +89,11 @@ import sys
 READ_AT = 3             # lda abs reads on its 4th cycle
 SAMPLE = 11             # lda abs, lsr, ror zp
 
+
+def reads(bit):
+    """lda JOY2, then the lsr's that take the Stick's bit into carry."""
+    return ["    lda JOY2"] + ["    lsr a"] * (bit + 1)
+
 # Ways to pass time: (cycles, bytes, lines). pha / pla puts A back, and none
 # of them touch carry, which holds a bit between a sample's lsr and ror.
 PADS = ((2, 1, ["    nop"]), (3, 2, ["    bit $00"]), (7, 2, ["    pha", "    pla"]))
@@ -90,7 +103,7 @@ LOOP_BYTES = 5          # ldy #n, then dey / bne: 5n + 1 cycles
 class Shape:
     """What differs between the two receivers."""
 
-    def __init__(self, timeout):
+    def __init__(self, timeout, bit=0):
         self.timeout = timeout
         # Cycles from one of the hunt's reads to the next, and from the read
         # that saw the start bit to the first instruction of the byte's code.
@@ -100,14 +113,14 @@ class Shape:
             self.index = "y"
             self.rewind = 2             # ldx #0 before each hunt
         else:
-            self.hunt_pass = 9          # lda, lsr, bcc
-            self.hunt_to_code = 8       # lsr, bcc not taken, jmp
+            self.hunt_pass = 9 + 2 * bit    # lda, lsr[, lsr], bcc
+            self.hunt_to_code = 8 + 2 * bit  # lsr[, lsr], bcc not taken, jmp
             self.index = "x"
             self.rewind = 0
         self.mean_edge = self.hunt_pass / 2
         # From a byte's last sample to the hunt's next read: the rest of the
-        # lda, lsr, ror, lda, eor, sta abs+index, in?, cp? zp, bne taken.
-        self.tail = 1 + 2 + 5 + 3 + 2 + 5 + 2 + 3 + 3 + self.rewind + READ_AT
+        # lda, lsr[, lsr], ror, lda, eor, sta abs+index, in?, cp? zp, bne taken.
+        self.tail = 1 + 2 + 2 * bit + 5 + 3 + 2 + 5 + 2 + 3 + 3 + self.rewind + READ_AT
         # And after the header's last byte: bne not taken, cp? #, bne not
         # taken, lda abs, and #, adc #, sta zp.
         self.header_tail = self.tail - 3 + 2 + 2 + 2 + 4 + 2 + 2 + 3
@@ -158,20 +171,21 @@ def check_tails(period, shape, to_nes_bits):
         raise ValueError("at %d cycles a bit the hunt after the header is late" % period)
 
 
-def samples(period, shape, use_y):
+def samples(period, shape, use_y, bit=0):
+    sample = SAMPLE + 2 * bit
     lines = []
-    for bit in range(8):
-        lines += delay(first_sample_delay(period, shape) if bit == 0 else period - SAMPLE,
+    for number in range(8):
+        lines += delay(first_sample_delay(period, shape) if number == 0 else period - sample,
                        use_y=use_y)
-        lines += ["    lda JOY2", "    lsr a", "    ror nesp_rx_data"]
+        lines += reads(bit) + ["    ror nesp_rx_data"]
     return lines
 
 
-def store(shape):
+def store(shape, bit=0):
     """A byte into the frame, and whether that was the frame's last. Falls
     through with the frame's end newly worked out, after the header."""
     index = shape.index
-    return ["    lda nesp_rx_data", "    eor #$FF            ; the port inverts D0",
+    return ["    lda nesp_rx_data", "    eor #$FF            ; the port inverts D%d" % bit,
             "    sta a:nesp_rx,%s" % index, "    in%s" % index,
             "    cp%s nesp_rx_end" % index, "    bne @next",
             "    cp%s #NESP_HEADER" % index, "    bne @done",
@@ -181,8 +195,8 @@ def store(shape):
             "    sta nesp_rx_end"]
 
 
-def receiver(period, baud, to_nes_bits):
-    shape = Shape(timeout=False)
+def receiver(period, baud, to_nes_bits, bit=0):
+    shape = Shape(timeout=False, bit=bit)
     check_tails(period, shape, to_nes_bits)
     lines = ["", ".align 256",
              "; Receive a reply into nesp_rx. %d cycles a bit, %d baud." % (period, baud),
@@ -191,12 +205,12 @@ def receiver(period, baud, to_nes_bits):
              ".proc nesp_rx_frame", "    lda #NESP_HEADER", "    ldx #0",
              "    sta nesp_rx_end     ; nesp_rx_bytes comes in here",
              "    jmp @hunt", "@byte:"]
-    lines += samples(period, shape, use_y=True)
-    lines += store(shape)
+    lines += samples(period, shape, use_y=True, bit=bit)
+    lines += store(shape, bit)
     lines += ["@next:",
-              "@hunt:                      ; the tests skip ahead while this sees mark",
-              "    lda JOY2", "    lsr a", "    bcc @hunt", "    jmp @byte",
-              "@done:", "    clc", "    rts", ".endproc", one_page("nesp_rx_frame"),
+              "@hunt:                      ; the tests skip ahead while this sees mark"]
+    lines += reads(bit) + ["    bcc @hunt", "    jmp @byte"]
+    lines += ["@done:", "    clc", "    rts", ".endproc", one_page("nesp_rx_frame"),
               RX_BYTES]
     return lines
 
@@ -208,7 +222,7 @@ COUNTED = LOOK + 5      # and dex, bne: the look that follows the hunt's count
 CLOSE = 3               # looks of the hunt that follow another, 6 cycles on
 WINDOW = 6              # looks, back to back, where a frame's next byte is due
 LOOK_TO_CODE = 4        # the rest of the bit, and the bne taken
-BIT_LOOP = 16           # lda abs, lsr, ror zp, dex, bne: a sample, less its padding
+BIT_LOOP = 16           # lda abs, lsr[, lsr], ror zp, dex, bne: a sample, less its padding
 # A sample is aimed this many cycles before the middle of its bit. On a
 # console a sample being played stops the CPU for up to four cycles at each
 # byte it fetches, which a routine that counts cycles cannot see: its
@@ -226,7 +240,7 @@ TAIL = 1 + 2 + 5 + 2 + 2 + 3 + 2 + 5 + 2 + 3 + 3 + 2 + READ_AT
 HEADER_TAIL = TAIL - 3 + 2 + 2 + 2 + 4 + 2 + 2 + 3
 
 
-def timeout_receiver(period, baud, to_nes_bits, early=None):
+def timeout_receiver(period, baud, to_nes_bits, early=None, bit=0):
     """Where the bytes of a frame follow one another, as a UART sends them,
     the start of each is known to a few cycles from the one before. So it
     is looked for with WINDOW looks 6 cycles apart, and found to within
@@ -238,24 +252,26 @@ def timeout_receiver(period, baud, to_nes_bits, early=None):
     A look that comes 6 cycles after another goes to @byte when it sees a
     start bit, which fell 3 cycles before on average. The one that comes
     after 11 goes to @first, 2 cycles on: its start bit fell 5.5 before."""
-    pad = period - BIT_LOOP
+    bit_loop = BIT_LOOP + 2 * bit
+    pad = period - bit_loop
     early = EARLY if early is None else early
     # From the look that saw the start bit to the first sample's read:
     # LOOK_TO_CODE, the delay, ldx #, the loop's padding and the lda's read.
     first = int(1.5 * period - early - LOOK / 2 - LOOK_TO_CODE - 2 - pad - READ_AT + 0.5)
     skip = 2
-    if pad < 2 or pad == 3 or first - skip < 2:
+    if pad < 2 or first - skip < 2 or pad == 3 and not bit:
         raise ValueError("at %d cycles a bit the counting receiver has no room" % period)
     # The window has to begin before the next byte's start bit can, and go
     # on until after it must have: a sample, and so the byte, may be as
     # much as a look and a stolen fetch out, either way.
+    tail = TAIL + 2 * bit
     edge = 0.5 * period + (to_nes_bits - 9) * period    # from a last sample on time
     slack = COUNTED / 2 + 4
-    if TAIL > edge - slack:
+    if tail > edge - slack:
         raise ValueError("at %d cycles a bit the window opens late" % period)
-    if TAIL + (WINDOW - 1) * LOOK < edge + slack:
+    if tail + (WINDOW - 1) * LOOK < edge + slack:
         raise ValueError("at %d cycles a bit the window closes early" % period)
-    if HEADER_TAIL > edge + period - slack:
+    if HEADER_TAIL + 2 * bit > edge + period - slack:
         raise ValueError("at %d cycles a bit the look after the header is late" % period)
     lines = ["", ".align 256",
              "; Receive a reply into nesp_rx. %d cycles a bit, %d baud." % (period, baud),
@@ -265,7 +281,7 @@ def timeout_receiver(period, baud, to_nes_bits, early=None):
              "; clear if the frame came, set if the wait ran out. Destroys A, X and Y.",
              ".proc nesp_rx_frame", "    lda #NESP_HEADER", "    ldy #0",
              "    sta nesp_rx_end     ; nesp_rx_bytes comes in here",
-             "    lda #1              ; what the looks test the port with",
+             "    lda #%d              ; what the looks test the port with" % (1 << bit),
              "    ldx #0",
              "@hunt:                      ; the tests skip ahead while this sees mark",
              "    bit JOY2", "    bne @first"]
@@ -279,9 +295,9 @@ def timeout_receiver(period, baud, to_nes_bits, early=None):
     lines += delay(first - skip, use_y=False)
     lines += ["    ldx #8", "@bit:"]
     lines += delay(pad, use_y=False)
-    lines += ["    lda JOY2", "    lsr a", "    ror nesp_rx_data", "    dex", "    bne @bit"]
-    lines += store(Shape(timeout=True))
-    lines += ["@next:", "    lda #1"]
+    lines += reads(bit) + ["    ror nesp_rx_data", "    dex", "    bne @bit"]
+    lines += store(Shape(timeout=True), bit)
+    lines += ["@next:", "    lda #%d" % (1 << bit)]
     for _ in range(WINDOW):
         lines += ["    bit JOY2", "    bne @byte"]
     lines += ["    ldx #0              ; not where it was due: a gap, or the end",
@@ -308,14 +324,14 @@ FAST_WINDOW = 6
 # Each on a page of its own even with --pack, which packs only the link's.
 FAST_ALIGN = ".align 256          ; a page of its own, even packed"
 # From a byte's last sample to the window's first look: the rest of the
-# lda, lsr, ror zp, lda zp, eor #, sta abs+y, iny, cpy zp, beq not taken,
+# lda, lsr[, lsr], ror zp, lda zp, eor #, sta abs+y, iny, cpy zp, beq not taken,
 # lda #, and the look's own read.
 FAST_TAIL = 1 + 2 + 5 + 3 + 2 + 5 + 2 + 3 + 2 + 2 + READ_AT
 
 
-def short_receiver(period, baud, to_nes_bits, early=None):
+def short_receiver(period, baud, to_nes_bits, early=None, bit=0):
     early = EARLY if early is None else early
-    pad = period - SAMPLE
+    pad = period - (SAMPLE + 2 * bit)
     if pad < 0 or pad == 1:
         raise ValueError("at %d cycles a bit a sample cannot be padded" % period)
     # A look 6 cycles after another sees a start bit that fell 3 before on
@@ -325,10 +341,11 @@ def short_receiver(period, baud, to_nes_bits, early=None):
     after_count = after_look - 2        # its start bit fell 5.5 before
     if after_count < 2 or after_count == 3:
         raise ValueError("at %d cycles a bit the short receiver has no room" % period)
+    fast_tail = FAST_TAIL + 2 * bit
     edge = 0.5 * period + (to_nes_bits - 9) * period    # from a last sample on time
-    if FAST_TAIL > edge:
+    if fast_tail > edge:
         raise ValueError("at %d cycles a bit the short receiver's window opens late" % period)
-    if FAST_TAIL + (FAST_WINDOW - 1) * LOOK < edge + COUNTED / 2 + 4:
+    if fast_tail + (FAST_WINDOW - 1) * LOOK < edge + COUNTED / 2 + 4:
         raise ValueError("at %d cycles a bit the short receiver's window closes early"
                          % period)
     lines = ["", FAST_ALIGN,
@@ -339,7 +356,7 @@ def short_receiver(period, baud, to_nes_bits, early=None):
              "; as for nesp_rx_bytes. Carry clear if it came, set if the wait ran",
              "; out. Destroys A, X and Y.",
              ".proc nesp_fast_rx_bytes", "    sta nesp_rx_end",
-             "    lda #1              ; what the looks test the port with",
+             "    lda #%d              ; what the looks test the port with" % (1 << bit),
              "    ldx #0",
              "@hunt:                      ; the tests skip ahead while this sees mark",
              "    bit JOY2", "    bne @first"]
@@ -351,13 +368,13 @@ def short_receiver(period, baud, to_nes_bits, early=None):
     lines += delay(2, use_y=False)
     lines += ["@first:"]
     lines += delay(after_count, use_y=False)
-    for bit in range(8):
-        if bit:
+    for number in range(8):
+        if number:
             lines += delay(pad, use_y=False) if pad else []
-        lines += ["    lda JOY2", "    lsr a", "    ror nesp_rx_data"]
-    lines += ["    lda nesp_rx_data", "    eor #$FF            ; the port inverts D0",
+        lines += reads(bit) + ["    ror nesp_rx_data"]
+    lines += ["    lda nesp_rx_data", "    eor #$FF            ; the port inverts D%d" % bit,
               "    sta a:nesp_rx,y", "    iny", "    cpy nesp_rx_end", "    beq @done",
-              "    lda #1"]
+              "    lda #%d" % (1 << bit)]
     for _ in range(FAST_WINDOW):
         lines += ["    bit JOY2", "    bne @byte"]
     lines += ["    ldx #0              ; not where it was due: a gap",
@@ -426,7 +443,12 @@ def fold_value(raw):
     return reverse ^ 0xFF
 
 
-def fold_receiver(period, baud, to_nes_bits, early=None):
+def fold_receiver(period, baud, to_nes_bits, early=None, bit=0):
+    if bit:
+        raise ValueError("--joy2-bit=%d: the fold receiver folds the port's whole"
+                         " value in, and on a Famicom the hardwired controller II"
+                         " wanders on bit 0 under it; a session there goes at the"
+                         " link's rate" % bit)
     early = EARLY if early is None else early
     pad = period - FOLD_SAMPLE
     if pad < 0 or pad == 1:
@@ -491,28 +513,32 @@ def fold_table():
     return lines
 
 
-def include(proto, timeout=False, pack=False, early=None, short_period=None):
+def include(proto, timeout=False, pack=False, early=None, short_period=None, bit=0):
     period = proto.NESP_PERIOD
-    lines = ["; Generated by nes/lib/gen_link.py. Do not edit.", "",
-             '.segment "RXTX"']
+    sample = SAMPLE + 2 * bit
+    lines = ["; Generated by nes/lib/gen_link.py. Do not edit."]
+    if bit:
+        lines.append("; The Stick's data arrives on bit %d of $4017 (a Famicom's"
+                     " expansion port)." % bit)
+    lines += ["", '.segment "RXTX"']
     if timeout:
-        lines += timeout_receiver(period, proto.NESP_BAUD, proto.NESP_TO_NES_BITS, early)
+        lines += timeout_receiver(period, proto.NESP_BAUD, proto.NESP_TO_NES_BITS, early, bit)
     else:
-        lines += receiver(period, proto.NESP_BAUD, proto.NESP_TO_NES_BITS)
+        lines += receiver(period, proto.NESP_BAUD, proto.NESP_TO_NES_BITS, bit)
     lines += sender(period)
     if short_period:
         if not timeout:
             raise ValueError("a session's own rate is for the receiver that counts: --timeout")
         baud = (proto.NESP_CPU_HZ + short_period // 2) // short_period
         lines += ["", "NESP_SHORT_PERIOD = %d" % short_period]
-        if short_period < SAMPLE:
-            lines += fold_receiver(short_period, baud, proto.NESP_TO_NES_BITS, early)
+        if short_period < sample:
+            lines += fold_receiver(short_period, baud, proto.NESP_TO_NES_BITS, early, bit)
         else:
-            lines += short_receiver(short_period, baud, proto.NESP_TO_NES_BITS, early)
+            lines += short_receiver(short_period, baud, proto.NESP_TO_NES_BITS, early, bit)
         lines += [FAST_ALIGN if line == ".align 256"
                   else line.replace("nesp_tx_byte", "nesp_fast_tx_byte")
                   for line in sender(short_period)]
-    if short_period and short_period < SAMPLE:
+    if short_period and short_period < sample:
         lines += fold_table() + ['.segment "RXTX"']
     if pack:
         lines = [line for line in lines if line != ".align 256"]
@@ -537,9 +563,15 @@ def main(argv):
                  if option.startswith("--early=")]
         short = [int(option.split("=")[1]) for option in argv[3:]
                  if option.startswith("--short-period=")]
+        bits = [int(option.split("=")[1]) for option in argv[3:]
+                if option.startswith("--joy2-bit=")]
+        bit = bits[0] if bits else 0
+        if not 0 <= bit <= 4:
+            raise ValueError("--joy2-bit=%d: the Famicom's expansion port has"
+                             " joypad 2's /D0 through /D4" % bit)
         handle.write(include(nesp_proto, timeout="--timeout" in argv[3:],
                              pack="--pack" in argv[3:], early=early[0] if early else None,
-                             short_period=short[0] if short else None))
+                             short_period=short[0] if short else None, bit=bit))
     return 0
 
 

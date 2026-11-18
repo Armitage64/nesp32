@@ -36,8 +36,21 @@ SOURCES := $(SOURCE) $(RADAR_SRC)/nes/radar_link.inc $(wildcard $(VENDOR)/*.inc)
 # into a build/ of our own, which ca65 is told to look for binaries in.
 SPRITES := $(BUILD)/radar
 METASPRITES := $(SPRITES)/build/metasprites.stamp
-INCLUDES := -I $(abspath $(SPRITES))/build -I assets/ldv -I nes -I $(VENDOR) \
-	-I $(abspath $(BUILD)) --bin-include-dir $(abspath $(SPRITES))
+# LINK_OPTIONS: nesp32's Famicom cartridge passes --joy2-bit=1 (docs/WIRING.md,
+# the Famicom); empty for the ordinary build. A Famicom part assembles with
+# a link.inc generated here, and copies of nesp.inc and nesp_proto.inc from
+# the vendor beside it: ca65 looks in the including file's directory first,
+# so a copy of nesp.inc is what brings the link.inc of its own build in,
+# ahead of the vendored one. The submodule holds nesp32's copies, for a NES,
+# and is not written to. These are set before INCLUDES, whose value and the
+# cart object's dependencies expand them where they are read.
+ifneq ($(strip $(LINK_OPTIONS)),)
+LINK_INCLUDE := -I $(abspath $(BUILD))
+FAM_LINK_INC := $(BUILD)/link.inc $(BUILD)/nesp.inc $(BUILD)/nesp_proto.inc
+endif
+
+INCLUDES := -I $(abspath $(SPRITES))/build -I assets/ldv -I nes $(LINK_INCLUDE) \
+	-I $(VENDOR) -I $(abspath $(BUILD)) --bin-include-dir $(abspath $(SPRITES))
 
 .PHONY: all cart verify test clean FORCE
 
@@ -78,7 +91,23 @@ $(BUILD)/cart.inc: FORCE | $(BUILD)
 	@test -n "$(CART_CHR)" || { echo "CART_CHR=: where on the cartridge the tiles are"; exit 1; }
 	@echo "CART_CHR = $(CART_CHR)" | cmp -s - $@ || echo "CART_CHR = $(CART_CHR)" > $@
 
-$(BUILD)/nes_radar_cart.o: $(SOURCES) $(METASPRITES) $(BUILD)/cart.inc
+# The Famicom's link, when one is asked for: the link is generated here, and
+# nesp.inc and nesp_proto.inc are the vendor's, copied so that the nesp.inc
+# a Famicom part includes is the one in this build directory, which finds
+# this build directory's link.inc. (ca65 looks in the including file's
+# directory first.)
+ifneq ($(strip $(LINK_OPTIONS)),)
+$(BUILD)/link.inc: $(NESP32)/nes/lib/gen_link.py $(NESP) | $(BUILD)
+	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $@ --timeout $(LINK_OPTIONS)
+
+$(BUILD)/nesp.inc: $(VENDOR)/nesp.inc | $(BUILD)
+	cp $< $@
+
+$(BUILD)/nesp_proto.inc: $(VENDOR)/nesp_proto.inc | $(BUILD)
+	cp $< $@
+endif
+
+$(BUILD)/nes_radar_cart.o: $(SOURCES) $(METASPRITES) $(BUILD)/cart.inc $(FAM_LINK_INC)
 	cd $(RADAR_SRC) && ca65 -g -D CART $(INCLUDES) -o $(abspath $@) nes/$(NAME).s
 
 $(CART_ROM): $(BUILD)/nes_radar_cart.o nes/mmc1_cart.cfg

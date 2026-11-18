@@ -81,12 +81,19 @@ WRITE = 9               # sta abs, bpl not taken, and 3 of padding
 LOOK = 6                # cpy abs, beq not taken: button A
 ROOMY_TAIL = 15         # from the last sample to the hunt's first look, at least
 
+
+def direct_sample(bit):
+    """Cycles in one of the direct receiver's samples: lda abs, the shifts
+    that take the Stick's bit into carry — bit + 1 of them, the first
+    bringing the port's bit 0 there — and ror abs, which packs it."""
+    return 12 + 2 * bit
+
 # Ways to pass time: (cycles, bytes, lines). pha / pla puts A back.
 PADS = ((2, 1, ["    nop"]), (3, 2, ["    bit $00"]), (7, 2, ["    pha", "    pla"]))
 LOOP_BYTES = 5          # ldy #n, then dey / bne: 5n + 1 cycles
 
 
-def delay(cycles, _memo={0: (0, [])}, _memo_y={0: (0, [])}, y=True):
+def delay(cycles, y=True, _memo={0: (0, [])}, _memo_y={0: (0, [])}):
     """Lines of code that take exactly this many cycles, in the fewest
     bytes. Uses Y from 12 cycles up, unless y is False."""
     if cycles == 1 or cycles < 0:
@@ -224,7 +231,78 @@ def tracked_routine(name, period):
     return lines
 
 
-# A look is 13 cycles, and 256 of them a pass.
+# The direct receiver, for a Famicom. Its expansion port carries the Stick's
+# data on joypad 2's /D1 or higher (docs/WIRING.md, the Famicom), and the
+# fold receiver needs the data in bit 0: a bit at position p, fed through
+# asl / eor, has walked p samples' worth of shifts out of the top of A by
+# the byte's end. So each sample is read out on its own: lda $4017, the
+# lsr's that take the Stick's bit into carry, and ror into a byte of its
+# own, which arrives bits-reversed; the fold's scramble (pcm.raw_byte) is
+# one eor a byte, off the sample clock. Only the Stick's bit is looked at,
+# which is why the hardwired controller II, whose data line is the port's
+# bit 0, that every read of $4017 shifts and that a controller read's
+# strobe re-loads for the eight reads after it, is of no concern here; the
+# hunts and the hush test the port through the Stick's bit alone for the
+# same reason. At these rates, 12 cycles a sample and up, the two fastest
+# of the nesp32's rates are out of reach: the fold's 6-cycle sample is what
+# bought them on a NES.
+#
+# The byte is kept in nesp_tx_data, which no exchange is using while a
+# sound plays, as pcm_hush's nesp_count and nesp_index are.
+DIRECT_RATES = "the rates at which a Famicom's routines are generated"
+
+
+def direct_stream_routine(name, period, bit):
+    first = int(1.5 * period - MEAN_EDGE - ROOMY_HUNT_TO_CODE - READ_AT + 0.5)
+    first += first == 1
+    sample = direct_sample(bit)
+    # The hunt resumes in the stop bits: after the last data bit is over,
+    # and before the next start bit falls. The finalize is five cycles
+    # longer than the fold's write, and the slot ends nine after its read
+    # where the fold's ends one; the spare that places the resume is
+    # taken from the middle of what the window leaves. The pads never
+    # touch Y (they are shorter than 12 cycles), so Y carries the button
+    # check's constant from the routine's entry, once, for every byte.
+    # The first sample is aimed a cycle early: the byte's code, with the
+    # direct receiver's 14-cycle finalize and check, is otherwise a cycle
+    # longer than the wire's byte, and the hunt's phase would slip a
+    # cycle a byte until a start bit was missed whole.
+    first -= 1
+    spare = max(0, int(3 * period - first - 43.1) - 2)
+    if spare == 1:
+        spare = 0
+    mask = 1 << bit
+    lines = ["", ".align 256",
+             "; %d cycles a bit, %d baud, %d samples a second, reading bit %d of $4017" % (
+                 period, pcm.baud(period), round(pcm.sample_rate(period)), bit),
+             "%s:" % name,
+             "    ldy #PORT_REST     ; the button check's, for every byte",
+             "    jmp @arm", "@byte:"]
+    lines += delay(first, y=False)
+    for index in range(8):
+        if index:
+            lines += delay(period - sample, y=False)
+        lines += (["    lda JOY2"] + ["    lsr a"] * (bit + 1) +
+                  ["    ror a:nesp_tx_data"])
+    lines += ["    ldx a:nesp_tx_data",
+              "    lda pcm_direct_table,x ; the fold's raw, from the wire's order",
+              "    sta APU_DMC_LEVEL   ; the sample; bit 7 is not the DAC's",
+              "    bpl @done           ; and clear in the last byte",
+              "    cpy JOY1            ; button A, with the line at rest",
+              "    beq @pressed"]
+    lines += delay(spare, y=False)
+    lines += ["@arm:", "    lda #$%02X" % mask]
+    lines.append("@hunt:")
+    lines += ["    bit JOY2", "    bne @found"] * 3
+    lines += ["    bit JOY2", "    beq @hunt",
+              "    bit $00         ; evens out the two ways out", "    jmp @byte",
+              "@found:", "    nop"]
+    lines += ["    jmp @byte", "@done:", "    clc", "    rts", "@pressed:", "    sec", "    rts",
+              '    .assert >(%s) = >(* - 1), error, "%s crosses a page"' % (name, name)]
+    return lines
+# A look is 13 cycles, and 256 of them a pass. On a Famicom the look reads
+# the port through the Stick's bit, for the hardwired controller II's bit 0;
+# the same 13 cycles.
 HUSH = """
 ; A routine above came back with carry set: button A is down, and the
 ; nesp32 is still sending. A = the byte the DAC was last given.
@@ -268,8 +346,7 @@ HUSH_PATIENCE = 100
     ldx #HUSH_PASSES
     ldy #0
 @look:
-    lda JOY2
-    cmp #PORT_IDLE
+%s
     bne @busy
     dey
     bne @look
@@ -287,26 +364,71 @@ HUSH_PATIENCE = 100
 """
 
 
-def include():
+def include(bit=0):
     lines = ["; Generated by tools/gen_pcm.py. Do not edit.", "",
              "PCM_COUNT = %d" % len(pcm.PERIODS),
-             "PORT_IDLE = $%02X      ; what JOY2 reads with the line at rest" % pcm.PORT_IDLE,
-             "PORT_START = $%02X     ; and at a start bit" % (pcm.PORT_IDLE | 1),
-             "", '.segment "SOUND"']
+             "NESP_PORT_BIT = %d" % bit]
+    if bit:
+        # A Famicom: the Stick's data on joypad 2's /D1 or higher, and the
+        # hardwired controller II's bit 0, which rests at one (its shift
+        # register drains to its grounded serial input as the routines
+        # read the port).
+        rest = pcm.PORT_IDLE | 1
+        possible = [index for index, period in enumerate(pcm.PERIODS)
+                    if period >= direct_sample(bit)]
+        lines += ["PORT_REST = $%02X      ; what JOY2 reads with the line at rest: on a" % rest,
+                  "                       ; Famicom the hardwired controller II's bit is one",
+                  "PORT_START = $%02X     ; and at a start bit" % (rest | (1 << bit)),
+                  "PCM_LIMIT = %d         ; rates from this index on are refused" % (possible[-1] + 1),
+                  "PCM_HQ = %d          ; the fastest rate this console has a routine for" % possible[-1]]
+    else:
+        lines += ["PORT_IDLE = $%02X      ; what JOY2 reads with the line at rest" % pcm.PORT_IDLE,
+                  "PORT_START = $%02X     ; and at a start bit" % (pcm.PORT_IDLE | 1),
+                  "PCM_LIMIT = %d         ; rates from this index on are refused" % len(pcm.PERIODS),
+                  "PCM_HQ = %d           ; the fastest rate this console has a routine for" % (
+                      len(pcm.PERIODS) - 1)]
+    lines += ["", '.segment "SOUND"']
     names = ["pcm_stream_%d" % index for index in range(len(pcm.PERIODS))]
-    for name, period in zip(names, pcm.PERIODS):
-        lines += (tracked_routine(name, period) if pcm.tracked(period)
-                  else stream_routine(name, period))
-    lines += HUSH.splitlines()
+    if bit:
+        for index, period in enumerate(pcm.PERIODS):
+            if period >= direct_sample(bit):
+                lines += direct_stream_routine(names[index], period, bit)
+            else:
+                lines += ["", ".align 256",
+                          "; %d cycles a bit: no routine for it on this console, and" % period,
+                          "; sound_rate refuses the rate before a routine is asked for",
+                          "%s:" % names[index], "    sec", "    rts",
+                          '    .assert >(%s) = >(* - 1), error, "%s crosses a page"' % (
+                              names[index], names[index])]
+        lines += (HUSH % "\n".join(["    lda #$%02X" % (1 << bit), "    bit JOY2"])).splitlines()
+    else:
+        for name, period in zip(names, pcm.PERIODS):
+            lines += (tracked_routine(name, period) if pcm.tracked(period)
+                      else stream_routine(name, period))
+        lines += (HUSH % "\n".join(["    lda JOY2", "    cmp #PORT_IDLE"])).splitlines()
     lines += ["", '.segment "RODATA"',
               "pcm_stream_lo: .byte " + ", ".join("<" + name for name in names),
               "pcm_stream_hi: .byte " + ", ".join(">" + name for name in names)]
+    if bit:
+        # The direct receiver's table, on a page of its own: the lookup's
+        # abs,x must never pay a page-crossing cycle, which would wobble
+        # the sound's timing.
+        lines += ["", '.segment "TABLE"',
+                  '.align 256',
+                  "pcm_direct_table:   ; what the fold would hold for each wire byte,",
+                  "                    ; as the direct receiver's byte arrives: the port's",
+                  "                    ; buffer inverts the line, so its bits are the",
+                  "                    ; complement of the byte that went out",
+                  "    .byte " + ", ".join("$%02X" % (pcm.raw_byte(value ^ 0xFF))
+                                          for value in range(256))]
     return "\n".join(lines) + "\n"
 
 
 def main(argv):
+    bits = [int(option.split("=")[1]) for option in argv[2:]
+            if option.startswith("--joy2-bit=")]
     with open(argv[1], "w") as handle:
-        handle.write(include())
+        handle.write(include(bits[0] if bits else 0))
     return 0
 
 
