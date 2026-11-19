@@ -53,8 +53,8 @@ The service is documented in [`docs/PROTOCOL.md`](../../docs/PROTOCOL.md),
 - **The nesp32 holds only the first 2 KB of the body** and doesn't read
   the rest. `LENGTH` is still the server's whole `Content-Length`; this
   README is about 11 KB.
-- **The server's certificate is checked** against ESP-IDF's bundle of root
-  certificates, and redirects are followed, up to five.
+- **The server's certificate is checked** against Mozilla's list of root
+  certificates (`firmware/ca`), and redirects are followed, up to five.
 - **The body arrives as raw bytes.** Making text of them is the ROM's job.
   This one wraps at the last space before 28 columns, ends a line at LF,
   ignores CR, and shows any byte outside printable ASCII as `?`. The font
