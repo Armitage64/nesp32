@@ -113,9 +113,11 @@ You will need:
 - for the ROMs: [cc65](https://cc65.github.io/) (`ca65`, `ld65`), a C compiler, `make`, `patch`
   and Python 3
 - for the firmware: [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/)
-  5.1 or later (5.5.5 and 6.0.3 are the versions it has been built with), installed for both
-  chips. Espressif's installer puts it in `~/.espressif/v<version>/esp-idf`; it can be cloned
-  instead, as below, and only its core tools are needed:
+  6.0 or later, installed for both chips. The releases are built with 6.1.1 for the ESP32-S3
+  boards and 6.0.3 for the StickC Plus2, which doesn't build with 6.1.1 until
+  m5stack/M5GFX#425 is fixed. Espressif's installer puts it in
+  `~/.espressif/v<version>/esp-idf`; it can be cloned instead, as below, and only its core
+  tools are needed:
 
   ```sh
   git clone --recursive https://github.com/espressif/esp-idf.git ~/esp/esp-idf

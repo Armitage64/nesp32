@@ -1,5 +1,9 @@
 dependencies:
-  idf: ">=5.1"
+  # 6.0 and up: the firmware is built and tested with ESP-IDF 6 only.
+  # components/esp_hid is 6.1.1's, and sdkconfig.defaults is written for 6.x.
+  # The releases are built with 6.1.1, and the StickC Plus2's with 6.0.3
+  # (.github/workflows/release.yml).
+  idf: ">=6.0"
   # M5Unified and M5GFX pinned to the pair the 0.2.0 release was built and
   # played with. dependencies.lock is not kept, so "*" took whatever was
   # newest: M5GFX 0.3.0 includes esp_psram.h without asking for the
