@@ -66,6 +66,14 @@ CONFIG_MBEDTLS_ECP_DP_SECP256K1_ENABLED=n
 CONFIG_MBEDTLS_ECP_DP_BP256R1_ENABLED=n
 CONFIG_MBEDTLS_ECP_DP_BP384R1_ENABLED=n
 CONFIG_MBEDTLS_ECP_DP_BP512R1_ENABLED=n
+# The roots servers are checked against: Mozilla's list, vendored in
+# ca/cacert.pem (ca/README.md, tests/test_firmware_ca.py), not ESP-IDF's,
+# which lags Mozilla's removals (6.0.3's still has the emSign roots Mozilla
+# removed). Cross-signed verification, ESP-IDF's default, stays on: some
+# servers send a chain whose top is issued by a root Mozilla no longer has.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_NONE=y
+CONFIG_MBEDTLS_CUSTOM_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CUSTOM_CERTIFICATE_BUNDLE_PATH="ca/cacert.pem"
 
 # The PSRAM both boards have, for what is too big for the chip's own memory
 # (an article is a quarter of a megabyte). A board whose PSRAM does not
