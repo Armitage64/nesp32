@@ -80,6 +80,30 @@ def test_a_lead_of_ff_goes_ahead_of_the_pattern(raw):
     assert result(raw)[2] == 256                # every byte that left
 
 
+@pytest.mark.parametrize("lead", [8, 100])
+def test_the_lead_goes_to_the_uart_with_what_follows_it(raw, lead):
+    """A receiver that tracks each start bit from the one before loses its
+    place if the line rests between the lead and the run, and a run's
+    first read may be slow (a sound's opens its file). So the read comes
+    first, and the write that ends the lead carries the run's first bytes."""
+    writes = []
+    write = raw.line.line_write
+
+    def recorded(data):
+        writes.append(bytes(data))
+        return write(data)
+    raw.line.line_write = recorded
+    assert send(raw, period=7, lead=lead, seed=7, count=248).ok
+    run(raw, 0, START)
+    assert bytes(raw.line.sent) == b"\xff" * lead + pattern(7, 248)
+    written = 0
+    for data in writes:                 # up to the write that ends the lead
+        written += len(data)
+        if written >= lead:
+            break
+    assert written > lead               # it carried the run's first bytes too
+
+
 def test_the_same_request_again_starts_the_wait_again(raw):
     """A console that did not hear the reply asks again, a frame later. The
     nesp32 must not change its rate under it."""

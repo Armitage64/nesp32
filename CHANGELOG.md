@@ -8,9 +8,11 @@
 
 ### Cartridge
 - The cartridge menu says, under its title, when the firmware or the cartridge needs an update: when the two are from different releases, or the web site has a newer one (#80)
+- Throughput test: 298296 baud to the console no longer fails a whole block at random; the test lost count of a block's first byte, not the line (#98)
 
 ### Firmware
 - The Stick's screen says "Firmware update available" in red, with no console running a program, when the web site has newer firmware
+- Jukebox: sounds made for the two fastest rates (7 and 8 cycles a bit) start every time, where they often played noise or nothing (#98)
 - Built with ESP-IDF 6 instead of 5.5.5: 6.1.1 for the StickS3 and the generic ESP32-S3, 6.0.3 for the StickC Plus2 (#17)
 - HTTPS servers are checked against Mozilla's current list of root certificates, kept with the firmware, instead of ESP-IDF's, which still trusted roots Mozilla has removed: an https address now verifies as it would in Firefox, and a server that still relies on one of those older roots is refused
 
