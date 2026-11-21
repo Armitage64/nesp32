@@ -37,8 +37,16 @@ to its first sample; if still high it is early, and takes 6. So a byte is
 a cycle shorter or longer than it should be, the edge stays within a cycle
 or two of the look, and the nesp32's clock may differ by a cycle a byte.
 At 6 cycles a bit nothing in its loop is padding. The first byte is found
-by a hunt, up to 6 cycles out, which the block's preamble of $FF bytes
-(one clean edge each) gives it time to work off.
+by a hunt, which reads the line every 6 or 7 cycles, so it sees the start
+bit up to 7 cycles after it fell; and it can miss a start bit of 6 or 7
+cycles altogether, all the more if the line makes its lows short, and find
+the next one. The byte it found goes by unread, and the next byte's look is
+aimed TRACK_LEAD_EARLY cycles early: a look that lands early reads mark and
+runs a cycle longer each byte until it meets the edge, which the block's
+preamble of $FF bytes (one clean edge each) gives it time to do, where one
+that landed past a short start bit would read mark too and run off. A block
+whose hunt missed a start bit comes a byte late in rx_buf; the ROM finds it
+there (check_block), and the nesp32 sends rates.SLIPS bytes more for it.
 
 Sending. A holds the byte and shifts right after each write, so a bit costs
 sta + lsr, 6 cycles, and the rest is padding. Bits 1 and 2 of A reach OUT1
@@ -120,6 +128,14 @@ def fast_receiver(name, period):
 
 TRACK_STORE = 15        # from the last sample to the look: sta (zp),y, iny, bne, cpx
 TRACK_TO_SAMPLE = 9     # from the look to the first sample: 8 if late, 10 if early
+# From the hunt's read that saw the first start bit to the next byte's look,
+# less the lead's pad: 5 to reach @lead either way, ldy, jmp, and cpx's read.
+TRACK_HUNT_TO_LOOK = 14
+# The look is aimed this many cycles before the hunt's read, which came up
+# to 7 cycles after the start bit fell: landing early it reads mark and
+# runs a cycle longer each byte until it meets the edge, but landing past a
+# start bit as short as 6 cycles it would read mark there too, and run off.
+TRACK_LEAD_EARLY = 3
 
 
 def tracked_receiver(name, period):
@@ -137,7 +153,7 @@ def tracked_receiver(name, period):
              "    sta rx_ptr + 1", "    ldy #0", "    ldx #PORT_START", "    jmp @hunt",
              "@check:"]
     lines += delay(turn)
-    lines += ["    cpx JOY2        ; where the start bit's edge should be",
+    lines += ["@look:", "    cpx JOY2        ; where the start bit's edge should be",
               "    bne @early      ; still at mark: a longer way round",
               "    nop", "@sample:"]
     lines += delay(first)
@@ -147,8 +163,11 @@ def tracked_receiver(name, period):
         lines += ["    asl a", "    eor JOY2"]
     lines += ["    sta (rx_ptr),y  ; scrambled; rx_decode puts it right", "    iny",
               "    bne @check", "    rts", "@early:", "    jmp @sample", "@hunt:"]
-    lines += ["    cpx JOY2", "    beq @sample"] * 3
-    lines += ["    cpx JOY2", "    bne @hunt", "    jmp @sample", one_page(name)]
+    lines += ["    cpx JOY2", "    beq @found"] * 3
+    lines += ["    cpx JOY2", "    bne @hunt", "    jmp @lead", "@found:", "    nop",
+              "@lead:           ; the first byte goes by unread: aim the next look early"]
+    lines += delay(rates.to_nes_byte(period) - TRACK_HUNT_TO_LOOK - TRACK_LEAD_EARLY)
+    lines += ["    ldy #1", "    jmp @look", one_page(name)]
     return lines
 
 
@@ -273,6 +292,7 @@ def include(proto):
              "BLOCK = %d" % rates.BLOCK,
              "PREAMBLE = %d           ; bytes of a block the tracking receiver settles on"
              % rates.PREAMBLE,
+             "SLIPS = %d              ; start bits its hunt may step over" % rates.SLIPS,
              "PORT_IDLE = $%02X       ; what JOY2 reads with the line at rest" % rates.PORT_IDLE,
              "PORT_START = $%02X      ; and at a start bit" % (rates.PORT_IDLE | 1)]
     offset = 0

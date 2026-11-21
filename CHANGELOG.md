@@ -8,9 +8,11 @@
 
 ### Cartridge
 - The cartridge menu says, under its title, when the firmware or the cartridge needs an update: when the two are from different releases, or the web site has a newer one (#80)
+- Throughput test: 298296 baud to the console no longer fails a whole block at random; the test lost count of a block's first byte, not the line (#98)
 
 ### Firmware
 - The Stick's screen says "Firmware update available" in red, with no console running a program, when the web site has newer firmware
+- Jukebox: sounds made for the two fastest rates (7 and 8 cycles a bit) start every time, where they often played noise or nothing (#98)
 
 ### Other
 - The web site's ROM patches are a page instead of a zip: each game's patch to download, the release of the game it needs (size, CRC32 and SHA-1), and how to apply it

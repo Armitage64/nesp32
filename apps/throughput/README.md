@@ -60,10 +60,23 @@ and takes a cycle less to reach its first sample; if still high it is
 early, and takes a cycle more. That holds its samples within 2.5 cycles of
 the middle of a bit, and follows a nesp32 whose clock is up to about 1%
 off. At 6 cycles a bit nothing in its loop is padding, so this is the last
-rate there is. It finds a block's first byte by hunting and is up to 6
+rate there is. It finds a block's first byte by hunting and is up to 7
 cycles out at first, so the first 8 bytes of its blocks are `$FF` for it
 to settle on, and are not checked: a block there carries 248 bytes of
-data.
+data. It aims its first look 3 cycles early, and works forward to the
+edge from there.
+
+**A start bit between two looks.** The hunt looks every 6 or 7 cycles,
+and at 6 and 7 cycles a bit a start bit can fall between two looks, all
+the more on a line whose lows come out short. The hunt then finds the
+next one, and the block comes a byte late. Before the console looked for
+that, such a block was counted bad from its first byte, 246 to 248 of
+its 248 bytes, and it happened to some blocks and not others with
+nothing wrong on the line: on the simulated line, 1 in 25 with lows of
+exactly 6 cycles and 1 in 5 with lows a cycle short. Now the nesp32
+sends 2 bytes more to each block, and a block that has any bytes wrong
+is counted again a byte later and two bytes later, and the fewest bad
+are the block's.
 
 **One rate too many.** The last rate to the NES is 5 cycles a bit, 357955
 baud. The console has no routine for it and runs its 6-cycle one, which
@@ -364,6 +377,15 @@ from it, as on the MiSTer: 298296 failed that way. On a simulated line no edge, 
 early, fails 8 and passes 7 and 6, so what a real console does
 differently there is not known.
 
+A later hat, the NPN board with its 100 pF speed‑up capacitors and
+2N3904s that passed 298296 both ways, failed 6 cycles in about half its
+sweeps, from a StickS3 and from a StickC Plus2 alike: one block of the
+four came wrong whole, 246 or 247 of 992. The SN74LV1T04 board never
+did. That was the console's hunt stepping over a block's first start bit
+(see "A start bit between two looks" above): the ROM before it looked
+for a block a byte late. With it, **10 sweeps in 10 on that hat passed 6
+cycles clean**, and its blocks fail no more often than its line does.
+
 The first run on the MiSTer passed nothing from the console: 194 of 256 bytes
 came, at 9622 baud and at 85227 alike. The nesp32's UART was set for the
 two stop bits it sends with, and a StickS3's receiver then waits for both,
@@ -396,6 +418,12 @@ two bits.
   receiver has to predict the start bit and correct by a cycle a byte,
   which needs a few bytes to lock and a sender within about 1% of the right
   rate, and it held at 8, 7 and 6 cycles a bit on a real NES.
+- **A whole block wrong is the receiver, not the line.** A line that is
+  failing loses bytes here and there; a block that is wrong from its first
+  byte to its last came in at the wrong place. A hunt that looks every 6
+  or 7 cycles can step over a start bit as short as that, more often the
+  shorter a line makes its lows, so a block's first byte has to be found
+  in a way that survives it.
 - **A climb hides what is past its first failure.** On the real NES it
   stopped at 8 cycles a bit, and never tried 7 and 6, which passed.
 - **An ESP32 UART leaves a byte of junk in its receiver when its rate is
