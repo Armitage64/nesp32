@@ -19,9 +19,9 @@ and the ROM patches are this tree's, so they go up without a release.
                           game's patch, the release of the game it is applied
                           to, and how
     patches/*.bps         each game's BPS patch, from apps/*/dist/ as committed
-    img/                  pictures of the programs, from their docs, and
-                          img/logo.png and img/logo-dark.png, the header's logo
-                          for a light page and a dark one, from web/img/
+    img/                  pictures of the programs, from their docs
+                          (PICTURES), and every picture in web/img/, as it is:
+                          the header's logo and the photos
     flash/index.html      web/flash/index.html, as it is
     flash/manifest.json   what ESP Web Tools is to write for the nesp32 hat,
                           and where
@@ -57,10 +57,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..")
 WEB = os.path.join(ROOT, "web")
 
-# The header's logo, for a light page and a dark one: web/img/'s, as they are.
-LOGOS = ["logo.png"]
+# The pictures in web/img/ go up as they are, whatever is there: these are
+# the kinds of file that count as one.
+IMAGE_TYPES = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".avif")
 
-# The product page's pictures: (its name for one, where it is)
+# The product page's pictures from elsewhere in the tree, the programs' own
+# screens: (its name on the site, where it is)
 PICTURES = [("cart-menu.png", "docs/cart-menu.png"),
             ("search.png", "apps/wiki/docs/search.png"),
             ("drmario.png", "apps/drmario/docs/network-game.png"),
@@ -266,11 +268,15 @@ def main(out, cart=None, release=None):
     shutil.copyfile(cart, os.path.join(out, "nesp32.nes"))
     for name, path in PICTURES:
         shutil.copyfile(os.path.join(ROOT, path), os.path.join(out, "img", name))
-    for name in LOGOS:
-        path = os.path.join(WEB, "img", name)
-        if not os.path.exists(path):
-            sys.exit("No logo at %s." % os.path.relpath(path))
-        shutil.copyfile(path, os.path.join(out, "img", name))
+    taken = {name for name, _ in PICTURES}
+    for name in sorted(os.listdir(os.path.join(WEB, "img"))):
+        if name.startswith(".") or not name.lower().endswith(IMAGE_TYPES):
+            continue
+        if name in taken:
+            sys.exit("web/img/%s has the name of a picture in PICTURES." % name)
+        shutil.copyfile(os.path.join(WEB, "img", name), os.path.join(out, "img", name))
+    if not os.path.exists(os.path.join(out, "img", "logo.png")):
+        sys.exit("No logo at web/img/logo.png.")
     # The pages last, since they name the files by what is in them.
     files = ["style.css", "nesp32.nes"] + ["img/" + name for name in os.listdir(
         os.path.join(out, "img"))]

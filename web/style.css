@@ -49,11 +49,17 @@ p.version { margin: 8px 0 16px; }
 .grid .card { padding: 20px; }
 .grid .card p { margin: 0; color: var(--dim); }
 /* The product page's slideshow: its pictures stacked, the one showing on top. */
-.shots { margin: 0 auto; max-width: 512px; text-align: center; }
-.shots .frames { display: grid; cursor: pointer; }
-.shots img { grid-area: 1 / 1; width: 100%; height: auto; display: block;
-             border-radius: 6px; border: 1px solid var(--line);
+/* The box is as wide as the widest picture; each is shown as tall as the box
+   allows, in the middle, so a 512x480 screen and a wide photo are the same height. */
+.shots { margin: 0 auto; max-width: 826px; text-align: center; }
+.shots .frames { display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+                 aspect-ratio: 826 / 480; cursor: pointer; }
+.shots img { grid-area: 1 / 1; place-self: center; width: auto; height: auto;
+             max-width: 100%; max-height: 100%; display: block;
+             border-radius: 6px; border: 1px solid var(--line); box-sizing: border-box;
              image-rendering: pixelated; opacity: 0; transition: opacity .6s; }
+/* Photos are scaled smoothly; only the NES screens keep their square pixels. */
+.shots img.photo { image-rendering: auto; }
 .shots img.on { opacity: 1; }
 .shots figcaption { font-size: 14px; color: var(--dim); margin: 8px 0 4px; min-height: 1.55em; }
 .shots .controls { display: flex; gap: 12px; align-items: center; justify-content: center; }
