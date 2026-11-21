@@ -137,6 +137,9 @@ blocks:       .res 1            ; blocks of this trial so far
 bad:          .res 2            ; bytes of them that came wrong
 seed:         .res 2            ; the next block's
 skip:         .res 1            ; bytes at the start of a block that are not the pattern's
+before:       .res 2            ; bad before this block
+fewest:       .res 2            ; this block's bad bytes, at the best of its slips
+slips:        .res 1            ; slips of this block left to try
 vector:       .res 2            ; the block routine to call
 rx_ptr:       .res 2            ; where the tracking receiver stores
 on_cart:      .res 1            ; this is on nesp32's cartridge, which has a menu
@@ -922,7 +925,7 @@ main_wait:
     lda base
     bne @heard
     jsr decode_block            ; the receivers leave their bytes scrambled
-    jsr count_bad
+    jsr check_block
     jmp @seed
 
     ; What the nesp32 heard: the bytes that were not the pattern's, and
@@ -1010,6 +1013,62 @@ main_wait:
     sta rx_buf,y
     iny
     bne @byte
+    rts
+.endproc
+
+; Add to bad the bytes of a block to the console that came wrong. The
+; tracking receiver (a block with a preamble) finds the block's first
+; start bit with a hunt that looks every 6 or 7 cycles, and at 6 or 7
+; cycles a bit it can step over a start bit of the preamble and have the
+; block a byte late in rx_buf. So a block of it with bytes wrong is
+; counted again a byte later, up to SLIPS times, and the fewest are bad.
+.proc check_block
+    lda bad
+    sta before
+    lda bad + 1
+    sta before + 1
+    lda #SLIPS
+    sta slips
+    lda #$FF
+    sta fewest
+    sta fewest + 1
+@count:
+    lda #0
+    sta bad
+    sta bad + 1
+    jsr count_bad
+    lda bad                     ; fewer than the fewest so far?
+    cmp fewest
+    lda bad + 1
+    sbc fewest + 1
+    bcs @more
+    lda bad
+    sta fewest
+    lda bad + 1
+    sta fewest + 1
+@more:
+    lda fewest
+    ora fewest + 1
+    beq @done                   ; none wrong
+    lda skip
+    beq @done                   ; the fast receiver: it hunts every byte
+    dec slips
+    bmi @done
+    ldy #$FF                    ; the block a byte later: rx_buf[y] = rx_buf[y - 1]
+@slip:
+    lda rx_buf - 1,y
+    sta rx_buf,y
+    dey
+    bne @slip
+    beq @count
+@done:
+    clc
+    lda before
+    adc fewest
+    sta bad
+    lda before + 1
+    adc fewest + 1
+    sta bad + 1
     rts
 .endproc
 

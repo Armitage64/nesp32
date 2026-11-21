@@ -19,7 +19,13 @@ on it. Each program in `apps/` keeps its own list in its README.
   fastest rate ([the wiring](WIRING.md), "Speed"); no simulated line gives
   that pattern. From 8 cycles down the console's receivers track the start
   bit instead, and the slower ones still hunt: a cause found might be one
-  that shows at those too, on another console.
+  that shows at those too, on another console. A lead, not tried: a hunt
+  that looks every 6 or 7 cycles steps over start bits shorter than that,
+  which is what failed the tracking receiver's first byte at 6 cycles
+  ([the throughput test](../apps/throughput/README.md), "A start bit
+  between two looks"); in simulation the 9-cycle hunt starts losing them
+  when the line's lows reach the console about 2 cycles short, so a real
+  console that sees D0's lows shortened that much would lose bytes at 8.
 
 - The Bluetooth keyboard, which works on hardware (paired from Setup,
   typing in NESpedia and Weather): whether every byte of the 75 KB comes

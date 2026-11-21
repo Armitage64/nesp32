@@ -16,7 +16,7 @@ NESP32 software.
 
 | Design | Parts | Firmware | Pros / cons |
 |---|---|---|---|
-| [M5Stick DIY Hat](#m5stick-diy-hat) | 2x 2N3904 transistors, 5x resistors, 2x capacitors | Inverted | **+** DIY, through‑hole, ready‑made PCB, holds D0 idle while Stick is off<br>**−** PCB and components required, soldering |
+| [M5Stick DIY Hat](#m5stick-diy-hat) | 2x 2N3904 transistors, 5x resistors, 2x capacitors (optional) | Inverted | **+** DIY, through‑hole, ready‑made PCB, holds D0 idle while Stick is off<br>**−** PCB and components required, soldering |
 | [M5Stick SMD Hat](#m5stick-smd-hat) | 2x SN74LV1T04 ICs, 4x resistors, 2x capacitors | Inverted | **+** Available for purchase pre-built, holds D0 idle while Stick is off<br>**−** higher cost |
 | [DIY Resistor Network](#diy-resistor-network) | 3x resistors | Non-Inverted | **+** lowest cost, only three parts, no PCB required, best option for generic ESP32-S3<br>**−** D0's high is only 3.3 V, below the NES input's guaranteed level, G8 drives a console that is off up to about 2.7 mA, D0 isn't held idle while the ESP32 is off or booting which could result in console seeing phantom input, end result not as tidy as PCB |
 
@@ -165,23 +165,26 @@ which has the parts to buy.
 ```
 
 **Parts:** two 2N3904 (TO‑92), two 10 kΩ, one 3.3 kΩ, one 100 kΩ, and one
-1 kΩ resistor, and two 100 pF ceramic capacitors (C0G/NP0, 50 V), one
+1 kΩ resistor, and two **optional** 100 pF ceramic capacitors (C0G/NP0, 50 V), one
 across each base resistor. Any small NPN works (2N2222A, BC547, PN2222); check the E‑B‑C lead
-order, which differs between parts and makers.
+order, which differs between parts and makers. The capacitors are only needed if the transistors
+used don't switch quickly enough to achieve maximum speed in the throughput test.
 
 | From | Through | To |
 |---|---|---|
 | Stick G8 | 10 kΩ | TX 2N3904 base |
-| Stick G8 | 100 pF | TX 2N3904 base (across the 10 kΩ) |
+| Stick G8 | 100 pF* | TX 2N3904 base (across the 10 kΩ) |
 | TX 2N3904 emitter | – | GND |
 | TX 2N3904 collector | 3.3 kΩ | NES pin 5 (+5 V) |
 | TX 2N3904 collector | 1 kΩ | NES pin 4 (D0) |
 | NES pin 3 (OUT0) | 100 kΩ | RX 2N3904 base |
-| NES pin 3 (OUT0) | 100 pF | RX 2N3904 base (across the 100 kΩ) |
+| NES pin 3 (OUT0) | 100 pF* | RX 2N3904 base (across the 100 kΩ) |
 | RX 2N3904 emitter | – | GND |
 | RX 2N3904 collector | 10 kΩ | Stick 3V3_L2 |
 | RX 2N3904 collector | – | Stick G1 |
 | Stick GND | – | NES pin 1 (GND) |
+
+\* The 100pF caps are optional based on transistor selection
 
 **How it works.** Each stage inverts, and the ESP32 UART inverts TX and RX in
 hardware to cancel it (`CONFIG_NESP_LINK_INVERTED` on, the default).
@@ -237,7 +240,15 @@ hardware to cancel it (`CONFIG_NESP_LINK_INVERTED` on, the default).
   capacitors, both 2N3904s from a reputable distributor and inexpensive
   bulk ones carry 298296 baud in both directions on a real NES, the
   fastest rate the throughput test has each way. Without them the board stopped at 223722
-  from the console, and slow 2N3904s held it lower.
+  from the console, and slow 2N3904s held it lower. One board with
+  them failed 6 cycles to the console in about half its sweeps, a whole
+  block at a time (246 or 247 of 992), from a StickS3 and a StickC Plus2
+  alike. That was the throughput test, not the capacitors: its hunt for
+  a block's first start bit could step over one 6 cycles long, more often
+  the shorter the line's lows reach the console, and the block was then
+  counted a byte out ([the throughput
+  test](../apps/throughput/README.md), "A start bit between two looks").
+  With that fixed, the same board passed 6 cycles in 10 sweeps of 10.
 - **Speed:** the board carries 298296 baud to the console, the last rate
   the console's CPU can take, on a real NES as on the MiSTer through a SNAC
   adapter ([the throughput test](../apps/throughput/README.md)). On a real
@@ -484,10 +495,14 @@ a SNAC adapter and on a real NES‑001.
   uses passed every time but 7 cycles a bit, the jukebox's and NPR's
   fastest sound, which failed once in 15 trials. The faster rates failed
   in two ways: at 6 cycles, in 6 trials of 14, a whole block came wrong
-  (246–248 of its 248 bytes) from its first byte, which points at the
-  console's tracking receiver settling on the block's start rather than at
-  the line; at 9, a rate no program uses, one byte now and then. The real
-  NES showed neither.
+  (246–248 of its 248 bytes) from its first byte; at 9, a rate no program
+  uses, one byte now and then. The real NES showed neither. The whole
+  blocks were the throughput test's, not the line's: its hunt for a
+  block's first start bit can miss one 6 cycles long and take the next,
+  and the block then came a byte late and was counted bad
+  ([the throughput test](../apps/throughput/README.md), "A start bit
+  between two looks"). The test now finds such a block where it came;
+  this link has not been climbed again since.
 
 **Risks:**
 - **D0's high is only 3.3 V.** The NES‑001's 74HC368 is guaranteed to read

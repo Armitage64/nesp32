@@ -46,6 +46,11 @@ TO_NES = SHARED + (12, 11, 10, 9, 8, 7, 6, 5)
 FROM_NES = SHARED + (12, 11, 10, 8, 6)
 BLOCK = 256                     # bytes in one test block
 PREAMBLE = 8                    # of those, $FF for the tracking receiver to settle on
+# Start bits of the preamble the tracking receiver's hunt may step over. It
+# looks every 6 or 7 cycles, and a start bit at 6 or 7 cycles a bit, a
+# little short on a real line, can fall between two looks. The block then
+# comes that many bytes late, and the nesp32 sends as many more.
+SLIPS = 2
 TO_NES_BITS = 11                # the nesp32 sends 8N2
 
 # Port 2 as an instruction with $4017 as its operand reads it: bit 0 is D0
@@ -161,10 +166,11 @@ def to_nes_run(period):
     a byte is some 10 bits to it and 11 on the line, so it is done inside
     the byte after the one it began in, and the next low it sees is at the
     latest the start bit after that. So its run is two blocks long. It
-    checks the first and lets the rest go by.
+    checks the first and lets the rest go by. The tracking one's run has
+    SLIPS bytes more, for a hunt that stepped over the first start bits.
     """
     if tracked_receive(period):
-        return PREAMBLE, BLOCK - PREAMBLE
+        return PREAMBLE, BLOCK - PREAMBLE + SLIPS
     return 0, 2 * BLOCK
 
 
