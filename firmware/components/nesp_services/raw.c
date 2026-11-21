@@ -174,6 +174,12 @@ static void finish(nesp_raw_t *raw)
     }
 }
 
+/* The next of the run itself, the lead aside. */
+static size_t run_read(nesp_raw_t *raw, uint8_t *out, size_t max)
+{
+    return raw->patterned ? pattern_read(raw, out, max) : raw->run.read(raw->run.ctx, out, max);
+}
+
 /* Hand the UART as much of the run as it has room for. */
 static void pump(nesp_raw_t *raw)
 {
@@ -183,16 +189,26 @@ static void pump(nesp_raw_t *raw)
                 return;
             }
             size_t count;
-            if (raw->lead_left != 0) {
-                /* A run begins with `lead` bytes of $FF, for a receiver
-                 * that needs some to settle on. */
-                count = raw->lead_left < sizeof(raw->held) ? raw->lead_left : sizeof(raw->held);
+            size_t room = sizeof(raw->held) / 2;    /* after the lead, for what follows it */
+            if (raw->lead_left > room) {
+                count = raw->lead_left - room;
+                count = count < sizeof(raw->held) ? count : sizeof(raw->held);
                 memset(raw->held, 0xFF, count);
                 raw->lead_left = (uint8_t)(raw->lead_left - count);
+            } else if (raw->lead_left != 0) {
+                /* A run begins with `lead` bytes of $FF, for a receiver
+                 * that needs some to settle on: one that tracks each start
+                 * bit from the one before, and loses its place if the line
+                 * rests between the lead and what follows. A read can take
+                 * longer than the lead lasts (a sound's first opens its
+                 * file), so it is made first, and the lead goes to the
+                 * UART with it. */
+                size_t lead = raw->lead_left;
+                count = lead + run_read(raw, raw->held + lead, sizeof(raw->held) - lead);
+                memset(raw->held, 0xFF, lead);
+                raw->lead_left = 0;
             } else {
-                count = raw->patterned
-                    ? pattern_read(raw, raw->held, sizeof(raw->held))
-                    : raw->run.read(raw->run.ctx, raw->held, sizeof(raw->held));
+                count = run_read(raw, raw->held, sizeof(raw->held));
             }
             raw->held_at = 0;
             raw->held_len = (uint8_t)count;

@@ -1016,7 +1016,12 @@ answer is not WAIT.
   than hunt for every one: they find the first by a hunt, up to 6 cycles
   out, settle on these, and do not play them. On a real NES the hunt lost
   bytes at 8 cycles a bit where tracking lost none at 8, 7 and 6. TUNER's
-  runs do the same.
+  runs do the same. **The samples follow the lead with no rest between**:
+  a routine that tracks goes by the clock, and a rest of even a few
+  microseconds puts it out of step, so it plays noise until a byte reads
+  as the last, and the sound seems not to start. The nesp32 reads a run's
+  first bytes before its lead goes to the UART, since that read may open
+  the sound's file and take longer than the lead lasts.
 - The music after a sound is a new epoch.
 - **A console may leave a sound**, and nes-jukebox's does when button A of
   its controller goes down, which is all of the controller it can look at
