@@ -74,7 +74,12 @@ copies, then
 
 ```sh
 make patches    # patches/ again, from the copies
+make            # before editing the copies again
 ```
+
+Run `make` after each `make patches`, before the next edit to the copies:
+`make patches` can remake a copy from the old patches, and an edit made
+to it in between is lost.
 
 A patch is made with no context, so it holds our lines and where they go
 and none of the original. That is why each submodule is kept at one commit
