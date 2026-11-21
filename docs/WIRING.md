@@ -237,7 +237,15 @@ hardware to cancel it (`CONFIG_NESP_LINK_INVERTED` on, the default).
   capacitors, both 2N3904s from a reputable distributor and inexpensive
   bulk ones carry 298296 baud in both directions on a real NES, the
   fastest rate the throughput test has each way. Without them the board stopped at 223722
-  from the console, and slow 2N3904s held it lower.
+  from the console, and slow 2N3904s held it lower. One board with
+  them failed 6 cycles to the console in about half its sweeps, a whole
+  block at a time (246 or 247 of 992), from a StickS3 and a StickC Plus2
+  alike. That was the throughput test, not the capacitors: its hunt for
+  a block's first start bit could step over one 6 cycles long, more often
+  the shorter the line's lows reach the console, and the block was then
+  counted a byte out ([the throughput
+  test](../apps/throughput/README.md), "A start bit between two looks").
+  With that fixed, the same board passed 6 cycles in 10 sweeps of 10.
 - **Speed:** the board carries 298296 baud to the console, the last rate
   the console's CPU can take, on a real NES as on the MiSTer through a SNAC
   adapter ([the throughput test](../apps/throughput/README.md)). On a real
@@ -484,10 +492,14 @@ a SNAC adapter and on a real NES‑001.
   uses passed every time but 7 cycles a bit, the jukebox's and NPR's
   fastest sound, which failed once in 15 trials. The faster rates failed
   in two ways: at 6 cycles, in 6 trials of 14, a whole block came wrong
-  (246–248 of its 248 bytes) from its first byte, which points at the
-  console's tracking receiver settling on the block's start rather than at
-  the line; at 9, a rate no program uses, one byte now and then. The real
-  NES showed neither.
+  (246–248 of its 248 bytes) from its first byte; at 9, a rate no program
+  uses, one byte now and then. The real NES showed neither. The whole
+  blocks were the throughput test's, not the line's: its hunt for a
+  block's first start bit can miss one 6 cycles long and take the next,
+  and the block then came a byte late and was counted bad
+  ([the throughput test](../apps/throughput/README.md), "A start bit
+  between two looks"). The test now finds such a block where it came;
+  this link has not been climbed again since.
 
 **Risks:**
 - **D0's high is only 3.3 V.** The NES‑001's 74HC368 is guaranteed to read

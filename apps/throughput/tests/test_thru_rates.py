@@ -23,26 +23,40 @@ TX_BUF = 0x0500
 START = 500
 
 
-def receive_block(rom, rate, phase=0.0, clock_error=0.0):
+def receive_block(rom, rate, phase=0.0, clock_error=0.0, rise=0.0, fall=0.0):
     """Returns (machine, the block sent, the block as the routine left it:
     scrambled, until the ROM decodes it). The block is the first of what a
-    nesp32 is asked to send for one."""
-    wire = SlowWire()
+    nesp32 is asked to send for one, which is all of it for the tracking
+    receiver."""
+    wire = SlowWire(rise, fall)
     machine = Machine(*rom, wire=wire)
     machine.read_log = []
     lead, count = rates.to_nes_run(TO_NES[rate])
-    data = (b"\xff" * lead + nesp.pattern(0x1D0C + rate, count))[:BLOCK]
+    data = b"\xff" * lead + nesp.pattern(0x1D0C + rate, count)
+    data = data if lead else data[:BLOCK]
     wire.send(data, START + phase, TO_NES[rate] / (1.0 + clock_error))
     machine.call("rx_block_%d" % rate)
     stored = bytes(rates.raw_byte(byte) for byte in data)
     return machine, data, stored
 
 
-def received(rom, rate, phase=0.0, clock_error=0.0):
+def slipped(rom, rate, phase=0.0, clock_error=0.0, rise=0.0, fall=0.0):
+    """The bytes the block came late by in the buffer, as the ROM finds it
+    (check_block), or None if it did not come right at any of them."""
+    machine, _, stored = receive_block(rom, rate, phase, clock_error, rise, fall)
+    got = machine.ram(RX_BUF, BLOCK)
+    if not rates.tracked_receive(TO_NES[rate]):
+        return 0 if got == stored else None
+    skip = rates.PREAMBLE
+    for slip in range(rates.SLIPS + 1):
+        if got[skip - slip:BLOCK - slip] == stored[skip:BLOCK]:
+            return slip
+    return None
+
+
+def received(rom, rate, phase=0.0, clock_error=0.0, rise=0.0, fall=0.0):
     """True if the block arrived, the tracking receiver's preamble aside."""
-    machine, _, stored = receive_block(rom, rate, phase, clock_error)
-    skip = rates.PREAMBLE if rates.tracked_receive(TO_NES[rate]) else 0
-    return machine.ram(RX_BUF, BLOCK)[skip:] == stored[skip:]
+    return slipped(rom, rate, phase, clock_error, rise, fall) is not None
 
 
 HUNTING = [r for r in RX_RATES if not rates.tracked_receive(TO_NES[r])]
@@ -66,6 +80,27 @@ def test_the_tracking_receiver_settles_from_any_start_phase(rom, rate):
             worst = max(worst, min(abs(cycle - center) for cycle in samples
                                    if abs(cycle - center) < period))
     assert worst <= 2.5 and worst < period / 2
+
+
+@pytest.mark.parametrize("rate", TRACKED)
+@pytest.mark.parametrize("fall", [0.0, 1.0, 2.0])
+def test_the_tracking_receiver_has_its_block_from_every_hunt_phase(rom, rate, fall):
+    """Wherever the first start bit falls in the hunt's loop of 25 cycles,
+    and with lows up to 2 cycles short. The hunt looks every 6 or 7 cycles,
+    so a start bit of 6 or 7 can fall between two looks: the block then
+    comes a byte late, and the ROM finds it there. On a line like that
+    the ROM lost whole blocks, 246 of 248 bytes, before it looked."""
+    slips = [slipped(rom, rate, phase / 2, fall=fall) for phase in range(50)]
+    assert None not in slips, "phases %s" % [p / 2 for p, s in enumerate(slips) if s is None]
+    if TO_NES[rate] == 6:
+        assert 1 in slips   # this is the case the slips are there for
+
+
+@pytest.mark.parametrize("rate", TRACKED)
+@pytest.mark.parametrize("clock_error", [-0.005, 0.005])
+def test_the_tracking_receiver_takes_half_a_percent_with_short_lows(rom, rate, clock_error):
+    for phase in range(25):
+        assert received(rom, rate, phase, clock_error, fall=1.5), "phase %d" % phase
 
 
 def test_the_rate_past_the_last_cannot_be_received(rom):
@@ -191,8 +226,11 @@ def test_the_receivers_share_of_the_cpu_is_what_rates_says(rom):
     machine = Machine(*rom)
 
     def body(period):
+        """The routine to its first rts: the loop, without the hunt and
+        the lead that come after it."""
         first = machine.labels["rx_block_%d" % TO_NES.index(period)]
-        return bytes(machine.prg[first - 0x8000:first - 0x8000 + 256])
+        code = bytes(machine.prg[first - 0x8000:first - 0x8000 + 256])
+        return code[:code.index(0x60) + 1]
 
     # 6 cycles a bit: check 4, branch and nop or jump 5 on average, 8
     # samples 46, store and loop 11. Nothing else is in the loop.
@@ -238,11 +276,54 @@ def test_the_cpu_share_rises_with_the_rate():
 
 def test_a_run_to_the_console_is_long_enough_for_its_receiver():
     # The tracking receiver goes by the clock, and is sent a block: its
-    # preamble and the pattern. The fast one may pass over two bytes for
+    # preamble and the pattern, and SLIPS bytes more for a hunt that steps
+    # over the first start bits. The fast one may pass over two bytes for
     # one, and is sent two blocks.
     for period in TO_NES:
         lead, count = rates.to_nes_run(period)
         if rates.tracked_receive(period):
-            assert (lead, lead + count) == (rates.PREAMBLE, BLOCK)
+            assert (lead, lead + count) == (rates.PREAMBLE, BLOCK + rates.SLIPS)
         else:
             assert (lead, count) == (0, 2 * BLOCK)
+
+
+def check(rom, block, skip, bad=0):
+    """The ROM's check_block on a decoded block: the bad bytes it adds,
+    and rx_buf as it leaves it."""
+    machine = Machine(*rom)
+    seed = 0x3A5C
+    for name, value in (("skip", skip), ("seed", seed & 0xFF), ("bad", bad & 0xFF)):
+        machine.memory[machine.labels[name]] = value
+    machine.memory[machine.labels["seed"] + 1] = seed >> 8
+    machine.memory[machine.labels["bad"] + 1] = bad >> 8
+    for offset, byte in enumerate(block):
+        machine.memory[RX_BUF + offset] = byte
+    machine.call("check_block")
+    return machine.word("bad") - bad, machine.ram(RX_BUF, BLOCK)
+
+
+@pytest.mark.parametrize("slip", range(rates.SLIPS + 2))
+@pytest.mark.parametrize("wrong", [0, 1])
+def test_a_block_that_came_late_is_found_where_it_came(rom, slip, wrong):
+    """The tracking receiver's block, a byte or two late in rx_buf after a
+    hunt that stepped over a start bit, has no bad bytes; one that came
+    right has none either; a byte the line got wrong is still one byte,
+    not the whole block; and past SLIPS, the block is bad."""
+    skip = rates.PREAMBLE
+    pattern = nesp.pattern(0x3A5C, BLOCK - skip + rates.SLIPS)
+    block = bytearray(b"\xff" * (skip - slip) + pattern)[:BLOCK]
+    if wrong:
+        block[skip - slip + 100] ^= 0x10
+    added, _ = check(rom, bytes(block), skip, bad=300)
+    if slip <= rates.SLIPS:
+        assert added == wrong
+    else:
+        assert added > 200
+
+
+def test_the_fast_receivers_block_is_not_moved(rom):
+    """Its hunt finds every byte: a block of it is counted as it came."""
+    block = bytearray(nesp.pattern(0x3A5C, BLOCK))
+    block[0] ^= 1
+    added, after = check(rom, bytes(block), 0)
+    assert added == 1 and after == bytes(block)

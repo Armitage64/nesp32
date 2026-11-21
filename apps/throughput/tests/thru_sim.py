@@ -14,7 +14,9 @@ handler runs to its rti in one go. The nesp32's code is polled every SLICE
 cycles, as its link task would be.
 
 Both lines can be given a slow rising edge, which is what the level
-shifter's transistors do to them, so that the search has a limit to find.
+shifter's transistors do to them, so that the search has a limit to find;
+and the line to the console a late falling edge, which makes its lows
+short.
 
 Loops that only pass time are skipped rather than stepped, with the cycles
 they would have taken, and never past a vblank or a poll: the wait for the
@@ -65,23 +67,30 @@ RETURN_TRAP = 0xFFF0
 
 
 class SlowWire(Wire):
-    """nesp32 to console, with a rising edge that comes late."""
+    """nesp32 to console, with rising edges, falling edges or both that
+    come late. A low comes rise_delay - fall_delay longer than it was sent,
+    or shorter if that is less than 0."""
 
-    def __init__(self, rise_delay=0.0):
+    def __init__(self, rise_delay=0.0, fall_delay=0.0):
         super().__init__()
         self.rise_delay = rise_delay
+        self.fall_delay = fall_delay
 
     def level(self, cycle):
-        # Falls at once, rises rise_delay later: low unless it has been
-        # driven high for that long. Two looks are enough while the delay is
-        # shorter than a bit.
+        # Each edge as sent, at both delays: a low lasts from the first of
+        # them to fall to the last to rise. Two looks are enough while the
+        # delays differ by less than a bit.
         level = super().level
-        if not level(cycle):
-            return 0
-        return level(cycle - self.rise_delay) if self.rise_delay else 1
+        rise, fall = self.rise_delay, self.fall_delay
+        if rise == fall:
+            return level(cycle - rise)
+        if rise > fall:
+            return level(cycle - fall) & level(cycle - rise)
+        return level(cycle - fall) | level(cycle - rise)
 
     def quiet_until(self, cycle):
-        return super().quiet_until(cycle - self.rise_delay)
+        quiet = super().quiet_until(cycle - max(self.rise_delay, self.fall_delay))
+        return None if quiet is None else quiet + self.fall_delay
 
 
 class SlowTap(Tap):
@@ -351,14 +360,15 @@ class Bench:
     """The ROM and a nesp32 with the line between them.
 
     to_nes_rise and from_nes_rise are how late each line's rising edges
-    come, in cycles. blocks, if given, is how many a trial has, in place of
+    come, in cycles, and to_nes_fall how late the falling ones to the
+    console do. blocks, if given, is how many a trial has, in place of
     the ROM's own. The rest are the Port's: turnaround, to_console,
     clock_error. attached=False leaves the port with nothing on it.
     """
 
     def __init__(self, rom, to_nes_rise=0.0, from_nes_rise=0.0, blocks=None, attached=True,
-                 **port_options):
-        self.machine = machine = Machine(*rom, wire=SlowWire(to_nes_rise),
+                 to_nes_fall=0.0, **port_options):
+        self.machine = machine = Machine(*rom, wire=SlowWire(to_nes_rise, to_nes_fall),
                                          tap=SlowTap(from_nes_rise))
         if blocks is not None:
             machine.memory[machine.labels["trial_blocks"]] = blocks
