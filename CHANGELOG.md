@@ -13,7 +13,7 @@
 ### Firmware
 - The Stick's screen says "Firmware update available" in red, with no console running a program, when the web site has newer firmware
 - Jukebox: sounds made for the two fastest rates (7 and 8 cycles a bit) start every time, where they often played noise or nothing (#98)
-- Built with ESP-IDF 6 instead of 5.5.5: 6.1.1 for the StickS3 and the generic ESP32-S3, 6.0.3 for the StickC Plus2 (#17)
+- Built with ESP-IDF 6 instead of 5.5.5: 6.1.1 for the StickS3 and the generic ESP32-S3, 6.0.3 for the StickC Plus2 (#92, #17)
 
 ### Other
 - The web site's ROM patches are a page instead of a zip: each game's patch to download, the release of the game it needs (size, CRC32 and SHA-1), and how to apply it
