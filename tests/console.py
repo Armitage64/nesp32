@@ -7,6 +7,11 @@ py65 is a plain 6502. This adds:
 - The PPU's address register and its data port, a nametable with its
   attributes, the palette, OAM filled by the DMA at $4014, and controller 1
   as a shift register loaded from `pad`.
+- If sprite0_hits is set, PPUSTATUS's sprite 0 hit: rising two dots
+  after sprite 0's first pixel (its top left, taken to be over a lit pixel
+  of the background) while rendering is on, and standing until the
+  pre-render line; and every write to PPUCTRL, with the line and dot it
+  landed on, in the frame's ctrl_writes.
 - Controller port 2 as the link's line (wire.py): what a read of $4017
   sees on the cycle it looks, and where the writes to OUT0 go.
 - The cartridge's MMC1, if the ROM's header says it has one: the banks of
@@ -46,6 +51,7 @@ OAMDMA, JOY1, JOY2 = 0x4014, 0x4016, 0x4017
 PPUCTRL_NMI = 0x80
 RENDERING = 0x18                # background and sprites both on
 VBLANK_FLAG = 0x80
+HIT_FLAG = 0x40
 DMA_CYCLES = 513
 RTI = 0x40
 RETURN_TRAP = 0x00F0            # where call() has a subroutine return to
@@ -87,6 +93,8 @@ class Frame:
         self.nmi_cycles = 0         # the handler's length; 0 if no NMI fired
         self.last_write = 0         # cycles after the vblank of its last PPU write
         self.pad = 0
+        self.ctrl_writes = []       # (line of the picture, dot, value), with sprite0_hits
+        self.hit = False            # sprite 0 was hit in it
 
 
 class Console:
@@ -105,6 +113,7 @@ class Console:
         # other programs on the cartridge: the controller ports through
         # lda and sta, the PPU written to only when it may be, an NMI on.
         self.strict = True
+        self.sprite0_hits = False   # model sprite 0's hit, for a ROM that waits on it
         self.memory = ObservableMemory()
         self.prg = self.chr = None  # the 32 KB and the 8 KB that are mapped
         self._map()
@@ -214,6 +223,16 @@ class Console:
 
     def _write_ctrl(self, address, value):
         self.ctrl = value
+        if self.sprite0_hits:
+            dots = (self.now + 3 - self.frame.start) * 3
+            self.frame.ctrl_writes.append((int(dots // 341) - 21, int(dots % 341), value))
+
+    def _hit_cycle(self):
+        """When sprite 0's hit rises in this frame, or None if it does not."""
+        y, _, _, x = self.oam[0:4]
+        if self.mask & RENDERING != RENDERING or y >= SPRITE_HIDDEN or x == 255:
+            return None
+        return self.frame.start + ((21 + y + 1) * 341 + x + 2) / 3
 
     def _write_mask(self, address, value):
         self.mask = value
@@ -222,6 +241,15 @@ class Console:
         value = 0
         if self.vblank_unread and self.now + 3 < self.frame.start + VBLANK_CYCLES:
             value |= VBLANK_FLAG
+        if self.sprite0_hits:
+            at = self.now + 3
+            hit = self._hit_cycle()
+            if hit is not None and at >= hit:
+                self.frame.hit = True
+                value |= HIT_FLAG
+            elif (at < self.frame.start + VBLANK_CYCLES and self.frames
+                  and self.frames[-1].hit):
+                value |= HIT_FLAG
         self.vblank_unread = False
         self.w = 0
         return value

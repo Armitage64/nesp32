@@ -144,6 +144,18 @@ def library():
         lib.host_vgm_to_jbs.restype = ctypes.c_size_t
         lib.host_vgm_to_jbs.argtypes = [ctypes.c_char_p, ctypes.c_size_t, ctypes.c_char_p,
                                         ctypes.c_char_p, ctypes.c_size_t]
+        lib.host_picture.restype = ctypes.c_bool
+        lib.host_picture.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t, _u8p]
+        lib.host_picture_rgb.restype = ctypes.c_bool
+        lib.host_picture_rgb.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint32,
+                                         ctypes.c_uint32, _u8p]
+        lib.nesp_commons_unsafe.restype = ctypes.c_bool
+        lib.nesp_commons_unsafe.argtypes = [ctypes.c_char_p, ctypes.c_size_t]
+        lib.nesp_commons_url.restype = ctypes.c_size_t
+        lib.nesp_commons_url.argtypes = [ctypes.c_char_p, ctypes.c_size_t, ctypes.c_char_p,
+                                         ctypes.c_size_t]
+        lib.nesp_picture_split_delay.restype = ctypes.c_uint8
+        lib.nesp_picture_split_delay.argtypes = [ctypes.c_uint8]
         lib.host_wiki_url.restype = ctypes.c_size_t
         lib.host_wiki_url.argtypes = [ctypes.c_char_p, ctypes.c_size_t, ctypes.c_char_p,
                                       ctypes.c_size_t]
@@ -1098,6 +1110,22 @@ class Stick:
         self._lib.host_fetch_done(self._host, self.fetch_id if fetch is None else fetch,
                                   ok, why)
 
+    def picture(self, file):
+        """A JPEG's or a PNG's file as COMMONS makes it for the console:
+        NESP_COMMONS_SIZE bytes, or None if it cannot be read."""
+        file = bytes(file)
+        out = (ctypes.c_uint8 * proto.NESP_COMMONS_SIZE)()
+        if not self._lib.host_picture(self._host, file, len(file), out):
+            return None
+        return bytes(out)
+
+    def picture_rgb(self, rgb, width, height):
+        """Pixels, 3 bytes each, made into a picture likewise."""
+        out = (ctypes.c_uint8 * proto.NESP_COMMONS_SIZE)()
+        if not self._lib.host_picture_rgb(self._host, bytes(rgb), width, height, out):
+            return None
+        return bytes(out)
+
     @property
     def requests(self):
         return self._lib.host_counter(self._host, 0)
@@ -1256,6 +1284,23 @@ def vgm_to_jbs(data, name=None, room=1 << 20):
     name = name.encode("utf-8") if isinstance(name, str) else name
     length = library().host_vgm_to_jbs(bytes(data), len(data), name, out, room)
     return out.raw[:length] if length else None
+
+
+def commons_unsafe(words):
+    """Whether words have one COMMONS does not search for."""
+    return library().nesp_commons_unsafe(words, len(words))
+
+
+def commons_url(words):
+    """The address COMMONS asks Commons's API for a search."""
+    out = ctypes.create_string_buffer(2048)
+    length = library().nesp_commons_url(words, len(words), out, len(out))
+    return out.raw[:length].decode("ascii") if length else None
+
+
+def split_delay(x):
+    """The loops of the Gallery's split delay for sprite 0 at x."""
+    return library().nesp_picture_split_delay(x)
 
 
 def wiki_url(query):

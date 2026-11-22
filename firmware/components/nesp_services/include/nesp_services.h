@@ -411,6 +411,38 @@ typedef struct {
     nesp_wrap_t wrap;
 } nesp_wiki_t;
 
+/* COMMONS: pictures from Wikimedia Commons, found by words and made into
+ * the NES's tiles (commons.c, picture.c, image.c). */
+struct nesp_commons_store;          /* the pictures found, a reply's body, the picture made */
+typedef struct {
+    const nesp_hal_t *hal;
+    nesp_sink_t sink;
+    /* What the link's task and the fetch's both touch, under the hal's
+     * lock. */
+    struct nesp_commons_store *store;
+    bool busy;                      /* the fetch's task is working in the store */
+    uint32_t generation;            /* the fetch now wanted */
+    bool fetching_photo;            /* it is for a picture, not a search */
+    uint8_t album;                  /* NESP_ALBUM_* */
+    uint8_t count;                  /* pictures the search found */
+    uint8_t photo;                  /* NESP_PHOTO_* */
+    uint8_t photo_index;            /* which of them */
+    uint8_t album_message[NESP_COMMONS_COLUMNS];    /* with FAILED, for the console's screen */
+    uint8_t photo_message[NESP_COMMONS_COLUMNS];
+    /* The link's task alone. */
+    bool searched;
+    uint8_t search_id;
+    uint8_t query_len;
+    uint8_t query[NESP_COMMONS_QUERY_MAX];
+    bool opened;
+    uint8_t open_id;
+    uint8_t open_index;
+    /* The fetch's task alone. */
+    uint32_t filling;               /* the fetch the body is from */
+    size_t body_len;
+    bool body_full;
+} nesp_commons_t;
+
 /* HTTP: any address's reply, as it came: its status, its type and length,
  * and the start of its body (http.c). */
 typedef struct {
@@ -963,7 +995,8 @@ typedef struct {
     nesp_kbd_t kbd;
     nesp_http_t http;
     nesp_tape_t tape;
-    nesp_service_t services[14];
+    nesp_commons_t commons;
+    nesp_service_t services[15];
 } nesp_stick_t;
 
 void nesp_stick_init(nesp_stick_t *stick, const nesp_hal_t *hal);
@@ -1005,6 +1038,28 @@ void nesp_weather_service(nesp_service_t *service, nesp_weather_t *weather,
                           const nesp_hal_t *hal);
 void nesp_bsky_service(nesp_service_t *service, nesp_bsky_t *bsky, const nesp_hal_t *hal);
 void nesp_http_service(nesp_service_t *service, nesp_http_t *http, const nesp_hal_t *hal);
+void nesp_commons_service(nesp_service_t *service, nesp_commons_t *commons,
+                          const nesp_hal_t *hal);
+
+/* COMMONS's pieces, for the tests and the tools as much as for it.
+ *
+ * Whether words have one that is not searched for (commons.c). */
+bool nesp_commons_unsafe(const char *text, size_t len);
+/* The address of a search of Commons for the words. Its length, or 0 if it
+ * does not fit in max, with its 0. */
+size_t nesp_commons_url(const uint8_t *words, size_t len, char *out, size_t max);
+/* A JPEG's or a PNG's pixels, 3 bytes each, in memory from the hal, which
+ * nesp_picture_release gives back; NULL if it cannot be read (image.c). */
+uint8_t *nesp_picture_decode(const nesp_hal_t *hal, const uint8_t *data, size_t len,
+                             uint32_t *width, uint32_t *height);
+void nesp_picture_release(const nesp_hal_t *hal, uint8_t *rgb);
+/* Pixels made into a picture for the console, NESP_COMMONS_SIZE bytes laid
+ * out as COMMONS's DATA serves them. False if there was not the memory to
+ * work in (picture.c). */
+bool nesp_picture_make(const nesp_hal_t *hal, const uint8_t *rgb, uint32_t width,
+                       uint32_t height, uint8_t *out);
+/* The loops of the ROM's delay from sprite 0's hit, at x, to its write. */
+uint8_t nesp_picture_split_delay(uint8_t x);
 
 /* For a service with something to send as a run (JUKE's sampled sound).
  *

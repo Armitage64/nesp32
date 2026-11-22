@@ -191,6 +191,14 @@ SAVE = 0x01             # an id, PAIR, LENGTH (2): the pair sent kept as a file'
 FIND = 0x02             # an id, TYPE, PAIR, then a name or none: a file's PAIR-th pair, or how it is going
 GET = 0x03              # AT (2), COUNT: bytes of the pair found, from AT on
 
+[services.COMMONS]
+id = 0x17
+[services.COMMONS.ops]
+SEARCH = 0x00           # an id, then the words: start on it, or say how it is going
+CAPTION = 0x01          # a line of a picture's words, by the picture's number and the line's
+OPEN = 0x02             # a picture, by its number: make it ready, or say how it is going
+DATA = 0x03             # INDEX, OFFSET (2): bytes of the picture made ready, from OFFSET on
+
 [enums.WIFI]            # the state of the Stick's Wi-Fi
 NONE = 0                # no network has been set up
 IDLE = 1                # one is saved, and the Stick is not on it
@@ -301,6 +309,23 @@ ASKING = 2              # the request is out, and the server has not answered
 READING = 3             # it has: its status, type and length are known, and the body is coming
 DONE = 4                # the body has come, or as much of it as is kept
 FAILED = 5              # no answer, or the connection dropped; the reply says why
+
+[enums.ALBUM]           # COMMONS: how a search stands
+IDLE = 0                # no search, or not the one the request is about
+NO_WIFI = 1
+SEARCHING = 2
+READY = 3               # its pictures are held: COUNT of them
+NOT_FOUND = 4           # it found no picture, or was for words that are not searched for
+FAILED = 5              # the search failed; the reply says how
+NO_LINE = 0x80          # on a CAPTION reply: no such picture or line
+
+[enums.PHOTO]           # COMMONS: how a picture stands
+IDLE = 0                # none asked for, or not the one the request is about
+NO_WIFI = 1
+FETCHING = 2            # it is being fetched, and then made into tiles
+READY = 3               # it is held, ready for DATA
+FAILED = 4              # it could not be had or made; the reply says why
+NO_DATA = 0x80          # on a DATA reply: no bytes, since no such picture is ready
 
 [enums.DECK]            # TAPE: how a SAVE or a FIND stands
 IDLE = 0                # neither asked for since the hello
@@ -517,6 +542,19 @@ TAPE_NAME = 16          # this many characters, with spaces after it
 TAPE_LENGTH_AT = 0x12   # and the data block's length (2)
 TAPE_DATA_MAX = 4096    # the longest data block kept: all of BASIC's memory
 TAPE_PAIRS_MAX = 8      # pairs in one file
+COMMONS_COLUMNS = 28    # characters in a line of a picture's words, or of why something failed
+COMMONS_QUERY_MAX = 30  # characters in a search
+COMMONS_RESULTS = 20    # pictures a search keeps, the best first
+COMMONS_LINES = 4       # lines of a picture's words: its name (two), by whom, its licence
+COMMONS_CHUNK = 64      # bytes of a picture in one DATA reply, at the most
+# A picture as DATA serves it, for the console to put where it says:
+COMMONS_CHR = 0x0000    # both pattern tables, 8 KB, for $0000
+COMMONS_NAMES = 0x2000  # nametable 0 and its attributes, 1 KB, for $2000
+COMMONS_PALETTE = 0x2400    # the 32 colours, for $3F00
+COMMONS_SPRITE = 0x2420 # sprite 0 as OAM has it: Y, tile, attributes, X
+COMMONS_DELAY = 0x2424  # loops of the split's delay, from sprite 0's hit to the write
+COMMONS_SIZE = 0x2428   # the whole of it
+COMMONS_SPLIT_ROW = 15  # rows of tiles above this are in the first pattern table, the rest in the second
 PEER_PORT = 6502        # UDP, on the nesp32 that hosts
 PEER_VERSION = 1        # of what two nesp32s say to each other
 PEER_PAL = 0x80         # in the version a nesp32 greets with, for a PAL console: only another is let in

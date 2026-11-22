@@ -44,7 +44,7 @@ typedef struct {
     uint8_t app_version;
     uint32_t hellos;
     /* The last fetch asked for, and where its reply goes. */
-    char url[512];
+    char url[1024];
     char agent[128];
     uint32_t fetch_id;
     const nesp_sink_t *sink;
@@ -1607,4 +1607,28 @@ size_t host_vgm_to_jbs(const uint8_t *vgm, size_t len, const char *name, uint8_t
     }
     free(work);
     return made;
+}
+
+/* --- COMMONS's pieces (commons.c, picture.c, image.c) ------------------------ */
+
+/* A JPEG's or a PNG's file made into a picture for the console, as COMMONS
+ * makes a thumbnail, with this host's memory. False if it cannot be read. */
+bool host_picture(host_t *host, const uint8_t *file, size_t len, uint8_t *out)
+{
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint8_t *rgb = nesp_picture_decode(&host->hal, file, len, &width, &height);
+    if (rgb == NULL) {
+        return false;
+    }
+    bool made = nesp_picture_make(&host->hal, rgb, width, height, out);
+    nesp_picture_release(&host->hal, rgb);
+    return made;
+}
+
+/* Pixels, 3 bytes each, made into one. */
+bool host_picture_rgb(host_t *host, const uint8_t *rgb, uint32_t width, uint32_t height,
+                      uint8_t *out)
+{
+    return nesp_picture_make(&host->hal, rgb, width, height, out);
 }

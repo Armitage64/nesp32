@@ -11,6 +11,7 @@
 - Throughput test: 298296 baud to the console no longer fails a whole block at random; the test lost count of a block's first byte, not the line (#98)
 
 ### Firmware
+- COMMONS, a new service: pictures from Wikimedia Commons found by words typed on the console, with adult ones filtered out, each made into tiles the NES can show full screen; for the Gallery, a prototype ROM in `apps/gallery` not yet tried on hardware
 - The Stick's screen says "Firmware update available" in red, with no console running a program, when the web site has newer firmware
 - Jukebox: sounds made for the two fastest rates (7 and 8 cycles a bit) start every time, where they often played noise or nothing (#98)
 

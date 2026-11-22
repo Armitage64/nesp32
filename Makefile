@@ -37,8 +37,9 @@ CORE := firmware/components/nesp_core
 SERVICES := firmware/components/nesp_services
 HOST_SOURCES := $(CORE)/nesp_core.c $(wildcard $(SERVICES)/*.c) host/nesp_host.c
 MINIMP3 := third_party/minimp3
+STB := third_party/stb
 HOST_HEADERS := $(CORE)/include/nesp_core.h $(wildcard $(SERVICES)/include/*.h) \
-	$(MINIMP3)/minimp3.h
+	$(MINIMP3)/minimp3.h $(STB)/stb_image.h
 
 ROM := $(BUILD)/setup.nes
 
@@ -72,7 +73,7 @@ $(VERSION_INC): FORCE | $(BUILD)
 
 $(HOST_LIB): $(HOST_SOURCES) $(HOST_HEADERS) $(BUILD)/nesp_proto.h $(VERSION_H)
 	$(CC) $(CFLAGS) -shared -I $(BUILD) -I $(CORE)/include -I $(SERVICES)/include \
-		-I $(MINIMP3) -o $@ $(HOST_SOURCES) -lm
+		-I $(MINIMP3) -I $(STB) -o $@ $(HOST_SOURCES) -lm
 
 host: $(HOST_LIB)
 

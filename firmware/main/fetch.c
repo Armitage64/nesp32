@@ -48,7 +48,7 @@
 static const char *TAG = "fetch";
 
 typedef struct {
-    char url[512];
+    char url[1024];
     char agent[128];
     uint32_t id;
     const nesp_sink_t *sink;

@@ -83,6 +83,7 @@ Please join our [Discord](https://discord.gg/kwSC7pwtmb)!
 | [Weather](apps/weather) | Current conditions and a 5-day forecast for a US zip code, which the NESP32 remembers |
 | [Bluesky](apps/bluesky) | Bluesky posts from a list of favorite accounts the NESP32 remembers, after [ConnectedNES](https://github.com/hxlnt/connectedNES) |
 | [Family BASIC](apps/family-basic)* | Family BASIC V3 using a Bluetooth keyboard. Save and load programs to the NESP32 instead of cassette |
+| [Gallery](apps/gallery) | Prototype: search Wikimedia Commons and see the pictures full screen, filtered for adult content; not yet on hardware or the cartridge |
 
 \* These titles contains copyrighted material and cannot be provided. Instead, download the patches from the [ROM patches](https://nesp32.retrobits.tv/patches/) page, and apply them to your own original ROM files.
 
@@ -158,6 +159,7 @@ make -C apps/tmnt2          # TMNT II 2P
 make -C apps/jackal         # Jackal 2P
 make -C apps/rcr            # River City Ransom 2P
 make -C apps/family-basic   # Family BASIC
+make -C apps/gallery        # Gallery (a prototype)
 ```
 
 Contra, TMNT II, Jackal, River City Ransom and Family BASIC need your own copy of the game at `apps/<name>/baserom.nes`
@@ -178,6 +180,7 @@ alone. After changing a game, `make -C apps/<name> bps` writes its patch for pla
 | `apps/jackal/build/jackal_net.nes` | Jackal 2P, which is not on the cartridge |
 | `apps/rcr/build/rcr_net.nes` | River City Ransom 2P, which is not on the cartridge |
 | `apps/family-basic/build/fbasic.nes` | Family BASIC, which is not on the cartridge |
+| `apps/gallery/build/gallery.nes` | Gallery, a prototype, which is not on the cartridge: it needs CHR RAM |
 
 ## Further Reading
 
@@ -210,7 +213,8 @@ Not everything in the repository is nesp32's to license:
 
 - **`third_party/`** is other people's, each under its own terms:
   [nes-radar](https://github.com/k6lcm/nes-radar) (GPL-3.0, as this is),
-  [minimp3](third_party/minimp3/LICENSE) (CC0), and the disassemblies of
+  [minimp3](third_party/minimp3/LICENSE) (CC0),
+  [stb_image](third_party/stb/stb_image.h) (MIT or public domain), and the disassemblies of
   Dr. Mario, Contra, Tetris, TMNT II and Jackal that the two-player ROMs are
   built from.
 - **The games.** `apps/drmario`, `apps/contra`, `apps/tetris`,

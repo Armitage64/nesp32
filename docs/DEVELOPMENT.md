@@ -215,6 +215,7 @@ What is still to do on the hardware and the firmware is in
 | [Bluesky](../apps/bluesky), BSKY | on a simulated console against the firmware's code; not yet on hardware |
 | [Family BASIC](../apps/family-basic), KBD (and its KEYS_ALL) | a prototype, working on hardware, the MiSTer and an EverDrive N8: programs typed in on a Bluetooth keyboard, every key of the Famicom's that a computer's has, edited and run, and kept over a reset (on the N8, after `SYSTEM`) |
 | [Family BASIC](../apps/family-basic)'s SAVE and LOAD, TAPE | working on hardware, the MiSTer and a real NES: a program saved, the console reset, and loaded again; BG GRAPHIC's not tried |
+| [Gallery](../apps/gallery), COMMONS | a prototype, on a simulated console against the firmware's code, with Commons answered by the tests; the firmware builds; not yet on hardware |
 
 ## What is where
 
@@ -232,7 +233,7 @@ What is still to do on the hardware and the firmware is in
 | `tools/lcd.py` | pictures of the nesp32's own screen, for trying a layout before flashing it |
 | `nes/lib/nesp.inc`, `nes/lib/gen_link.py` | the console's library, and its cycle-timed serial routines |
 | `apps/` | the programs, a directory each |
-| `third_party/` | the two games' disassemblies and nes-radar, as submodules; and minimp3, the MP3 decoder (CC0), as a file |
+| `third_party/` | the two games' disassemblies and nes-radar, as submodules; minimp3, the MP3 decoder (CC0), and stb_image, the JPEG and PNG decoder (MIT or public domain), as files |
 | `nes/cart/` | the cartridge: its menu, and the tool that puts the programs on it |
 | `host/nesp_host.c`, `host/nesp.py` | the firmware's code as a library for this computer, with a stand-in for the hardware |
 | `host/serial_host.py` | that, on a USB serial cable in place of a nesp32 |

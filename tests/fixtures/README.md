@@ -50,3 +50,15 @@ other account in it, the reposted ones and the ones Bluesky quotes, is
 made up: a handle under `example.com`, made-up text, and IDs that point at
 nothing. Their shape and counts are as the API sent them, and one handle is
 longer than a line.
+
+`commons_lighthouse.json` is a reply from Wikimedia Commons's API for the
+search "lighthouse", as COMMONS asks for it but for six pictures in place
+of twenty, on 2026-11-22, as it was sent. The pictures' names, authors and
+licences are Commons's, each picture's
+[file page](https://commons.wikimedia.org) says more; no picture itself is
+here.
+
+`commons_tower.png` and `commons_tower.jpg` are a picture made for the
+tests, of no one's: a sky, a sun, a sea, a striped tower and a boat, 330 x
+248, drawn by a script and saved as a PNG, and that PNG saved as a JPEG of
+quality 70 by macOS's `sips`.

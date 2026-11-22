@@ -1,5 +1,5 @@
-idf_component_register(SRCS "sys.c" "net.c" "diag.c" "wiki.c" "text.c" "raw.c" "juke.c" "peer.c" "arq.c" "stun.c" "vgm.c" "radar.c" "mp3.c" "resample.c" "tuner.c" "news.c" "weather.c" "bsky.c" "kbd.c" "http.c" "tape.c"
-                       INCLUDE_DIRS "include" "../../../third_party/minimp3"
+idf_component_register(SRCS "sys.c" "net.c" "diag.c" "wiki.c" "text.c" "raw.c" "juke.c" "peer.c" "arq.c" "stun.c" "vgm.c" "radar.c" "mp3.c" "resample.c" "tuner.c" "news.c" "weather.c" "bsky.c" "kbd.c" "http.c" "tape.c" "commons.c" "picture.c" "image.c"
+                       INCLUDE_DIRS "include" "../../../third_party/minimp3" "../../../third_party/stb"
                        REQUIRES nesp_core)
 # The version (nesp_version.h), from VERSION and the commit, on every build:
 # tagging a commit makes it the release without changing a file here. The

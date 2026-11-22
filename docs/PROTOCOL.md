@@ -238,6 +238,7 @@ nothing done on the nesp32.
 | `$14` | WEATHER | the weather at a zip code, as rows for the screen | done |
 | `$15` | BSKY | Bluesky: an account's posts as lines, and favorites | done |
 | `$16` | TAPE | Family BASIC's data recorder: programs and screens kept as files | done |
+| `$17` | COMMONS | the Gallery: pictures from Wikimedia Commons, made into tiles | a prototype |
 | `$80`-`$FF` | | experiments and other people's | |
 
 Multi-byte numbers are low byte first, except the CRC.
@@ -1548,6 +1549,89 @@ screen, and `.tNNN` for any other type. A character a filing system may
 not take, or would take for another (a small letter, a kana, a sign such
 as `/`), is `%` and its two hex digits, as is a space at the start; a
 name of nothing is `%20`. A board that keeps no files answers FAILED.
+
+### COMMONS `$17`: pictures from Wikimedia Commons
+
+Pictures that words typed on the console find on
+[Wikimedia Commons](https://commons.wikimedia.org), each made by the
+nesp32 into what the NES can show and sent to the console whole. The
+Gallery's service ([`apps/gallery`](../apps/gallery)). A prototype: tested
+against the firmware's code on a simulated console, not yet on hardware.
+
+| `OP` | Name | Request | Reply |
+|---|---|---|---|
+| `$00` | SEARCH | `ID`, then the words: 1 to 30 characters | `STATE`, `ID`, `COUNT`, and with FAILED 28 characters for the screen |
+| `$01` | CAPTION | `INDEX`, `LINE` | `STATE`, `INDEX`, `LINE`, `TEXT[28]`; with no such picture or line, bit 7 of `STATE` is set and there is no `TEXT` |
+| `$02` | OPEN | `ID`, `INDEX` | `STATE`, `ID`, `INDEX`, and with FAILED 28 characters for the screen |
+| `$03` | DATA | `INDEX`, `OFFSET[2]` | `STATE`, `INDEX`, `OFFSET[2]`, then up to 64 bytes of the picture from `OFFSET`; with none, bit 7 of `STATE` is set |
+
+SEARCH's `STATE` (enum ALBUM): `$00` IDLE, `$01` NO_WIFI, `$02` SEARCHING,
+`$03` READY (`COUNT` pictures are held), `$04` NOT_FOUND, `$05` FAILED.
+OPEN's and DATA's (enum PHOTO): `$00` IDLE (no such picture, or not the
+one asked about), `$01` NO_WIFI, `$02` FETCHING, `$03` READY, `$04`
+FAILED.
+
+**SEARCH and OPEN are each both "start on this" and "how is it going"**,
+as WIKI's SEARCH is. The console gives each search and each showing of a
+picture an id, and sends the same request again every few frames; the
+nesp32 starts when the id or what is asked differs from the last. So a
+picture that failed is fetched again when the console shows it again.
+
+**What is searched.** Commons's API, for up to 20 JPEGs among its
+[Quality](https://commons.wikimedia.org/wiki/Commons:Quality_images) and
+[Featured](https://commons.wikimedia.org/wiki/Commons:Featured_pictures)
+pictures, with words that mark adult pictures ruled out in the search
+itself (`-nude`, `-erotic` and others). A search with such a word is not
+made: it is NOT_FOUND at once. A picture whose name has one is dropped
+from what is found. Commons has no safe search of its own; this is a
+filter of words, which keeps most such pictures out, not every one. Each
+picture comes with a thumbnail 330 pixels wide that Commons makes, its
+author and its licence.
+
+**CAPTION** is a picture's words, a line of 28 characters each, ASCII:
+its file's name over lines 0 and 1 (no "File:", no extension, cut with
+"..." if it is longer), "By" and its author on line 2 (the HTML Commons
+gives an author as, made plain), and its licence on line 3. Most licences
+on Commons ask that the author and the licence be shown.
+
+**OPEN** fetches the thumbnail, decodes it (JPEG or PNG, with
+[stb_image](https://github.com/nothings/stb), in `third_party/stb`), and
+makes it into a picture (`picture.c`), which takes the nesp32 under a
+second or two. Then it is READY, and DATA serves it, 64 bytes a reply:
+
+| Offset | Bytes | What | Where the console puts it |
+|---|---|---|---|
+| `$0000` | 8192 | the tiles: the first pattern table, then the second | `$0000` |
+| `$2000` | 1024 | the nametable and its attributes | `$2000` |
+| `$2400` | 32 | the palettes, the sprites' all black | `$3F00` |
+| `$2420` | 4 | sprite 0, as OAM has it | OAM |
+| `$2424` | 1 | loops of the split's delay | |
+
+The top 15 rows of tiles are drawn from the first pattern table and the
+bottom 15 from the second, so a picture has 511 tiles of its own. The
+console changes `PPUCTRL` between them on the top half's last line
+(119), where sprite 0 is hit: sprite 0 is one pixel, tile `$FF` of the
+first table, behind a pixel of the picture that is not black and in
+black itself, so it is never seen. From the look at `PPUSTATUS` that sees
+the hit to the write is 15 cycles with no delay and 13 + 5 a loop with
+some; the delay's loops put the write after dot 240 and before dot 321
+on an NTSC console and a PAL one (`tests/test_commons.py` checks every
+place the sprite can be).
+
+The image is fitted in whole, between lines 8 and 231 (a television hides
+the 8 above and below), with the NES's pixels 8/7 as wide as they are
+high, and black round it. Black is behind everything; each square of 16 x
+16 pixels has three more colours, one of four palettes of three, chosen
+for the picture, and the picture is dithered (Floyd-Steinberg) in them.
+Where a half has more different tiles than 256, the ones that cost least
+to lose are merged into the nearest left, until they fit.
+
+The memory COMMONS holds is the service's while it is in use: about 200 KB
+for the search, a reply's body and the picture, and about 1 MB more while
+a picture is being made. A hello gives it back.
+
+In the Gallery a DATA exchange is 10 bytes out and 75 back, one a frame
+with the picture off: 145 frames, about 2.4 seconds, for a picture.
 
 ## 6. Timing
 
