@@ -146,6 +146,9 @@ def library():
                                         ctypes.c_char_p, ctypes.c_size_t]
         lib.host_picture.restype = ctypes.c_bool
         lib.host_picture.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t, _u8p]
+        lib.host_picture_target.restype = ctypes.c_bool
+        lib.host_picture_target.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t,
+                                            _u8p]
         lib.host_picture_rgb.restype = ctypes.c_bool
         lib.host_picture_rgb.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint32,
                                          ctypes.c_uint32, _u8p]
@@ -1116,6 +1119,15 @@ class Stick:
         file = bytes(file)
         out = (ctypes.c_uint8 * proto.NESP_COMMONS_SIZE)()
         if not self._lib.host_picture(self._host, file, len(file), out):
+            return None
+        return bytes(out)
+
+    def picture_target(self, file):
+        """The file's pixels as a picture is made from them: fitted into the
+        screen, 256 x 240 x 3 bytes, or None if it cannot be read."""
+        file = bytes(file)
+        out = (ctypes.c_uint8 * (256 * 240 * 3))()
+        if not self._lib.host_picture_target(self._host, file, len(file), out):
             return None
         return bytes(out)
 

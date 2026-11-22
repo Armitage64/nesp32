@@ -297,7 +297,8 @@ def test_black_is_behind_everything_and_sprite_0_is_never_seen(made):
     palette = made[p.NESP_COMMONS_PALETTE:p.NESP_COMMONS_PALETTE + 32]
     assert palette[0] == 0x0F and all(palette[4 * n] == 0x0F for n in range(4))
     assert set(palette[16:]) == {0x0F}
-    assert all(code < 0x40 and code & 0x0F not in (0x0D, 0x0E) for code in palette)
+    # $0D is blacker than black, which some televisions take for sync.
+    assert all(code < 0x40 and code != 0x0D and code & 0x0F != 0x0E for code in palette)
 
 
 def test_sprite_0_is_one_pixel_behind_a_lit_one_on_the_split_line(made):

@@ -60,7 +60,14 @@ make                         # build/gallery.nes
 make test
 make preview                 # build/search.png and build/info.png
 make picture FILES=photo.jpg # photo.nes.png: the photo as the Gallery shows it
+tools/quality.py photo.jpg --montage m.png   # how near the picture is to the photo
 ```
+
+`tools/quality.py` scores the converter on photographs: each is made into
+a picture by the nesp32's own code, and both are blurred a little and
+compared, lower being better. `tools/quality.py --fetch dir` saves a dozen
+of Commons's thumbnails to try it on. They are their authors', so they stay
+out of the repository.
 
 `build/gallery.nes` is mapper 0 (NROM-256) with 8 KB of CHR RAM, not CHR
 ROM, and vertical mirroring: a picture brings its own tiles. Flash
@@ -75,8 +82,11 @@ on one. It is not on nesp32's cartridge, whose MMC1 has CHR ROM.
   330 pixels wide, made by Commons), decodes it and makes it into a
   picture: four palettes of three colours over black, chosen for it, one
   for each square of 16 x 16 pixels, the pixels dithered in them, and at
-  most 511 different tiles. On this Mac that takes about 40 ms; on a
-  nesp32 it has not been timed.
+  most 511 different tiles. Where there are more, tiles alike as the eye
+  sees them (by the average of each 2 x 2 of pixels) are merged, and then
+  every place takes whichever tile left is nearest its part of the
+  photograph. On this Mac that takes about 45 ms; on a nesp32 it has not
+  been timed.
 - **A picture has two pattern tables of tiles.** The top 15 rows of tiles
   come from the first and the bottom 15 from the second; the ROM changes
   table between them every frame (`nes/viewer.inc`, `split`), on the top
@@ -106,6 +116,8 @@ on one. It is not on nesp32's cartridge, whose MMC1 has CHR ROM.
   place of 145 exchanges.
 - Pictures that are not JPEGs: the decoder takes PNGs, but the search
   asks only for JPEGs.
-- The palettes: squares whose palette differs from their neighbours' show
-  as blocks, worst in skies and gradients.
+- The palettes: squares whose palette differs from their neighbours' can
+  still show as blocks, in skies, gradients and fruit. Giving a square its
+  neighbours' palette where that costs it little was tried and did not
+  look better.
 - On nesp32's cartridge, once it has CHR RAM.

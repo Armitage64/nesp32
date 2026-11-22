@@ -1058,6 +1058,10 @@ void nesp_picture_release(const nesp_hal_t *hal, uint8_t *rgb);
  * work in (picture.c). */
 bool nesp_picture_make(const nesp_hal_t *hal, const uint8_t *rgb, uint32_t width,
                        uint32_t height, uint8_t *out);
+/* The pixels as the picture is made from them, before its colours are
+ * chosen: fitted into the screen, 256 x 240 x 3 bytes; for the tools. */
+bool nesp_picture_target(const nesp_hal_t *hal, const uint8_t *rgb, uint32_t width,
+                         uint32_t height, uint8_t *out);
 /* The loops of the ROM's delay from sprite 0's hit, at x, to its write. */
 uint8_t nesp_picture_split_delay(uint8_t x);
 

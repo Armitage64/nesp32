@@ -9,13 +9,26 @@
  * sprite's, and the 960 places on the screen share them.
  *
  * Its colours: black behind everything, and in each square of 16 x 16
- * pixels three more, one of four palettes of three. The palettes are
- * chosen for the picture (k-means over the squares, each palette's colours
- * by coordinate descent over a histogram of the NES colours nearest its
- * squares' pixels), then the picture is dithered (Floyd-Steinberg) with
- * each square's four. Where a half has more different tiles than it has
- * room for, the tile that costs least to lose (the fewest places, times how
- * far it is from the nearest other) goes to that other, until they fit.
+ * pixels three more, one of four palettes of three. Colours are compared as
+ * luma and colour difference (YCbCr), the colour counting twice. The
+ * palettes are chosen for the picture: k-means over the squares, each
+ * palette's colours by coordinate descent over the NES colours nearest its
+ * squares' pixels, counting what dithering can mix of two colours; then
+ * each colour of each palette tried as every other against the whole
+ * picture. The picture is dithered (seven eighths of Floyd-Steinberg) with
+ * each square's four.
+ *
+ * Where a half has more different tiles than it has room for, the tile
+ * that costs least to lose (the fewest places, times how far it is from
+ * the nearest other) goes to that other, until they fit. Tiles are
+ * compared by the average colour of each 2 x 2 of their pixels, which is
+ * what the eye sees of dithering. Then every place takes, of the tiles
+ * left, the one nearest its part of the image, and a tile no place takes
+ * goes to the place served worst.
+ *
+ * tools/picture.py in apps/gallery shows what this makes of a photograph.
+ * The figures below were chosen on twelve photographs from Commons, by how
+ * far the picture, a little blurred, is from the image.
  *
  * Sprite 0 is one pixel, behind the background and the backdrop's colour,
  * so it is never seen. It sits on the last line of the top half, over a
@@ -46,18 +59,36 @@
 #define BLOCKS_X (WIDTH / BLOCK)
 #define BLOCKS_Y (HEIGHT / BLOCK)
 #define BLOCKS (BLOCKS_X * BLOCKS_Y)
+#ifndef PALETTES
 #define PALETTES 4
+#endif
 #define CHOICES 54                  /* the NES colours a pixel may be */
 #define BLACK 0x0F                  /* the backdrop: choice 0 */
 #define SPRITE_TILE 0xFF            /* of the first table: sprite 0's */
 #define SPARE_TILE 0xFE             /* and the one given a pixel to hit, when one is needed */
 #define SPLIT_LINE (8 * NESP_COMMONS_SPLIT_ROW - 1)     /* the top half's last line */
 #define SPRITE_BEHIND 0x20          /* OAM: behind the background */
+#ifndef CANDIDATE_PIXELS
 #define CANDIDATE_PIXELS 12.0f      /* a colour nearest fewer pixels is in no palette */
+#endif
+#ifndef PASSES
 #define PASSES 6                    /* of k-means over the squares */
-#define CHROMA 1.5f                 /* how much a difference of colour counts against one of luma */
+#endif
+#ifndef CHROMA
+#define CHROMA 2.0f                 /* how much a difference of colour counts against one of luma */
+#endif
+#ifndef POLISH
 #define POLISH 2                    /* passes over every palette colour, for the whole picture */
-#define NOISE 0.5f                  /* what a dithered mixture costs, for how far apart its two are */
+#endif
+#ifndef REFITS
+#define REFITS 3                    /* rounds of places choosing their tiles again */
+#endif
+#ifndef DIFFUSE
+#define DIFFUSE 56                  /* of the error dithering passes on, in 64ths */
+#endif
+#ifndef NOISE
+#define NOISE 0.1f                  /* what a dithered mixture costs, for how far apart its two are */
+#endif
 
 /* Where the ROM's write to PPUCTRL lands, in dots from the start of the
  * hit's line, for sprite 0 at x: the hit two dots after its pixel, then 15
@@ -94,11 +125,14 @@ typedef struct {
     uint16_t count;                 /* different tiles */
     uint16_t active;                /* of them not yet merged into another */
     uint8_t pattern[HALF_CELLS][16];
-    uint8_t pixels[HALF_CELLS][64]; /* its colours, 0 to 3 */
-    uint8_t look[HALF_CELLS][4];    /* the NES colours of its first place's palette */
+    uint8_t share[HALF_CELLS][16][4];   /* each 2 x 2 of it: how many of each colour */
+    uint8_t mix[HALF_CELLS][16];        /* and which of the MIXES that is */
+    float colours[HALF_CELLS][4][3];    /* its first place's palette, weighed */
+    float seen[HALF_CELLS][16][3];      /* its 2 x 2s' averages, in that palette */
     uint16_t uses[HALF_CELLS];
     uint16_t nearest[HALF_CELLS];
-    uint32_t distance[HALF_CELLS];
+    float distance[HALF_CELLS];
+    float error[HALF_CELLS];            /* each place's, from the image, by refit */
     bool gone[HALF_CELLS];
     uint16_t of_cell[HALF_CELLS];   /* each place's tile, as counted here */
     uint8_t number[HALF_CELLS];     /* each tile's in the pattern table */
@@ -114,10 +148,9 @@ typedef struct {
 } bins_t;
 
 typedef struct {
-    int16_t rgb[HEIGHT][WIDTH][3];
+    int16_t rgb[HEIGHT][WIDTH][3];  /* the image, and then the error dithering carries */
+    uint8_t source[HEIGHT][WIDTH][3];   /* the image */
     uint8_t color[HEIGHT][WIDTH];   /* 0 to 3, dithered */
-    float count[BLOCKS][CHOICES];
-    float sum[BLOCKS][CHOICES][3];
     bins_t bins[BLOCKS];            /* each square's */
     bins_t gathered;
     uint8_t candidate[CHOICES];     /* the colours a palette may have */
@@ -126,12 +159,17 @@ typedef struct {
     uint8_t palette[PALETTES][3];   /* choices */
     uint8_t square[BLOCKS];         /* each square's palette */
     uint8_t cell_pattern[CELLS][16];
-    half_t halves[2];
+    union {                         /* the palettes' counts, then the tiles */
+        struct {
+            float count[BLOCKS][CHOICES];
+            float sum[BLOCKS][CHOICES][3];
+        };
+        half_t halves[2];
+    };
     int x0, y0, w, h;               /* where the image went */
 } work_t;
 
 static uint8_t choices[CHOICES];    /* NES colours */
-static uint16_t apart[64][64];      /* how far apart two NES colours look */
 
 /* Colours are compared as luma and two differences of colour (YCbCr), the
  * luma counting twice: a space in which plain distance is near enough to
@@ -168,13 +206,6 @@ static void make_choices(void)
     }
     choices[count++] = 0x2D;
     choices[count++] = 0x3D;
-    for (size_t a = 0; a < 64; a++) {
-        for (size_t b = 0; b < 64; b++) {
-            float d = rgb_distance(nes_rgb[a][0], nes_rgb[a][1], nes_rgb[a][2],
-                                   nes_rgb[b][0], nes_rgb[b][1], nes_rgb[b][2]);
-            apart[a][b] = (uint16_t)sqrtf(d);   /* the square root, so that distances add */
-        }
-    }
 }
 
 static float to_choice(int r, int g, int b, uint8_t choice)
@@ -617,7 +648,7 @@ static void spread(work_t *work, int x, int y, const int *error, int share)
 }
 
 /* Each pixel one of its square's four colours, the error passed on (by
- * three quarters of Floyd-Steinberg's, serpentine). */
+ * seven eighths of Floyd-Steinberg's, serpentine). */
 static void dither(work_t *work)
 {
     memset(work->color, 0, sizeof(work->color));
@@ -643,11 +674,11 @@ static void dither(work_t *work)
             work->color[y][x] = pick;
             const uint8_t *chosen = nes_rgb[choices[pick == 0 ? 0 : palette[pick - 1]]];
             int error[3] = {p[0] - chosen[0], p[1] - chosen[1], p[2] - chosen[2]};
-            /* 7, 3, 5 and 1 sixteenths, of three quarters: of 64ths. */
-            spread(work, x + step, y, error, 21);
-            spread(work, x - step, y + 1, error, 9);
-            spread(work, x, y + 1, error, 15);
-            spread(work, x + step, y + 1, error, 3);
+            /* 7, 3, 5 and 1 sixteenths, of DIFFUSE 64ths. */
+            spread(work, x + step, y, error, 7 * DIFFUSE / 16);
+            spread(work, x - step, y + 1, error, 3 * DIFFUSE / 16);
+            spread(work, x, y + 1, error, 5 * DIFFUSE / 16);
+            spread(work, x + step, y + 1, error, DIFFUSE / 16);
         }
     }
 }
@@ -676,33 +707,108 @@ static uint8_t pattern_pixel(const uint8_t *planes, int x, int y)
 
 /* --- the tiles --------------------------------------------------------------- */
 
-/* How far tile b is from tile a where a is: both in a's palette. */
-static uint32_t tile_distance(const half_t *half, uint16_t a, uint16_t b)
+/* Tiles are compared as the eye sees them from a little way off: by the
+ * average colour of each 2 x 2 of their pixels, in weigh_rgb's space. So a
+ * tile dithered between two colours is near a tile of the colour between,
+ * and near another dithered the other way, where pixel by pixel they would
+ * be far apart. */
+
+/* The ways four pixels can share four colours: 35 of them. mixes has how
+ * many of each colour each has, and mix_of which it is, by the first three
+ * counts as a number in base 5. */
+#define MIXES 35
+static uint8_t mixes[MIXES][4];
+static uint8_t mix_of[125];
+
+static void make_mixes(void)
 {
-    const uint8_t *look = half->look[a];
-    const uint8_t *mine = half->pixels[a];
-    const uint8_t *theirs = half->pixels[b];
-    uint32_t sum = 0;
-    for (size_t pixel = 0; pixel < 64; pixel++) {
-        sum += apart[look[mine[pixel]]][look[theirs[pixel]]];
+    uint8_t count = 0;
+    for (uint8_t a = 0; a <= 4; a++) {
+        for (uint8_t b = 0; a + b <= 4; b++) {
+            for (uint8_t c = 0; a + b + c <= 4; c++) {
+                mixes[count][0] = a;
+                mixes[count][1] = b;
+                mixes[count][2] = c;
+                mixes[count][3] = (uint8_t)(4 - a - b - c);
+                mix_of[(a * 5 + b) * 5 + c] = count++;
+            }
+        }
     }
-    return sum;
+}
+
+/* A tile's 2 x 2 squares' averages, with its colours (0 to 3) as these. */
+static void tile_look(const half_t *half, uint16_t tile, float (*colours)[3], float (*out)[3])
+{
+    for (size_t square = 0; square < 16; square++) {
+        const uint8_t *share = half->share[tile][square];
+        for (size_t axis = 0; axis < 3; axis++) {
+            out[square][axis] = (share[0] * colours[0][axis] + share[1] * colours[1][axis]
+                                 + share[2] * colours[2][axis] + share[3] * colours[3][axis])
+                                * 0.25f;
+        }
+    }
 }
 
 static void find_nearest(half_t *half, uint16_t tile)
 {
-    half->distance[tile] = UINT32_MAX;
+    /* How far each of the tile's 2 x 2s is from each mix of its colours:
+     * then another tile's distance, in the tile's palette, is 16 of these. */
+    float far[16][MIXES];
+    for (size_t each = 0; each < MIXES; each++) {
+        float mixed[3];
+        for (size_t axis = 0; axis < 3; axis++) {
+            mixed[axis] = (mixes[each][0] * half->colours[tile][0][axis]
+                           + mixes[each][1] * half->colours[tile][1][axis]
+                           + mixes[each][2] * half->colours[tile][2][axis]
+                           + mixes[each][3] * half->colours[tile][3][axis]) * 0.25f;
+        }
+        for (size_t square = 0; square < 16; square++) {
+            far[square][each] = sqrtf(squared(half->seen[tile][square], mixed));
+        }
+    }
+    half->distance[tile] = 3.4e38f;
     half->nearest[tile] = tile;
     for (uint16_t other = 0; other < half->count; other++) {
         if (other == tile || half->gone[other]) {
             continue;
         }
-        uint32_t d = tile_distance(half, tile, other);
+        const uint8_t *mix = half->mix[other];
+        float d = 0.0f;
+        for (size_t square = 0; square < 16 && d < half->distance[tile]; square++) {
+            d += far[square][mix[square]];
+        }
         if (d < half->distance[tile]) {
             half->distance[tile] = d;
             half->nearest[tile] = other;
         }
     }
+}
+
+static const uint8_t *cell_palette(const work_t *work, size_t cell)
+{
+    size_t top = cell / COLUMNS * 8;
+    size_t left = cell % COLUMNS * 8;
+    return work->palette[work->square[(top / BLOCK) * BLOCKS_X + left / BLOCK]];
+}
+
+/* Tile `tile` of a half to be this pattern, as it looks with this palette. */
+static void set_tile(half_t *half, uint16_t tile, const uint8_t *planes, const uint8_t *palette)
+{
+    memcpy(half->pattern[tile], planes, 16);
+    memset(half->share[tile], 0, sizeof(half->share[tile]));
+    for (int y = 0; y < 8; y++) {
+        for (int x = 0; x < 8; x++) {
+            half->share[tile][(y / 2) * 4 + x / 2][pattern_pixel(planes, x, y)]++;
+        }
+    }
+    for (size_t square = 0; square < 16; square++) {
+        const uint8_t *share = half->share[tile][square];
+        half->mix[tile][square] = mix_of[(share[0] * 5 + share[1]) * 5 + share[2]];
+    }
+    palette_colours(palette, half->colours[tile]);
+    tile_look(half, tile, half->colours[tile], half->seen[tile]);
+    half->uses[tile] = 0;
+    half->gone[tile] = false;
 }
 
 /* The half's places, rows from `row` on, as different tiles. */
@@ -717,22 +823,7 @@ static void gather(work_t *work, half_t *half, size_t row)
             tile++;
         }
         if (tile == half->count) {
-            memcpy(half->pattern[tile], planes, 16);
-            for (int y = 0; y < 8; y++) {
-                for (int x = 0; x < 8; x++) {
-                    half->pixels[tile][y * 8 + x] = pattern_pixel(planes, x, y);
-                }
-            }
-            half->uses[tile] = 0;
-            half->gone[tile] = false;
-            int top = (int)(cell / COLUMNS) * 8;
-            int left = (int)(cell % COLUMNS) * 8;
-            const uint8_t *palette = work->palette[work->square[(top / BLOCK) * BLOCKS_X
-                                                                 + left / BLOCK]];
-            half->look[tile][0] = BLACK;
-            for (size_t slot = 0; slot < 3; slot++) {
-                half->look[tile][slot + 1] = choices[palette[slot]];
-            }
+            set_tile(half, tile, planes, cell_palette(work, cell));
             half->count++;
         }
         half->uses[tile]++;
@@ -751,13 +842,13 @@ static void cut(half_t *half, uint16_t room)
 {
     while (half->active > room) {
         uint16_t loser = UINT16_MAX;
-        uint64_t least = UINT64_MAX;
+        float least = 3.4e38f;
         for (uint16_t tile = 0; tile < half->count; tile++) {
             if (half->gone[tile]) {
                 continue;
             }
-            uint64_t cost = (uint64_t)half->uses[tile] * half->distance[tile];
-            if (cost < least) {
+            float cost = (float)half->uses[tile] * half->distance[tile];
+            if (loser == UINT16_MAX || cost < least) {
                 least = cost;
                 loser = tile;
             }
@@ -775,6 +866,101 @@ static void cut(half_t *half, uint16_t room)
             if (!half->gone[tile] && half->nearest[tile] == loser) {
                 find_nearest(half, tile);
             }
+        }
+    }
+}
+
+/* Merging chose each place's tile by how near it is to the one it had; but
+ * what a place should look like is its part of the image. Here each place
+ * takes, of the tiles left, the one nearest the image there in its own
+ * palette. A tile no place then takes is given up for the place served
+ * worst, with its own tile, and the places choose again. */
+static void refit(work_t *work, half_t *half, size_t row)
+{
+    for (int round = 0; round < REFITS; round++) {
+        for (uint16_t tile = 0; tile < half->count; tile++) {
+            half->uses[tile] = 0;
+        }
+        for (size_t index = 0; index < HALF_CELLS; index++) {
+            size_t cell = row * COLUMNS + index;
+            size_t top = cell / COLUMNS * 8;
+            size_t left = cell % COLUMNS * 8;
+            float image[16][3];
+            for (size_t square = 0; square < 16; square++) {
+                float sum[3] = {0.0f, 0.0f, 0.0f};
+                for (size_t dy = 0; dy < 2; dy++) {
+                    for (size_t dx = 0; dx < 2; dx++) {
+                        float point[3];
+                        const uint8_t *pixel =
+                            work->source[top + square / 4 * 2 + dy][left + square % 4 * 2 + dx];
+                        weigh_rgb(pixel[0], pixel[1], pixel[2], point);
+                        sum[0] += point[0];
+                        sum[1] += point[1];
+                        sum[2] += point[2];
+                    }
+                }
+                for (size_t axis = 0; axis < 3; axis++) {
+                    image[square][axis] = sum[axis] * 0.25f;
+                }
+            }
+            /* How far each 2 x 2 of the image is from each mix of the
+             * place's colours: then a tile's distance is 16 of these. */
+            float colours[4][3];
+            palette_colours(cell_palette(work, cell), colours);
+            float far[16][MIXES];
+            for (size_t each = 0; each < MIXES; each++) {
+                float mixed[3];
+                for (size_t axis = 0; axis < 3; axis++) {
+                    mixed[axis] = (mixes[each][0] * colours[0][axis]
+                                   + mixes[each][1] * colours[1][axis]
+                                   + mixes[each][2] * colours[2][axis]
+                                   + mixes[each][3] * colours[3][axis]) * 0.25f;
+                }
+                for (size_t square = 0; square < 16; square++) {
+                    far[square][each] = sqrtf(squared(image[square], mixed));
+                }
+            }
+            uint16_t best = half->of_cell[index];
+            float least = 3.4e38f;
+            for (uint16_t tile = 0; tile < half->count; tile++) {
+                if (half->gone[tile]) {
+                    continue;
+                }
+                const uint8_t *mix = half->mix[tile];
+                float d = 0.0f;
+                for (size_t square = 0; square < 16 && d < least; square++) {
+                    d += far[square][mix[square]];
+                }
+                if (d < least) {
+                    least = d;
+                    best = tile;
+                }
+            }
+            half->of_cell[index] = best;
+            half->uses[best]++;
+            half->error[index] = least;
+        }
+        /* Tiles left with no place, for the places served worst. */
+        bool freed = false;
+        for (uint16_t tile = 0; tile < half->count; tile++) {
+            if (half->gone[tile] || half->uses[tile] != 0) {
+                continue;
+            }
+            size_t worst = HALF_CELLS;
+            for (size_t index = 0; index < HALF_CELLS; index++) {
+                if (worst == HALF_CELLS || half->error[index] > half->error[worst]) {
+                    worst = index;
+                }
+            }
+            size_t cell = row * COLUMNS + worst;
+            set_tile(half, tile, work->cell_pattern[cell], cell_palette(work, cell));
+            half->uses[tile] = 1;
+            half->of_cell[worst] = tile;
+            half->error[worst] = 0.0f;
+            freed = true;
+        }
+        if (!freed) {
+            break;
         }
     }
 }
@@ -809,14 +995,17 @@ static uint8_t split_delay(int x)
 
 static void lay_out(work_t *work, uint8_t *out)
 {
+    make_mixes();
     memset(out, 0, NESP_COMMONS_SIZE);
     half_t *top = &work->halves[0];
     half_t *bottom = &work->halves[1];
     gather(work, bottom, NESP_COMMONS_SPLIT_ROW);
     cut(bottom, 256);
+    refit(work, bottom, NESP_COMMONS_SPLIT_ROW);
     number(bottom);
     gather(work, top, 0);
     cut(top, 255);                  /* the last is sprite 0's */
+    refit(work, top, 0);
 
     /* Sprite 0's place: the last pixel along the split's line that is not
      * black and lets the write land in time; or one made. */
@@ -828,7 +1017,13 @@ static void lay_out(work_t *work, uint8_t *out)
     }
     bool spare = hit < 0;
     if (spare) {
+        for (uint16_t tile = 0; tile < top->count; tile++) {
+            if (!top->gone[tile]) {     /* refit moved places: each one's nearest again */
+                find_nearest(top, tile);
+            }
+        }
         cut(top, 254);
+        refit(work, top, 0);
         hit = HIT_X_SPARE;
     }
     number(top);
@@ -896,6 +1091,13 @@ bool nesp_picture_make(const nesp_hal_t *hal, const uint8_t *rgb, uint32_t width
     fit(work, width, height);
     resample(work, rgb, width, height);
     palettes(work);
+    for (size_t y = 0; y < HEIGHT; y++) {   /* resample leaves 0 to 255 */
+        for (size_t x = 0; x < WIDTH; x++) {
+            for (size_t axis = 0; axis < 3; axis++) {
+                work->source[y][x][axis] = (uint8_t)work->rgb[y][x][axis];
+            }
+        }
+    }
     dither(work);
     patterns(work);
     lay_out(work, out);
@@ -906,4 +1108,29 @@ bool nesp_picture_make(const nesp_hal_t *hal, const uint8_t *rgb, uint32_t width
 uint8_t nesp_picture_split_delay(uint8_t x)
 {
     return split_delay(x);
+}
+
+bool nesp_picture_target(const nesp_hal_t *hal, const uint8_t *rgb, uint32_t width,
+                         uint32_t height, uint8_t *out)
+{
+    if (width == 0 || height == 0) {
+        return false;
+    }
+    work_t *work = hal->alloc(hal->ctx, sizeof(work_t));
+    if (work == NULL) {
+        return false;
+    }
+    make_choices();
+    fit(work, width, height);
+    resample(work, rgb, width, height);
+    for (size_t y = 0; y < HEIGHT; y++) {
+        for (size_t x = 0; x < WIDTH; x++) {
+            for (size_t channel = 0; channel < 3; channel++) {
+                int value = work->rgb[y][x][channel];
+                out[(y * WIDTH + x) * 3 + channel] = (uint8_t)(value < 0 ? 0 : value > 255 ? 255 : value);
+            }
+        }
+    }
+    hal->release(hal->ctx, work);
+    return true;
 }

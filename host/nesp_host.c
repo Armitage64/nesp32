@@ -1632,3 +1632,17 @@ bool host_picture_rgb(host_t *host, const uint8_t *rgb, uint32_t width, uint32_t
 {
     return nesp_picture_make(&host->hal, rgb, width, height, out);
 }
+
+/* The file's pixels fitted into the screen, as a picture is made from them. */
+bool host_picture_target(host_t *host, const uint8_t *file, size_t len, uint8_t *out)
+{
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint8_t *rgb = nesp_picture_decode(&host->hal, file, len, &width, &height);
+    if (rgb == NULL) {
+        return false;
+    }
+    bool made = nesp_picture_target(&host->hal, rgb, width, height, out);
+    nesp_picture_release(&host->hal, rgb);
+    return made;
+}

@@ -1624,11 +1624,15 @@ high, and black round it. Black is behind everything; each square of 16 x
 16 pixels has three more colours, one of four palettes of three, chosen
 for the picture, and the picture is dithered (Floyd-Steinberg) in them.
 Where a half has more different tiles than 256, the ones that cost least
-to lose are merged into the nearest left, until they fit.
+to lose are merged into the nearest left, until they fit, comparing tiles
+by the average colour of each 2 x 2 of pixels; then every place takes the
+tile left that is nearest its part of the image.
 
 The memory COMMONS holds is the service's while it is in use: about 200 KB
-for the search, a reply's body and the picture, and about 1 MB more while
-a picture is being made. A hello gives it back.
+for the search, a reply's body and the picture, and about 1.2 MB more,
+with the decoded thumbnail, while a picture is being made: a StickS3 has
+8 MB of PSRAM, a StickC Plus2 2 MB, which has not been tried. A hello
+gives it back.
 
 In the Gallery a DATA exchange is 10 bytes out and 75 back, one a frame
 with the picture off: 145 frames, about 2.4 seconds, for a picture.
