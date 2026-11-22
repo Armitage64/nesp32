@@ -119,5 +119,9 @@ on one. It is not on nesp32's cartridge, whose MMC1 has CHR ROM.
 - The palettes: squares whose palette differs from their neighbours' can
   still show as blocks, in skies, gradients and fruit. Giving a square its
   neighbours' palette where that costs it little was tried and did not
-  look better.
+  look better, and nor did ordered dithering (Bayer 4 x 4 and 2 x 2,
+  diagonal lines, and Bayer with half of Floyd-Steinberg's error): calmer
+  in skies, coarser in fur and faces, and no help with the blocks. What
+  other converters do for them is choose the palettes and the dithering
+  together (Dithertron anneals both), which is the next thing to try.
 - On nesp32's cartridge, once it has CHR RAM.
