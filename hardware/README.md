@@ -33,7 +33,7 @@ To build one step by step, with the checks to run before you plug it in, follow 
 * The two optional 100pF speed-up capacitors allow cheap/bulk 2N3904 transistors from Amazon/Aliexpress to reach the fastest link speeds. High quality parts from vendors such as Digikey or Mouser don't need them
 
 
-<img src="pcb_top.png" width=49%> <img src="pcb_bottom.png" width=49%>
+<img src="pcb_top.webp" width=49%> <img src="pcb_bottom.webp" width=49%>
 
 RetroBits on YouTube - https://youtube.com/retrobitstv
 
