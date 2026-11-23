@@ -140,38 +140,21 @@ on one. It is not on nesp32's cartridge, whose MMC1 has CHR ROM.
   dithering for colours mixed in linear light, which is how the eye mixes
   them up and down (a composite signal mixes them across before the
   television's gamma).
-- More palettes. The PPU's palettes can be written again partway down the
-  screen, with rendering off for a moment. Measured in the converter alone,
-  before the tiles are cut down (the 12 test photographs, 8.38 today): a
-  second set of four for the bottom half, 8.01 (4.4% nearer); a set for each
-  band of five rows of squares, 7.88; a set for each row, 7.48 (10.8%).
-  For comparison, MMC5's palette for each 8 x 8 tile, 7.91, and with a
-  second set for the bottom half, 7.57. Two sets visibly calm a
-  strawberry's blocks and its background; a sunset hardly changes (the
-  NES has no colours nearer it), and a sky from blue to pink keeps blocks
-  even with a set for each row. A set for each row needs no more than one
-  colour changed in each line's horizontal blank: with the 12 colours of
-  each boundary put on the 16 lines around it (8 above, 8 below), each on
-  the line where it costs least, the score was 7.45, as good as whole sets
-  at the boundaries, at about 56 changes a picture (eight lines around a
-  boundary are too few for them). A strawberry's background then shades
-  smoothly; where a colour changes inside a row of squares a faint seam
-  can show. With the tile step taught the same (a tile's colours for each
-  pair of its lines, as the two lines' palettes have them), the finished
-  picture scored 8.13 against 9.06 today, 10.3% nearer: a lake keeps its
-  teal, people their red jackets, a parrot the blue of its wings, and a
-  lamp its orange; the seams show most in smooth grey and in skies. The
-  tile step's colours for each tile take four times the memory (about
-  180 KB for the two halves, from 46 KB). A change fits in the horizontal
-  blank only on lines whose fine Y is 0 to 3 (half of them); with the
-  changes kept to those, and a row's squares choosing their palettes again
-  from what is left, the finished picture scored 8.35 (7.8% nearer).
-  [linetest/](linetest/) is a test ROM of it, NTSC only: the sync to the
-  PPU, a frame loop timed to the cycle with no NMI, and three photos each
-  made both ways; in Mesen its pictures are the converter's pixel for
-  pixel, and it is waiting to be tried on hardware. Not written yet: the
-  converter's change of palettes in the firmware, the schedule sent with
-  the picture, the Gallery's own display (it shows a picture with NMI and
-  sprite 0 today, and talks to the nesp32 in the frame), and PAL (lines of
-  about 106.6 cycles).
+- More palettes: tried, and not kept. The PPU's palettes can be written
+  again partway down the screen, with rendering off for a moment. Measured
+  in the converter alone, before the tiles are cut down (the 12 test
+  photographs, 8.38 today): a second set of four for the bottom half, 8.01
+  (4.4% nearer); a set for each row of squares, 7.48 (10.8%); MMC5's
+  palette for each 8 x 8 tile, 7.91. A set for each row can be had by
+  changing one colour in a line's horizontal blank, but only on lines whose
+  fine Y is 0 to 3 (two writes to PPUADDR cannot set its top bit, and four
+  do not fit); with the changes kept to those, the finished picture scored
+  8.35 against 9.06 (7.8% nearer). A test ROM of it (commit 8cdef3c,
+  `apps/gallery/linetest`, since removed: a sync to the PPU to within a
+  cycle, a frame loop timed to the cycle with no NMI, and three photos made
+  both ways) matched the converter pixel for pixel in Mesen, and worked on
+  a real NES; there the pictures were better by only a little, and the
+  black at the left (PPUMASK's hidden column) and at the right end of
+  each changed line (rendering off from dot 245) stood out. Not worth the
+  timed display it needs.
 - On nesp32's cartridge, once it has CHR RAM.
