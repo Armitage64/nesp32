@@ -156,8 +156,15 @@ on one. It is not on nesp32's cartridge, whose MMC1 has CHR ROM.
   at the boundaries, at about 56 changes a picture (eight lines around a
   boundary are too few for them). A strawberry's background then shades
   smoothly; where a colour changes inside a row of squares a faint seam
-  can show. Not written yet: the tile step for palettes that change by
-  line, and the ROM's display, timed to the cycle on every line (NTSC
+  can show. With the tile step taught the same (a tile's colours for each
+  pair of its lines, as the two lines' palettes have them), the finished
+  picture scored 8.13 against 9.06 today, 10.3% nearer: a lake keeps its
+  teal, people their red jackets, a parrot the blue of its wings, and a
+  lamp its orange; the seams show most in smooth grey and in skies. The
+  tile step's colours for each tile take four times the memory (about
+  180 KB for the two halves, from 46 KB). Not written yet: the converter's
+  change of palettes in the firmware, the schedule sent with the picture,
+  and the ROM's display, timed to the cycle on every line (NTSC
   lines are 113 2/3 cycles, PAL ones about 106.6) and untried on hardware.
   Rendering off only inside the horizontal blank shows nothing; tiles
   fetched wrong at a line's left edge, from rendering coming back late,
