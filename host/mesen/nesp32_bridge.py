@@ -15,6 +15,10 @@ the files a ROM keeps (Family BASIC's SAVE), in a directory if one is given.
 
     nesp32_bridge.py [--host 127.0.0.1] [--port 7878] [--nesp32 /path/to/nesp32]
                      [--data DIR] [--bt-helper HOST:PORT --bt-key KEY]
+                     [--exit-when-idle SECONDS]
+
+nesp32.lua starts it itself, with --exit-when-idle, when none answers on
+this computer: it then stops once no Mesen has been connected for that long.
 
 Protocol, one line each way, ASCII:
   Mesen -> bridge   S <cycle> <n> <c1> <l1> ... <cn> <ln>
@@ -847,7 +851,39 @@ def parse_sync(words):
     return cycle, list(zip(numbers[0::2], numbers[1::2]))
 
 
-def serve(conn, address, memory, helper=None):
+class Visitors:
+    """How many Mesens are connected, and since when there have been none."""
+
+    def __init__(self, now):
+        self.lock = threading.Lock()
+        self.count = 0
+        self.empty_since = now
+
+    def come(self):
+        with self.lock:
+            self.count += 1
+
+    def go(self, now):
+        with self.lock:
+            self.count -= 1
+            if self.count == 0:
+                self.empty_since = now
+
+    def idle_for(self, now):
+        """Seconds with no Mesen connected (0 while one is)."""
+        with self.lock:
+            return 0 if self.count else now - self.empty_since
+
+
+def serve(conn, address, memory, helper=None, visitors=None):
+    try:
+        serve_one(conn, address, memory, helper)
+    finally:
+        if visitors is not None:
+            visitors.go(time.monotonic())
+
+
+def serve_one(conn, address, memory, helper=None):
     log("Mesen connected from %s" % (address,))
     conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     board = Board(memory, helper)
@@ -899,7 +935,8 @@ def main():
                         help="the address to listen on: 127.0.0.1 (the default) for a Mesen on "
                              "this computer, 0.0.0.0 for one on another (anyone who can reach "
                              "the port can then use this bridge)")
-    parser.add_argument("--port", type=int, default=7878)
+    parser.add_argument("--port", type=int, default=7878,
+                        help="the port to listen on (0: any free one, which it prints)")
     parser.add_argument("--nesp32", default=default_nesp32(),
                         help="a checkout of github.com/Armitage64/nesp32 with `make host` done")
     parser.add_argument("--data", default=None,
@@ -913,6 +950,10 @@ def main():
     parser.add_argument("--bt-key", default=os.environ.get("NESP32_BT_KEY"), metavar="KEY",
                         help="the key nesp32_bt_helper.py prints when it starts (or "
                              "$NESP32_BT_KEY); needed with --bt-helper")
+    parser.add_argument("--exit-when-idle", type=float, default=None, metavar="SECONDS",
+                        help="stop once no Mesen has been connected for this long, from "
+                             "the start or since the last one left (nesp32.lua starts the "
+                             "bridge with this, so it stops with Mesen)")
     args = parser.parse_args()
     if args.bt_helper and not args.bt_key:
         parser.error("--bt-helper needs --bt-key (or $NESP32_BT_KEY): the key the helper "
@@ -924,10 +965,22 @@ def main():
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind((args.host, args.port))
     server.listen(4)
-    print("NESP32 bridge listening on %s:%d" % (args.host, args.port), flush=True)
+    print("NESP32 bridge listening on %s:%d" % (args.host, server.getsockname()[1]), flush=True)
+    visitors = Visitors(time.monotonic())
+    if args.exit_when_idle is not None:
+        server.settimeout(0.5)
     while True:
-        conn, address = server.accept()
-        threading.Thread(target=serve, args=(conn, address, memory, helper), daemon=True).start()
+        try:
+            conn, address = server.accept()
+        except socket.timeout:
+            if visitors.idle_for(time.monotonic()) >= args.exit_when_idle:
+                log("no Mesen for %g s: stopping" % args.exit_when_idle)
+                return
+            continue
+        conn.settimeout(None)
+        visitors.come()
+        threading.Thread(target=serve, args=(conn, address, memory, helper, visitors),
+                         daemon=True).start()
 
 
 if __name__ == "__main__":

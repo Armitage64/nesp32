@@ -236,7 +236,7 @@ What is still to do on the hardware and the firmware is in
 | `nes/cart/` | the cartridge: its menu, and the tool that puts the programs on it |
 | `host/nesp_host.c`, `host/nesp.py` | the firmware's code as a library for this computer, with a stand-in for the hardware |
 | `host/serial_host.py` | that, on a USB serial cable in place of a nesp32 |
-| `host/mesen/` | that, in the Mesen emulator: `nesp32.lua` on controller port 2, and `nesp32_bridge.py`, the nesp32 it talks to |
+| `host/mesen/` | that, in the Mesen emulator: `nesp32.lua` on controller port 2, and `nesp32_bridge.py`, the nesp32 it talks to, which the script starts and which stops after Mesen does |
 | `host/peer_net.py` | for it, PEER's connection to another nesp32 on this computer's sockets, and an opponent who never presses a button |
 | `host/peer_player.py` | a second player with no second console: the other nesp32 and its console, for trying a netplay ROM on one NES, in a room at the real rendezvous or by address. `--app` is the game's id (TMN2, CNTR, DRMA, TTRS, BUBL, JACK); each game's version is its builds' own (`VERSIONS`), and a room is met only at the same one |
 | `tests/console.py`, `tests/wire.py`, `tests/drive.py` | a console on py65, the serial line, and a hand on the controller |
@@ -320,8 +320,9 @@ the same time, in other processes:
 - `test_mesen.py`: `host/mesen/nesp32_bridge.py`, the nesp32 for Mesen: a
   keyboard's reports to characters, held to `firmware/main/keyboard.c`;
   pairing, forgetting and typing through KBD; a ROM's files kept and
-  loaded again; and fetches as the firmware makes them, with the test
-  as the site.
+  loaded again; fetches as the firmware makes them, with the test as
+  the site; and a bridge with `--exit-when-idle` stopping once no Mesen
+  is connected.
 - `test_vgm.py`: the converter of rips, held to the same bytes as
   nes-jukebox's Python over its rips, over made-up ones, and over 300 made
   at random.

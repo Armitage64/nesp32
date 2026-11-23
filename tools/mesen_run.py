@@ -55,11 +55,13 @@ def press(spec):
 
 
 def lua_bridge(port):
-    """Lua that runs nesp32.lua, pointed at a bridge on this port."""
+    """Lua that runs nesp32.lua, pointed at a bridge on this port, which it
+    does not start: start_bridge does."""
     return f"""
 do
   local src = assert(io.open({lua_str(os.path.abspath(NESP32_LUA))})):read("a")
   src = src:gsub("local BRIDGE_PORT = %d+", "local BRIDGE_PORT = {port}", 1)
+  src = src:gsub("local BRIDGE_START = true", "local BRIDGE_START = false", 1)
   assert(load(src, "nesp32.lua"))()
 end
 """

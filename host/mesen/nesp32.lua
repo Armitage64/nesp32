@@ -23,10 +23,20 @@
 --   2. Debug > Script Window > Settings (the gear): tick
 --      "Allow access to I/O and OS functions" and "Allow network access".
 -- Then load the NESP32 cartridge, open this script in the Script Window,
--- and run it.
+-- and run it. With no bridge answering on this computer, the script starts
+-- nesp32_bridge.py itself (BRIDGE_START), and that bridge stops a few
+-- seconds after the script or Mesen does.
 
 local BRIDGE_HOST = "127.0.0.1"       -- the computer running nesp32_bridge.py (this one, by default)
 local BRIDGE_PORT = 7878
+local BRIDGE_START = true              -- start the bridge when none answers (BRIDGE_HOST on this computer only)
+local BRIDGE_DIR = nil                 -- the folder of nesp32_bridge.py; nil: this script's own
+local BRIDGE_PYTHON = "python3"
+local BRIDGE_ARGS = ""                 -- more for the bridge, such as "--data ~/nesp32-mesen"
+local BRIDGE_COMMAND = nil             -- what runs nesp32_bridge.py, in place of BRIDGE_PYTHON and
+                                       -- BRIDGE_DIR (the script adds the bridge's options). Needed
+                                       -- on Windows, where the bridge is in WSL, such as
+                                       -- "wsl.exe python3 ~/nesp32/host/mesen/nesp32_bridge.py"
 local KEY_A = "Insert"                 -- the NESP32's own two buttons
 local KEY_B = "Delete"
 local TYPING_KEYS = { "Scroll Lock", "End" }   -- typing mode on and off
@@ -188,6 +198,118 @@ local function drawTyping()
   end
 end
 
+-- --- starting the bridge --------------------------------------------------------
+
+local IDLE_SECONDS = 5                  -- a bridge started here stops when no Mesen has been
+                                        -- connected for this long
+local windows = package.config:sub(1, 1) == "\\"
+local startedAt = nil                   -- os.time() of the last start
+local bridgeLog = nil
+
+local function exists(path)
+  local f = io.open(path, "r")
+  if f then f:close() end
+  return f ~= nil
+end
+
+local function hasBridge(dir)
+  return dir ~= nil and exists(dir .. "/nesp32_bridge.py")
+end
+
+-- The folder of this script. Mesen's Script Window gives a script only its
+-- file's name (its --testrunner, the whole path), so the path is looked for
+-- in the window's recent scripts, in Mesen's settings.json, two folders up
+-- from this script's data folder: the first one of this name with the
+-- bridge beside it.
+local function here()
+  local source = debug and debug.getinfo(1, "S").source or ""
+  if source:sub(1, 1) ~= "@" then
+    return nil                          -- not run from a file
+  end
+  local path = source:sub(2)
+  local dir = path:match("^(.*)[/\\][^/\\]*$")
+  if hasBridge(dir) then
+    return dir
+  end
+  local name = path:match("([^/\\]*)$")
+  local data = emu.getScriptDataFolder and emu.getScriptDataFolder()
+  if data == nil then
+    return nil
+  end
+  local f = io.open(data .. "/../../settings.json", "r")
+  if f == nil then
+    return nil
+  end
+  local settings = f:read("a")
+  f:close()
+  local recent = settings:match('"RecentScripts"%s*:%s*(%b[])')
+  for quoted in (recent or ""):gmatch('"(.-[^\\])"') do
+    local script = quoted:gsub("\\\\", "\\")
+    local d = script:match("^(.*)[/\\][^/\\]*$")
+    if script:match("([^/\\]*)$") == name and hasBridge(d) then
+      return d
+    end
+  end
+  return nil
+end
+
+local function quote(s)
+  if windows then
+    return '"' .. s .. '"'
+  end
+  return "'" .. s:gsub("'", "'\\''") .. "'"
+end
+
+-- The bridge, started in the background on this computer, with its log in
+-- Mesen's folder for this script's data. Nil and why, if it cannot be.
+local function startBridge()
+  if not (BRIDGE_START and (BRIDGE_HOST == "127.0.0.1" or BRIDGE_HOST == "localhost")) then
+    return nil
+  end
+  if not (os and os.execute) then
+    return "no os.execute: tick Allow access to I/O and OS functions"
+  end
+  local command = BRIDGE_COMMAND
+  if command == nil then
+    if windows then
+      return "start the bridge in WSL, or set BRIDGE_COMMAND"
+    end
+    local dir = BRIDGE_DIR or here()
+    if not hasBridge(dir) then
+      return "no nesp32_bridge.py found: set BRIDGE_DIR to its folder"
+    end
+    command = BRIDGE_PYTHON .. " " .. quote(dir .. "/nesp32_bridge.py")
+  end
+  local folder = emu.getScriptDataFolder and emu.getScriptDataFolder()
+  if folder == nil or folder == "" then
+    folder = windows and (os.getenv("TEMP") or ".") or "/tmp"
+  end
+  bridgeLog = folder .. (windows and "\\" or "/") .. "bridge.log"
+  command = command .. " --port " .. BRIDGE_PORT .. " --exit-when-idle " .. IDLE_SECONDS
+            .. " " .. BRIDGE_ARGS .. " > " .. quote(bridgeLog) .. " 2>&1"
+  if windows then
+    command = 'start "nesp32 bridge" /B ' .. command
+  else
+    command = command .. " < /dev/null &"
+  end
+  startedAt = os.time()
+  os.execute(command)
+  emu.log("NESP32: started the bridge; its log is " .. bridgeLog)
+  return nil
+end
+
+-- With no bridge answering: start one, at most once in 10 seconds (one that
+-- cannot start, as before `make host`, would only stop again).
+local function maybeStart()
+  if startedAt ~= nil and os.time() - startedAt < 10 then
+    return
+  end
+  local why = startBridge()
+  if why ~= nil then
+    status = status .. "; " .. why
+  end
+end
+
 -- --- the line -------------------------------------------------------------------
 
 local function connect()
@@ -327,6 +449,15 @@ local function onFrame()
     if retryIn <= 0 then
       retryIn = 120                             -- try again every two seconds
       conn = connect()
+      if conn == nil then
+        if startedAt ~= nil and bridgeLog ~= nil then
+          status = status .. "; the bridge's log: " .. bridgeLog
+        end
+        maybeStart()
+        if startedAt ~= nil and os.time() - startedAt < 2 then
+          retryIn = 30                          -- one just started: it listens in a moment
+        end
+      end
     end
   end
   if cycle < lastCycle then
@@ -351,6 +482,21 @@ local function onFrame()
 end
 
 conn = connect()
+if conn == nil then
+  maybeStart()
+  if startedAt ~= nil then
+    retryIn = 30
+  end
+end
+-- A stopped script lets go of the bridge at once, so one it started stops.
+if emu.eventType.scriptEnded then
+  emu.addEventCallback(function()
+    if conn ~= nil then
+      conn:close()
+      conn = nil
+    end
+  end, emu.eventType.scriptEnded)
+end
 emu.addMemoryCallback(onWrite, emu.callbackType.write, 0x4016)
 emu.addMemoryCallback(onRead, emu.callbackType.read, 0x4017)
 emu.addEventCallback(onFrame, emu.eventType.endFrame)
