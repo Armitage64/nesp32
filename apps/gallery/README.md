@@ -140,4 +140,17 @@ on one. It is not on nesp32's cartridge, whose MMC1 has CHR ROM.
   dithering for colours mixed in linear light, which is how the eye mixes
   them up and down (a composite signal mixes them across before the
   television's gamma).
+- More palettes. The PPU's palettes can be written again partway down the
+  screen, with rendering off for a moment. Measured in the converter alone,
+  before the tiles are cut down (the 12 test photographs, 8.38 today): a
+  second set of four for the bottom half, 8.01 (4.4% nearer); a set for each
+  band of five rows of squares, 7.88; a set for each row, 7.48 (10.8%).
+  For comparison, MMC5's palette for each 8 x 8 tile, 7.91, and with a
+  second set for the bottom half, 7.57. Two sets visibly calm a
+  strawberry's blocks and its background; a sunset hardly changes (the
+  NES has no colours nearer it), and a sky from blue to pink keeps blocks
+  even with a set for each row. The ROM side is not written: all 16
+  colours at the split takes about 3 lines with rendering off (a black
+  stripe), or one colour in each line's horizontal blank, timed to the
+  cycle and untried on hardware.
 - On nesp32's cartridge, once it has CHR RAM.
