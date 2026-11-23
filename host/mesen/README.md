@@ -35,16 +35,39 @@ the same as the tests model it, whatever speed Mesen runs at.
 | Family BASIC's SAVE and LOAD (TAPE) as files | tested against TAPE in `tests/test_mesen.py`; not yet tried with the game |
 | PEER (the games for two) | not yet |
 | Save states, rewind | not supported (Known limits) |
+| The script starting and stopping the bridge | working in a headless MesenCE on macOS, also with the script named as the Script Window names it (its file's name alone); not yet tried in Mesen's window, on Linux, or on Windows (`BRIDGE_COMMAND`) |
 
 ## Setting up
 
 ### 1. The bridge
 
 It needs Python 3 and a C compiler for the firmware's code: Linux, macOS,
-or WSL on Windows. From the top of this repository:
+or WSL on Windows. From the top of this repository, once:
 
 ```sh
 make host                    # on Linux: make host CC=clang
+```
+
+On macOS and Linux that is all: `nesp32.lua`, run from its place in this
+repository, starts the bridge itself when none answers, and the bridge
+stops 5 seconds after the script or Mesen does (`--exit-when-idle`). Its
+log is `bridge.log` in Mesen's folder for the script's data (on macOS
+`~/Library/Application Support/Mesen2/LuaScriptData/nesp32/`), and the
+script's message at the top of the screen names it while the bridge does
+not answer. Settings at the top of `nesp32.lua`: `BRIDGE_START = false`
+to start it by hand, `BRIDGE_DIR` for a script copied away from the bridge (Mesen's Script
+Window gives a script only its file's name, so the script finds its
+folder in the window's recent scripts, in Mesen's `settings.json`),
+`BRIDGE_PYTHON`, and `BRIDGE_ARGS` for the options below (such as
+`--data`). A bridge already running, started by hand, is used as it is
+and keeps running.
+
+On Windows the bridge is in WSL, so the script starts it only with
+`BRIDGE_COMMAND` set, such as
+`"wsl.exe python3 ~/nesp32/host/mesen/nesp32_bridge.py"`; this has not
+been tried yet. Otherwise start it by hand, as anywhere:
+
+```sh
 python3 host/mesen/nesp32_bridge.py
 ```
 
@@ -93,6 +116,7 @@ NESradio's sound may stutter.
 1. Load the cartridge (`build/nesp32.nes` from `make cart`, or the one on
    the [home page](https://nesp32.retrobits.tv/)), or any ROM for a nesp32.
 2. Open `nesp32.lua` in the Script Window and run it. The log says
+   `NESP32: started the bridge` if it had to, then
    `NESP32: connected to ...`, and the programs get past WAITING FOR LINK.
 
 The nesp32's own two buttons are **Insert** (A) and **Delete** (B), out of
@@ -156,7 +180,8 @@ On the Pi (BlueZ running, `sudo apt-get install python3-evdev`):
 
 It prints its key, made at random the first time and kept in
 `~/.nesp32-bt/key` (readable by its user alone). On the bridge's machine,
-add `--bt-helper PI_ADDRESS:7980 --bt-key KEY` (or set `NESP32_BT_KEY`).
+add `--bt-helper PI_ADDRESS:7980 --bt-key KEY` (or set `NESP32_BT_KEY`),
+in `BRIDGE_ARGS` when the script starts the bridge.
 Without `--bt-helper` nothing changes.
 
 The helper takes a connection only if it starts with that key: one without
@@ -198,8 +223,9 @@ keyboard at a time.
 
 `tests/test_mesen.py`, in `make test`: the keyboard's reports to
 characters, held to `keyboard.c`; real Bluetooth with a fake helper; pairing, forgetting and typing through
-the firmware's own KBD; a ROM's files kept and loaded again; and fetches,
-with the test as the site.
+the firmware's own KBD; a ROM's files kept and loaded again; fetches,
+with the test as the site; and the bridge stopping once no Mesen is
+connected (`--exit-when-idle`).
 
 ## Running a ROM with no window
 

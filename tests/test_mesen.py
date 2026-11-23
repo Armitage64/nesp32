@@ -690,3 +690,46 @@ def test_the_bridges_uart_holds_what_the_boards_does_and_the_tests_model_is_unto
     assert bridge.Board().port.tx_buffer == bridge.UART_BUFFER == 2048
     assert wire.TX_BUFFER == 256
     assert wire.Port(bridge.Console()).tx_buffer == 256
+
+
+# --- a bridge that stops with Mesen --------------------------------------------
+
+def start_idle_bridge(seconds):
+    """nesp32_bridge.py with --exit-when-idle, on a free port: it and its port."""
+    import subprocess
+    proc = subprocess.Popen(
+        [sys.executable, "-u", os.path.join(HERE, "..", "host", "mesen", "nesp32_bridge.py"),
+         "--port", "0", "--exit-when-idle", str(seconds)],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    line = proc.stdout.readline()
+    assert "listening on" in line, line
+    return proc, int(line.rsplit(":", 1)[1])
+
+
+def test_a_bridge_no_mesen_comes_to_stops():
+    proc, _ = start_idle_bridge(0.5)
+    assert proc.wait(timeout=10) == 0
+
+
+def test_a_bridge_stays_while_mesen_is_connected_and_stops_after_it_goes():
+    proc, port = start_idle_bridge(1)
+    try:
+        conn = socket.create_connection(("127.0.0.1", port))
+        conn.sendall(b"S 100 0\n")
+        assert conn.makefile("rb").readline().startswith(b"R ")
+        time.sleep(2)
+        assert proc.poll() is None
+        conn.close()
+        assert proc.wait(timeout=10) == 0
+    finally:
+        proc.kill()
+        proc.wait()
+
+
+def test_idle_is_counted_from_the_start_and_from_the_last_mesen_to_go():
+    bridge_visitors = bridge.Visitors(0)
+    assert bridge_visitors.idle_for(5) == 5
+    bridge_visitors.come()
+    assert bridge_visitors.idle_for(100) == 0
+    bridge_visitors.go(100)
+    assert bridge_visitors.idle_for(103) == 3
