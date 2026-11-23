@@ -1,6 +1,7 @@
 """host/mesen/nesp32_bridge.py, the NESP32 for Mesen's Lua script, with no
 Mesen: the computer's keyboard as the nesp32's Bluetooth keyboard, a
-ROM's files kept, and fetches as the firmware makes them."""
+ROM's files kept, fetches as the firmware makes them, and PEER between two
+boards on this computer."""
 
 import http.server
 import os
@@ -733,3 +734,129 @@ def test_idle_is_counted_from_the_start_and_from_the_last_mesen_to_go():
     assert bridge_visitors.idle_for(100) == 0
     bridge_visitors.go(100)
     assert bridge_visitors.idle_for(103) == 3
+
+
+# --- PEER: two Mesens, or one and another nesp32 ------------------------------
+
+def peer_board(**options):
+    """A board with PEER on this computer's network, and a ROM that has said
+    hello with PEER."""
+    from test_peer import PEER
+    board = bridge.Board(bridge.Memory(), peer=bridge.Peer("net", stun=(), **options))
+    with board.lock:
+        assert board.stick.hello(app=b"TEST", version=1, services=[PEER]).ok
+    return board
+
+
+@pytest.fixture
+def boards():
+    made = []
+    yield lambda **options: made.append(peer_board(**options)) or made[-1]
+    for board in made:
+        board.close()
+
+
+def asked(board, what, *args):
+    """A request the console makes, between Mesen's syncs."""
+    with board.lock:
+        return what(board.stick, *args)
+
+
+def run(condition, *boards, seconds=5.0):
+    """Mesen syncing each board, the console's clock at real time, until
+    something is so."""
+    import wire
+    started = time.monotonic()
+    while not condition():
+        elapsed = time.monotonic() - started
+        assert elapsed < seconds, "it did not happen"
+        for board in boards:
+            board.sync(1000 + int(elapsed * wire.NESP_CPU_HZ), [])
+        time.sleep(0.002)
+
+
+def test_two_mesens_host_and_join_by_address(boards):
+    from test_peer import HOST, JOIN, PLAYER_1, PLAYER_2, lobby, ticks
+    from test_peer_net import free_port
+    port = free_port()
+    host, guest = boards(port=port), boards(port=port)
+    assert host.address != (192, 168, 0, 32)        # this computer's own, to be called at
+    asked(host, lobby, HOST)
+    asked(guest, lobby, JOIN, bytes((127, 0, 0, 1)))
+    run(lambda: (asked(host, lobby)[0], asked(guest, lobby)[0]) == (PLAYER_1, PLAYER_2),
+        host, guest)
+    assert asked(host, ticks, 0, 0, b"\x80\x40")[0] == 2
+    assert asked(guest, ticks, 0, 0, b"\x01")[0] == 1
+    run(lambda: asked(host, ticks, 2, 0)[3] == b"\x01"
+        and asked(guest, ticks, 1, 0)[3] == b"\x80\x40", host, guest)
+    # The address joined lasts while the bridge runs: the next board has it.
+    assert guest.memory.peer_last == bytes((127, 0, 0, 1))
+    # A Mesen that goes (or a console reset: a new board) says goodbye.
+    guest.close()
+    run(lambda: asked(host, lobby)[0] == p.NESP_LOBBY_FAILED, host)
+
+
+def test_two_mesens_on_one_computer_meet_in_a_room(boards):
+    from rendezvous import FakeRendezvous
+    from test_meet import HOST_ROOM, JOIN_ROOM, room
+    from test_peer import PLAYER_1, PLAYER_2, lobby, ticks
+    from test_peer_net import free_port
+    port = free_port()
+    with FakeRendezvous() as server:
+        # The same port for both, as the firmware names one: the second
+        # meeting's socket takes another.
+        host = boards(rendezvous=server.url, port=port)
+        guest = boards(rendezvous=server.url, port=port)
+        asked(host, room, HOST_ROOM)
+        run(lambda: asked(host, room)[0] == p.NESP_LOBBY_HOSTING, host, guest)
+        code = asked(host, room)[1]
+        asked(guest, room, JOIN_ROOM, code)
+        run(lambda: (asked(host, lobby)[0], asked(guest, lobby)[0]) == (PLAYER_1, PLAYER_2),
+            host, guest, seconds=p.NESP_PEER_POLL_MS / 1000 + 5)
+        assert asked(host, ticks, 0, 0, b"\x80")[0] == 1
+        assert asked(guest, ticks, 0, 0, b"\x01")[0] == 1
+        run(lambda: asked(host, ticks, 1, 0)[3] == b"\x01"
+            and asked(guest, ticks, 1, 0)[3] == b"\x80", host, guest)
+        # The rendezvous was asked by the bridge's own fetcher.
+        assert any("/v1/join/%s" % code.decode() in r for r in server.requests)
+
+
+def test_the_idle_opponent_is_there_at_once_and_the_bridge_fetches_nothing():
+    from test_meet import HOST_ROOM, room
+    from test_peer import PEER, PLAYER_1, lobby, ticks
+    board = bridge.Board(bridge.Memory(), peer=bridge.Peer("idle"))
+    try:
+        with board.lock:
+            assert board.stick.hello(app=b"TEST", version=1, services=[PEER]).ok
+        asked(board, room, HOST_ROOM)
+        run(lambda: asked(board, lobby)[0] == PLAYER_1, board)
+        assert board.fetch is None                  # the opponent's rendezvous answered it
+        assert asked(board, ticks, 0, 0, b"\x80")[0] == 1
+        run(lambda: asked(board, ticks, 1, 0)[3] == b"\x00", board)
+    finally:
+        board.close()
+
+
+def test_a_paused_mesen_keeps_the_other_nesp32_answered(boards, monkeypatch):
+    import peer_net
+    from test_peer import HOST, JOIN, PLAYER_1, PLAYER_2, lobby
+    from test_peer_net import free_port
+    monkeypatch.setattr(peer_net, "GONE_S", 0.5)
+    port = free_port()
+    host, guest = boards(port=port), boards(port=port)
+    asked(host, lobby, HOST)
+    asked(guest, lobby, JOIN, bytes((127, 0, 0, 1)))
+    run(lambda: (asked(host, lobby)[0], asked(guest, lobby)[0]) == (PLAYER_1, PLAYER_2),
+        host, guest)
+    # The guest's Mesen is paused: no syncs, for three times as long as
+    # the host gives a silent end.
+    stop = time.monotonic() + 1.5
+    run(lambda: time.monotonic() >= stop, host)
+    assert asked(host, lobby)[0] == PLAYER_1
+    assert asked(guest, lobby)[0] == PLAYER_2
+
+
+def test_with_peer_off_a_board_has_no_network():
+    board = bridge.Board(bridge.Memory())
+    assert board.network is None
+    board.close()

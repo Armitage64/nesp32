@@ -19,7 +19,8 @@ Two parts, which talk over a TCP connection:
   (`tests/wire.py`). The hardware under them is this computer's: real
   HTTPS fetches (with a stream's titles, and HTTP's status and headers),
   real time, a Wi-Fi network that is always joined, the computer's
-  keyboard as the Bluetooth keyboard, and the files a ROM keeps.
+  keyboard as the Bluetooth keyboard, the files a ROM keeps, and the
+  connection to another nesp32 for the games for two (PEER).
 
 The board's clock is the console's CPU cycle count, so the link's timing is
 the same as the tests model it, whatever speed Mesen runs at.
@@ -33,7 +34,7 @@ the same as the tests model it, whatever speed Mesen runs at.
 | HTTP (the HTTPS sample's 200 and 404) | working |
 | The Bluetooth keyboard (KBD): pairing in Setup, forgetting, typing in Setup, Weather and the keyboard sample, Ctrl with a key, keys held down | working in a headless MesenCE on Linux; tested against KBD in `tests/test_mesen.py`; not yet tried on Windows |
 | Family BASIC's SAVE and LOAD (TAPE) as files | tested against TAPE in `tests/test_mesen.py`; not yet tried with the game |
-| PEER (the games for two) | not yet |
+| PEER (the games for two): hosting and joining by address and by a room's code, the idle opponent | Dr. Mario played in two headless MesenCEs on macOS, joined by address, some 1330 ticks in step (five digest checks), and against `--peer idle`; tested by address and in a room in `tests/test_mesen.py`; not yet tried in Mesen's window, in a room between two Mesens, against a nesp32 on a real NES, or with the other games |
 | Save states, rewind | not supported (Known limits) |
 | The script starting and stopping the bridge | working in a headless MesenCE on macOS, also with the script named as the Script Window names it (its file's name alone); not yet tried in Mesen's window, on Linux, or on Windows (`BRIDGE_COMMAND`) |
 
@@ -122,6 +123,40 @@ NESradio's sound may stutter.
 The nesp32's own two buttons are **Insert** (A) and **Delete** (B), out of
 typing mode. `KEY_A` and `KEY_B` at the top of the script change them.
 
+## Games for two (PEER)
+
+The bridge is a nesp32 on this computer's own network, as a nesp32 is on
+Wi-Fi: a netplay ROM (Dr. Mario, Tetris, Contra and the others in
+`apps/`) hosts and joins through it, by address or by a room's code at
+the rendezvous, across the Internet as two nesp32s meet. The other end
+can be another Mesen, on this computer or another, a nesp32 on a real
+NES, or `host/peer_player.py`. The nesp32's address, which HOST GAME shows,
+is this computer's. A firewall may ask, the first time, whether Python
+may take connections.
+
+**Two Mesens on one computer** share one bridge, a nesp32 each. One hosts
+by address (the firmware's UDP port, 6502: one host by address on a
+computer), and the other joins `127.0.0.1`. A room works too, and each
+end of it gets a port of its own. Turn off Mesen's option that pauses it
+while its window is in the background, or the one without focus stands
+still and the other waits for it.
+
+The bridge's options for it, in `BRIDGE_ARGS` when the script starts the
+bridge:
+
+- `--peer idle`: an opponent who is there at once, with no other end, and
+  presses nothing. HOST GAME starts a game. It sends back the console's
+  own digest at the tick that carries one, so the game does not give the
+  session up.
+- `--peer off`: no connection to another nesp32.
+- `--rendezvous URL`: where rooms are met, in place of the firmware's own
+  (`host/rendezvous.py`'s stand-in, or a `wrangler dev`).
+- `--peer-port PORT`: a host by address listens there, and a guest calls
+  there, in place of 6502.
+
+The address last joined is kept as long as the bridge runs, or in
+`--data`'s `peer-last` over restarts.
+
 ## The keyboard
 
 The computer's keyboard is the nesp32's Bluetooth keyboard: a scan finds
@@ -206,10 +241,13 @@ keyboard at a time.
 
 ## Known limits
 
-- **PEER** (the online games for two) is not emulated yet.
 - **Save states and rewind** are not supported: the nesp32's state is in
   the bridge, not in Mesen. A reset, a loaded state or a rewind is a
-  console with a fresh nesp32, whose link starts again.
+  console with a fresh nesp32, whose link starts again. In a game for two
+  it also ends the session.
+- **A game for two at real speed.** Fast-forward makes the other console
+  wait for this one; the bridge answers the other nesp32 while Mesen is
+  paused, so the session lasts, and the other game waits.
 - **Turbo A**: NESradio's A both plays and stops a station, so Turbo A
   (Mesen's default for the keyboard is X; plain A is S) plays it and stops
   it a frame later. Tap plain A.
@@ -224,8 +262,10 @@ keyboard at a time.
 `tests/test_mesen.py`, in `make test`: the keyboard's reports to
 characters, held to `keyboard.c`; real Bluetooth with a fake helper; pairing, forgetting and typing through
 the firmware's own KBD; a ROM's files kept and loaded again; fetches,
-with the test as the site; and the bridge stopping once no Mesen is
-connected (`--exit-when-idle`).
+with the test as the site; the bridge stopping once no Mesen is
+connected (`--exit-when-idle`); and PEER between two boards, by address
+and in a room at `host/rendezvous.py`'s stand-in, the idle opponent, and a
+paused Mesen's board still answering the other.
 
 ## Running a ROM with no window
 
@@ -246,6 +286,11 @@ runner's own script, so the programs reach the Internet as above, and the
 bridge's log is `bridge.log` beside the shots. Mesen runs faster than real
 time with no window, so a stream's sound has gaps in the log. `MESEN` names the
 program (default: `/Applications/Mesen.app`). Tried with MesenCE on macOS.
+`--bridge-arg` passes an option to the bridge, a word at a time
+(`--bridge-arg=--peer --bridge-arg=idle`). Two runs at once, each with its
+own bridge, one hosting and one joining 127.0.0.1, are a game for two
+with no window (a `--bridge-data` folder whose `peer-last` holds
+`7f 00 00 01` fills in JOIN's address).
 
 `tools/png_diff.py A.png B.png [--out DIFF.png]` says which pixels of two
 shots differ (and draws them in red), to hold two ROMs to the same picture.
