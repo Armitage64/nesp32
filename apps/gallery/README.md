@@ -85,7 +85,7 @@ on one. It is not on nesp32's cartridge, whose MMC1 has CHR ROM.
   most 511 different tiles. Where there are more, tiles alike as the eye
   sees them (by the average of each 2 x 2 of pixels) are merged, and then
   every place takes whichever tile left is nearest its part of the
-  photograph. On this Mac that takes about 45 ms; on a nesp32 it has not
+  photograph. On this Mac that takes about 65 ms; on a nesp32 it has not
   been timed.
 - **A picture has two pattern tables of tiles.** The top 15 rows of tiles
   come from the first and the bottom 15 from the second; the ROM changes
@@ -123,5 +123,12 @@ on one. It is not on nesp32's cartridge, whose MMC1 has CHR ROM.
   diagonal lines, and Bayer with half of Floyd-Steinberg's error): calmer
   in skies, coarser in fur and faces, and no help with the blocks. What
   other converters do for them is choose the palettes and the dithering
-  together (Dithertron anneals both), which is the next thing to try.
+  together (Dithertron anneals both); but measured here, the dithering
+  already makes what the palettes plan for, so that would not help. The
+  blocks come from four palettes being too few for the picture, and from
+  colours the NES has nothing near: a sky from blue to lavender to pink is
+  27 off with the best palette there is for it alone. Starting the palette
+  search again in part (restarts) gained 0.4%, and was not kept. Left to
+  try: more saturation and contrast and some sharpening before converting,
+  which the best conversions by hand use, judged by eye.
 - On nesp32's cartridge, once it has CHR RAM.

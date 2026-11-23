@@ -69,7 +69,11 @@
 #define SPLIT_LINE (8 * NESP_COMMONS_SPLIT_ROW - 1)     /* the top half's last line */
 #define SPRITE_BEHIND 0x20          /* OAM: behind the background */
 #ifndef CANDIDATE_PIXELS
-#define CANDIDATE_PIXELS 12.0f      /* a colour nearest fewer pixels is in no palette */
+/* A colour nearest fewer pixels than this is in no palette. 0: every colour
+ * may be, which takes twice as long to choose the palettes as 12 did, and
+ * is 2.6% nearer the photographs: a colour nearest no pixel can still be
+ * half of a mixture that dithering makes. */
+#define CANDIDATE_PIXELS 0.0f
 #endif
 #ifndef PASSES
 #define PASSES 6                    /* of k-means over the squares */
