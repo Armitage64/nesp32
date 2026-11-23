@@ -162,11 +162,16 @@ on one. It is not on nesp32's cartridge, whose MMC1 has CHR ROM.
   teal, people their red jackets, a parrot the blue of its wings, and a
   lamp its orange; the seams show most in smooth grey and in skies. The
   tile step's colours for each tile take four times the memory (about
-  180 KB for the two halves, from 46 KB). Not written yet: the converter's
-  change of palettes in the firmware, the schedule sent with the picture,
-  and the ROM's display, timed to the cycle on every line (NTSC
-  lines are 113 2/3 cycles, PAL ones about 106.6) and untried on hardware.
-  Rendering off only inside the horizontal blank shows nothing; tiles
-  fetched wrong at a line's left edge, from rendering coming back late,
-  could be hidden with a column of sprites or PPUMASK's left column.
+  180 KB for the two halves, from 46 KB). A change fits in the horizontal
+  blank only on lines whose fine Y is 0 to 3 (half of them); with the
+  changes kept to those, and a row's squares choosing their palettes again
+  from what is left, the finished picture scored 8.35 (7.8% nearer).
+  [linetest/](linetest/) is a test ROM of it, NTSC only: the sync to the
+  PPU, a frame loop timed to the cycle with no NMI, and three photos each
+  made both ways; in Mesen its pictures are the converter's pixel for
+  pixel, and it is waiting to be tried on hardware. Not written yet: the
+  converter's change of palettes in the firmware, the schedule sent with
+  the picture, the Gallery's own display (it shows a picture with NMI and
+  sprite 0 today, and talks to the nesp32 in the frame), and PAL (lines of
+  about 106.6 cycles).
 - On nesp32's cartridge, once it has CHR RAM.
