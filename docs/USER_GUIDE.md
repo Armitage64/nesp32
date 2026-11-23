@@ -32,7 +32,7 @@ of an ordinary NES. Nothing inside the console is changed. With it, NES
 software can reach the Internet, so the console can:
 
 - read Wikipedia articles,
-- show the weather for your zip code,
+- show the weather for a place anywhere in the world,
 - show live air traffic around an airport,
 - play live Internet radio and NES music through its own sound chip,
 - read Bluesky posts,
@@ -455,7 +455,7 @@ Hold **Ctrl**, tap **Enter** or **Esc**, then let go of Ctrl. A key held
 down repeats, as on a computer (except Enter and Esc).
 
 Where a program has a box to type into, the keyboard types into it
-directly: NESpedia's search, Weather's zip code, NES Radar's airport
+directly: NESpedia's search, Weather's place, NES Radar's airport
 code, and Setup's Wi-Fi password and network name. There, **Enter** sends
 what you typed and **Backspace** deletes.
 
@@ -528,20 +528,32 @@ The marker at the right edge shows how far through the article you are.
 
 ### Weather
 
-Current conditions and a 5-day forecast for a **US zip code**, in °F and
-miles per hour. The NESP32 remembers your zip code.
+Current conditions and a 5-day forecast for **a place anywhere in the
+world**. Type a city, a comma, and its state or country:
+
+- `PORTLAND, ME`
+- `DUBLIN, IRELAND`
+
+The comma matters, and a country goes by its name (`PARIS, FRANCE`, not
+`PARIS, FR`). A city alone, such as `PORTLAND`, gets the best-known
+place by that name. The report's first line shows which place was found;
+if it's the wrong one, press **B** and be more specific. The NESP32
+remembers your place.
+
+In the United States the weather is in °F and miles per hour; everywhere
+else in °C and kilometres per hour.
 
 | Controller | What it does |
 |---|---|
-| **Left**, **Right** | Move to the next digit |
-| **Up**, **Down** | Change the digit |
-| **A** or **Start** | Get the weather |
-| **B** | From a report, back to the zip code |
+| **D-pad** | Move over the on-screen keyboard |
+| **A** | Type the key |
+| **B** | On the form, delete the last letter; on a report, back to the form |
+| **Start** | Get the weather |
 | **Select** | Back to the cartridge menu |
 
-On a keyboard, just **type the five digits** and press **Enter**.
-**Backspace** goes back a digit. On a report, typing a digit starts a new
-zip code. The weather refreshes by itself every 15 minutes.
+On a keyboard, just **type the place** and press **Enter**. **Backspace**
+deletes. On a report, typing starts a new place. The weather refreshes by
+itself every 15 minutes.
 
 ### NES Radar
 

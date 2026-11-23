@@ -1,32 +1,34 @@
-; Weather: the weather at a zip code, on one screen.
+; Weather: the weather at a place, on one screen.
 ;
-; A nesp32 on controller port 2 asks the Internet where a zip code is and
-; what the weather is there, and lays the answer out as rows of tiles, the
+; A nesp32 on controller port 2 asks the Internet where a place is and what
+; the weather is there, and lays the answer out as rows of tiles, the
 ; pictures among them; this ROM asks for the rows and draws them. It works
 ; nothing out. What is new is on the nesp32, its WEATHER service (nesp32's
 ; docs/PROTOCOL.md).
 ;
-; There are two views. The form takes a zip code from the controller: Left
-; and Right choose a digit, Up and Down change it, A or Start asks for its
-; weather, and B, on nesp32's cartridge, is its menu again. The report is
-; the nesp32's rows, but for the days' names, which the ROM moves half a
-; tile to the left to center them over their pictures; B there is the form
-; again. The nesp32 keeps the last
-; zip code it found, over power-off too, so a console switched on asks it
-; for that first (LAST), and the form comes up with those digits in it: A
-; is all it takes.
+; There are two views. The form takes a place, as a city, a comma, and its
+; state or country: "PORTLAND, ME", "DUBLIN, IRELAND", typed on a keyboard
+; on the screen as NESpedia's search is (../wiki/nes/keyboard.inc). The
+; D-pad moves over the keys, A types the one the cursor is on, B deletes
+; the last character, Start asks for the place's weather, and Select, on
+; nesp32's cartridge, is its menu again. The report is the nesp32's rows, but for
+; the days' names, which the ROM moves half a tile to the left to center
+; them over their pictures; B there is the form again. The nesp32 keeps the
+; last place it found, over power-off too, so a console switched on asks it
+; for that first (LAST_PLACE), and the form comes up with it in it: A is
+; all it takes.
 ;
-; A Bluetooth keyboard on the nesp32 (its KBD) types a zip code too: a
-; digit is the lit digit's and lights the next, Enter asks for the weather,
-; Escape is B on the report and Select on the form (the cartridge's menu),
-; and Backspace and the arrows move as the D-pad does. A digit
-; typed over a report is the form's first, so that the next zip code can
-; be typed at once.
+; A Bluetooth keyboard on the nesp32 (its KBD) types a place too: a letter,
+; a digit or a sign that the screen's keyboard has is typed, Backspace
+; deletes, Enter asks for the weather (Start), Escape is B on the report
+; (the form again) and nothing on the form, Ctrl and Escape is Select (the
+; cartridge's menu), and the arrows move the cursor as the D-pad does. A
+; character typed over a report is the form again, empty, so that the next
+; place can be typed at once.
 ;
-; The digit that Up and Down change pulses, as the key under NESpedia's
-; cursor does (../wiki/nes/keyboard.inc): its square of the screen has the
-; cursor's palette, and the font's colour in that palette is changed every
-; few frames.
+; The cursor's key pulses, as NESpedia's does: its square of the screen
+; has the cursor's palette (the space bar's four squares, for it), and the
+; font's colour in that palette is changed every few frames.
 ;
 ; The link is nesp32's (its nes/lib/nesp.inc). Every use of it is one
 ; exchange, a request and its reply, made right after the NMI, at most one
@@ -35,9 +37,11 @@
 ;   SYS HELLO       until the nesp32 has answered it, and again whenever it
 ;                   says the service is not in use. It asks for KBD too, and
 ;                   a nesp32 without it is one to use all the same
-;   WEATHER LAST    once: the zip code it keeps, if any
+;   WEATHER LAST_PLACE  once: the place it keeps, if any. A nesp32 with
+;                   no such op has firmware from before places, and the
+;                   screen says to update it
 ;   WEATHER ROW     a report is ready that is not on the screen: its next row
-;   WEATHER ZIP     otherwise, while the report is the view: this zip code,
+;   WEATHER PLACE   otherwise, while the report is the view: this place,
 ;                   and how it stands. Every frame until a report is on the
 ;                   screen, and about once a second after, in case there is
 ;                   a newer one
@@ -48,9 +52,8 @@
 ;
 ; The NMI reads the controller and draws what the main loop has staged: the
 ; status line when it has changed, one row of the middle of the screen
-; (row_buf), whether the form's or the report's, the palettes of the
-; digits' squares, and the pulse's next colour. Nothing else writes to the
-; PPU once the screen is on.
+; (row_buf), whether the form's or the report's, the palettes of the keys'
+; squares, and the pulse's next colour. Nothing else writes to the PPU once the screen is on.
 
 PPUCTRL   = $2000
 PPUMASK   = $2001
@@ -85,7 +88,7 @@ REPEAT_EVERY = 5                ; and frames between repeats
 OUT0_MARK = $01
 
 NESP_RX_MASK = $3F              ; replies of up to 63 bytes: a row, and what it is of
-NESP_TX_MAX  = 9                ; the hello, with its two services
+NESP_TX_MAX  = 25               ; a place: its id, and what was typed
 .define NESP_APP "WTHR"
 NESP_APP_VERSION = 1
 
@@ -130,17 +133,20 @@ greeted:      .res 1            ; the nesp32 has answered this ROM's hello
 typing:       .res 1            ; and has KBD: its keyboard's keys are asked for
 key_at:       .res 1            ; ask_keys's: the key of the reply it is on,
 key_count:    .res 1            ; of these
-key_char:     .res 1            ; type_key's: the key
-asked_last:   .res 1            ; and said what zip code it keeps
+key_char_typed: .res 1          ; type_key's: the key
+asked_last:   .res 1            ; and said what place it keeps
 link_missed:  .res 1            ; exchanges in a row with no reply, up to MISSED_MAX
 link_failed:  .res 2            ; every exchange with none, for a debugger's watch list
 why_buf:      .res 28           ; the nesp32's words for what went wrong
 why_len:      .res 1
 view:         .res 1            ; VIEW_*
-zip:          .res 5            ; the form's digits, as characters
-zip_sent:     .res 5            ; the zip code last asked for,
-zip_id:       .res 1            ; and its id: one more with every asking
-cursor:       .res 1            ; the form's digit that Up and Down change
+query:        .res 24           ; the form's place, with spaces after it,
+query_len:    .res 1            ; and how much of it there is
+sent:         .res 24           ; the place last asked for,
+sent_len:     .res 1            ; its length,
+choice_id:    .res 1            ; and its id: one more with every asking
+key_row:      .res 1            ; the key the cursor is on
+key_col:      .res 1
 sky:          .res 1            ; NESP_SKY_*, as the nesp32 last said, or SKY_UNKNOWN
 serial_have:  .res 1            ; the report on the screen: 0 for none
 serial_want:  .res 1            ; the one being drawn
@@ -150,9 +156,9 @@ paint_end:    .res 1            ; up to this one
 row_buf:      .res 28           ; a row for the NMI to draw,
 row_addr:     .res 2            ; where, high byte first,
 row_dirty:    .res 1            ; and that it has not yet
-attr_buf:     .res 4            ; the palettes of the digits' squares, likewise,
-attr_dirty:   .res 1
-pulse:        .res 1            ; where the lit digit's colour is in its round,
+attr_buf:     .res 16           ; the palettes of the keys' squares, for the NMI,
+attr_dirty:   .res 1            ; and that they are not on the screen yet
+pulse:        .res 1            ; where the cursor's colour is in its round,
 pulse_color:  .res 1            ; the colour, for the NMI,
 pulse_dirty:  .res 1            ; and that it is not on the screen yet
 on_cart:      .res 1            ; this is on nesp32's cartridge, which has a menu
@@ -162,14 +168,17 @@ day_at:       .res 1            ; center_days's: the day it is on
 NESP_KEY_PAD = 1                ; nesp_key_pad
 .include "nesp.inc"
 
-.assert NESP_TX_MAX = NESP_HELLO_FIXED + 2, error, "the hello names two services"
+.assert NESP_TX_MAX >= NESP_HELLO_FIXED + 2, error, "the hello names two services"
 .assert 1 + NESP_KBD_KEYS_MAX <= NESP_RX_MASK, error, "what is typed must fit a reply"
-.assert NESP_TX_MAX >= 1 + NESP_WEATHER_ZIP_LEN, error, "a zip code must fit a request"
+.assert NESP_TX_MAX = 1 + NESP_WEATHER_QUERY_MAX, error, "a place must fit a request"
+.assert FORM_QUERY_MAX = NESP_WEATHER_QUERY_MAX, error, "the form holds a place"
+.assert NESP_WEATHER_QUERY_MAX <= NESP_RX_MASK, error, "and so does a reply"
+.assert KEY_ATTRS <= 16, error, "attr_buf holds the keys' attribute bytes"
+.assert KEY_ROWS = 4, error, "key_row_first: four rows"
 .assert 4 + NESP_WEATHER_COLUMNS <= NESP_RX_MASK, error, "a row must fit its buffer"
 .assert ROWS = NESP_WEATHER_ROWS && COLUMNS = NESP_WEATHER_COLUMNS, error, "a report is the nesp32's"
 .assert PICTURE_TILE = NESP_WEATHER_PICTURE && DEGREE_TILE = NESP_WEATHER_DEGREE, error, "and so are its tiles"
 .assert STATUS_WIDTH = NESP_WEATHER_COLUMNS, error, "why_buf holds what the nesp32 may say"
-.assert DIGIT_ATTRS <= 4, error, "attr_buf holds the digits' attribute bytes"
 
 .segment "RODATA"
 palette_data:
@@ -195,7 +204,7 @@ sky_status:
 .assert NESP_SKY_IDLE = 0 && NESP_SKY_NO_WIFI = 1 && NESP_SKY_LOOKING = 2, error, "sky_status"
 .assert NESP_SKY_FETCHING = 3 && NESP_SKY_READY = 4, error, "sky_status"
 
-; The form's rows, in the ROM, and the column of each of its digits.
+; The form's rows, in the ROM.
 form_lo:
 .repeat PAINT_ROWS, index
     .byte <(form_text + index * COLUMNS)
@@ -203,10 +212,6 @@ form_lo:
 form_hi:
 .repeat PAINT_ROWS, index
     .byte >(form_text + index * COLUMNS)
-.endrepeat
-digit_column:
-.repeat NESP_WEATHER_ZIP_LEN, index
-    .byte FORM_DIGIT_COLUMN + index * FORM_DIGIT_STEP
 .endrepeat
 
 .segment "CODE"
@@ -254,12 +259,11 @@ digit_column:
     sta pad_prev                ; before, as the cartridge's menu's A or Start is,
                                 ; counts only once it has been let go
     jsr screen_init             ; rendering is off; the first NMI turns it on
-    ldx #NESP_WEATHER_ZIP_LEN - 1
-@zip:
-    lda form_zip,x              ; what the form begins with, if nothing is kept
-    sta zip,x
-    dex
-    bpl @zip
+    jsr clear_query             ; the form begins empty, if nothing is kept
+    lda #CURSOR_ROW
+    sta key_row
+    lda #CURSOR_COLUMN
+    sta key_col
     lda #SKY_UNKNOWN
     sta sky
     sta status                  ; nothing is on the status line yet
@@ -414,86 +418,184 @@ main_wait:
 @back:
     jmp back_to_form
 @form:
-    lda presses                 ; B: nothing to go back to, and never out of
-    and #PAD_A | PAD_START      ; the program, so that B pressed again and
-    beq @move                   ; again cannot leave it
+    lda presses
+    and #PAD_START
+    beq @type
     jmp submit
+@type:
+    lda presses
+    and #PAD_A
+    beq @delete
+    jsr key_char                ; A: the cursor's key
+    jsr type_char
+@delete:
+    lda presses                 ; B: the last character, and never out of the
+    and #PAD_B                  ; program, so that B pressed again and again
+    beq @move                   ; cannot leave it
+    jsr delete_char
 @move:
     lda presses
     and #PAD_DIRECTIONS
     beq @done
-    ldx cursor
+    jmp move
+.endproc
+
+; The cursor moves over the keys: Left and Right along a row, round; Up and
+; Down to the next row, keeping the column, round. On the space bar, Left
+; is the key before it and Right the row's first.
+.proc move
+    ldx key_col
     lda presses
     and #PAD_LEFT
     beq @right
+    jsr on_space
+    bcc @left
+    ldx #SPACE_KEY              ; from the space bar, the key before it
+@left:
     dex
     bpl @right
-    ldx #NESP_WEATHER_ZIP_LEN - 1
+    ldx #KEY_COLUMNS - 1
 @right:
     lda presses
     and #PAD_RIGHT
     beq @up
+    jsr on_space                ; still there, or there now
+    bcc @next
+    ldx #KEY_COLUMNS - 1        ; from the space bar, round to the first
+@next:
     inx
-    cpx #NESP_WEATHER_ZIP_LEN
-    bne @up
+    cpx #KEY_COLUMNS
+    bcc @up
     ldx #0
 @up:
-    stx cursor
+    stx key_col
+    ldy key_row
     lda presses
     and #PAD_UP
     beq @down
-    inc zip,x
-    lda zip,x
-    cmp #'9' + 1
-    bne @down
-    lda #'0'
-    sta zip,x
+    dey
+    bpl @down
+    ldy #KEY_ROWS - 1
 @down:
     lda presses
     and #PAD_DOWN
-    beq @touched
-    dec zip,x
-    lda zip,x
-    cmp #'0' - 1
-    bne @touched
-    lda #'9'
-    sta zip,x
-@touched:
-    jmp form_touch
+    beq @moved
+    iny
+    cpy #KEY_ROWS
+    bcc @moved
+    ldy #0
+@moved:
+    sty key_row
+    jmp light
 .endproc
 
-; One key typed on the nesp32's keyboard, A: a digit, Backspace, or a
-; button of the controller's (nesp_key_pad), as from the controller.
-; Anything else is no key of the form's.
-.proc type_key
-    cmp #'0'
-    bcc @control
-    cmp #'9' + 1
+; Carry set if column X of the cursor's row is the space bar's. X is kept.
+.proc on_space
+    lda key_row
+    cmp #KEY_ROWS - 1
+    bne @no
+    cpx #SPACE_KEY
+    rts
+@no:
+    clc
+    rts
+.endproc
+
+; A: the character of the cursor's key.
+.proc key_char
+    ldx key_row
+    lda key_row_first,x
+    clc
+    adc key_col
+    tax
+    lda key_chars,x
+    rts
+.endproc
+
+; Character A is typed: at the end of the place, if there is room.
+.proc type_char
+    ldx query_len
+    cpx #NESP_WEATHER_QUERY_MAX
     bcs @done
-    sta key_char
-    lda view
-    beq @digit
-    jsr back_to_form            ; over a report: a new zip code, from its first digit
-    lda #0
-    sta cursor
-@digit:
-    ldx cursor
-    lda key_char
-    sta zip,x
-    inx
-    cpx #NESP_WEATHER_ZIP_LEN
-    bcc @lit
-    ldx #0                      ; after the last, the first: ready for the next zip code
-@lit:
-    stx cursor
+    sta query,x
+    inc query_len
     jmp form_touch
-@control:
-    cmp #NESP_KEY_BACKSPACE
-    bne @button
-    ldx cursor                  ; Backspace is Left, and stops at the first digit
+@done:
+    rts
+.endproc
+
+; The place's last character is deleted, if it has one.
+.proc delete_char
+    ldx query_len
     beq @done
-    lda #PAD_LEFT
-    jmp act
+    dex
+    stx query_len
+    lda #' '
+    sta query,x
+    jmp form_touch
+@done:
+    rts
+.endproc
+
+; The form is empty.
+.proc clear_query
+    lda #' '
+    ldx #NESP_WEATHER_QUERY_MAX - 1
+@clear:
+    sta query,x
+    dex
+    bpl @clear
+    lda #0
+    sta query_len
+    rts
+.endproc
+
+; One key typed on the nesp32's keyboard, A: a character the screen's
+; keyboard has, a small letter as its capital, Backspace, Enter, or a button
+; of the controller's (nesp_key_pad), as from the controller. Anything else
+; is no key of the form's.
+.proc type_key
+    cmp #'a'
+    bcc @capital
+    cmp #'z' + 1
+    bcs @capital
+    and #$DF                    ; a small letter: its capital
+@capital:
+    cmp #' '
+    bcc @control
+    sta key_char_typed
+    ldy #KEY_ROWS * KEY_COLUMNS - 1
+@known:
+    cmp key_chars,y
+    beq @char
+    dey
+    bpl @known
+    rts                         ; no key of the screen's keyboard
+@char:
+    lda view
+    beq @put
+    jsr back_to_form            ; over a report: a new place, from its first character
+    jsr clear_query
+@put:
+    lda key_char_typed
+    jmp type_char
+@control:
+    ldx view
+    cmp #NESP_KEY_BACKSPACE
+    bne @enter
+    cpx #VIEW_FORM              ; Backspace deletes on the form, and on the report
+    bne @done                   ; does nothing
+    jmp delete_char
+@enter:
+    cmp #NESP_KEY_ENTER         ; Enter is Start: A types the cursor's key
+    bne @escape
+    lda #PAD_START
+    jmp press
+@escape:
+    cmp #NESP_KEY_ESCAPE        ; Escape is B on the report, and on the form
+    bne @button                 ; nothing: it deletes nothing
+    cpx #VIEW_FORM
+    beq @done
 @button:
     jsr nesp_key_pad
     jmp press
@@ -519,53 +621,74 @@ main_wait:
     jmp light
 .endproc
 
-; The form's digits, or which of them is lit, have changed: draw their
-; row, and light the one. If the form is being drawn and has not got to
-; that row, it will; if it is past it, it goes back.
+; The form's place has changed, or whether it can be: draw its row, and
+; light the cursor's key or none. If the form is being drawn and has not
+; got to that row, it will; if it is past it, it goes back.
 .proc form_touch
     jsr light
     lda paint_at
     cmp paint_end
     beq @idle
-    cmp #FORM_DIGITS_ROW + 1
+    cmp #FORM_TEXT_ROW + 1
     bcc @done
     bcs @from
 @idle:
-    lda #FORM_DIGITS_ROW + 1
+    lda #FORM_TEXT_ROW + 1
     sta paint_end
 @from:
-    lda #FORM_DIGITS_ROW
+    lda #FORM_TEXT_ROW
     sta paint_at
 @done:
     rts
 .endproc
 
-; The digits' squares of the screen have the text's palette, but for the
-; one of the digit that Up and Down change, which has the cursor's. None
-; has it while nothing can be changed. One attribute byte covers four
-; squares, but only one digit is ever lit, so each byte is that digit's
-; bits or nothing.
+; The keys' squares of the screen have the text's palette, but for the
+; cursor's key's, which have the cursor's. None has it while nothing can be
+; typed. Two keys may share an attribute byte, so each key's bits are put
+; in with the others'.
 .proc light
     lda #0
     sta attr_dirty              ; the NMI is not to draw them half made
-    ldx #DIGIT_ATTRS - 1
+    ldx #KEY_ATTRS - 1
 @clear:
     sta attr_buf,x
     dex
     bpl @clear
     lda view
     bne @stage
-    ldy cursor
-    ldx digit_attr,y
-    lda digit_attr_on,y
-    sta attr_buf,x
+    ldx key_col
+    jsr on_space
+    ldy key_row
+    lda key_row_first,y
+    bcc @one
+    adc #SPACE_KEY - 1          ; carry set: the space bar's first square,
+    tay                         ; and the rest of its row
+@space:
+    jsr light_key
+    iny
+    cpy #KEY_ROWS * KEY_COLUMNS
+    bcc @space
+    bcs @stage
+@one:
+    adc key_col
+    tay
+    jsr light_key
 @stage:
     lda #1
     sta attr_dirty
     rts
 .endproc
 
-; The lit digit's colour, every few frames the next of its round.
+; Key Y's square has the cursor's palette. Y is kept.
+.proc light_key
+    ldx key_attr,y
+    lda attr_buf,x
+    ora key_attr_on,y
+    sta attr_buf,x
+    rts
+.endproc
+
+; The cursor's colour, every few frames the next of its round.
 .proc pulse_step
     lda view
     bne @done
@@ -587,18 +710,28 @@ main_wait:
     rts
 .endproc
 
-; The weather of the form's zip code is asked for: a new asking, whether or
-; not the digits are new.
+; The weather of the form's place is asked for: a new asking, whether or
+; not the place is new. An empty form asks nothing.
 .proc submit
-    ldx #NESP_WEATHER_ZIP_LEN - 1
+    ldx #NESP_WEATHER_QUERY_MAX
+@end:
+    lda query - 1,x             ; the place ends at its last character but a space
+    cmp #' '
+    bne @found
+    dex
+    bne @end
+    rts
+@found:
+    stx sent_len
+    ldx #NESP_WEATHER_QUERY_MAX - 1
 @copy:
-    lda zip,x
-    sta zip_sent,x
+    lda query,x
+    sta sent,x
     dex
     bpl @copy
-    inc zip_id
+    inc choice_id
     jsr await
-    jmp form_touch              ; no digit is lit: nothing can be changed now
+    jmp form_touch              ; no cursor: nothing can be typed now
 .endproc
 
 ; Back to the cartridge's menu, as reset would go: through its stub, with
@@ -613,7 +746,7 @@ main_wait:
 .endproc
 
 ; The report is the view, and none is on the screen: whatever the nesp32
-; says of zip_sent is drawn from its first row.
+; says of the place sent is drawn from its first row.
 .proc await
     lda #VIEW_REPORT
     sta view
@@ -627,8 +760,9 @@ main_wait:
 .endproc
 
 ; A row of the form for the NMI, if there is one to draw and the last has
-; been drawn: its tiles from the ROM, with the digits on their row, and on
-; the cartridge the foot that says Select is its menu.
+; been drawn: its tiles from the ROM, with the place on its row and a mark
+; after it while there is room and it can be typed, and on the cartridge
+; the foot that says Select is its menu.
 .proc paint_form
     lda row_dirty
     bne @done
@@ -645,8 +779,8 @@ main_wait:
     sta row_buf,y
     dey
     bpl @copy
-    cpx #ROWS
-    bne @digits
+    cpx #ROWS + FOOT_ROWS - 1
+    bne @text
     lda on_cart
     beq @stage
     ldy #COLUMNS - 1
@@ -656,16 +790,22 @@ main_wait:
     dey
     bpl @cart
     bmi @stage
-@digits:
-    cpx #FORM_DIGITS_ROW
+@text:
+    cpx #FORM_TEXT_ROW
     bne @stage
-    ldy #NESP_WEATHER_ZIP_LEN - 1
-@digit:
-    ldx digit_column,y
-    lda zip,y
-    sta row_buf,x
+    ldy #NESP_WEATHER_QUERY_MAX - 1
+@char:
+    lda query,y
+    sta row_buf + FORM_TEXT_COLUMN,y
     dey
-    bpl @digit
+    bpl @char
+    lda view
+    bne @stage                  ; a place asked for: nothing to type
+    ldy query_len
+    cpy #NESP_WEATHER_QUERY_MAX
+    bcs @stage
+    lda #CURSOR_TILE
+    sta row_buf + FORM_TEXT_COLUMN,y
 @stage:
     ldx paint_at
     jsr stage_row
@@ -693,7 +833,7 @@ main_wait:
     beq @keys                   ; the form asks only what is typed
     lda sky
     cmp #NESP_SKY_READY
-    bne @zip
+    bne @place
     lda row_next
     cmp #PAINT_ROWS
     beq @settled
@@ -704,18 +844,27 @@ main_wait:
     bne @idle
     lda row_next
     cmp #ROWS
-    beq @foot
+    bcs @foot
     jmp ask_row
 @foot:
-    ldx #COLUMNS - 1            ; the last of it is the ROM's own: what B does
+    sec                         ; the last of it is the ROM's own: what B does,
+    sbc #ROWS                   ; and nothing over the middle
+    tax
+    lda report_foot_last,x
+    tax
+    ldy #COLUMNS - 1
 @copy:
     lda report_foot,x
-    sta row_buf,x
+    sta row_buf,y
     dex
+    dey
     bpl @copy
     ldx row_next
     jsr stage_row
     inc row_next
+    lda row_next
+    cmp #PAINT_ROWS
+    bcc @idle
     lda serial_want             ; and with that it is the report on the screen
     sta serial_have
 @idle:
@@ -724,8 +873,8 @@ main_wait:
     lda frame_count
     and #POLL_MASK
     bne @keys
-@zip:
-    jmp ask_zip
+@place:
+    jmp ask_place
 @keys:
     jmp ask_keys
 .endproc
@@ -770,11 +919,13 @@ main_wait:
     jmp link_heard
 .endproc
 
-; The zip code the nesp32 keeps, once: the form comes up with its digits,
-; for A to ask for. If it keeps none, the form's digits are as they began.
+; The place the nesp32 keeps, once: the form comes up with it, for Start to
+; ask for, or for more to be typed. If it keeps none, the form is as it
+; began. A nesp32 with no such op has firmware
+; from before places.
 .proc ask_last
     lda #NESP_SVC_WEATHER
-    ldx #NESP_WEATHER_LAST
+    ldx #NESP_WEATHER_LAST_PLACE
     ldy #0
     jsr nesp_call
     bcc @came
@@ -782,19 +933,27 @@ main_wait:
 @came:
     cmp #NESP_ST_OK
     beq @ok
+    cmp #NESP_ST_NO_OP
+    bne @refused
+    lda #STATUS_OLD
+    jsr set_status
+    jmp link_heard
+@refused:
     jmp link_refused
 @ok:
     lda #1
     sta asked_last
-    lda nesp_reply_len
-    cmp #NESP_WEATHER_ZIP_LEN
-    bne @none
-    ldx #NESP_WEATHER_ZIP_LEN - 1
-@digit:
-    lda nesp_reply,x
-    sta zip,x
+    ldx nesp_reply_len
+    beq @none
+    cpx #NESP_WEATHER_QUERY_MAX + 1
+    bcs @none
+    stx query_len
     dex
-    bpl @digit
+@char:
+    lda nesp_reply,x
+    sta query,x
+    dex
+    bpl @char
 @none:
     lda #STATUS_NONE
     jsr set_status
@@ -848,20 +1007,21 @@ main_wait:
     rts
 .endproc
 
-; This zip code, and how it stands with it: for the status line, and for
+; This place, and how it stands with it: for the status line, and for
 ; what is asked next. One that cannot be had is the form's to put right.
-.proc ask_zip
-    lda zip_id
+.proc ask_place
+    lda choice_id
     sta nesp_request
-    ldx #NESP_WEATHER_ZIP_LEN - 1
-@digit:
-    lda zip_sent,x
-    sta nesp_request + 1,x
+    ldx sent_len
+@char:
+    lda sent - 1,x
+    sta nesp_request,x
     dex
-    bpl @digit
+    bne @char
     lda #NESP_SVC_WEATHER
-    ldx #NESP_WEATHER_ZIP
-    ldy #1 + NESP_WEATHER_ZIP_LEN
+    ldx #NESP_WEATHER_PLACE
+    ldy sent_len
+    iny
     jsr nesp_call
     bcc @came
     jmp link_silent
@@ -874,7 +1034,7 @@ main_wait:
     cmp #3
     bcc @heard                  ; not a reply to this at all
     lda nesp_reply + 1
-    cmp zip_id
+    cmp choice_id
     bne @heard
     lda nesp_reply
     sta sky
@@ -901,7 +1061,7 @@ main_wait:
     sta row_next
     beq @heard
 @none:
-    lda #STATUS_NO_ZIP
+    lda #STATUS_NO_PLACE
     jsr set_status
     jmp @form
 @failed:
@@ -910,12 +1070,12 @@ main_wait:
     jsr show_form
     jmp link_heard
 .endproc
-.assert NESP_SKY_NOT_FOUND > NESP_SKY_READY && NESP_SKY_FAILED > NESP_SKY_READY, error, "ask_zip"
+.assert NESP_SKY_NOT_FOUND > NESP_SKY_READY && NESP_SKY_FAILED > NESP_SKY_READY, error, "ask_place"
 
 ; The next row of the report, into row_buf. A row of a newer report than
 ; the one being drawn starts the drawing over, from that one's first.
 .proc ask_row
-    lda zip_id
+    lda choice_id
     sta nesp_request
     lda row_next
     sta nesp_request + 1
@@ -934,7 +1094,7 @@ main_wait:
     cmp #4
     bcc @heard
     lda nesp_reply + 1
-    cmp zip_id
+    cmp choice_id
     bne @heard
     lda nesp_reply + 3
     cmp row_next
@@ -942,7 +1102,7 @@ main_wait:
     lda nesp_reply
     cmp #NESP_SKY_READY
     beq @row
-    sta sky                     ; no report after all: ZIP says how it stands
+    sta sky                     ; no report after all: PLACE says how it stands
     jmp link_heard
 @row:
     lda nesp_reply_len
@@ -1178,16 +1338,16 @@ main_wait:
 @attrs:
     lda attr_dirty
     beq @pulse
-    lda #>DIGIT_ATTR_ADDR
+    lda #>KEY_ATTR_ADDR
     sta PPUADDR
-    lda #<DIGIT_ATTR_ADDR
+    lda #<KEY_ATTR_ADDR
     sta PPUADDR
     ldy #0
 @attr:
     lda attr_buf,y
     sta PPUDATA
     iny
-    cpy #DIGIT_ATTRS
+    cpy #KEY_ATTRS
     bne @attr
     lda #0
     sta attr_dirty

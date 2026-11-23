@@ -7,8 +7,9 @@ computer. That console lets the PPU be written to only inside an NMI once
 the picture is on, and notes how far into vblank each NMI's last write
 came.
 
-The two sites are here: a fetch the nesp32 begins is answered by `serve`,
-from what the test says each is to send.
+The two sites are here, Open-Meteo's geocoding and its forecast: a fetch the
+nesp32 begins is answered by `serve`, from what the test says each is to
+send.
 """
 
 import gen_screen as layout
@@ -22,15 +23,17 @@ __all__ = ["Forecast", "PAD_A", "PAD_B", "PAD_DOWN", "PAD_LEFT", "PAD_RIGHT", "P
            "PAD_START", "PAD_UP", "KEPT", "NOT_FOUND"]
 
 VIEW_FORM, VIEW_REPORT = 0, 1
-NOT_FOUND = object()                # Zippopotam's answer to a zip code there is none of
-# What a nesp32 keeps of 90210 once it has found it.
-KEPT = (b"90210", 34090100, -118406500, b"BEVERLY HILLS, CA")
+NOT_FOUND = object()                # the geocoding's answer for a place there is none of
+NOWHERE = b'{"generationtime_ms":0.10693073}'
+IMPERIAL = 0x02                     # a kept place's flags (nesp_weather_place_t)
+# What a nesp32 keeps of PORTLAND, ME once it has found it.
+KEPT = (b"PORTLAND, ME", 43657370, -70258900, b"PORTLAND, ME", IMPERIAL)
 
 
 class Forecast:
     """A console on the ROM, and a nesp32 on a network unless wifi says
-    otherwise. kept is the zip code the nesp32 has from before it was
-    switched on (as nesp.Stick.zip gives one). where and weather are what
+    otherwise. kept is the place the nesp32 has from before it was
+    switched on (as nesp.Stick.place gives one). where and weather are what
     the two sites send; either may be a (False, words) for a fetch that
     fails, and where may be NOT_FOUND."""
 
@@ -51,7 +54,7 @@ class Forecast:
         now_ms = self.port.now_ms
         self.port.now_ms = lambda: now_ms() + self.clock
         self.stick.set_wifi(wifi, address=(10, 0, 0, 2))
-        self.stick.zip = kept
+        self.stick.place = kept
 
     # --- the Internet ------------------------------------------------------------
 
@@ -60,9 +63,10 @@ class Forecast:
         assert self.stick.fetching
         url = self.stick.fetch_url
         self.served.append(url)
-        reply = self.where if "zippopotam" in url else self.weather
+        reply = self.where if "geocoding" in url else self.weather
         if reply is NOT_FOUND:
-            self.stick.fetch_done(False, b"THE SITE SAID 404")
+            assert self.stick.fetch_body(NOWHERE)
+            self.stick.fetch_done(True)
         elif isinstance(reply, tuple):
             self.stick.fetch_done(*reply)
         else:
@@ -93,17 +97,33 @@ class Forecast:
         self.run(1, pad=buttons)
         self.run(1, pad=0)
 
-    def enter(self, digits):
-        """Set the form's digits, from wherever its mark is, by the shorter
-        way round for each."""
-        for index, digit in enumerate(digits):
-            while self.c.byte("cursor") != index:
-                self.press(PAD_RIGHT)
-            there = self.c.byte("zip", index) - ord("0")
-            ahead = (int(digit) - there) % 10
-            for _ in range(ahead if ahead <= 5 else 10 - ahead):
-                self.press(PAD_UP if ahead <= 5 else PAD_DOWN)
-        assert self.digits == digits
+    def key_at(self):
+        """The key the cursor is on, as (row, column): the space bar's first
+        column for any of its own."""
+        row, column = self.c.byte("key_row"), self.c.byte("key_col")
+        if layout.KEYS[row][column] == " ":
+            column = layout.SPACE_KEY
+        return row, column
+
+    def enter(self, text, clear=True):
+        """Type this on the screen's keyboard, as a player would: B until the
+        place is empty, then for each character the D-pad to its key, and A."""
+        if clear:
+            while self.c.byte("query_len"):
+                self.press(PAD_B)
+        for char in text:
+            row = next(index for index, keys in enumerate(layout.KEYS) if char in keys)
+            column = layout.KEYS[row].index(char)
+            while self.c.byte("key_row") != row:
+                down = (row - self.c.byte("key_row")) % len(layout.KEYS)
+                self.press(PAD_DOWN if down <= len(layout.KEYS) // 2 else PAD_UP)
+            for _ in range(len(layout.KEYS[0]) + 1):
+                if self.key_at() == (row, column):
+                    break
+                right = (column - self.c.byte("key_col")) % len(layout.KEYS[0])
+                self.press(PAD_RIGHT if right <= len(layout.KEYS[0]) // 2 else PAD_LEFT)
+            assert self.key_at() == (row, column)
+            self.press(PAD_A)
 
     # --- what is on the screen ---------------------------------------------------
 
@@ -117,40 +137,61 @@ class Forecast:
 
     @property
     def foot(self):
-        return self.c.line(layout.FOOT_ROW)
+        """The foot's rows, less the spaces round them."""
+        return tuple(self.c.line(layout.FOOT_ROW + index) for index in range(layout.FOOT_ROWS))
 
     def row(self, number):
         """A row of the middle of the screen, as its tiles."""
         return self.c.tiles(layout.BODY_ROW + number, layout.BODY_COLUMN,
                             layout.COLUMNS).decode("latin-1")
 
+    @property
+    def prompt(self):
+        """The row over the middle of the screen, as its tiles."""
+        return self.c.tiles(layout.BODY_ROW - 1, layout.BODY_COLUMN,
+                            layout.COLUMNS).decode("latin-1")
+
     def rows(self):
         return [self.row(number) for number in range(layout.ROWS)]
 
     @property
-    def digits(self):
-        """The digits the form shows, which are the ones it holds."""
-        row = self.row(layout.FORM_DIGITS_ROW)
-        shown = "".join(row[layout.FORM_DIGIT_COLUMN + layout.FORM_DIGIT_STEP * index]
-                        for index in range(layout.ZIP_LEN))
-        assert shown == bytes(self.c.data("zip", layout.ZIP_LEN)).decode("ascii")
-        return shown
+    def text(self):
+        """The place the form shows, which is the one it holds; with the
+        mark after it while it can be typed and there is room."""
+        row = self.row(layout.FORM_TEXT_ROW)
+        shown = row[layout.FORM_TEXT_COLUMN:layout.FORM_TEXT_COLUMN + layout.QUERY_MAX]
+        held = bytes(self.c.data("query", layout.QUERY_MAX)).decode("ascii")
+        length = self.c.byte("query_len")
+        assert held[length:] == " " * (layout.QUERY_MAX - length)
+        if self.view == VIEW_FORM and length < layout.QUERY_MAX:
+            held = held[:length] + layout.CURSOR + held[length + 1:]
+        assert shown == held
+        return held[:length]
 
     @property
     def lit(self):
-        """Which of the form's digits has the cursor's palette, by its
-        square of the screen; None if none has. No other square of the
-        screen ever has it."""
+        """The key whose squares have the cursor's palette, as (row, column);
+        None if none has. No other square of the screen ever has it."""
+        first, count, cells = layout.key_attributes()
+        screen = layout.build_screen().nametable()[960:]
         attributes = bytearray(self.c.vram[0x23C0:0x2400])
+        columns = len(layout.KEYS[0])
         found = []
-        for index in range(layout.ZIP_LEN):
-            byte, shift = layout.attribute_cell(*layout.digit_place(index))
-            if attributes[byte] >> shift & 3 == layout.PALETTE_CURSOR:
-                found.append(index)
-                attributes[byte] &= ~(3 << shift) & 0xFF
-        assert bytes(attributes) == layout.build_screen().nametable()[960:]
-        assert len(found) <= 1
-        return found[0] if found else None
+        for index, (byte, value) in enumerate(cells):
+            if attributes[first + byte] & value == value:
+                found.append(divmod(index, columns))
+        for index in range(len(cells)):
+            byte, value = cells[index]
+            attributes[first + byte] &= ~value & 0xFF
+        assert bytes(attributes) == screen
+        if not found:
+            return None
+        row, column = found[0]
+        if layout.KEYS[row][column] == " ":
+            assert found == [(row, each) for each in range(layout.SPACE_KEY, columns)]
+            return row, layout.SPACE_KEY
+        assert len(found) == 1
+        return found[0]
 
     @property
     def pulse(self):
@@ -158,9 +199,9 @@ class Forecast:
         return self.c.vram[layout.PULSE_ADDRESS]
 
     def go(self):
-        """From the form as it comes up: A, for the digits it has."""
+        """From the form as it comes up: Start, for the place it has."""
         self.form_is_up()
-        self.press(PAD_A)
+        self.press(PAD_START)
 
     def form_is_up(self):
         """The form, whole and still, with nothing of a report under it."""
@@ -168,16 +209,18 @@ class Forecast:
                        and self.c.byte("paint_at") == self.c.byte("paint_end")
                        and not self.c.byte("row_dirty") and not self.c.byte("attr_dirty"))
         rows = self.rows()
-        for number, line in enumerate(layout.form_lines()[:layout.ROWS]):
-            if number != layout.FORM_DIGITS_ROW:
+        lines = layout.form_lines(cart=bool(self.c.byte("on_cart")))
+        for number, line in enumerate(lines[:layout.ROWS]):
+            if number != layout.FORM_TEXT_ROW:
                 assert rows[number] == line
-        box = layout.build_screen().box[1]
-        digits = rows[layout.FORM_DIGITS_ROW]
-        assert digits[layout.BOX_FIRST] == chr(box[0]) and digits[layout.BOX_LAST] == chr(box[-1])
+        box = layout.build_screen().box[layout.FORM_TEXT_ROW - layout.BOX_FIRST_ROW]
+        text = rows[layout.FORM_TEXT_ROW]
+        assert text[layout.BOX_FIRST] == chr(box[0]) and text[layout.BOX_LAST] == chr(box[-1])
         assert self.foot == (layout.FOOT_FORM_CART if self.c.byte("on_cart")
                              else layout.FOOT_FORM)
-        assert self.lit == self.c.byte("cursor")
-        return self.digits
+        assert self.prompt == lines[layout.PROMPT_PAINT]
+        assert self.lit == self.key_at()
+        return self.text
 
     def report_is_up(self, frames=600):
         """A report, whole: the rows of the middle of the screen."""
@@ -185,7 +228,8 @@ class Forecast:
                        and self.c.byte("serial_have") == self.c.byte("serial_want")
                        and self.c.byte("row_next") == layout.PAINT_ROWS
                        and not self.c.byte("row_dirty") and not self.c.byte("attr_dirty"), frames)
-        assert self.foot == layout.FOOT_REPORT and self.status == ""
+        assert self.foot == tuple(text for text in layout.FOOT_REPORT) and self.status == ""
+        assert self.prompt.strip() == ""
         assert self.lit is None
         return self.rows()
 

@@ -80,7 +80,7 @@ Please join our [Discord](https://discord.gg/kwSC7pwtmb)!
 | Games* | [Dr. Mario](apps/drmario), [Contra](apps/contra), [Tetris](apps/tetris), [TMNT2 Arcade](apps/tmnt2), [Bubble Bobble](apps/bubblebobble), [Jackal](apps/jackal), and [River City Ransom](apps/rcr) 2-player over the network
 | [NES Radar](apps/nes-radar) | [k6lcm](https://github.com/k6lcm)'s live air traffic scope, no PC required |
 | [NESradio](apps/npr) | Live .mp3 radio stations on a radio dial, with what is playing |
-| [Weather](apps/weather) | Current conditions and a 5-day forecast for a US zip code, which the NESP32 remembers |
+| [Weather](apps/weather) | Current conditions and a 5-day forecast for a place anywhere in the world, which the NESP32 remembers |
 | [Bluesky](apps/bluesky) | Bluesky posts from a list of favorite accounts the NESP32 remembers, after [ConnectedNES](https://github.com/hxlnt/connectedNES) |
 | [Family BASIC](apps/family-basic)* | Family BASIC V3 using a Bluetooth keyboard. Save and load programs to the NESP32 instead of cassette |
 

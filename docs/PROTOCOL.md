@@ -235,7 +235,7 @@ nothing done on the nesp32.
 | `$11` | WIKI | NESpedia: a search, and the article it finds as numbered lines | done |
 | `$12` | RADAR | NES Radar: an airport, and the aircraft round it | done |
 | `$13` | TUNER | a radio station from the Internet, as sampled sound | done |
-| `$14` | WEATHER | the weather at a zip code, as rows for the screen | done |
+| `$14` | WEATHER | the weather at a place, as rows for the screen | done |
 | `$15` | BSKY | Bluesky: an account's posts as lines, and favorites | done |
 | `$16` | TAPE | Family BASIC's data recorder: programs and screens kept as files | done |
 | `$80`-`$FF` | | experiments and other people's | |
@@ -1310,58 +1310,74 @@ sends each as the byte the console's receiver turns into it.
 - After the run the console asks for STATE, and is told OFF, PAUSED or
   FAILED.
 
-### WEATHER `$14`: the weather at a zip code
+### WEATHER `$14`: the weather at a place
 
-The weather at a place in the United States, now and for five days, laid
+The weather at a place anywhere in the world, now and for five days, laid
 out by the nesp32 as 13 rows of 28 tiles, pictures and all. The console
-names the place by its zip code. The nesp32 asks
-[Zippopotam](https://zippopotam.us) where that is and what it is called,
-once, then asks [Open-Meteo](https://open-meteo.com) for the weather
-there, and again every 15 minutes. The console draws the rows and works
-nothing out.
+names the place as it was typed, `PORTLAND, ME` or `DUBLIN, IRELAND`
+(PLACE), or by a US zip code (ZIP). The nesp32 asks
+[Open-Meteo](https://open-meteo.com)'s geocoding where that is and what
+it is called, once, and takes the first place it gives; then asks
+Open-Meteo for the weather there, and again every 15 minutes. The console
+draws the rows and works nothing out.
 
 | `OP` | Name | Request | Reply |
 |---|---|---|---|
-| `$00` | ZIP | `ID`, `DIGITS[5]` | `STATE`, `ID`, `SERIAL`, and with FAILED up to 28 characters for the screen |
+| `$00` | ZIP | `ID`, `DIGITS[5]` | as PLACE's |
 | `$01` | ROW | `ID`, `NUMBER` | `STATE`, `ID`, `SERIAL`, `NUMBER`, and with a report held `TEXT[28]` |
-| `$02` | LAST | | `DIGITS[5]` of the last zip code found, or nothing if none is kept |
+| `$02` | LAST | | `DIGITS[5]` of the last place found, if it was a zip code; otherwise nothing |
+| `$03` | PLACE | `ID`, `TEXT[1-24]` | `STATE`, `ID`, `SERIAL`, and with FAILED up to 28 characters for the screen |
+| `$04` | LAST_PLACE | | `TEXT` of the last place found, as it was typed, or nothing if none is kept |
 
 | `STATE` | Name | Meaning |
 |---|---|---|
-| `$00` | IDLE | no zip code is chosen, or not the one with the request's `ID` |
+| `$00` | IDLE | no place is chosen, or not the one with the request's `ID` |
 | `$01` | NO_WIFI | the nesp32 is not on a network, and holds no report |
-| `$02` | LOOKING | where the zip code is, is being asked |
+| `$02` | LOOKING | where the place is, is being asked |
 | `$03` | FETCHING | that is known, and nothing has come of its weather yet |
 | `$04` | READY | a report is held |
-| `$05` | NOT_FOUND | no place has that zip code |
+| `$05` | NOT_FOUND | nothing goes by that name |
 | `$06` | FAILED | the asking or the fetching failed; the reply says how |
 
-**ZIP is both "this zip code" and "how does it stand"**, as RADAR's
+**PLACE is both "this place" and "how does it stand"**, as RADAR's
 AIRPORT is. The console gives each choice an id, one more than the last,
 and may send the same request as often as it likes. The nesp32 chooses
-the zip code when the id or the digits differ from the one it has, and
-otherwise only answers. The digits are `0` to `9` as characters; anything
-else is BAD_ARG. No reply of WEATHER's is held for a repeat.
+the place when the id or the text differ from the one it has, and
+otherwise only answers. The text is ASCII, `$20` to `$5F`, as a row's
+characters are; the spaces round it are left out, and an empty one, one
+longer than 24, or one with any other character is BAD_ARG. It goes to
+the geocoding as it is, and the place is the first that comes back: a
+city with a comma and its state (`PORTLAND, ME`) or its country's name
+(`DUBLIN, IRELAND`) finds the one meant, and a city alone the likeliest.
+No reply of WEATHER's is held for a repeat.
 
-**A zip code that does not exist is told from a site that is down.**
-Zippopotam answers one it has not got with a 404, and that alone is
-NOT_FOUND. Any other failure of either site is FAILED, with a line of
+**ZIP is PLACE for a US zip code**, for ROMs from before PLACE: its five
+digits, `0` to `9` as characters (anything else is BAD_ARG), asked of the
+geocoding in the United States alone, since other countries' post codes
+have five digits too.
+
+**A place that does not exist is told from a site that is down.** The
+geocoding answers one it has nothing for with no results, and that alone
+is NOT_FOUND. Any other failure of either site is FAILED, with a line of
 words: `THE SITE DID NOT ANSWER`, `THE SITE SAID 503`, `THE SITE MADE NO
-SENSE` for an answer that was cut short or had no weather in it. A zip
-code whose lookup failed is asked after again when the console chooses it
+SENSE` for an answer that was cut short or had no weather in it. A place
+whose lookup failed is asked after again when the console chooses it
 again, with a new id.
 
-**The last zip code found is kept, over power-off too**: its digits,
-where it is, and its place's name, in the nesp32's flash, written when
-they are news and not otherwise. One that was not found is never kept.
-Chosen again, it is not asked after again. LAST is its digits, for a ROM
-to begin with: Weather's form comes up with them in it. LAST chooses
-nothing and starts no fetch.
+**The last place found is kept, over power-off too**: what was typed,
+where it is, its name for the report and its units, in the nesp32's
+flash, written when they are news and not otherwise. One that was not
+found is never kept. Chosen again, by the same text, it is not asked
+after again; a zip code kept by firmware from before PLACE is kept as a
+place of its five digits. LAST_PLACE is its text, for a ROM to begin
+with: Weather's form comes up with it in it. LAST is its digits if it was
+a zip code, for a ROM from before PLACE. Neither chooses anything or
+starts a fetch.
 
 **A report has a `SERIAL`**, which is never 0, and is 0 in a reply with
 no report. Every fetch of the weather that ends well makes a report with
 a new one. A console draws the rows of one serial, and starts over if a
-row comes with another; it asks ZIP now and then, and draws again when
+row comes with another; it asks PLACE now and then, and draws again when
 the serial is not the one on its screen. A fetch that fails leaves the
 report there was, and is tried again after a minute; with no report
 there is none to leave, and the state is FAILED until a fetch ends well.
@@ -1388,22 +1404,25 @@ The rows, as `firmware/components/nesp_services/weather.c` lays them out:
 
 | Row | |
 |---|---|
-| 0 | the place and its state, `BEVERLY HILLS, CA`, and at the right the zip code |
+| 0 | the place: in the United States with its state, `PORTLAND, ME`; elsewhere with its region and its country's two letters, `DUBLIN, LEINSTER, IE`, or where they would not fit or the region is the city again its country's alone, `TOKYO, JP` |
 | 2, 3 | the weather now: its picture, and beside it the temperature and a word or two, then today's high and low |
 | 4, 5 | the humidity, and the wind |
 | 8 | five days' names, today the first |
 | 9, 10 | their pictures |
 | 11, 12 | their highs, and their lows |
 
-Temperatures are in degrees Fahrenheit and the wind in miles an hour. The
-days are the place's own, as Open-Meteo gives them for its time zone, and
+In the United States and its territories (`US`, `PR`, `GU`, `VI`, `AS`,
+`MP`) temperatures are in degrees Fahrenheit and the wind in miles an
+hour, and everywhere else in degrees Celsius and kilometres an hour: the
+report says `F` or `C`, and `MPH` or `KM/H`. The days are the place's own, as Open-Meteo gives them for its time zone, and
 their names are worked out from their dates: the nesp32's clock is not
 asked. A day's picture is the day's, whatever the hour is now.
 
 **The nesp32 stops fetching for a console that has stopped asking**, 30
 seconds after its last request, and starts again with the next. Both
 sites' replies are short, and each is held whole before it is read: one
-longer than 2 KB is FAILED.
+longer than 4 KB is FAILED. (The geocoding's one result for Washington,
+D.C. is 2.4 KB, with its zip codes.)
 
 A row's exchange is 9 bytes out and 39 back, so a ROM that asks for one
 takes replies of 63 (a shorter `REPLY_MAX` is BAD_ARG).

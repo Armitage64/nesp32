@@ -54,6 +54,20 @@ typedef struct {
     char handles[NESP_BSKY_FAVORITES][NESP_BSKY_HANDLE_MAX];
 } nesp_bsky_favorites_t;
 
+/* A place WEATHER has found, as a board keeps it over power-off: what was
+ * asked, as typed, and what came of it. */
+#define NESP_WEATHER_PLACE_US 0x01          /* asked as a zip code: in the United States */
+#define NESP_WEATHER_PLACE_IMPERIAL 0x02    /* its weather in degrees F and miles an hour */
+typedef struct {
+    int32_t latitude;                       /* millionths of a degree */
+    int32_t longitude;
+    char query[NESP_WEATHER_QUERY_MAX];     /* as typed, with zeros after it */
+    uint8_t query_len;
+    uint8_t flags;                          /* NESP_WEATHER_PLACE_* */
+    uint8_t spare[2];                       /* zeros: no padding, for keeping it whole */
+    char name[NESP_WEATHER_PLACE_MAX];      /* for the report's first row, spaces after it */
+} nesp_weather_place_t;
+
 typedef struct {
     void *ctx;
     /* More of the reply's body. False: no more of it is wanted. */
@@ -175,13 +189,10 @@ typedef struct {
      * never waits: the writing of it is another task's. */
     bool (*airport_last)(void *ctx, char *code, int32_t *latitude, int32_t *longitude);
     void (*airport_keep)(void *ctx, const char *code, int32_t latitude, int32_t longitude);
-    /* Either may be NULL, likewise. A zip code kept over power-off, the
-     * last that WEATHER found: its NESP_WEATHER_ZIP_LEN digits, where it is
-     * in millionths of a degree, and its place's name, NESP_WEATHER_PLACE_MAX
-     * characters with spaces after it. False: none has been kept. */
-    bool (*zip_last)(void *ctx, char *zip, int32_t *latitude, int32_t *longitude, char *name);
-    void (*zip_keep)(void *ctx, const char *zip, int32_t latitude, int32_t longitude,
-                     const char *name);
+    /* Either may be NULL, likewise. A place kept over power-off, the last
+     * that WEATHER found (nesp_weather_place_t). False: none has been kept. */
+    bool (*place_last)(void *ctx, nesp_weather_place_t *out);
+    void (*place_keep)(void *ctx, const nesp_weather_place_t *place);
     /* Either may be NULL, likewise. BSKY's favorites, kept over power-off:
      * the last list written, whole. False: none has been kept. */
     bool (*favorites_last)(void *ctx, nesp_bsky_favorites_t *out);
@@ -511,9 +522,9 @@ typedef struct {
     nesp_radar_target_t near[NESP_RADAR_TARGETS_MAX];
 } nesp_radar_t;
 
-/* WEATHER: the weather at a zip code, laid out as rows for a console's
+/* WEATHER: the weather at a place, laid out as rows for a console's
  * screen (weather.c). */
-#define NESP_WEATHER_REPLY 2048     /* the longest reply from either site that is read */
+#define NESP_WEATHER_REPLY 4096     /* the longest reply from either site that is read */
 
 typedef struct {
     const nesp_hal_t *hal;
@@ -522,21 +533,15 @@ typedef struct {
      * lock: which fetch is wanted, and that it has ended. */
     uint32_t generation;
     uint8_t landed;                 /* 0, or how the fetch ended (weather.c) */
-    /* The link's task alone: the zip code, the report, and the clock. */
+    /* The link's task alone: the place, the report, and the clock. */
     bool chosen;
     uint8_t place;                  /* what is known of where it is */
-    uint8_t zip_id;
-    char zip[NESP_WEATHER_ZIP_LEN];
-    int32_t latitude;               /* millionths of a degree */
-    int32_t longitude;
-    char name[NESP_WEATHER_PLACE_MAX];
-    /* The last zip code found, which is not asked after twice, and is
-     * kept over power-off where the board can. */
+    uint8_t choice_id;
+    nesp_weather_place_t here;      /* the place chosen, and what is known of it */
+    /* The last place found, which is not asked after twice, and is kept
+     * over power-off where the board can. */
     bool known;
-    char known_zip[NESP_WEATHER_ZIP_LEN];
-    int32_t known_latitude;
-    int32_t known_longitude;
-    char known_name[NESP_WEATHER_PLACE_MAX];
+    nesp_weather_place_t kept;
     bool held;                      /* there is a report */
     uint8_t serial;                 /* which report: never 0 */
     uint8_t rows[NESP_WEATHER_ROWS][NESP_WEATHER_COLUMNS];
@@ -548,8 +553,8 @@ typedef struct {
     uint32_t asked_at;
     uint32_t fetch_at;              /* when the last fetch of the weather began */
     bool fetching;
-    bool fetched;                   /* a fetch has begun for this zip code */
-    bool lookup;                    /* the fetch is of where the zip code is */
+    bool fetched;                   /* a fetch has begun for this place */
+    bool lookup;                    /* the fetch is of where the place is */
     /* The fetch's task alone, until it says the fetch has landed: the
      * reply, whole, and why there is none. */
     uint32_t parsing;               /* the fetch the rest is in the middle of */
