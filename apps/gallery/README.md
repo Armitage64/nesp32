@@ -128,7 +128,16 @@ on one. It is not on nesp32's cartridge, whose MMC1 has CHR ROM.
   blocks come from four palettes being too few for the picture, and from
   colours the NES has nothing near: a sky from blue to lavender to pink is
   27 off with the best palette there is for it alone. Starting the palette
-  search again in part (restarts) gained 0.4%, and was not kept. Left to
-  try: more saturation and contrast and some sharpening before converting,
-  which the best conversions by hand use, judged by eye.
+  search again in part (restarts) gained 0.4%, and was not kept. Making
+  the image livelier before converting it, as the best conversions by hand
+  do, was tried on the 12 test photographs, in the simulation, by eye.
+  Stretching contrast to the darkest and lightest 0.5% blew out light
+  skies and faces. Colour 1.2 times stronger brought back a lamp's orange
+  and a parrot's yellow but made a portrait's beige ochre; 1.1 times was
+  between the two. Sharpening (an unsharp mask of luma, half strength) made
+  windows and eyes a little crisper. Each changed a picture by about as much
+  as the palette search's own swings, so none was kept. Not tried:
+  dithering for colours mixed in linear light, which is how the eye mixes
+  them up and down (a composite signal mixes them across before the
+  television's gamma).
 - On nesp32's cartridge, once it has CHR RAM.
