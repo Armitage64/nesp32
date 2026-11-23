@@ -23,12 +23,16 @@ with LAME 3.100 (the `lameenc` Python package, quality 2) from samples
 worked out in Python; nothing in the tests needs an encoder. LAME scales
 what it is given by 0.95, so the tone a decoder gets back is at 0.475.
 
-`zip_90210.json` is [Zippopotam](https://zippopotam.us)'s answer for the
-zip code 90210, and `openmeteo_90210.json` is
-[Open-Meteo](https://open-meteo.com)'s for the weather at the place it
-names, as WEATHER asks for it, both on 2026-10-13 and as they were sent.
-Open-Meteo's data is under
-[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+`openmeteo_90210.json` is [Open-Meteo](https://open-meteo.com)'s answer
+for the weather at Beverly Hills, in degrees F, as WEATHER asks for it,
+on 2026-10-13, and `openmeteo_dublin.json` its answer for Dublin, Ireland,
+in degrees C, on 2026-11-23. The `geo_*.json` files are Open-Meteo's
+geocoding's answers, on 2026-11-23, as WEATHER asks (`count=1`): for
+`90210` in the United States, `PORTLAND, ME`, `DUBLIN, IRELAND`,
+`WASHINGTON` (2.4 KB, with its 255 zip codes) and `NOWHERE, XQ` (no
+results). All are as they were sent. Open-Meteo's data is under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), the geocoding's
+from [GeoNames](https://www.geonames.org).
 
 `nes-radar-server/` is the source of nes-radar's server as it was at
 0.4.4, the last release with one, on its `legacy/ftdi-0.4.x` branch

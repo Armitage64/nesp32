@@ -301,10 +301,11 @@ the same time, in other processes:
   the line as the console's DAC would have it; a ring that fills and one
   that runs dry; and every way the sound ends. NPR's ROM is run against
   this code in its own tests.
-- `test_weather.py`: a zip code to a place and the place's weather to a
-  report, from what Zippopotam and Open-Meteo sent for one; every weather
-  code's picture; a zip code that does not exist told from a site that is
-  down; and the fetches by the clock. Weather's ROM is run against this
+- `test_weather.py`: a place as typed, or a zip code, to where it is and
+  its weather to a report, from what Open-Meteo's geocoding and forecast
+  sent for a few; the report's name for a place, and its units; every
+  weather code's picture; a place that does not exist told from a site
+  that is down; the place kept; and the fetches by the clock. Weather's ROM is run against this
   code in its own tests.
 - `test_bsky.py`: an account's posts to cards, from what Bluesky sent for
   one; text as ASCII, wrapped and cut; ages and dates; posts offered as

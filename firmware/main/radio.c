@@ -48,11 +48,12 @@
 
 static const char *TAG = "radio";
 
-typedef enum { ORDER_SCAN, ORDER_JOIN, ORDER_FORGET, ORDER_AIRPORT, ORDER_ZIP,
+typedef enum { ORDER_SCAN, ORDER_JOIN, ORDER_FORGET, ORDER_AIRPORT, ORDER_PLACE,
                ORDER_SCREEN, ORDER_FAVORITES, ORDER_REGION } order_kind_t;
 #define SETTINGS "nesp32"           /* conn.c's too */
 #define SETTING_AIRPORT "airport"
-#define SETTING_ZIP "zip"
+#define SETTING_ZIP "zip"           /* WEATHER's zip code, from before PLACE: zip_v1_t */
+#define SETTING_PLACE "wxplace"     /* WEATHER's place, a nesp_weather_place_t */
 #define SETTING_FAVORITES "bsky"    /* BSKY's favorites, a nesp_bsky_favorites_t */
 #define SETTING_SCREEN "screen"     /* NESP_SCREEN_UPRIGHT or _FLIPPED */
 #define SETTING_REGION "region"     /* NESP_REGION_*: the console's clock last settled on */
@@ -73,20 +74,20 @@ typedef struct {
     int32_t longitude;
 } airport_t;
 
-/* WEATHER's last zip code, likewise: its digits, where it is, and its
- * place's name. */
+/* WEATHER's last zip code as firmware from before PLACE kept it: its
+ * digits, where it is, and its place's name. Read once, as a place. */
 typedef struct {
     char digits[NESP_WEATHER_ZIP_LEN];
     int32_t latitude;
     int32_t longitude;
-    char name[NESP_WEATHER_PLACE_MAX];
-} zip_t;
+    char name[22];
+} zip_v1_t;
 
 static portMUX_TYPE lock = portMUX_INITIALIZER_UNLOCKED;
 static airport_t airport;                   /* under lock */
 static bool have_airport;                   /* under lock */
-static zip_t zip;                           /* under lock */
-static bool have_zip;                       /* under lock */
+static nesp_weather_place_t place;          /* under lock */
+static bool have_place;                     /* under lock */
 static nesp_bsky_favorites_t favorites;     /* under lock */
 static bool have_favorites;                 /* under lock */
 /* Which way up the screen is: the build's, until the console chooses. */
@@ -473,33 +474,25 @@ static void hal_airport_keep(void *ctx, const char *code, int32_t latitude, int3
     xQueueSend(orders, &order, 0);  /* the flash is the worker's to write */
 }
 
-static bool hal_zip_last(void *ctx, char *digits, int32_t *latitude, int32_t *longitude,
-                         char *name)
+static bool hal_place_last(void *ctx, nesp_weather_place_t *out)
 {
     (void)ctx;
     portENTER_CRITICAL(&lock);
-    bool have = have_zip;
+    bool have = have_place;
     if (have) {
-        memcpy(digits, zip.digits, sizeof(zip.digits));
-        *latitude = zip.latitude;
-        *longitude = zip.longitude;
-        memcpy(name, zip.name, sizeof(zip.name));
+        *out = place;
     }
     portEXIT_CRITICAL(&lock);
     return have;
 }
 
-static void hal_zip_keep(void *ctx, const char *digits, int32_t latitude, int32_t longitude,
-                         const char *name)
+static void hal_place_keep(void *ctx, const nesp_weather_place_t *kept)
 {
     (void)ctx;
-    order_t order = {.kind = ORDER_ZIP};
+    order_t order = {.kind = ORDER_PLACE};
     portENTER_CRITICAL(&lock);
-    memcpy(zip.digits, digits, sizeof(zip.digits));
-    zip.latitude = latitude;
-    zip.longitude = longitude;
-    memcpy(zip.name, name, sizeof(zip.name));
-    have_zip = true;
+    place = *kept;
+    have_place = true;
     portEXIT_CRITICAL(&lock);
     xQueueSend(orders, &order, 0);  /* the flash is the worker's to write */
 }
@@ -573,14 +566,14 @@ static void do_order(order_t *order)
         }
         break;
     }
-    case ORDER_ZIP: {
-        zip_t kept;
+    case ORDER_PLACE: {
+        nesp_weather_place_t kept;
         nvs_handle_t settings;
         portENTER_CRITICAL(&lock);
-        kept = zip;
+        kept = place;
         portEXIT_CRITICAL(&lock);
         if (nvs_open(SETTINGS, NVS_READWRITE, &settings) == ESP_OK) {
-            nvs_set_blob(settings, SETTING_ZIP, &kept, sizeof(kept));
+            nvs_set_blob(settings, SETTING_PLACE, &kept, sizeof(kept));
             nvs_commit(settings);
             nvs_close(settings);
         }
@@ -701,9 +694,25 @@ void radio_settings(void)
         size_t size = sizeof(airport);
         have_airport = nvs_get_blob(settings, SETTING_AIRPORT, &airport, &size) == ESP_OK
                        && size == sizeof(airport);
+        size = sizeof(place);
+        have_place = nvs_get_blob(settings, SETTING_PLACE, &place, &size) == ESP_OK
+                     && size == sizeof(place);
+        zip_v1_t zip;
         size = sizeof(zip);
-        have_zip = nvs_get_blob(settings, SETTING_ZIP, &zip, &size) == ESP_OK
-                   && size == sizeof(zip);
+        if (!have_place && nvs_get_blob(settings, SETTING_ZIP, &zip, &size) == ESP_OK
+            && size == sizeof(zip)) {
+            /* A zip code from firmware before PLACE: the same place, as
+             * ZIP now chooses one. */
+            memset(&place, 0, sizeof(place));
+            memcpy(place.query, zip.digits, sizeof(zip.digits));
+            place.query_len = sizeof(zip.digits);
+            place.flags = NESP_WEATHER_PLACE_US | NESP_WEATHER_PLACE_IMPERIAL;
+            place.latitude = zip.latitude;
+            place.longitude = zip.longitude;
+            memset(place.name, ' ', sizeof(place.name));
+            memcpy(place.name, zip.name, sizeof(zip.name));
+            have_place = true;
+        }
         size = sizeof(favorites);
         have_favorites = nvs_get_blob(settings, SETTING_FAVORITES, &favorites, &size) == ESP_OK
                          && size == sizeof(favorites);
@@ -811,8 +820,8 @@ const nesp_hal_t *radio_hal(void)
     hal.peer_keep = conn_keep;
     hal.airport_last = hal_airport_last;
     hal.airport_keep = hal_airport_keep;
-    hal.zip_last = hal_zip_last;
-    hal.zip_keep = hal_zip_keep;
+    hal.place_last = hal_place_last;
+    hal.place_keep = hal_place_keep;
     hal.favorites_last = hal_favorites_last;
     hal.favorites_keep = hal_favorites_keep;
     hal.peer_rtt = conn_rtt;

@@ -7,12 +7,17 @@
 - Bubble Bobble online sessions no longer drop at the start or in round 2: each console's leftover RAM from before the session is cleared
 
 ### Cartridge
+- Weather: the weather for a place anywhere in the world, typed as a city and its state or country ("PORTLAND, ME", "DUBLIN, IRELAND"), in place of a US zip code; in °C and km/h outside the United States. Needs this release's firmware (#101)
 - The cartridge menu says, under its title, when the firmware or the cartridge needs an update: when the two are from different releases, or the web site has a newer one (#80)
 - Throughput test: 298296 baud to the console no longer fails a whole block at random; the test lost count of a block's first byte, not the line (#98)
 
 ### Firmware
+- Weather finds a place by its name, anywhere in the world, and a zip code kept by an earlier release is kept as a place (#101)
 - The Stick's screen says "Firmware update available" in red, with no console running a program, when the web site has newer firmware
 - Jukebox: sounds made for the two fastest rates (7 and 8 cycles a bit) start every time, where they often played noise or nothing (#98)
+
+### Protocol
+- WEATHER PLACE and LAST_PLACE: the weather at a place named as typed, and the last one found; ZIP and LAST still work. Needs this release's firmware (#101)
 
 ### Other
 - The web site's ROM patches are a page instead of a zip: each game's patch to download, the release of the game it needs (size, CRC32 and SHA-1), and how to apply it

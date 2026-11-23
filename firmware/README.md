@@ -237,7 +237,7 @@ isolating one thing:
 A StickS3 can have a Bluetooth keyboard, for the ROMs that take text:
 issue #9, [Setup](../apps/setup) to pair one,
 [NESpedia](../apps/wiki) to type a search on it and
-[Weather](../apps/weather) a zip code. Its chip has Bluetooth LE
+[Weather](../apps/weather) a place. Its chip has Bluetooth LE
 and no Classic, so only an LE keyboard pairs; a StickC Plus2's firmware
 has none, and its KBD says so.
 

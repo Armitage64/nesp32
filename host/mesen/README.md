@@ -152,7 +152,7 @@ controller's buttons anyway (PROTOCOL.md, KBD). `PAD_WHILE_TYPING = true`
 leaves controller 1 its keys as well.
 
 To try it, once paired: typing mode, and type on Setup's
-**TYPE HERE** line, in Weather's zip code, NESpedia's search, or
+**TYPE HERE** line, in Weather's place, NESpedia's search, or
 `samplecode/keyboard`.
 
 The script reads the keys once a frame, so a key must be down for a frame

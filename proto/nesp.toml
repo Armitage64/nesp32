@@ -170,9 +170,11 @@ URL = 0x04              # AT, then text: the address the next PLAY tunes in, fro
 [services.WEATHER]
 id = 0x14
 [services.WEATHER.ops]
-ZIP = 0x00              # an id, then five digits: choose it, or say how it stands
+ZIP = 0x00              # an id, then five digits: a US zip code, as PLACE takes a place
 ROW = 0x01              # a row of the report, by its number
-LAST = 0x02             # the digits of the last zip code found, if one is kept
+LAST = 0x02             # the digits of the last place found, if it was a zip code
+PLACE = 0x03            # an id, then a place as typed: choose it, or say how it stands
+LAST_PLACE = 0x04       # the last place found, as it was typed, if one is kept
 
 [services.BSKY]
 id = 0x15
@@ -276,13 +278,13 @@ READY = 3               # enough has: ask for the sound
 FAILED = 4              # the stream could not be had, or was lost; the reply says how
 PAUSED = 5              # the console left the sound: held, and fetched still, until PLAY
 
-[enums.SKY]             # WEATHER: how it stands with the zip code and its report
-IDLE = 0                # no zip code chosen, or not the one the request is about
+[enums.SKY]             # WEATHER: how it stands with the place and its report
+IDLE = 0                # no place chosen, or not the one the request is about
 NO_WIFI = 1
-LOOKING = 2             # where the zip code is, is being asked
+LOOKING = 2             # where the place is, is being asked
 FETCHING = 3            # that is known, and nothing has come of its weather yet
 READY = 4               # a report is held
-NOT_FOUND = 5           # no place has that zip code
+NOT_FOUND = 5           # no place goes by that name
 FAILED = 6              # the asking or the fetching failed; the reply says how
 
 [enums.FEED]            # BSKY: how it stands with a handle and its posts
@@ -482,7 +484,8 @@ RADAR_UNASKED_MS = 30000    # no fetch for a console that has not asked for this
 WEATHER_ROWS = 13       # rows of a report
 WEATHER_COLUMNS = 28    # characters to a row
 WEATHER_ZIP_LEN = 5     # digits in a zip code
-WEATHER_PLACE_MAX = 22  # characters of a place's name: a row, less a zip code and a space
+WEATHER_QUERY_MAX = 24  # characters of a place as typed: "PORTLAND, ME", "DUBLIN, IRELAND"
+WEATHER_PLACE_MAX = 28  # characters of a place's name as the report has it: a row
 WEATHER_DAYS = 5        # days in a report, today the first
 # A row is tile numbers: ASCII, $20 to $5F, and besides those
 WEATHER_DEGREE = 0x1F   # the sign for degrees
