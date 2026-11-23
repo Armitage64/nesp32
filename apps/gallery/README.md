@@ -149,8 +149,17 @@ on one. It is not on nesp32's cartridge, whose MMC1 has CHR ROM.
   second set for the bottom half, 7.57. Two sets visibly calm a
   strawberry's blocks and its background; a sunset hardly changes (the
   NES has no colours nearer it), and a sky from blue to pink keeps blocks
-  even with a set for each row. The ROM side is not written: all 16
-  colours at the split takes about 3 lines with rendering off (a black
-  stripe), or one colour in each line's horizontal blank, timed to the
-  cycle and untried on hardware.
+  even with a set for each row. A set for each row needs no more than one
+  colour changed in each line's horizontal blank: with the 12 colours of
+  each boundary put on the 16 lines around it (8 above, 8 below), each on
+  the line where it costs least, the score was 7.45, as good as whole sets
+  at the boundaries, at about 56 changes a picture (eight lines around a
+  boundary are too few for them). A strawberry's background then shades
+  smoothly; where a colour changes inside a row of squares a faint seam
+  can show. Not written yet: the tile step for palettes that change by
+  line, and the ROM's display, timed to the cycle on every line (NTSC
+  lines are 113 2/3 cycles, PAL ones about 106.6) and untried on hardware.
+  Rendering off only inside the horizontal blank shows nothing; tiles
+  fetched wrong at a line's left edge, from rendering coming back late,
+  could be hidden with a column of sprites or PPUMASK's left column.
 - On nesp32's cartridge, once it has CHR RAM.
