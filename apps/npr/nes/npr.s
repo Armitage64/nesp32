@@ -192,6 +192,16 @@ NESP_KEY_PAD = 1                ; the Bluetooth keyboard's keys as the controlle
 .include "pcm_rates.inc"
 .include "news.inc"
 
+; The news mode's sound: the headlines' receiver folds the port's whole
+; value in, and the direct receiver's 14-cycle sample leaves none of the
+; drawing's cycles, so on a Famicom the news mode's sound is declined and
+; its radio plays without headlines.
+.if NESP_PORT_BIT = 0
+NEWS_SOUND_RATE = NESP_TUNER_NEWS_RATE
+.else
+NEWS_SOUND_RATE = NESP_JUKE_SOUND_REFUSED
+.endif
+
 .assert NESP_TX_MAX >= NESP_HELLO_FIXED + 3, error, "the hello names three services"
 .assert NESP_KBD_KEYS_MAX + 1 <= NESP_RX_MASK, error, "a reply of KEYS holds all it may"
 .assert STATUS_WIDTH = NESP_TUNER_TEXT_MAX, error, "why_buf holds what the nesp32 may say"
@@ -199,7 +209,7 @@ NESP_KEY_PAD = 1                ; the Bluetooth keyboard's keys as the controlle
 .assert NESP_TUNER_NEWS_RATE = NEWS_RATE, error, "news_stream is at the headlines' rate"
 .assert NEWS_ROWS = NESP_TUNER_NEWS_ROWS && NEWS_COLUMNS = NESP_TUNER_NEWS_COLUMNS, error, "a page is the nesp32's"
 .assert NESP_TUNER_MODE_HIGH = 0 && NESP_TUNER_MODE_NEWS = 1, error, "mode is quality_text's line"
-pcm_stream = .ident(.sprintf("pcm_stream_%d", NESP_TUNER_RATE))    ; the station alone
+pcm_stream = .ident(.sprintf("pcm_stream_%d", PCM_HQ))    ; the station alone
 
 ; wait_unit is 2306 cycles. A run of RAW's is listened for from
 ; NESP_RAW_SETTLE_MS after the reply that agreed to it, while the nesp32
@@ -964,16 +974,19 @@ main_wait:
 
 ; The station is ready, and the screen says it is on the air. Ask for the
 ; sound, at the one rate there is; or say that this console cannot play it,
-; if its port does not read as the routines count on (the line is at rest
-; here: the nesp32 only sends when asked).
+; if its port's Stick's bit is not at rest (the line is at rest here: the
+; nesp32 only sends when asked). The port is read through the Stick's bit
+; alone — on a Famicom, for the hardwired controller II's bit 0 — and its
+; best rate is PCM_HQ, where the nesp32's own fastest is beyond the direct
+; receiver's 12-cycle sample.
 .proc ask_sound
-    ldx #NESP_TUNER_RATE
+    ldx #PCM_HQ
     lda mode
     beq @high
-    ldx #NESP_TUNER_NEWS_RATE
+    ldx #NEWS_SOUND_RATE
 @high:
-    lda JOY2
-    cmp #PORT_IDLE
+    lda #<(1 << NESP_PORT_BIT)
+    bit JOY2
     beq @rate
     ldx #NESP_JUKE_SOUND_REFUSED
 @rate:

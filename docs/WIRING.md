@@ -125,6 +125,37 @@ cables often use others. With the cable unplugged, set the meter to
 continuity, hold one probe on a pin of the plug and touch the other to each
 bare wire until it beeps. Mark each wire as you find it.
 
+## The Famicom's expansion port
+
+An old Famicom's controllers are hardwired, so a nesp32 plugs into the side
+expansion port (DA-15) instead of a controller plug. Joypad 2's lines are
+there, but its /D0 is driven by the hardwired controller II, so the Stick's
+data wire goes to /D1, and the ROM reads bit 1 of `$4017`: the setup ROM
+built for a Famicom (`make famicom-rom`) and the cartridge built for one
+(`make famicom-cart`) have their links generated with `--joy2-bit=1`. The
+hat's circuits are the same ones as for a controller plug; only the four
+wires' pins move.
+
+| Pin | Signal | Direction | Hat pad |
+|---|---|---|---|
+| 1 | GND | – | GND(1) |
+| 7 | joypad 2 /D1, the Stick's data | Stick → console | D0(4) |
+| 12 | OUT0, the strobe | console → Stick | OUT(3) |
+| 15 | +5 V | console → Stick | 5V(5) |
+
+The [pinout](https://www.nesdev.org/wiki/Expansion_port) is the NESdev
+expansion port page's, numbered as the console's male DA-15 shows it; a
+plug and its socket mirror each other, so find the wires with a meter, as
+for the controller plug above. GND is pin 1, by continuity with the
+console's shielding; +5 V is pin 15, by voltage with the console on; the
+other two, 7 and 12, are marked from the pinout before the Stick is
+plugged in.
+
+The AV Famicom, whose controllers detach, has joypad 2 /D0 free, and there
+the ordinary ROM works with the Stick wired as for a controller plug, the
+data wire on pin 8 (/D0) instead of 7. The Famicom, the Twin Famicom and
+the Famicom Titler have not been tried on hardware.
+
 ## M5STICK DIY HAT
 NPN transistors / through-hole / inverting
 

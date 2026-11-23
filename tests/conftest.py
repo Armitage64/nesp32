@@ -53,7 +53,7 @@ def build():
     """The build directory, with the setup ROM in it."""
     if not (shutil.which("ca65") and shutil.which("ld65")):
         pytest.skip("cc65 not installed")
-    make("verify", "timeout-rom")
+    make("verify", "timeout-rom", "famicom-rom", "famicom-timeout-rom")
     return BUILD
 
 
@@ -109,6 +109,30 @@ def timeout_console(build):
     def make(**kwargs):
         return Console(os.path.join(build, "setup_timeout.nes"),
                        os.path.join(build, "setup_timeout.labels"), **kwargs)
+    return make
+
+
+@pytest.fixture
+def famicom_console(build):
+    """Make a Console on the setup ROM built for a Famicom: the Stick's
+    data arrives on bit 1 of $4017, its expansion port's joypad 2 /D1."""
+    from console import Console
+
+    def make(**kwargs):
+        return Console(os.path.join(build, "setup_famicom.nes"),
+                       os.path.join(build, "setup_famicom.labels"), joy2_bit=1, **kwargs)
+    return make
+
+
+@pytest.fixture
+def famicom_timeout_console(build):
+    """A Console on the Famicom's setup ROM with the counting receiver."""
+    from console import Console
+
+    def make(**kwargs):
+        return Console(os.path.join(build, "setup_famicom_timeout.nes"),
+                       os.path.join(build, "setup_famicom_timeout.labels"),
+                       joy2_bit=1, **kwargs)
     return make
 
 

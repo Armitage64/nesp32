@@ -26,7 +26,7 @@ ROM_SIZE := 24592   # 16-byte header + 16 KB PRG + 8 KB CHR
 SOURCES := $(wildcard nes/*.s nes/*.inc) $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/badge.inc
 INCLUDES := -I $(BUILD) -I $(NESP_BUILD) -I $(NESP32)/nes/lib -I nes
 
-.PHONY: all timeout-rom verify test preview clean FORCE
+.PHONY: all timeout-rom famicom-rom famicom-timeout-rom verify test preview clean FORCE
 
 all: $(ROM)
 
@@ -77,6 +77,43 @@ $(TIMEOUT_ROM): $(BUILD)/setup_timeout.o nes/nrom128.cfg
 	ld65 -C nes/nrom128.cfg -o $@ -Ln $(BUILD)/setup_timeout.labels $<
 
 timeout-rom: $(TIMEOUT_ROM)
+
+# The same ROM for a Famicom. Its expansion port (DA-15) carries joypad 2's
+# lines, and there joypad 2 /D0 is driven by the hardwired controller II, so
+# the Stick's wire goes to /D1 instead and the link reads bit 1 of $4017
+# (--joy2-bit=1, gen_link.py). The wiring: docs/WIRING.md, the Famicom.
+FAMICOM_ROM := $(BUILD)/setup_famicom.nes
+
+$(BUILD)/famicom/link.inc: $(NESP_LIB) $(NESP)
+	mkdir -p $(BUILD)/famicom
+	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $@ --joy2-bit=1
+
+$(BUILD)/setup_famicom.o: $(SOURCES) $(SCREEN) $(BUILD)/famicom/link.inc
+	ca65 -g -I $(BUILD)/famicom $(INCLUDES) --bin-include-dir $(BUILD) \
+		-o $@ nes/setup.s
+
+$(FAMICOM_ROM): $(BUILD)/setup_famicom.o nes/nrom128.cfg
+	ld65 -C nes/nrom128.cfg -o $@ -Ln $(BUILD)/setup_famicom.labels \
+		--dbgfile $(BUILD)/setup_famicom.dbg -m $(BUILD)/setup_famicom.map $<
+
+famicom-rom: $(FAMICOM_ROM)
+
+# The same again on the library's other receiver, as setup_timeout.nes is:
+# nothing ships it, the tests time its receiver in it.
+FAMICOM_TIMEOUT_ROM := $(BUILD)/setup_famicom_timeout.nes
+
+$(BUILD)/famicom_timeout/link.inc: $(NESP_LIB) $(NESP)
+	mkdir -p $(BUILD)/famicom_timeout
+	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $@ --timeout --joy2-bit=1
+
+$(BUILD)/setup_famicom_timeout.o: $(SOURCES) $(SCREEN) $(BUILD)/famicom_timeout/link.inc
+	ca65 -g -D TIMEOUT_BUILD -I $(BUILD)/famicom_timeout $(INCLUDES) \
+		--bin-include-dir $(BUILD) -o $@ nes/setup.s
+
+$(FAMICOM_TIMEOUT_ROM): $(BUILD)/setup_famicom_timeout.o nes/nrom128.cfg
+	ld65 -C nes/nrom128.cfg -o $@ -Ln $(BUILD)/setup_famicom_timeout.labels $<
+
+famicom-timeout-rom: $(FAMICOM_TIMEOUT_ROM)
 
 verify: $(ROM)
 	test "$$(wc -c < $(ROM) | tr -d ' ')" = "$(strip $(ROM_SIZE))"

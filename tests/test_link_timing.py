@@ -12,7 +12,7 @@ import random
 
 import nesp_proto as p
 import pytest
-from console import HUNT, HUNT_TIMEOUT, PRG_START
+from console import HUNT, HUNT_FAMICOM, HUNT_TIMEOUT, PRG_START
 from nesp import reply_frame
 from wire import Tap, Wire
 
@@ -37,16 +37,26 @@ class Receiver:
         self.early = early          # bits before mid-bit that its samples are aimed
 
 
-@pytest.fixture(params=["nmi", "timeout"])
-def receiver(request, console, timeout_console):
+@pytest.fixture(params=["nmi", "timeout", "famicom", "famicom timeout"])
+def receiver(request, console, timeout_console, famicom_console, famicom_timeout_console):
     if request.param == "nmi":
         # The hunt sees a start bit 0 to 9 cycles after its edge, so with a
         # true clock a sample is at most 4.5 cycles, 0.21 of a bit, out.
         return Receiver(console, HUNT, 0.25, clock=3)
+    if request.param == "famicom":
+        # The Famicom's receiver reads bit 1 of $4017, one more lsr in the
+        # hunt: a start bit 0 to 11 cycles after its edge, a sample at most
+        # 5.5 cycles, 0.26 of a bit, out. That leaves less room for a Stick
+        # whose clock is out: 2%, where the other takes 3.
+        return Receiver(famicom_console, HUNT_FAMICOM, 0.30, clock=2)
     # Its first byte's start bit is seen 0 to 11 cycles after its edge at
     # the worst, and each later byte's 0 to 6, where it is due: a first
     # byte's sample is at most 6 cycles out, 0.29 of a bit, and a later
     # byte's 3.5. An ESP32's UART is within a tenth of a percent.
+    if request.param == "famicom timeout":
+        # The same receiver in the Famicom's ROM, where its samples read
+        # bit 1: the looks and the counts are of the port as a whole.
+        return Receiver(famicom_timeout_console, HUNT_TIMEOUT, 0.30, clock=2, tries=1)
     return Receiver(timeout_console, HUNT_TIMEOUT, 0.30, clock=2, tries=1)
 
 
@@ -222,10 +232,11 @@ def test_a_uart_receives_every_byte_it_sends(console, error):
         assert [value for value, _ in received] == [byte], (byte, error)
 
 
-def test_the_routines_each_sit_on_one_page(console, timeout_console):
+def test_the_routines_each_sit_on_one_page(console, timeout_console, famicom_console,
+                                           famicom_timeout_console):
     # A branch that crossed a page would take a cycle more. The assembler
     # checks each routine's ends; this checks they are where it was told.
-    for make in (console, timeout_console):
+    for make in (console, timeout_console, famicom_console, famicom_timeout_console):
         c = make()
         assert c.labels["nesp_rx_frame"] & 0xFF == 0
         assert c.labels["nesp_tx_byte"] & 0xFF == 0

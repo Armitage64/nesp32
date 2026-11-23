@@ -42,7 +42,7 @@ HOST_HEADERS := $(CORE)/include/nesp_core.h $(wildcard $(SERVICES)/include/*.h) 
 
 ROM := $(BUILD)/setup.nes
 
-.PHONY: all proto host rom timeout-rom verify cart verify-cart web web-serve roms test test-apps test-all clean FORCE
+.PHONY: all proto host rom timeout-rom famicom-rom famicom-timeout-rom verify cart verify-cart web web-serve roms test test-apps test-all clean FORCE
 
 all: proto host rom
 
@@ -95,6 +95,22 @@ $(TIMEOUT_ROM): FORCE $(PROTO)
 	$(SETUP_MAKE) $(abspath $@)
 
 timeout-rom: $(TIMEOUT_ROM)
+
+# The setup ROM for a Famicom: the Stick's wire is on the expansion port's
+# joypad 2 /D1, so the link reads bit 1 of $4017. apps/setup's Makefile
+# says why, and docs/WIRING.md the wiring.
+FAMICOM_ROM := $(BUILD)/setup_famicom.nes
+FAMICOM_TIMEOUT_ROM := $(BUILD)/setup_famicom_timeout.nes
+
+$(FAMICOM_ROM): FORCE $(PROTO)
+	$(SETUP_MAKE) $(abspath $@)
+
+$(FAMICOM_TIMEOUT_ROM): FORCE $(PROTO)
+	$(SETUP_MAKE) $(abspath $@)
+
+famicom-rom: $(FAMICOM_ROM)
+
+famicom-timeout-rom: $(FAMICOM_TIMEOUT_ROM)
 
 verify: $(ROM)
 	$(SETUP_MAKE) verify
@@ -186,6 +202,90 @@ cart: $(CART)
 verify-cart: $(CART)
 	test "$$(wc -c < $(CART) | tr -d ' ')" = "$(strip $(CART_SIZE))"
 	printf 'NES\032\020\020\020\010' | cmp -n 8 - $(CART)
+
+# --- the cartridge for a Famicom ------------------------------------------------
+
+# The same eight programs and menu, each one's link generated with
+# --joy2-bit=1: on a Famicom the Stick plugs into the expansion port, whose
+# joypad 2 /D0 the hardwired controller II drives, so every program reads
+# bit 1 of $4017 (docs/WIRING.md, the Famicom). They build into
+# cart_famicom/, one directory each, as the NES cartridge's do into cart/.
+CART_FAM_BUILD := $(BUILD)/cart_famicom
+FAMICOM_CART := $(BUILD)/nesp32_famicom.nes
+FAMICOM_PARTS := $(abspath $(CART_FAM_BUILD))
+FAMICOM_LINK_OPTIONS := --joy2-bit=1
+
+FAMICOM_JUKEBOX_ROM := $(FAMICOM_PARTS)/jukebox/jukebox_link.nes
+FAMICOM_WIKI_ROM := $(FAMICOM_PARTS)/wiki/nespedia_link.nes
+FAMICOM_THROUGHPUT_ROM := $(FAMICOM_PARTS)/throughput/linktest.nes
+FAMICOM_RADAR_ROM := $(FAMICOM_PARTS)/radar/nes_radar_cart.nes
+FAMICOM_NPR_ROM := $(FAMICOM_PARTS)/npr/npr.nes
+FAMICOM_WEATHER_ROM := $(FAMICOM_PARTS)/weather/weather.nes
+FAMICOM_BLUESKY_ROM := $(FAMICOM_PARTS)/bluesky/bluesky.nes
+FAMICOM_CART_ROMS := $(FAMICOM_JUKEBOX_ROM) $(FAMICOM_WIKI_ROM) \
+	$(FAMICOM_THROUGHPUT_ROM) $(FAMICOM_RADAR_ROM) $(FAMICOM_NPR_ROM) \
+	$(FAMICOM_WEATHER_ROM) $(FAMICOM_BLUESKY_ROM)
+FAMICOM_CART_ARGS := --jukebox $(FAMICOM_JUKEBOX_ROM) --wiki $(FAMICOM_WIKI_ROM) \
+	--throughput $(FAMICOM_THROUGHPUT_ROM) --radar $(FAMICOM_RADAR_ROM) \
+	--npr $(FAMICOM_NPR_ROM) --weather $(FAMICOM_WEATHER_ROM) \
+	--bluesky $(FAMICOM_BLUESKY_ROM) --setup $(FAMICOM_ROM)
+FAM_PART = $(MAKE) -s -C $(1) BUILD=$(@D) NESP32=$(CURDIR) \
+	NESP_BUILD=$(abspath $(BUILD)) LINK_OPTIONS=$(FAMICOM_LINK_OPTIONS) $@
+
+$(FAMICOM_JUKEBOX_ROM): FORCE $(PROTO) $(HOST_LIB)
+	$(call FAM_PART,$(JUKEBOX))
+
+$(FAMICOM_WIKI_ROM): FORCE $(PROTO) $(HOST_LIB)
+	$(call FAM_PART,$(WIKI))
+
+$(FAMICOM_THROUGHPUT_ROM): FORCE $(PROTO) $(HOST_LIB)
+	$(call FAM_PART,$(THROUGHPUT))
+
+$(FAMICOM_NPR_ROM): FORCE $(PROTO) $(HOST_LIB)
+	$(call FAM_PART,$(NPR))
+
+$(FAMICOM_WEATHER_ROM): FORCE $(PROTO) $(HOST_LIB)
+	$(call FAM_PART,$(WEATHER))
+
+$(FAMICOM_BLUESKY_ROM): FORCE $(PROTO) $(HOST_LIB)
+	$(call FAM_PART,$(BLUESKY))
+
+$(FAMICOM_RADAR_ROM): FORCE $(PROTO) $(HOST_LIB) nes/cart/gen_cart.py
+	$(call FAM_PART,$(RADAR)) CART_CHR=$$($(PYTHON) nes/cart/gen_cart.py page radar)
+
+FAMICOM_CART_TABLES := $(CART_FAM_BUILD)/chr.bin $(CART_FAM_BUILD)/screen.bin \
+	$(CART_FAM_BUILD)/menu.inc
+
+$(CART_FAM_BUILD)/tables.stamp: nes/cart/gen_cart.py $(SETUP)/tools/gen_screen.py \
+		nes/lib/logo.py nes/lib/badge.py $(FAMICOM_CART_ROMS) $(FAMICOM_ROM)
+	$(PYTHON) nes/cart/gen_cart.py tables $(CART_FAM_BUILD) $(FAMICOM_CART_ARGS)
+	touch $@
+
+$(FAMICOM_CART_TABLES): $(CART_FAM_BUILD)/tables.stamp ;
+
+$(CART_FAM_BUILD)/link.inc: nes/lib/gen_link.py $(PROTO) | $(CART_FAM_BUILD)/tables.stamp
+	$(PYTHON) nes/lib/gen_link.py $(BUILD) $@ $(FAMICOM_LINK_OPTIONS)
+
+$(CART_FAM_BUILD)/menu.o: nes/cart/menu.s nes/cart/update.inc $(FAMICOM_CART_TABLES) \
+		$(CART_FAM_BUILD)/link.inc nes/lib/nesp.inc nes/lib/badge.inc \
+		$(PROTO) $(VERSION_INC)
+	ca65 -g -I $(CART_FAM_BUILD) -I $(BUILD) -I nes/cart -I nes/lib \
+		--bin-include-dir $(CART_FAM_BUILD) -o $@ $<
+
+$(CART_FAM_BUILD)/menu.prg: $(CART_FAM_BUILD)/menu.o nes/cart/menu.cfg
+	ld65 -C nes/cart/menu.cfg -o $@ -Ln $(CART_FAM_BUILD)/menu.labels \
+		--dbgfile $(CART_FAM_BUILD)/menu.dbg -m $(CART_FAM_BUILD)/menu.map $<
+
+$(FAMICOM_CART): $(CART_FAM_BUILD)/menu.prg $(CART_FAM_BUILD)/chr.bin \
+		nes/cart/gen_cart.py $(FAMICOM_CART_ROMS) $(FAMICOM_ROM)
+	$(PYTHON) nes/cart/gen_cart.py rom $@ --menu $(CART_FAM_BUILD)/menu.prg \
+		--chr $(CART_FAM_BUILD)/chr.bin $(FAMICOM_CART_ARGS)
+
+famicom-cart: $(FAMICOM_CART)
+
+verify-famicom-cart: $(FAMICOM_CART)
+	test "$$(wc -c < $(FAMICOM_CART) | tr -d ' ')" = "$(strip $(CART_SIZE))"
+	printf 'NES\032\020\020\020\010' | cmp -n 8 - $(FAMICOM_CART)
 
 web: $(CART)
 	$(PYTHON) tools/gen_web.py $(BUILD)/web $(CART)

@@ -24,7 +24,7 @@ LINK_ROM := $(BUILD)/jukebox_link.nes
 ROM_SIZE := 40976   # 16-byte header + 32 KB PRG + 8 KB CHR
 LINK_ROM_SIZE := 24592   # 16-byte header + 16 KB PRG + 8 KB CHR
 
-.PHONY: all verify test clean FORCE
+.PHONY: all verify famicom-link-rom test clean FORCE
 
 all: $(ROM) $(LINK_ROM)
 
@@ -67,11 +67,43 @@ $(NESP): FORCE | $(BUILD)
 NESP_LIB := $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/gen_link.py
 
 $(BUILD)/link.inc: $(NESP_LIB) $(NESP)
-	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $@
+# LINK_OPTIONS: nesp32's Famicom cartridge passes --joy2-bit=1 (docs/WIRING.md,
+# the Famicom); empty for the ordinary build.
+	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $@ $(LINK_OPTIONS)
 
 # The routines that play sampled sound, one per rate.
 $(BUILD)/pcm_rates.inc: tools/gen_pcm.py tools/pcm.py | $(BUILD)
-	$(PYTHON) tools/gen_pcm.py $@
+# LINK_OPTIONS: nesp32's Famicom cartridge passes --joy2-bit=1; empty for
+# the ordinary build.
+	$(PYTHON) tools/gen_pcm.py $@ $(LINK_OPTIONS)
+
+# The same link ROM for a Famicom: the Stick's wire is on its expansion
+# port's joypad 2 /D1, so its link and its sound read bit 1 of $4017
+# (--joy2-bit=1), and its rates from PCM_LIMIT on have no routines, where
+# the fold's 6-cycle sample bought them on a NES. Nothing ships it: the
+# tests play sound with it. The wiring: docs/WIRING.md, the Famicom.
+FAMICOM_LINK_ROM := $(BUILD)/jukebox_famicom_link.nes
+FAMICOM_LINK_OPTIONS := --joy2-bit=1
+
+$(BUILD)/famicom:
+	mkdir -p $@
+
+$(BUILD)/famicom/link.inc: $(NESP_LIB) $(NESP) | $(BUILD)/famicom
+	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $@ $(FAMICOM_LINK_OPTIONS)
+
+$(BUILD)/famicom/pcm_rates.inc: tools/gen_pcm.py tools/pcm.py $(NESP) | $(BUILD)/famicom
+	$(PYTHON) tools/gen_pcm.py $@ $(FAMICOM_LINK_OPTIONS)
+
+$(BUILD)/jukebox_famicom_link.o: nes/jukebox.s nes/ui.inc nes/serial_link.inc $(UI) $(NESP_LIB) \
+		$(BUILD)/famicom/link.inc $(BUILD)/famicom/pcm_rates.inc $(BUILD)/pcm_rates.inc $(NESP)
+	ca65 -g -D LINK -I $(BUILD)/famicom -I $(BUILD) -I $(NESP_BUILD) -I nes -I $(NESP32)/nes/lib \
+		--bin-include-dir $(BUILD) -o $@ $<
+
+$(FAMICOM_LINK_ROM): $(BUILD)/jukebox_famicom_link.o nes/nrom128_link.cfg
+	ld65 -C nes/nrom128_link.cfg -o $@ -Ln $(BUILD)/jukebox_famicom_link.labels \
+		--dbgfile $(BUILD)/jukebox_famicom_link.dbg -m $(BUILD)/jukebox_famicom_link.map $<
+
+famicom-link-rom: $(FAMICOM_LINK_ROM)
 
 $(BUILD)/jukebox_link.o: nes/jukebox.s nes/ui.inc nes/serial_link.inc $(UI) $(NESP_LIB) \
 		$(BUILD)/link.inc $(BUILD)/pcm_rates.inc $(NESP)

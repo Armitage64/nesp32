@@ -36,6 +36,12 @@
  * whole, and a character of its own ends the run. A station with no
  * titles sends no page, and the console's screen keeps the station.
  *
+ * The rate a station is sent at is the console's to declare: its sound
+ * ask names one of JUKE's rates, and the tuner streams there. The NES's
+ * ask for the modes' own rates, and a Famicom's direct receiver, whose
+ * sample is 14 cycles wherever its wire is, asks for 14 in the
+ * high-quality mode, whose headlines-mode sound it declines.
+ *
  * Nothing keeps the station's clock and the console's together. The ring
  * is the slack: when the station runs ahead and the ring fills, its oldest
  * second is dropped; when the ring runs dry the console's DAC is held
@@ -94,6 +100,7 @@ struct nesp_tuner_work {
     bool levelled;                  /* level[] has been worked out */
     nesp_mp3_t mp3;
     int hz;                         /* the stream's rate, which the resampler is for; 0: none yet */
+    uint8_t period;                 /* tuner->period the resampler is for */
     nesp_resample_t resample;       /* to the wire's rate (resample.c) */
     uint8_t level[STEPS];           /* the DAC's level for each place */
     uint8_t out[OUT];               /* levels on their way to the ring */
@@ -140,6 +147,7 @@ static void make_kernel(struct nesp_tuner_work *work, int hz)
                        (uint32_t)((uint64_t)hz * NESP_RESAMPLE_ONE * NESP_TO_NES_BITS
                                   / BAUD(work->tuner)));
     work->hz = hz;
+    work->period = work->tuner->period;
 }
 
 /* The levels worked out so far into the ring, if this fetch is still the
@@ -195,7 +203,7 @@ static void frame(void *ctx, const int16_t *pcm, size_t count, int channels, int
     if (hz <= 0 || channels < 1 || channels > 2) {
         return;
     }
-    if (hz != work->hz) {
+    if (hz != work->hz || work->tuner->period != work->period) {
         make_kernel(work, hz);
     }
     if (channels == 2) {
@@ -377,8 +385,13 @@ static void forget(nesp_tuner_t *tuner)
     unlock(tuner);
 }
 
-static void stop(nesp_tuner_t *tuner)
+static void stop(nesp_tuner_t *tuner, const char *why)
 {
+    if (tuner->hal->watch != NULL) {
+        char line[64];
+        snprintf(line, sizeof(line), "npr: off (%s)", why);
+        tuner->hal->watch(tuner->hal->ctx, line);
+    }
     forget(tuner);
     tuner->state = NESP_TUNER_OFF;
     tuner->show = true;
@@ -620,6 +633,13 @@ static void run_done(void *ctx, bool sent)
         return;
     }
     bool pressed = tuner->press;
+    if (tuner->hal->watch != NULL) {
+        char line[96];
+        snprintf(line, sizeof(line),
+                 "npr: run done, sent %d pressed %d spoke %u lost %d hushed %d",
+                 sent, pressed, (unsigned)tuner->spoke, tuner->lost, tuner->hushed);
+        tuner->hal->watch(tuner->hal->ctx, line);
+    }
     tuner->sound = S_NONE;
     tuner->press = false;
     tuner->show = true;
@@ -627,7 +647,7 @@ static void run_done(void *ctx, bool sent)
         /* The console asked for something else, so it is not waiting for
          * samples; the station is as ready as it was. */
         if (pressed) {
-            stop(tuner);
+            stop(tuner, "run dropped, button was waiting");
         }
         return;
     }
@@ -640,7 +660,7 @@ static void run_done(void *ctx, bool sent)
     } else if (tuner->hushed) {
         tuner->state = NESP_TUNER_PAUSED;
     } else {
-        stop(tuner);
+        stop(tuner, pressed ? "button" : "run ended, not heard, not pressed");
     }
 }
 
@@ -679,6 +699,10 @@ static void settle(nesp_tuner_t *tuner)
 
 static void sound(nesp_tuner_t *tuner, const nesp_request_t *request, nesp_reply_t *reply)
 {
+    /* A sound's rates, in CPU cycles a bit, as JUKE's are: the console's
+     * ask names one, and the tuner streams there. */
+    static const uint8_t periods[NESP_JUKE_SOUND_RATES] = {21, 16, 14, 12, 10, 8, 7};
+
     if (request->len != 1) {
         reply->status = NESP_ST_BAD_ARG;
         return;
@@ -693,13 +717,18 @@ static void sound(nesp_tuner_t *tuner, const nesp_request_t *request, nesp_reply
             nesp_raw_drop(tuner->raw);
             tuner->sound = S_NONE;
             tuner->press = false;
-            stop(tuner);
-        } else if (request->data[0] != (tuner->mode == NESP_TUNER_MODE_NEWS ? NESP_TUNER_NEWS_RATE
-                                                                               : NESP_TUNER_RATE)) {
+            stop(tuner, "button, before the sound began");
+        } else if (request->data[0] >= NESP_JUKE_SOUND_RATES) {
+            /* A rate the console has no routine for: the news mode's
+             * sound on a Famicom, whose headlines cannot be drawn
+             * there. */
             nesp_raw_drop(tuner->raw);
             tuner->sound = S_NONE;
             fail(tuner, "THIS NES CANNOT PLAY IT");
         } else {
+            /* The tuner streams at the rate the console declared, which
+             * is the mode's own on a NES. */
+            tuner->period = periods[request->data[0]];
             tuner->run.ctx = tuner;
             tuner->run.read = run_read;
             tuner->run.done = run_done;
@@ -786,7 +815,7 @@ static void handle(void *ctx, const nesp_request_t *request, nesp_reply_t *reply
             tuner->sound = S_NONE;
             tuner->press = false;
         }
-        stop(tuner);
+        stop(tuner, "the ROM asked");
         break;
     case NESP_TUNER_STATE:
         break;
@@ -870,7 +899,7 @@ static bool event(void *ctx, uint8_t code, uint8_t arg)
         tuner->press = true;
     } else if (tuner->state == NESP_TUNER_TUNING || tuner->state == NESP_TUNER_READY
                || tuner->state == NESP_TUNER_PAUSED) {
-        stop(tuner);
+        stop(tuner, "the Stick's own button");
     } else {
         play(tuner, tuner->mode);
     }
@@ -882,6 +911,11 @@ static bool event(void *ctx, uint8_t code, uint8_t arg)
 static void activate(void *ctx)
 {
     nesp_tuner_t *tuner = ctx;
+    if (tuner->state != NESP_TUNER_OFF && tuner->hal->watch != NULL) {
+        char line[48];
+        snprintf(line, sizeof(line), "npr: re-hello from state %d", tuner->state);
+        tuner->hal->watch(tuner->hal->ctx, line);
+    }
     /* The decoder's memory is asked for once and kept: the fetch's task
      * may be in the middle of it whenever this one would give it back. */
     if (tuner->work == NULL) {

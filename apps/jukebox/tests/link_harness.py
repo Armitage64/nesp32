@@ -29,8 +29,8 @@ from wire import SLICE, Port, ms
 __all__ = ["LinkConsole", "ms"]
 
 # Instructions that read $4017 on their fourth cycle: lda, and the sound
-# routines' cpy, cpx, cmp and eor.
-READS_ABS = (0xAD, 0xCC, 0xEC, 0xCD, 0x4D)
+# routines' cpy, cpx, cmp and eor, and the Famicom's bit.
+READS_ABS = (0xAD, 0xCC, 0xEC, 0xCD, 0x4D, 0x2C)
 STORE_ABS = (0x8C, 0x8D, 0x8E)  # sty, sta, stx absolute
 # The link's wait for a start bit (nesp32's nes/lib/gen_link.py): lda JOY2 /
 # lsr a / bcc, 9 cycles a look.
@@ -46,8 +46,12 @@ class LinkConsole(Console):
     playlist over again)."""
 
     def __init__(self, rom_path, labels_path, tracks=(), attached=True, fast_forward=True,
-                 loops=None, repeat=None, **port_options):
+                 loops=None, repeat=None, port_bit=0, **port_options):
         super().__init__(rom_path, labels_path)
+        # A Famicom's port reads the Stick's line on bit 1 of $4017 (its
+        # expansion port's joypad 2 /D1), and the hardwired controller II
+        # rests the port's bit 0 at one.
+        self.port_bit = port_bit
         self.port = Port(self, **port_options)
         self.stick = None
         self._tracks = tuple(tracks)
@@ -62,7 +66,9 @@ class LinkConsole(Console):
         self.fast_forward = fast_forward
         self.read_log = None    # set to a list to record (cycle, level) reads
         self.write_log = None   # set to a list to record (cycle, level) writes
-        self.port_bits = pcm.PORT_IDLE  # what the port's unused bits read
+        # What the port's unused bits read: on a Famicom the hardwired
+        # controller II's bit 0 rests at one.
+        self.port_bits = pcm.PORT_IDLE | (1 if self.port_bit else 0)
         self.next_poll = 0
         self.later = []         # (cycle, what to do then), for at()
         # Every reply the nesp32 made, before the line had its way with it:
@@ -113,7 +119,7 @@ class LinkConsole(Console):
         level = self.port.wire.level(cycle)
         if self.read_log is not None:
             self.read_log.append((cycle, level))
-        return self.port_bits | (level ^ 1)  # the port's buffer inverts D0
+        return self.port_bits | ((level ^ 1) << self.port_bit)  # the port's buffer inverts D0
 
     def _write_joy1(self, address, value):
         mpu = self.mpu

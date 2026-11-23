@@ -11,10 +11,12 @@
 - Throughput test: 298296 baud to the console no longer fails a whole block at random; the test lost count of a block's first byte, not the line (#98)
 
 ### Firmware
+- The tuner streams a station at the rate the console's sound ask declares, where it always used the mode's own: a Famicom's radio asks for the rate its direct receiver can read, 11602 samples a second, where the modes' own fastest is beyond it. A station whose rate the console has no routine for is refused with "THIS NES CANNOT PLAY IT" as before
 - The Stick's screen says "Firmware update available" in red, with no console running a program, when the web site has newer firmware
 - Jukebox: sounds made for the two fastest rates (7 and 8 cycles a bit) start every time, where they often played noise or nothing (#98)
 
 ### Other
+- The setup ROM, the cartridge and its sound run on a Famicom: the Stick plugs into its expansion port, whose joypad 2 /D0 the hardwired controller II drives, so the link there reads bit 1 of $4017 (`make famicom-rom`, `make famicom-cart`); the wiring is in WIRING.md. The radio's headlines draw no cycles to spare at the direct receiver's 14-cycle sample, so its news mode's sound is declined there, and its high-quality mode plays at 11602 samples a second, where the fold's 6-cycle sample bought the nesp32's two fastest rates on a NES
 - The web site's ROM patches are a page instead of a zip: each game's patch to download, the release of the game it needs (size, CRC32 and SHA-1), and how to apply it
 - Mesen emulator support for NESP32 added for local testing and development (#74)
 - NESP32 logo displayed on Stick LCD screen at boot (#75)
