@@ -743,7 +743,7 @@ class Board:
         for name in KEPT:
             if self.memory.kept.get(name) is not None:
                 setattr(self.stick, name, self.memory.kept[name])
-        self.keeps = {name: getattr(self.stick, name + "_keeps") for name in KEPT}
+        self.kept_counts = {name: getattr(self.stick, name + "_keeps") for name in KEPT}
         self.bluetooth = BluetoothKeyboard(self.stick, self.memory, helper)
         self.sent = 0               # how many of the wire's bytes Mesen has been told of
         self.scans = 0
@@ -944,8 +944,8 @@ class Board:
         stick = self.stick
         for name in KEPT:
             keeps = getattr(stick, name + "_keeps")
-            if keeps != self.keeps[name]:
-                self.keeps[name] = keeps
+            if keeps != self.kept_counts[name]:
+                self.kept_counts[name] = keeps
                 value = getattr(stick, name)
                 if value is not None:
                     self.memory.keep(name, list(value) if isinstance(value, tuple) else value)

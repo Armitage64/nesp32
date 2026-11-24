@@ -316,8 +316,12 @@ def favorite_added(board):
     board.remember()
 
 
-def test_what_the_services_keep_is_kept_in_the_directory_and_back_on_the_next_board(tmp_path):
-    favorite_added(bridge.Board(bridge.Memory(str(tmp_path))))
+@pytest.mark.parametrize("peer", ["off", "idle"])
+def test_what_the_services_keep_is_kept_in_the_directory_and_back_on_the_next_board(tmp_path,
+                                                                                     peer):
+    board = bridge.Board(bridge.Memory(str(tmp_path)), peer=bridge.Peer(peer))
+    favorite_added(board)
+    board.close()
     assert (tmp_path / "kept.json").exists()
     again = bridge.Board(bridge.Memory(str(tmp_path)))
     assert b"bsky.app" in again.stick.favorites
