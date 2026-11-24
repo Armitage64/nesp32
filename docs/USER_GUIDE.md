@@ -59,7 +59,9 @@ This guide describes the StickS3 and points out where the Plus2 differs.
 > **Note:** the NESP32 works with both **NTSC** consoles (North American
 > and Japanese) and **PAL** consoles (European and Australian). It tells
 > which one it is plugged into by itself, and the Stick's screen shows
-> **PAL:** in place of **NES:** for a PAL console. On a PAL console:
+> **PAL:** in place of **NES:** for a PAL console. Some European
+> consoles can't be used; see [Which consoles work](#which-consoles-work).
+> On a PAL console:
 >
 > - Games made for NTSC consoles, which include the online games, run at
 >   5/6 of their speed and their music a little lower, as any NTSC game
@@ -88,7 +90,7 @@ This guide describes the StickS3 and points out where the Plus2 differs.
 
 | Item | Notes |
 |---|---|
-| An NES | NTSC or PAL. A MiSTer FPGA running the NES core with a SNAC adapter also works, in either region |
+| An NES | NTSC or PAL, but **some European consoles can't be used**: see [Which consoles work](#which-consoles-work) below. A MiSTer FPGA running the NES core with a SNAC adapter also works, in either region |
 | An M5Stack StickS3 | [Buy one here](https://amzn.to/3TVUV0y). The StickC Plus2 also works, without Bluetooth or the USB drive |
 | The NESP32 hat, with its cable | Build it with the [Build Guide](BUILD_GUIDE.md), or get one already built and tested |
 | A way to run a ROM file on the NES | A flash cartridge such as an Everdrive, or a MiSTer |
@@ -102,6 +104,36 @@ This guide describes the StickS3 and points out where the Plus2 differs.
 > own battery, or from a USB charger. Charge it before you start. If the
 > Stick's screen is dark, the NESP32 won't work, however the cable is
 > connected.
+
+### Which consoles work
+
+| Console | Works? |
+|---|---|
+| NES front-loader (NES-001), North America | **Yes.** Tested |
+| MiSTer FPGA, NES core, with a SNAC adapter | **Yes.** Tested, on both its NTSC and PAL settings |
+| NES top-loader (NES-101) | Should work. Not tried yet |
+| PAL NES from Sweden, Norway, Denmark or Finland | Should work: its controller ports are the same as the North American NES's. Not tried yet |
+| PAL NES from Germany, France, the Netherlands or Spain | **No**, not without a change inside the console (see below) |
+| PAL NES from the UK, Italy, Australia or New Zealand | Not known yet. Use the test below |
+| AV Famicom (the later Famicom with NES-style controller ports) | Should work. Not tried yet |
+| The original Famicom | **No.** Its controllers are built in, so there's no port 2 to plug into |
+
+**Why some European consoles don't work.** Many PAL consoles sold in
+Germany, France, the Netherlands and Spain have extra parts called diodes
+inside their controller ports. The diodes stop the console's signal to the
+controller from reaching the NESP32 unless the plugged-in device helps it
+along, and the NESP32 hat doesn't. These consoles came with PAL
+controllers marked **NES-004E**, which are built to cope with the diodes.
+The same diodes are why a North American controller doesn't work on them.
+
+**The quick test.** Plug an ordinary North American NES controller (model
+**NES-004**) into the console. If it works, the console doesn't have the
+diodes. If it doesn't, the NESP32 won't work on that console either.
+
+A console with the diodes can be changed inside to go around them, after
+which both kinds of controller work on it, and the NESP32 should too
+(not tried yet). That needs
+soldering, so leave it to someone who's done that kind of repair before.
 
 ---
 
