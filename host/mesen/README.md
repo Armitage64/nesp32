@@ -33,6 +33,7 @@ the same as the tests model it, whatever speed Mesen runs at.
 | Setup, NES Radar, NESradio (sound and titles), Weather | working |
 | HTTP (the HTTPS sample's 200 and 404) | working |
 | The Bluetooth keyboard (KBD): pairing in Setup, forgetting, typing in Setup, Weather and the keyboard sample, Ctrl with a key, keys held down | working in a headless MesenCE on Linux; tested against KBD in `tests/test_mesen.py`; not yet tried on Windows |
+| What a nesp32 keeps over power-off, across restarts of Mesen (`bridge-data`) | the paired keyboard and NES Radar's airport tried; Weather's place and Bluesky's favorites tested in `tests/test_mesen.py` |
 | Family BASIC's SAVE and LOAD (TAPE) as files | tested against TAPE in `tests/test_mesen.py`; not yet tried with the game |
 | PEER (the games for two): hosting and joining by address and by a room's code, the idle opponent | Tetris and River City Ransom played between Mesen and a nesp32 on a real NES; Dr. Mario played in two headless MesenCEs on macOS, joined by address, some 1330 ticks in step (five digest checks), and against `--peer idle`; tested by address and in a room in `tests/test_mesen.py`; not yet tried in a room between two Mesens, or with Contra, TMNT II, Bubble Bobble or Jackal |
 | Save states, rewind | not supported (Known limits) |
@@ -55,18 +56,25 @@ stops 5 seconds after the script or Mesen does (`--exit-when-idle`). Its
 log is `bridge.log` in Mesen's folder for the script's data (on macOS
 `~/Library/Application Support/Mesen2/LuaScriptData/nesp32/`), and the
 script's message at the top of the screen names it while the bridge does
-not answer. Settings at the top of `nesp32.lua`: `BRIDGE_START = false`
+not answer. What the nesp32 keeps over power-off (below) a bridge the
+script starts keeps in `bridge-data` in the same folder, so a paired
+keyboard is still paired the next time Mesen starts.
+Settings at the top of `nesp32.lua`: `BRIDGE_START = false`
 to start it by hand, `BRIDGE_DIR` for a script copied away from the bridge (Mesen's Script
 Window gives a script only its file's name, so the script finds its
 folder in the window's recent scripts, in Mesen's `settings.json`),
-`BRIDGE_PYTHON`, and `BRIDGE_ARGS` for the options below (such as
-`--data`). A bridge already running, started by hand, is used as it is
-and keeps running.
+`BRIDGE_PYTHON`, `BRIDGE_DATA` for another folder for what is kept (or
+`false` for none: then it is forgotten when the bridge stops), and
+`BRIDGE_ARGS` for the options below. A bridge already running, started by
+hand, is used as it is and keeps running, with what it was started with.
 
 On Windows the bridge is in WSL, so the script starts it only with
 `BRIDGE_COMMAND` set, such as
 `"wsl.exe python3 ~/nesp32/host/mesen/nesp32_bridge.py"`; this has not
-been tried yet. Otherwise start it by hand, as anywhere:
+been tried yet. There the script names no folder for what is kept
+(Mesen's is a Windows path, which WSL's Python cannot use): set
+`BRIDGE_DATA` to one in WSL, such as `"~/nesp32-mesen"`. Otherwise start
+it by hand, as anywhere:
 
 ```sh
 python3 host/mesen/nesp32_bridge.py
@@ -84,8 +92,10 @@ does, and follows a redirect only to one of those: a ROM cannot have it
 open a file on this computer.
 
 `--data DIR` keeps what a nesp32 keeps over power-off in that directory:
-which keyboard is paired, and a ROM's files (Family BASIC's SAVE). Without
-it they last as long as the bridge runs.
+which keyboard is paired, a ROM's files (Family BASIC's SAVE), and what
+the programs keep, as a nesp32 does: NES Radar's airport, Weather's place
+and Bluesky's favorites (`kept.json`). Without it they last as long as the
+bridge runs, over a reset of the console but not a restart of the bridge.
 
 The log says what the console asked of the radio, every fetch (with any
 key, token or password in its address left out), and each pairing.
@@ -174,8 +184,9 @@ one paired with the computer over Bluetooth.
 real keyboard does with a new nesp32: until Setup has paired it, typing
 mode says `No keyboard paired: Setup > Bluetooth` and nothing typed
 reaches the nesp32. To pair, out of typing mode: Setup's **BLUETOOTH**,
-then **PAIR DEVICE**, and A on `Mesen PC keyboard`. The pairing lasts as
-long as the bridge runs, or over restarts with `--data DIR`.
+then **PAIR DEVICE**, and A on `Mesen PC keyboard`. The pairing is kept
+over restarts of Mesen and the bridge (`--data`, above), unless
+`BRIDGE_DATA = false` or the bridge was started by hand with no `--data`.
 
 **Scroll Lock** or **End** turns typing mode on and off (`TYPING_KEYS`).
 On a Mac, which has neither, **Fn and Right Arrow** is End. Mesen shows
@@ -261,7 +272,8 @@ keyboard at a time.
 
 `tests/test_mesen.py`, in `make test`: the keyboard's reports to
 characters, held to `keyboard.c`; real Bluetooth with a fake helper; pairing, forgetting and typing through
-the firmware's own KBD; a ROM's files kept and loaded again; fetches,
+the firmware's own KBD; a ROM's files kept and loaded again; NES Radar's,
+Weather's and Bluesky's kept values back on the next board; fetches,
 with the test as the site; the bridge stopping once no Mesen is
 connected (`--exit-when-idle`); and PEER between two boards, by address
 and in a room at `host/rendezvous.py`'s stand-in, the idle opponent, and a

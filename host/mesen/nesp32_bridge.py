@@ -41,6 +41,7 @@ Protocol, one line each way, ASCII:
 """
 
 import argparse
+import json
 import os
 import queue
 import re
@@ -259,10 +260,33 @@ class Keyboard:
             self.next_repeat += REPEAT_EVERY_MS
 
 
+# What else the firmware keeps over power-off, by the Stick's name for it:
+# NES Radar's airport, Weather's place and Bluesky's favorites.
+KEPT = ("airport", "place", "favorites")
+
+
+def to_json(value):
+    """A kept value (tuples and lists of bytes and numbers) as JSON can have it."""
+    if isinstance(value, bytes):
+        return {"hex": value.hex()}
+    if isinstance(value, (tuple, list)):
+        return [to_json(item) for item in value]
+    return value
+
+
+def from_json(value):
+    if isinstance(value, dict):
+        return bytes.fromhex(value["hex"])
+    if isinstance(value, list):
+        return [from_json(item) for item in value]
+    return value
+
+
 class Memory:
     """What a nesp32 keeps over power-off, for every board this bridge
-    makes: which keyboard is paired, and a ROM's files. With a directory,
-    they are kept there; without, for as long as the bridge runs."""
+    makes: which keyboard is paired, a ROM's files, and the services' own
+    (KEPT). With a directory, they are kept there; without, for as long as
+    the bridge runs."""
 
     def __init__(self, directory=None):
         self.directory = directory
@@ -272,6 +296,7 @@ class Memory:
         self.files = {}                 # name: bytes, in the order first written
         self.peer_last = None           # the address PEER last joined (with a directory, kept
                                         # there by peer_net, as peer-last)
+        self.kept = {}                  # KEPT's, by name
         if directory is not None:
             os.makedirs(os.path.join(directory, "files"), exist_ok=True)
             self.paired = os.path.exists(self.paired_path())
@@ -287,6 +312,27 @@ class Memory:
                 if safe_name(name):
                     with open(os.path.join(folder, name), "rb") as f:
                         self.files[name] = f.read()
+            try:
+                with open(self.kept_path()) as f:
+                    kept = json.load(f)
+                self.kept = {name: from_json(kept[name]) for name in KEPT if name in kept}
+            except (OSError, ValueError, KeyError, TypeError) as e:
+                if os.path.exists(self.kept_path()):
+                    log("%s not read (%s): kept as if empty" % (self.kept_path(), e))
+
+    def kept_path(self):
+        return os.path.join(self.directory, "kept.json")
+
+    def keep(self, name, value):
+        """One of KEPT, as the firmware has just kept it."""
+        if self.kept.get(name) == value:
+            return
+        self.kept[name] = value
+        if self.directory is not None:
+            with open(self.kept_path() + ".new", "w") as f:
+                json.dump({key: to_json(item) for key, item in self.kept.items()}, f)
+            os.replace(self.kept_path() + ".new", self.kept_path())
+        log("kept: %s" % name)
 
     def paired_path(self):
         return os.path.join(self.directory, "keyboard-paired")
@@ -694,6 +740,10 @@ class Board:
         for name, data in self.memory.files.items():
             self.stick.put_file(name, data)
         self.file_writes = self.stick.file_writes
+        for name in KEPT:
+            if self.memory.kept.get(name) is not None:
+                setattr(self.stick, name, self.memory.kept[name])
+        self.kept_counts = {name: getattr(self.stick, name + "_keeps") for name in KEPT}
         self.bluetooth = BluetoothKeyboard(self.stick, self.memory, helper)
         self.sent = 0               # how many of the wire's bytes Mesen has been told of
         self.scans = 0
@@ -821,6 +871,7 @@ class Board:
             self.peer()
             self.hardware()
             self.files()
+            self.remember()
             self.counters()
             self.synced = time.monotonic()
             return self.report()
@@ -887,6 +938,17 @@ class Board:
                 data = stick.file(name)
                 if data is not None:
                     self.memory.keep_file(name, data)
+
+    def remember(self):
+        """What the services have kept since the last sync, kept."""
+        stick = self.stick
+        for name in KEPT:
+            keeps = getattr(stick, name + "_keeps")
+            if keeps != self.kept_counts[name]:
+                self.kept_counts[name] = keeps
+                value = getattr(stick, name)
+                if value is not None:
+                    self.memory.keep(name, list(value) if isinstance(value, tuple) else value)
 
     def report(self):
         """The reply line: bytes on the wire that Mesen hasn't been told of,
