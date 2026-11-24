@@ -308,6 +308,44 @@ def test_a_roms_files_are_kept_in_the_directory_and_back_on_the_next_board(tmp_p
     assert again.stick.file(name) == pair_
 
 
+def favorite_added(board):
+    """Bluesky's ADD, which the firmware keeps over power-off."""
+    stick = board.stick
+    assert stick.hello(services=[p.NESP_SVC_BSKY]).ok
+    assert stick.ask(p.NESP_SVC_BSKY, p.NESP_BSKY_ADD, b"@Bsky.App").ok
+    board.remember()
+
+
+def test_what_the_services_keep_is_kept_in_the_directory_and_back_on_the_next_board(tmp_path):
+    favorite_added(bridge.Board(bridge.Memory(str(tmp_path))))
+    assert (tmp_path / "kept.json").exists()
+    again = bridge.Board(bridge.Memory(str(tmp_path)))
+    assert b"bsky.app" in again.stick.favorites
+
+
+def test_without_a_directory_what_is_kept_lasts_while_the_bridge_runs():
+    memory = bridge.Memory()
+    favorite_added(bridge.Board(memory))
+    assert b"bsky.app" in bridge.Board(memory).stick.favorites      # a console reset
+    assert bridge.Board(bridge.Memory()).stick.favorites is None     # a new bridge
+
+
+def test_the_airport_and_the_place_come_back_as_they_were_kept(tmp_path):
+    memory = bridge.Memory(str(tmp_path))
+    memory.keep("airport", [b"KSBA", 34426200, -119840400])
+    memory.keep("place", [b"DUBLIN, IRELAND", 53349800, -6260300, b"Dublin, Ireland", 1])
+    stick = bridge.Board(bridge.Memory(str(tmp_path))).stick
+    assert stick.airport == (b"KSBA", 34426200, -119840400)
+    assert stick.place == (b"DUBLIN, IRELAND", 53349800, -6260300, b"Dublin, Ireland", 1)
+
+
+def test_a_kept_file_that_makes_no_sense_is_as_none(tmp_path):
+    (tmp_path / "kept.json").write_text("{not json")
+    memory = bridge.Memory(str(tmp_path))
+    assert memory.kept == {}
+    assert bridge.Board(memory).stick.airport is None
+
+
 def test_the_pairing_is_kept_in_the_directory(tmp_path):
     bridge.Memory(str(tmp_path)).set_paired(True)
     assert bridge.Memory(str(tmp_path)).paired

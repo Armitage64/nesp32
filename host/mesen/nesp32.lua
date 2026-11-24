@@ -32,7 +32,11 @@ local BRIDGE_PORT = 7878
 local BRIDGE_START = true              -- start the bridge when none answers (BRIDGE_HOST on this computer only)
 local BRIDGE_DIR = nil                 -- the folder of nesp32_bridge.py; nil: this script's own
 local BRIDGE_PYTHON = "python3"
-local BRIDGE_ARGS = ""                 -- more for the bridge, such as "--data ~/nesp32-mesen"
+local BRIDGE_ARGS = ""                 -- more for the bridge, such as "--peer idle"
+local BRIDGE_DATA = nil                -- where a bridge started here keeps what a nesp32 keeps
+                                       -- over power-off (the paired keyboard, a ROM's files,
+                                       -- places): nil, Mesen's folder for this script's data;
+                                       -- false, nowhere (forgotten when the bridge stops)
 local BRIDGE_COMMAND = nil             -- what runs nesp32_bridge.py, in place of BRIDGE_PYTHON and
                                        -- BRIDGE_DIR (the script adds the bridge's options). Needed
                                        -- on Windows, where the bridge is in WSL, such as
@@ -281,12 +285,19 @@ local function startBridge()
     command = BRIDGE_PYTHON .. " " .. quote(dir .. "/nesp32_bridge.py")
   end
   local folder = emu.getScriptDataFolder and emu.getScriptDataFolder()
+  local data = BRIDGE_DATA
+  if data == nil and folder ~= nil and folder ~= "" and not windows then
+    data = folder .. "/bridge-data"     -- on Windows the bridge is in WSL, where Mesen's
+  end                                   -- path is not one
   if folder == nil or folder == "" then
     folder = windows and (os.getenv("TEMP") or ".") or "/tmp"
   end
   bridgeLog = folder .. (windows and "\\" or "/") .. "bridge.log"
   command = command .. " --port " .. BRIDGE_PORT .. " --exit-when-idle " .. IDLE_SECONDS
-            .. " " .. BRIDGE_ARGS .. " > " .. quote(bridgeLog) .. " 2>&1"
+  if data and not BRIDGE_ARGS:find("%-%-data") then
+    command = command .. " --data " .. quote(data)
+  end
+  command = command .. " " .. BRIDGE_ARGS .. " > " .. quote(bridgeLog) .. " 2>&1"
   if windows then
     command = 'start "nesp32 bridge" /B ' .. command
   else
