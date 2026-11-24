@@ -34,7 +34,7 @@ the same as the tests model it, whatever speed Mesen runs at.
 | HTTP (the HTTPS sample's 200 and 404) | working |
 | The Bluetooth keyboard (KBD): pairing in Setup, forgetting, typing in Setup, Weather and the keyboard sample, Ctrl with a key, keys held down | working in a headless MesenCE on Linux; tested against KBD in `tests/test_mesen.py`; not yet tried on Windows |
 | Family BASIC's SAVE and LOAD (TAPE) as files | tested against TAPE in `tests/test_mesen.py`; not yet tried with the game |
-| PEER (the games for two): hosting and joining by address and by a room's code, the idle opponent | Dr. Mario played in two headless MesenCEs on macOS, joined by address, some 1330 ticks in step (five digest checks), and against `--peer idle`; tested by address and in a room in `tests/test_mesen.py`; not yet tried in Mesen's window, in a room between two Mesens, against a nesp32 on a real NES, or with the other games |
+| PEER (the games for two): hosting and joining by address and by a room's code, the idle opponent | Tetris and River City Ransom played between Mesen and a nesp32 on a real NES; Dr. Mario played in two headless MesenCEs on macOS, joined by address, some 1330 ticks in step (five digest checks), and against `--peer idle`; tested by address and in a room in `tests/test_mesen.py`; not yet tried in a room between two Mesens, or with Contra, TMNT II, Bubble Bobble or Jackal |
 | Save states, rewind | not supported (Known limits) |
 | The script starting and stopping the bridge | working in a headless MesenCE on macOS, also with the script named as the Script Window names it (its file's name alone); not yet tried in Mesen's window, on Linux, or on Windows (`BRIDGE_COMMAND`) |
 
