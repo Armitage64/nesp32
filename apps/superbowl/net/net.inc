@@ -263,6 +263,82 @@ net_reset:
     bne :-
     rts
 
+; The games differ. Before the session is given up, this console's RAM
+; goes to its nesp32 (PEER's DUMP), as it stands at the start of the tick
+; whose digests differed, where the other console stops too. The nesp32
+; writes it to its log, and the two logs say which bytes differ. The
+; netplay's own zero page ($3E-$45, where the game's LOCAL_1 to LOCAL_8
+; are, kept in the save RAM while the NMI works) and the stack below this
+; are the dump's doing. A nesp32 that does not answer, or has no DUMP, is
+; given no more. The screen is off for it.
+; The requests are at the link's rate (nesp_call's), and a nesp32 at the
+; session's hears none of them until it has gone back to the link's, when
+; it has heard nothing for PEER_RATE_QUIET_MS: so the first is tried for
+; twice that, some 12 ms a try (70 bytes at 21 cycles a bit, and the wait
+; for a reply), and the rest DUMP_TRIES times.
+DUMP_PIECE      = 64
+DUMP_TRIES      = 4
+DUMP_FIRST_TRIES = 2 * NESP_PEER_RATE_QUIET_MS / 12
+.assert DUMP_FIRST_TRIES < 256, error
+.assert NESP_PEER_DUMP_BYTES = $800 && DUMP_PIECE = SAVE_PIECE, error, "net_differ's pieces"
+net_dumped      = net_temp + 1  ; pieces of the RAM sent
+
+net_differ:
+    sei
+    lda #$00
+    sta NES_PPU_CTRL
+    sta NES_PPU_MASK
+    sta net_dumped
+.ifdef NESP_SHORT_PERIOD
+    sta nesp_fast               ; the link's rate, which nesp_call's are at
+.endif
+@piece:
+    lda net_dumped              ; where the piece begins: 64 bytes a piece
+    lsr a
+    lsr a
+    sta nesp_ptr+1
+    sta nesp_request+1
+    lda net_dumped
+    and #$03
+    lsr a
+    ror a
+    ror a
+    sta nesp_ptr
+    sta nesp_request
+    ldy #DUMP_PIECE-1
+@copy:
+    lda (nesp_ptr),y
+    sta nesp_request+2,y
+    dey
+    bpl @copy
+    lda #DUMP_TRIES
+    ldx net_dumped
+    bne :+
+    lda #DUMP_FIRST_TRIES
+:
+    sta net_temp
+    lda #NESP_SVC_PEER
+    ldx #NESP_PEER_DUMP
+    ldy #DUMP_PIECE+2
+    jsr nesp_call
+@heard:
+    bcc @answered
+    dec net_temp
+    beq @done
+    jsr nesp_again
+    jmp @heard
+
+@answered:
+    cmp #NESP_ST_OK
+    bne @done
+    inc net_dumped
+    lda net_dumped
+    cmp #NESP_PEER_DUMP_BYTES / DUMP_PIECE
+    bne @piece
+@done:
+    lda #NET_WHY_DIFFERED
+    jmp net_drop_why
+
 ; Start a session, as player 1 (A = 00) or player 2 (A = 01), with a delay
 ; of X ticks. Both consoles begin from the state of one just reset. Does
 ; not return.
@@ -664,8 +740,7 @@ net_session:
     lda net_local,x
     cmp net_remote,x
     beq :+
-    lda #NET_WHY_DIFFERED
-    jmp net_drop_why
+    jmp net_differ
 :
     dex
     txa

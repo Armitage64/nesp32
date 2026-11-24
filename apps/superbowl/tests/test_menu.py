@@ -501,8 +501,18 @@ def test_a_session_given_up_says_why(net_console):
         assert sram(console, "net_why") == WHY_DIFFERED
         assert sram(console, "net_why", 1) == WHY_DIFFERED ^ WHY_CHECK
         assert at_title_soon(table, console, frames=300)
+    # Before it gave up, each sent its RAM to its nesp32's log (PEER's
+    # DUMP), as it stood in the session: and the two differ in the game.
+    dumps = [stick.peer_dump for stick in table.sticks]
+    for dump in dumps:
+        assert dump[NET_MODE] == 0x80
+    assert [address for address in DIGESTED if dumps[0][address] != dumps[1][address]]
     open_menu(table, 0)
     assert screen_row(table.consoles[0], WHY_ROW).strip() == "LAST: GAMES DIFFERED"
+
+
+NET_MODE = 0x067D               # $80 in a session (net/net_ram.inc)
+DIGESTED = [*range(0x46, 0x49), *range(0x4B, 0xF0), *range(0x200, 0x300)]   # what the digest covers
 
 
 RESETS_ROW = 25                 # the last reset, the one before (net_resets), the last NMI (net_crumb)

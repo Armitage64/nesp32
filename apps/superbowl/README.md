@@ -190,7 +190,10 @@ tasks do not run in. Its question before a save is copied is CONTINUE:
 the game's font has no question mark. Its first screen also says why
 the last session was given up, if it was: LAST: GAMES DIFFERED (the
 digests), OTHER STOPPED (`SILENT_FRAMES` with no tick) or OTHER LEFT (the
-nesp32 says so). Each console keeps it in the save RAM (`net_why`, with
+nesp32 says so). Before GAMES DIFFERED's reset, with the screen off, each
+console sends its 2 KB of RAM to its nesp32 (`net_differ`, PEER's DUMP),
+whose log has it in 32 lines: the first try waits out the nesp32's
+return to the link's rate. Each console keeps it in the save RAM (`net_why`, with
 the tick), and a session's start clears it: a console that stops on its
 own keeps none. Below that, in hex, is where the last session NMI found
 the console (row 27, `net_crumb`), and above it what the last two resets found
@@ -617,7 +620,16 @@ In order. Each step is tested in the simulation before the next.
    one that stopped, black or at the title. So row 27 is now where the
    last session NMI found the console (`net_crumb`): the stack pointer,
    the tick, the banks' shadows and the stack's top eight bytes, which
-   hold the main thread's place. Next: a
+   hold the main thread's place. That console's nesp32 turned out to
+   reach only 178,977 bps from the console; with it fixed (both at
+   298,296 both ways), a game went to the third quarter and both
+   consoles gave the session up together, LAST: GAMES DIFFERED, each
+   reset as it should be (`F9 80 FF 00`: in a session, at the digests'
+   tick): the first desync on hardware, where whole games in the
+   simulation have none. So a console whose digest differs now sends its
+   RAM to its nesp32's log before it gives up (`net_differ`, PEER's
+   DUMP, as Bubble Bobble's does), and the two logs say which bytes
+   differ. Next: those two logs; then a
    whole game again, the title's choice, the samples against the line at
    14, how the lags feel against a game on one console, and the save's
    time across the Internet. The copy is at the link's rate; PEER's RATE
