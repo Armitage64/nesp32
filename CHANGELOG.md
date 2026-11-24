@@ -25,7 +25,7 @@
 - Mesen: `nesp32.lua` starts the bridge itself when none is running, and the bridge stops a few seconds after Mesen does (#100)
 - Mesen: the games for two, hosted and joined through the bridge as a nesp32 on this computer's network, by address or by a room's code; two Mesens, a Mesen and a real NES, or a Mesen and an opponent who presses nothing (`--peer idle`) (#102)
 - The computer's idle opponent (`serial_host.py --idle`, and the Mesen bridge's) no longer ends a game after about 4 seconds: it sends back the console's digest (#102)
-- Mesen: a paired keyboard stays paired after Mesen restarts, and NES Radar's airport, Weather's place and Bluesky's favorites are kept as a nesp32 keeps them over power-off
+- Mesen: a paired keyboard stays paired after Mesen restarts, and NES Radar's airport, Weather's place and Bluesky's favorites are kept as a nesp32 keeps them over power-off (#103)
 - NESP32 logo displayed on Stick LCD screen at boot (#75)
 - The Stick's log says why each online session ended, and Bubble Bobble sends its RAM to the log when the two games differ
 - `firmware/deploy.sh` says what is wrong when ESP-IDF is missing or not installed, instead of stopping without a word, and the README lists ESP-IDF among what building needs (#93)
