@@ -394,6 +394,8 @@ net_menu_local:
 
 ; --- the NMI ---------------------------------------------------------------------
 
+FLAG_I          = $04           ; the 6502's interrupt disable, in its flags
+
 ; An NMI with the menu up, or in a session (net_nmi_check, net/cart.inc),
 ; the game's TASK_BUSY_FLAG clear, A, X and Y saved.
 net_nmi:
@@ -434,7 +436,20 @@ net_nmi:
     ; between ticks on both. With neither, the engine changes neither.
     lda SOUND_ID_TO_PLAY
     ora ON_FIELD_SONG_TO_PLAY_AFTER_INT
+    bne @no_music
+    ; Nor where the NMI came with the IRQ off: in the IRQ's handler (or in
+    ; code of the game's own that holds the IRQ off). The music runs with
+    ; the IRQ on, and the next split's IRQ came in it, whose handler saved
+    ; its registers over IRQ_A, X and Y, where the one the NMI broke into
+    ; had saved the main thread's: that one gave them back wrong, and the
+    ; scheduler took up a task at X = $00 (in the simulation, at the end of
+    ; a game, the consoles lagging apart). With the IRQ off to the RTI, no
+    ; IRQ comes in it.
+    tsx
+    lda $0101,x                 ; the flags the NMI pushed
+    and #FLAG_I
     beq :+
+@no_music:
     jmp net_lag_waits
 :
     lda SOFT_BANK_SELECT

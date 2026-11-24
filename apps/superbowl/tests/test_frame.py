@@ -11,6 +11,7 @@ misheard reply is asked again in the same NMI only if the next split
 leaves room (net_ask)."""
 
 import functools
+import math
 
 from console import Console
 from netplay import Table
@@ -177,5 +178,45 @@ def test_an_nmi_that_runs_into_the_next_is_let_be(build):
     assert console.nested >= 10                 # each of them let be
     assert table.ticks(0) - before > 400
     assert table.same_game() > 400
+    for side in range(2):
+        assert table.consoles[side].byte("net_mode") == 0x80, "player %d left the session" % (side + 1)
+
+
+class InIrq(Console):
+    """A console whose vblank, every `every` frames once `late` is set,
+    comes as the IRQ's handler has saved A and X: the NMI breaks into it."""
+
+    def __init__(self, *args, every=7, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.late = False
+        self.every = every
+        self.forced = 0
+        self.watch(self.labels["IRQ_START"] + 6, InIrq._in_handler)
+
+    def _in_handler(self):
+        if self.late and not self.in_nmi and len(self.frames) % self.every == 0:
+            self.mpu.processorCycles = max(self.mpu.processorCycles, math.ceil(self.next_vblank))
+            self.forced += 1
+
+
+def test_an_nmi_in_the_irqs_handler_lets_no_irq_in(build):
+    """In the simulation, with the two consoles lagging apart, the scheduler
+    took up a task at X = $00 at the end of a game: an NMI had come in the
+    IRQ's handler, which keeps the main thread's registers in IRQ_A, X and
+    Y, and a lag's music let the next split's IRQ in, which saved its own
+    over them. Now a lag's NMI that came with the IRQ off keeps it off to
+    its RTI, and has no music (net_lag_waits)."""
+    make = functools.partial(InIrq, str(build / "tsb_net.nes"), str(build / "tsb_net.dbg"))
+    table = Table(make, delay=ms(10))
+    table.start()
+    table.to_game()
+    table.run(60)
+    console = table.consoles[1]
+    console.late = True
+    before = table.ticks(1)
+    table.play(900, moves(8))
+    assert console.forced >= 20
+    assert table.ticks(1) - before > 600
+    assert table.same_game() > 600
     for side in range(2):
         assert table.consoles[side].byte("net_mode") == 0x80, "player %d left the session" % (side + 1)

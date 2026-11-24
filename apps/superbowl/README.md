@@ -629,7 +629,23 @@ In order. Each step is tested in the simulation before the next.
    simulation have none. So a console whose digest differs now sends its
    RAM to its nesp32's log before it gives up (`net_differ`, PEER's
    DUMP, as Bubble Bobble's does), and the two logs say which bytes
-   differ. Next: those two logs; then a
+   differ. Two whole games after it, with the nesp32s' logs watched, had
+   none. The simulation then played whole season games at full-length
+   quarters with each console's main thread stalled at random, so that
+   the two lag on different frames as on hardware: of nine, six ended
+   alike; one (in the fourth quarter) found a sound engine byte in a
+   sleeping task's X (STOP_CURRENTLY_PLAYING_SOUND loads
+   ON_FIELD_SONG_TO_PLAY_AFTER_INT, which the interception's music clears
+   when it ends, by the frames and not the ticks; the code after does not
+   use X); and two failed after the final whistle, the scheduler taking
+   up a task at X = $00. That was an NMI that came in the IRQ's handler,
+   which keeps the main thread's registers in IRQ_A, X and Y as the NMI
+   does in NMI_A, X and Y: a lag's music turns the IRQ on, and the next
+   split's IRQ saved its own over them. A lag's NMI that comes with the
+   IRQ off now keeps it off and has no music
+   (`test_an_nmi_in_the_irqs_handler_lets_no_irq_in`). It needs an IRQ
+   some 4 lines above the vblank held back by 350 cycles or so, so it is
+   rare on hardware. Next: the nesp32s' logs of the next desync; then a
    whole game again, the title's choice, the samples against the line at
    14, how the lags feel against a game on one console, and the save's
    time across the Internet. The copy is at the link's rate; PEER's RATE
