@@ -105,6 +105,21 @@ def test_the_idle_opponent_keeps_up_and_presses_nothing():
     until(lambda: lobby(stick)[0] == PLAYER_2, end)
 
 
+def test_the_idle_opponent_sends_back_the_digest_so_the_game_goes_on():
+    stick = online(Stick(), HOME)
+    end = (stick, IdleNetwork(stick))
+    lobby(stick, HOST)
+    until(lambda: lobby(stick)[0] == PLAYER_1, end)
+    # Past the first tick that carries a digest (FF), and the next.
+    for tick in range(0x201):
+        pad = 0x5A if tick & 0xFF == 0xFF else 0x80
+        ticks(stick, tick, tick, bytes((pad,)))
+        until(lambda: True, end)
+        _, came_from, lost, theirs = ticks(stick, tick + 1, tick)
+        assert (came_from, lost) == (tick & 0xFF, 0)
+        assert theirs[:1] == bytes((0x5A if tick & 0xFF == 0xFF else 0,))
+
+
 @pytest.fixture
 def rendezvous():
     with FakeRendezvous() as server:
