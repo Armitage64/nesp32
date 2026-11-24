@@ -33,6 +33,7 @@ the same as the tests model it, whatever speed Mesen runs at.
 | Setup, NES Radar, NESradio (sound and titles), Weather | working |
 | HTTP (the HTTPS sample's 200 and 404) | working |
 | The Bluetooth keyboard (KBD): pairing in Setup, forgetting, typing in Setup, Weather and the keyboard sample, Ctrl with a key, keys held down | working in a headless MesenCE on Linux; tested against KBD in `tests/test_mesen.py`; not yet tried on Windows |
+| What a nesp32 keeps over power-off, across restarts of Mesen (`bridge-data`) | the paired keyboard and NES Radar's airport tried; Weather's place and Bluesky's favorites tested in `tests/test_mesen.py` |
 | Family BASIC's SAVE and LOAD (TAPE) as files | tested against TAPE in `tests/test_mesen.py`; not yet tried with the game |
 | PEER (the games for two): hosting and joining by address and by a room's code, the idle opponent | Tetris and River City Ransom played between Mesen and a nesp32 on a real NES; Dr. Mario played in two headless MesenCEs on macOS, joined by address, some 1330 ticks in step (five digest checks), and against `--peer idle`; tested by address and in a room in `tests/test_mesen.py`; not yet tried in a room between two Mesens, or with Contra, TMNT II, Bubble Bobble or Jackal |
 | Save states, rewind | not supported (Known limits) |
