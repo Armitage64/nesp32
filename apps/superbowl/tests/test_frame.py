@@ -14,7 +14,7 @@ import functools
 import math
 
 from console import Console
-from netplay import Table
+from netplay import TICK_AT, Table
 from test_lockstep import moves
 from wire import ms
 
@@ -218,5 +218,67 @@ def test_an_nmi_in_the_irqs_handler_lets_no_irq_in(build):
     assert console.forced >= 20
     assert table.ticks(1) - before > 600
     assert table.same_game() > 600
+    for side in range(2):
+        assert table.consoles[side].byte("net_mode") == 0x80, "player %d left the session" % (side + 1)
+
+
+class LastLine(Console):
+    """A console whose IRQ's handler, once `late` is set, runs into the
+    vblank in every frame, as one for a split on the picture's last line
+    does: the vblank comes as it is about to give back the registers."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.late = False
+        self.forced = 0
+        self.frames_forced = None
+        self.watch(self.labels["UPDATE_IRQ_CHR_BANKS_SCROLL_LOC"] - 4, LastLine._tail)   # LDA IRQ_A, before the RTI
+
+    def _tail(self):
+        if not self.late or self.in_nmi or "I" not in self.interrupts or self.frames_forced == len(self.frames):
+            return
+        # The IRQ came in the idle loop, as it does after a game.
+        sp = self.mpu.sp
+        at = self.ram[0x100 + ((sp + 2) & 0xFF)] | self.ram[0x100 + ((sp + 3) & 0xFF)] << 8
+        if self.labels["CHECK_TASKS"] <= at < self.labels["UPDATE_CURRENT_TASK"]:
+            self.mpu.processorCycles = max(self.mpu.processorCycles, math.ceil(self.next_vblank))
+            self.frames_forced = len(self.frames)
+            self.forced += 1
+
+
+def test_an_nmi_in_an_irq_on_the_idle_loop_is_a_tick(build):
+    """In the simulation, after a game, one console stopped taking ticks
+    for good and the other gave the session up: a split on the picture's
+    last line, whose IRQ's handler ran into the vblank in every frame, and
+    each NMI, finding the handler where the main thread was, took itself
+    for a lag. Now it looks under the handler, at where the IRQ found the
+    main thread (net_where): the idle loop, and a tick."""
+    make = functools.partial(LastLine, str(build / "tsb_net.nes"), str(build / "tsb_net.dbg"))
+    table = Table(make, delay=ms(10))
+    games = ({}, {})            # each tick's game but for the stack's page
+    for side, console in enumerate(table.consoles):
+        table_taken = console.watches[console.labels[TICK_AT]]
+
+        def taken(console, side=side, table_taken=table_taken):
+            table_taken(console)
+            kept = console.kept()
+            games[side].setdefault(table.ticks(side), kept[:0x100] + kept[0x200:])
+        console.watch(TICK_AT, taken)
+    table.start()
+    table.to_game()
+    table.run(60)
+    console = table.consoles[1]
+    console.late = True
+    before = table.ticks(1)
+    table.play(600, moves(9))
+    assert console.forced >= 50
+    assert table.ticks(1) - before > 400
+    # The forcing takes most of a frame away when the IRQ is a split high on
+    # the screen, as in play, and after it a sleeping task's saved carry
+    # has differed for a tick at a time, on its stack: the game has not.
+    shared = sorted(set(games[0]) & set(games[1]))
+    assert len(shared) > 400
+    for tick in shared:
+        assert games[0][tick] == games[1][tick], "the games differ at tick %d" % tick
     for side in range(2):
         assert table.consoles[side].byte("net_mode") == 0x80, "player %d left the session" % (side + 1)

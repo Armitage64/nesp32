@@ -407,6 +407,7 @@ net_nmi:
     ; to do: the scheduler's idle loop, where it looks for a task to run,
     ; or the reset's wait for a frame. (At the reset, before there are
     ; tasks, the main thread works with the NMI on.)
+    jsr net_unwind
     tsx
     lda $0102,x                 ; the return address the NMI pushed
     ldy $0103,x
@@ -512,6 +513,56 @@ net_nmi:
 ; netplay's bank out.
 net_lag_waits:
     jmp RETURN_FROM_NMI_ENABLE_INT_RESTORE_BANKS
+
+; An NMI that came in the IRQ's handler, past its split's work, where the
+; IRQ came in the idle loop: the IRQ's frame becomes the NMI's, at the
+; loop's start, and the NMI's own goes (net_nmi, which has pushed nothing
+; since). A split on the picture's last line has its IRQ some 140 cycles
+; before the vblank, and its handler runs into it: the game's NMI goes by
+; TASK_BUSY_FLAG and is none the wiser, but this one took each such NMI
+; for a lag, and with that split in every frame (in the simulation, after
+; a game) the console took no tick again, its NMIs all lags, which do not
+; exchange: the other gave the session up, and it stayed in it. Left to
+; run its tasks on the IRQ's frame, the NMI went 3 bytes further down the
+; stack than the idle loop's 14, into the first task's. What the handler
+; had left to do is the bank select, which the NMI's end does too, and the
+; registers, which the loop's start does not need. One that came before
+; its split's work, some 20 cycles of it, is a lag still.
+IRQ_AFTER_CALL  = IRQ_START + $15   ; past its JSR UPDATE_IRQ_CHR_BANKS_SCROLL_LOC
+net_unwind:
+    tsx
+    ; $0101,X: this call's return; $0103,X: the NMI's flags and return
+    ; address; $0106,X: the IRQ's.
+    lda $0105,x
+    cmp #>IRQ_START
+    bne @exit
+    lda $0104,x
+    cmp #<IRQ_AFTER_CALL
+    bcc @exit
+    cmp #<UPDATE_IRQ_CHR_BANKS_SCROLL_LOC
+    bcs @exit
+    lda $0108,x
+    cmp #>CHECK_TASKS
+    bne @exit
+    lda $0107,x
+    cmp #<CHECK_TASKS
+    bcc @exit
+    cmp #<UPDATE_CURRENT_TASK
+    bcs @exit
+    lda #<CHECK_TASKS
+    sta $0107,x
+    lda $0102,x                 ; this call's return, over the NMI's
+    sta $0105,x
+    lda $0101,x
+    sta $0104,x
+    inx
+    inx
+    inx
+    txs
+@exit:
+    rts
+    .assert >IRQ_START = >UPDATE_IRQ_CHR_BANKS_SCROLL_LOC, error
+    .assert UPDATE_IRQ_CHR_BANKS_SCROLL_LOC - IRQ_START = $24, error, "the IRQ's handler, to its RTI"
 
 ; An NMI of a stall after the one that wrote to the PPU: the sprites, and
 ; the rest of the NMI from where the game's goes on after its writes to

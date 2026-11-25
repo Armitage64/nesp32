@@ -645,7 +645,23 @@ In order. Each step is tested in the simulation before the next.
    IRQ off now keeps it off and has no music
    (`test_an_nmi_in_the_irqs_handler_lets_no_irq_in`). It needs an IRQ
    some 4 lines above the vblank held back by 350 cycles or so, so it is
-   rare on hardware. Next: the nesp32s' logs of the next desync; then a
+   rare on hardware. And one console stopped taking ticks for good after
+   the final whistle, in a full game and in 3 of some 90 short ones, the
+   other giving the session up (OTHER STOPPED) and it staying in it, as
+   on hardware: a split on the picture's last line, whose IRQ comes some
+   140 cycles before the vblank, its handler running into it in every
+   frame. The game's NMI goes by TASK_BUSY_FLAG; this one went by where
+   the NMI found the main thread, the handler, and took each for a lag,
+   which does not exchange. Now an NMI that came in the handler past its
+   split's work, the IRQ having come in the idle loop, takes the IRQ's
+   frame for its own, at the loop's start (`net_unwind`,
+   `test_an_nmi_in_an_irq_on_the_idle_loop_is_a_tick`). With that split
+   every frame this is no matter of chance, on hardware too. The test's
+   forcing, which takes most of a frame away when the IRQ is a split
+   high on the screen, left a sleeping task's saved carry differing for
+   a tick at a time afterwards, on its stack and nowhere else: not
+   explained yet, and not seen in the whole games. Next: the nesp32s'
+   logs of the next desync; then a
    whole game again, the title's choice, the samples against the line at
    14, how the lags feel against a game on one console, and the save's
    time across the Internet. The copy is at the link's rate; PEER's RATE
