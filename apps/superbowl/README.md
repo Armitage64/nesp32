@@ -202,7 +202,9 @@ NMI to come to the exchange found the console (`net_crumb`); and the
 session NMIs since, lags and those with a task at work (`net_beat`): how
 many, 16 bits with the low byte first, and the last one's flags, return
 address, `TASK_BUSY_FLAG`, `SOFT_PPU_CTRL`, `SOFT_PPU_MASK`, stack
-pointer, two banks and `CURRENT_TASK`. A session NMI with a task at
+pointer, two banks and `CURRENT_TASK`. They are at $7FA2 on, past the
+save, which the game's clear of a save that fails its check leaves
+alone. A session NMI with a task at
 work, which the game's own NMI took, now comes to the netplay's code to
 be counted (`net_busy`), and does as the game's, but for the banks put
 back from the game's shadows. It
@@ -292,7 +294,21 @@ different ones, with player 2's YES (its save becomes player 1's, and the
 session is one game) and its NO. `tests/test_fast.py`: the netplay ROM's
 quicker routines against `tsb_net_slow.nes` ("Quicker routines").
 `tests/test_frame.py`: in a session's play, the screen's splits taken on
-time, with replies misheard too, and the music in every NMI.
+time, with replies misheard too, and the music in every NMI; and each
+interrupt that broke a console on hardware or in the simulation, forced
+(an exchange past the vblank, an NMI in the IRQ's handler, the IRQ's
+handler run into the vblank on the idle loop, the vblank begun in the STA
+that turns the NMI off), the session going on and the same game on both.
+
+The console has, as a real one does (each added for a stop on hardware):
+the NMI at once when PPUCTRL turns it on while the vblank's flag is up
+(`late_nmis`); the NMI of a vblank that began in the instruction whose
+PPUCTRL write turned it off (`raced_nmis`); and the MMC3's counter clocked
+by a rise of A12 from PPUADDR or PPUDATA while no picture is being fetched
+(`a12_clocks`). It has no 8x16 sprites' A12, no PPU open bus, no DMC
+fetches and no MMC3 revisions' differences. A nesp32's reply may be made
+as slow as the StickC Plus2's (the port's `turnaround`, some 0.54 ms on
+hardware against the StickS3's 0.39).
 
 `tests/test_game.py`: a preseason game, MAN VS MAN, played to the fourth
 quarter's whistle, its statistics, and A back to the main menu; a timeout
@@ -529,9 +545,8 @@ wherever a frame ends, and a quicker routine makes a different game.
   NMI runs the music only with no request waiting (nor the song after an
   interception, which the engine moves into it): requests are taken in a
   tick's NMI or a stall's, between ticks, on both. Not seen to split two
-  games in the simulation; the one hardware stop since (November 2026,
-  one console black at the start of the third quarter, the other at the
-  menus) is not explained by anything found yet.
+  games in the simulation. (The hardware stops after it were the
+  interrupts below.)
 - **The music runs in every NMI** (seen on hardware too: it slowed down
   with the lags). The game's NMI runs the sound engine whenever its
   scheduler is not in the middle of a switch, a task at work or not; a
@@ -558,13 +573,64 @@ wherever a frame ends, and a quicker routine makes a different game.
   where the lags are, there are fewer. Moving the session's work about
   the frame does not help where the frame has no room: a tick has to cost
   less in all. Each exchange cut off left half a request on the line.
+- **The IRQ's handler keeps the main thread's registers in memory too**
+  (`IRQ_A`, `IRQ_X`, `IRQ_Y`), as the NMI does in its own. In the
+  simulation, two consoles lagging on different frames, an NMI came in
+  the handler, its lag's music let the next split's IRQ in, and that one
+  saved its registers over them: after the final whistle the scheduler
+  took up a task at X = $00. A lag's NMI that came with the IRQ off (the
+  flags it pushed) now has no music and keeps the IRQ off to its RTI
+  (`test_an_nmi_in_the_irqs_handler_lets_no_irq_in`).
+- **A split on the picture's last line runs its handler into the vblank
+  every frame.** Its IRQ comes some 140 cycles before it, and the NMI
+  found the handler where the main thread was and took each frame for a
+  lag, which does not exchange: one console stopped taking ticks for good
+  after the final whistle (in the simulation, 3 short games in some 90),
+  the other giving the session up (OTHER STOPPED). Now an NMI that came
+  in the handler past its split's work, the IRQ having come in the idle
+  loop, takes the IRQ's frame for its own (`net_unwind`,
+  `test_an_nmi_in_an_irq_on_the_idle_loop_is_a_tick`).
+- **The game clears all its save RAM at a reset when the save fails its
+  check** (`SRAM_CORRUPTED_CLEAR`), as one does whose console stopped
+  while it wrote a play's statistics. The netplay's rows of what a stopped
+  console last did were cleared with it, 0 on hardware twice. That clear
+  now stops at `SAVE_END`, as the season's own clear does
+  (`test_a_reset_in_play_is_kept_for_the_menu[True]`).
+- **A real CPU takes the NMI of a vblank that begins in the STA that
+  turns it off**, and a PPUCTRL write that turns it on while the vblank's
+  flag is up brings one at once. On hardware, November 2026, one console
+  went black right after a play, again and again over some days, the
+  other giving up 4 seconds later (OTHER STOPPED), the games alike to the
+  last digest. Each time on the console with the StickC Plus2, whichever
+  that was (a real NES with the multicart, or the MiSTer), host or
+  joining; with the StickS3 on the NES, two whole games had none, and in
+  the third the MiSTer, with the Plus2, stopped. The
+  MiSTer's rows (`net_beat`) had the last two NMIs: one at $C382, just
+  past DISABLE_INTERRUPTS_RENDERING's write that turns the NMI off, and
+  one nested in it at $C33E, right after the splits' PPUCTRL write with
+  the NMI on. The lag's NMI had turned the NMI on again with the flag
+  still up, and the second NMI saved its registers over the main
+  thread's in `NMI_A`, X and Y. Made to happen in the simulation, the
+  console went to the game's reset. The game's own full NMI reads
+  PPUSTATUS early, which puts the flag down; a lag's and a busy task's
+  NMI now do too (`test_an_nmi_taken_as_ppuctrl_turns_it_off_brings_no_other`).
+  The window is a few cycles of a frame, so it is chance when it comes:
+  nine short games in the simulation with one nesp32 as slow to reply as
+  the Plus2 met none, and why it followed the Plus2 is not known. The fix
+  is not yet tried on hardware.
+- **What was ruled out on the way**, in the simulation: an IRQ forced at
+  $C382, with and without an NMI after; a swap of $8000 and $C000 by the
+  MMC3's bank select's bit 6; the APU's frame and DMC IRQs, which the
+  game never turns on ($4017 is $40 from the reset, $4010 only ever $0F);
+  and the MMC3's counter clocked from PPUADDR in the vblank, which in a
+  session of 2,000 frames came only with the IRQ off.
 
 ## To do
 
 In order. Each step is tested in the simulation before the next.
 
-1. **The frame rate**: measured ("The frame rate"), a session lags in 10%
-   of its frames where the original does in 2%. What the NMI adds before
+1. **The frame rate**: measured ("The frame rate"), a session lags in 3.9%
+   of its frames where the original does in 2.2%. What the NMI adds before
    the tasks is mostly the exchange now, 2,600 cycles of 3,750: a faster
    line (10 was misheard on Jackal), or fewer bytes in TICKS, would save
    200-300 of them. Moving the exchange to the idle loop gained little
@@ -706,9 +772,10 @@ In order. Each step is tested in the simulation before the next.
    (`test_an_nmi_taken_as_ppuctrl_turns_it_off_brings_no_other`). The
    simulation's nine short games with one nesp32 replying as slowly as
    the StickC Plus2 (0.45 to 0.62 ms) had not met it: the window is a
-   few cycles. Not yet tried on hardware.
-   Next: whole games on hardware with the StickC Plus2, and the nesp32s'
-   logs of the next desync; then a
+   few cycles. Not yet tried on hardware ("What has been learned").
+   Next: whole games on hardware with the fix and the StickC Plus2, its
+   rows read after any stop, and the nesp32s' logs of the next desync;
+   then a
    whole game again, the title's choice, the samples against the line at
    14, how the lags feel against a game on one console, and the save's
    time across the Internet. The copy is at the link's rate; PEER's RATE
