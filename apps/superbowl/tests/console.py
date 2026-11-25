@@ -178,6 +178,8 @@ class Console:
         self.next_vblank = frame_cycles
         self.interrupts = []        # the handlers under way: "N" or "I", innermost last
         self._nmi_at = 0
+        self.nmi_pending = False
+        self.late_nmis = 0          # NMIs of the NMI turned on in the vblank
         # Port 2 as a serial line (wire.py): the level of D0 at a cycle,
         # when it next leaves mark, and where OUT0's writes go. None leaves
         # controller 2 on the port.
@@ -261,6 +263,11 @@ class Console:
         if address < 0x4000:
             address &= 0x2007
             if address == PPUCTRL:
+                # The NMI turned on while the vblank's flag is up comes at
+                # once, after this instruction, as on a real PPU.
+                if (value & ~self.ctrl & PPUCTRL_NMI and self.vblank_unread
+                        and self.now + 3 < self.frame.start + VBLANK_CYCLES):
+                    self.nmi_pending = True
                 self.ctrl = value
                 self.t = (self.t & ~0x0C00) | (value & 3) << 10
             elif address == PPUMASK:
@@ -485,6 +492,14 @@ class Console:
                 continue
             if mpu.processorCycles >= self.next_clock:
                 self._clock()
+                continue
+            if self.nmi_pending:
+                self.nmi_pending = False
+                if not self.in_nmi:
+                    self._nmi_at = mpu.processorCycles
+                self.interrupts.append("N")
+                self.late_nmis += 1
+                mpu.nmi()
                 continue
             if self.irq_line and not mpu.p & INTERRUPT:
                 self.interrupts.append("I")
