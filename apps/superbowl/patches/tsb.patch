@@ -85,31 +85,38 @@
 +.else
 @@ -128468,0 +128532 @@
 +.endif
-@@ -128590,0 +128655,4 @@
+@@ -128536,0 +128601,4 @@
++.ifdef NETPLAY
++    lda #<(SAVE_END - SRAM_START)        ; to the netplay's memory, which it keeps (net/net_ram.inc)
++    ldx #>(SAVE_END - SRAM_START)
++.else
+@@ -128538,0 +128607 @@
++.endif
+@@ -128590,0 +128660,4 @@
 +.ifdef NETPLAY
 +    jmp net_nmi_check                    ; the same, and a session's tick, stall or lag (net/cart.inc)
 +    nop
 +.else
-@@ -128592,0 +128661 @@
+@@ -128592,0 +128666 @@
 +.endif
-@@ -128759,0 +128829,4 @@
+@@ -128759,0 +128834,4 @@
 +.ifdef NETPLAY
 +    jsr net_sound_hook                   ; the read first, then the same (net/cart.inc)
 +    nop
 +.else
-@@ -128761,0 +128835 @@
+@@ -128761,0 +128840 @@
 +.endif
-@@ -128767,0 +128842,4 @@
+@@ -128767,0 +128847,4 @@
 +.ifdef NETPLAY
 +    jmp net_read_hook                    ; the same, or a session's tick or stall (net/cart.inc)
 +    .res 3, $EA
 +.else
-@@ -128770,0 +128849 @@
+@@ -128770,0 +128854 @@
 +.endif
-@@ -130530,0 +130610,4 @@
+@@ -130530,0 +130615,4 @@
 +.ifdef NETPLAY
 +    NET_FILL_D05F                        ; in place of L_D05F, which nothing calls (net/cart.inc)
 +    .res $D081 - $D05F - (* - net_title_pick), $FF
 +.else
-@@ -130549,0 +130633 @@
+@@ -130549,0 +130638 @@
 +.endif

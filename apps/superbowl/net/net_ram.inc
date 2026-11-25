@@ -29,8 +29,11 @@
 ;   $6EFE-$6F1D   for the length of an NMI: the stack that its exchange goes
 ;                 over, and the zero page it works in (net_nmi_read)
 ;   $6F1E-$6FAB   the library's frames, a reply and a request
-;   $6FAC-$6FC3   what the last two resets found (net_resets)
-;   $6FC4-$6FCF   the last session NMI's place (net_crumb)
+;   $7FA2-$7FB9   what the last two resets found (net_resets)
+;   $7FBA-$7FC5   the last session NMI's place (net_crumb)
+;   $7FC6-$7FD1   the session NMIs since (net_beat)
+; The game's clear of a save that fails its check stops at $7F71, short of
+; the netplay's memory (SRAM_CORRUPTED_CLEAR, which cleared to $7FFE).
 ;
 ; The menu has the console only at the title and starts it again when it
 ; is done, by a session or not: so it keeps its own memory in the
@@ -206,7 +209,11 @@ NESP_FRAMES_END = nesp_tx + NESP_TX_MAX + 7
 ; bytes. Shown on the menu's first screen, for a console that stopped or
 ; was reset in a session on a real console: its Reset keeps the RAM.
 NET_KEEP        = 12
-net_resets      = NESP_FRAMES_END
+; With the netplay's memory, past the season, which the game's clear of a
+; save that fails its check stops short of as the season's own clear does
+; (SRAM_CORRUPTED_CLEAR, CLEAR_SEASON_INFO): a console stopped while it
+; wrote its save, by its stats after a play, fails it at the next reset.
+net_resets      = NET_RAM_END
 ; And the last session NMI's (net_nmi_read), NET_KEEP bytes too: the stack
 ; pointer, net_tick, SOFT_8000_BANK, SOFT_A000_BANK, and the stack's top
 ; eight, which hold where the main thread was (the NMI's own return
@@ -222,7 +229,7 @@ net_crumb       = net_resets + NET_KEEP * 2
 ; SOFT_A000_BANK and CURRENT_TASK. A console stopped with its NMIs on
 ; counts on; with them off, or its CPU stopped, it keeps where it was.
 net_beat        = net_crumb + NET_KEEP
-.assert net_beat + NET_KEEP <= SAVE_GAP_END, error, "the resets kept run out of the gap"
+.assert net_beat + NET_KEEP <= net_why, error, "the resets kept run into net_why"
 
 NET_MENU_ON     = $80           ; in net_menu
 NET_MENU_FIRST  = $C0

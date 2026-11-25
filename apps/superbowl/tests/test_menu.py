@@ -4,6 +4,8 @@ both, whether they meet by a room's code or, with Select on either screen,
 by an address. River City Ransom's tests (apps/rcr/tests/test_menu.py), on
 Tecmo Super Bowl, whose menu is NETWORK GAME at the title."""
 
+import pytest
+
 import nesp
 import nesp_proto as p
 
@@ -519,11 +521,15 @@ RESETS_ROW = 25                 # the last reset (net_resets), the last exchange
 NET_KEEP = 12
 
 
-def test_a_reset_in_play_is_kept_for_the_menu(net_console):
+@pytest.mark.parametrize("damaged", [False, True])
+def test_a_reset_in_play_is_kept_for_the_menu(net_console, damaged):
     """A console reset in play by no drop of the session's (on hardware,
     November 2026, one went to the title so, and the other then hung): what
     its RAM held is kept through the reset, and NETWORK GAME's first screen
-    shows it, the stack pointer and the session's state first."""
+    shows it, the stack pointer and the session's state first. Damaged: its
+    save fails the game's check at the reset, which clears it (a console
+    that stopped dead after a play, as its stats went into the save, did on
+    hardware), and the netplay's memory is kept all the same."""
     table = Table(net_console)
     table.start()
     table.to_game()
@@ -534,6 +540,8 @@ def test_a_reset_in_play_is_kept_for_the_menu(net_console):
     last_crumb = bytes(sram(console, "net_crumb", i) for i in range(NET_KEEP))
     assert last_crumb[1] in (tick, (tick - 1) & 0xFF)      # this tick's NMI, or the last
     last_beat = bytes(sram(console, "net_beat", i) for i in range(NET_KEEP))
+    if damaged:
+        console.bus.prg_ram[console.labels["SRAM_CHECK_VAL"] - 0x6000] ^= 0xFF
     reset_button(console)
     console.mpu.sp = (sp - 3) & 0xFF           # the reset's three, with nothing written
     table.run(INTRO_FRAMES)
@@ -550,6 +558,8 @@ def test_a_reset_in_play_is_kept_for_the_menu(net_console):
     # reset: as it was then.
     crumb = bytes.fromhex(screen_row(console, RESETS_ROW + 1).replace(" ", ""))
     assert crumb == last_crumb
+    if damaged:                                 # the game's clear did come
+        assert sram(console, "SRAM_CHECK_VAL") == 0x41 and sram(console, "net_stack_copy") == 0
     # And the NMIs since, kept likewise.
     beat = bytes.fromhex(screen_row(console, RESETS_ROW + 2).replace(" ", ""))
     assert beat == last_beat

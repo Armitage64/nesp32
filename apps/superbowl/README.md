@@ -681,8 +681,18 @@ In order. Each step is tested in the simulation before the next.
    task at work or as a lag, which nothing kept, or none came (the NMI
    off, or the CPU stopped). Row 27 is now every session NMI since the
    last exchange (`net_beat`), those with a task at work coming to the
-   netplay's code for it. Next: that row from the next one that stops,
-   and the nesp32s' logs of the next desync; then a
+   netplay's code for it. Then the same stop twice more, its rows all 0
+   after the reset, on the multicart's console and then on the MiSTer:
+   it follows the StickC Plus2 (with the StickS3 on the NES, two whole
+   games and a third until it stopped on the MiSTer's side), and comes
+   right after a play. The rows were 0 as the game clears all its save
+   RAM at a reset when the save fails its check, as one does whose
+   console stopped while it wrote the play's stats. That clear now
+   stops short of the netplay's memory at $7F72, as the season's own
+   clear does, and the rows are kept there (`net_resets`, `net_crumb`,
+   `net_beat`; `test_a_reset_in_play_is_kept_for_the_menu[True]`).
+   Next: those rows from the next one that stops, and the nesp32s'
+   logs of the next desync; then a
    whole game again, the title's choice, the samples against the line at
    14, how the lags feel against a game on one console, and the save's
    time across the Internet. The copy is at the link's rate; PEER's RATE
