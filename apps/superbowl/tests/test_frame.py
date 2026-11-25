@@ -283,3 +283,46 @@ def test_an_nmi_in_an_irq_on_the_idle_loop_is_a_tick(build):
         assert games[0][tick] == games[1][tick], "the games differ at tick %d" % tick
     for side in range(2):
         assert table.consoles[side].byte("net_mode") == 0x80, "player %d left the session" % (side + 1)
+
+
+class Raced(Console):
+    """A console whose vblank, once `late` is set, begins in the STA with
+    which DISABLE_INTERRUPTS_RENDERING turns the NMI off: the CPU has the
+    NMI's edge before the write, and takes it after."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.late = False
+        self.forced = 0
+        self.watch(self.labels["DISABLE_INTERRUPTS_RENDERING"] + 7, Raced._sta)     # STA NES_PPU_CTRL
+
+    def _sta(self):
+        start = math.ceil(self.next_vblank) - 2         # its write is 3 cycles in
+        if self.late and not self.in_nmi and self.mpu.processorCycles <= start:
+            self.mpu.processorCycles = start
+            self.forced += 1
+
+
+def test_an_nmi_taken_as_ppuctrl_turns_it_off_brings_no_other(build):
+    """On hardware a console went black after a play, and NETWORK GAME's
+    rows had its last NMIs as a vblank that began as the drawing task turned
+    the NMI off, and one more in the first's PPUCTRL, which turned it on
+    with the vblank's flag still up: the second saved its registers over
+    the main thread's. A lag's or a busy task's NMI reads PPUSTATUS first."""
+    make = functools.partial(Raced, str(build / "tsb_net.nes"), str(build / "tsb_net.dbg"))
+    table = Table(make, delay=ms(10))
+    table.start()
+    table.to_game()
+    table.run(60)
+    console = table.consoles[1]
+    console.late = True
+    late_before = console.late_nmis
+    before = table.ticks(1)
+    table.play(900, moves(4))
+    assert console.forced >= 10
+    assert console.raced_nmis >= console.forced
+    assert console.late_nmis == late_before, "an NMI came in the raced one's PPUCTRL"
+    assert table.ticks(1) - before > 600
+    assert table.same_game() > 600
+    for side in range(2):
+        assert table.consoles[side].byte("net_mode") == 0x80, "player %d left the session" % (side + 1)

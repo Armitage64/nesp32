@@ -691,7 +691,23 @@ In order. Each step is tested in the simulation before the next.
    stops short of the netplay's memory at $7F72, as the season's own
    clear does, and the rows are kept there (`net_resets`, `net_crumb`,
    `net_beat`; `test_a_reset_in_play_is_kept_for_the_menu[True]`).
-   Next: those rows from the next one that stops, and the nesp32s'
+   The next stop, on the MiSTer, kept them: two NMIs after the last
+   exchange, the second at $C33E with the interrupt flag set, right
+   after a PPUCTRL write with the NMI on, and at the stack's top a
+   return to $C382, just past DISABLE_INTERRUPTS_RENDERING's write that
+   turns the NMI off. A real CPU takes the NMI of a vblank that begins in
+   that STA, though the write turns it off; the lag's NMI then wrote the
+   splits' PPUCTRL, the NMI on, with the vblank's flag still up, which
+   brings another NMI at once (the simulation has both now). The second
+   saved its registers over the main thread's in NMI_A, X and Y. Made to
+   happen in the simulation, the console went to the game's reset. A
+   lag's or a busy task's NMI now reads PPUSTATUS first, as the game's
+   own full NMI does
+   (`test_an_nmi_taken_as_ppuctrl_turns_it_off_brings_no_other`). The
+   simulation's nine short games with one nesp32 replying as slowly as
+   the StickC Plus2 (0.45 to 0.62 ms) had not met it: the window is a
+   few cycles. Not yet tried on hardware.
+   Next: whole games on hardware with the StickC Plus2, and the nesp32s'
    logs of the next desync; then a
    whole game again, the title's choice, the samples against the line at
    14, how the lags feel against a game on one console, and the save's

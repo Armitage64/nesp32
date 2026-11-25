@@ -399,9 +399,10 @@ FLAG_I          = $04           ; the 6502's interrupt disable, in its flags
 ; A session's NMI with a task at work (net_nmi): as the game's
 ; NMI_TASK_BUSY, the screen's splits and nothing else, and then the game's
 ; banks back from its shadows, which it writes before the MMC3's (this NMI
-; put the netplay's in at $A000).
+; put the netplay's in at $A000). PPUSTATUS first, as for a lag (net_nmi).
 net_busy:
     jsr net_beat_keep
+    lda NES_PPU_STATUS
     lda #$00
     sta CUR_IRQ_INDEX
     ldy CURR_Y_SCROLL
@@ -439,6 +440,17 @@ net_nmi:
     ; at work and not in the scheduler, which is most of the time: in every
     ; NMI, or it slows down by the lags. Then the game's banks back, from
     ; its shadows, as its NMI's end puts them: the task goes on where it was.
+    ;
+    ; The vblank's flag down first, before the splits' PPUCTRL, which has
+    ; the NMI on. A real CPU takes the NMI of a vblank that began in the STA
+    ; that turned it off (DISABLE_INTERRUPTS_RENDERING's, at $C37F), and with
+    ; the flag still up the NMI turned on again here comes at once, in this
+    ; one, and saves its registers over the main thread's in NMI_A, X and Y.
+    ; On hardware, November 2026, a console went black after a play that
+    ; way, NETWORK GAME's rows said; the simulation, made to take that NMI,
+    ; went to the game's reset. The game's NMI_TASK_NOT_BUSY, which this is
+    ; in place of, reads it early too.
+    lda NES_PPU_STATUS
     lda #$00
     sta CUR_IRQ_INDEX
     ldy CURR_Y_SCROLL

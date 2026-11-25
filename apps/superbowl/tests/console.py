@@ -179,6 +179,8 @@ class Console:
         self.interrupts = []        # the handlers under way: "N" or "I", innermost last
         self._nmi_at = 0
         self.nmi_pending = False
+        self.nmi_off_at = None  # the cycle of the last PPUCTRL write that turned the NMI off
+        self.raced_nmis = 0     # NMIs taken though PPUCTRL had just turned them off
         self.late_nmis = 0          # NMIs of the NMI turned on in the vblank
         # Port 2 as a serial line (wire.py): the level of D0 at a cycle,
         # when it next leaves mark, and where OUT0's writes go. None leaves
@@ -204,6 +206,8 @@ class Console:
         self.irq_reload = False
         self.irq_enabled = False
         self.irq_line = False
+        self.a12 = None         # the PPU's A12 when its bus shows v; None: rendering's
+        self.a12_clocks = 0     # the counter's clocks from v (PPUADDR, PPUDATA)
         self.next_clock = float("inf")
         self._clock_line = 0
         self._schedule_clocks(0.0)
@@ -248,6 +252,7 @@ class Console:
                     value = self.read_buffer
                     self.read_buffer = self.vram[at]
                 self._step_v()
+                self._a12()
                 return value
             return 0
         if address == JOY1:
@@ -268,6 +273,8 @@ class Console:
                 if (value & ~self.ctrl & PPUCTRL_NMI and self.vblank_unread
                         and self.now + 3 < self.frame.start + VBLANK_CYCLES):
                     self.nmi_pending = True
+                if self.ctrl & ~value & PPUCTRL_NMI:
+                    self.nmi_off_at = self.now + 3
                 self.ctrl = value
                 self.t = (self.t & ~0x0C00) | (value & 3) << 10
             elif address == PPUMASK:
@@ -280,10 +287,12 @@ class Console:
                 else:
                     self.t = (self.t & 0x7F00) | value
                     self.v = self.t
+                    self._a12()
                 self.w ^= 1
             elif address == PPUDATA:
                 self.vram[self._mirror(self.v)] = value
                 self._step_v()
+                self._a12()
         elif address == OAMDMA:
             page = value << 8
             for offset in range(256):
@@ -357,12 +366,29 @@ class Console:
         self._clock_line = 0
         self.next_clock = self._clock_times[0]
 
+    def _a12(self):
+        """With no picture being fetched (the vblank, or rendering off) the
+        PPU's address bus is v: a PPUADDR or PPUDATA that takes A12 from
+        low to high clocks the MMC3's counter, as on a real cartridge."""
+        if self.mask & PPUMASK_RENDER and self.now >= self.frame.start + VBLANK_CYCLES:
+            self.a12 = None
+            return
+        high = bool(self.v & 0x1000)
+        if high and self.a12 is False:
+            self.a12_clocks += 1
+            self._count()
+        self.a12 = high
+
     def _clock(self):
         self._clock_line += 1
         self.next_clock = (self._clock_times[self._clock_line]
                            if self._clock_line < len(self._clock_times) else float("inf"))
         if not self.mask & PPUMASK_RENDER:
             return
+        self.a12 = None
+        self._count()
+
+    def _count(self):
         if self.irq_counter == 0 or self.irq_reload:
             self.irq_counter = self.irq_latch
             self.irq_reload = False
@@ -642,7 +668,14 @@ class Console:
         self._schedule_clocks(self.next_vblank)
         self.next_vblank += self.frame_cycles
         self.vblank_unread = True
-        if self.ctrl & PPUCTRL_NMI:
+        # A PPUCTRL write that turned the NMI off after the vblank began,
+        # in the instruction that ran over its start, came too late: the
+        # CPU had the NMI's edge already, as a real one does.
+        raced = (not self.ctrl & PPUCTRL_NMI and self.nmi_off_at is not None
+                 and self.nmi_off_at > self.frame.start)
+        if raced:
+            self.raced_nmis += 1
+        if self.ctrl & PPUCTRL_NMI or raced:
             if not self.in_nmi:
                 self._nmi_at = mpu.processorCycles
             self.interrupts.append("N")
