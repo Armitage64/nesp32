@@ -33,11 +33,12 @@ class Timed(Console):
         self.raised_at = None
         self.late = []
         self.nmis = 0
-        self.busy = 0               # the game's own NMI for a busy scheduler, which has no music
+        self.busy = 0               # an NMI for a busy scheduler, which has no music (net_busy)
         self.waits = 0              # a lag's, with a sound waiting to be taken (net_lag_waits)
         self.sounds = 0
         self._sounded = True
         self.watch("NMI_TASK_BUSY", Timed._busy)
+        self.watch("net_busy", Timed._busy)
         self.watch("net_lag_waits", Timed._waits)
         self.watch(SOUND_ENGINE, Timed._sound)
         irq = self.mpu.irq

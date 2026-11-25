@@ -215,7 +215,14 @@ net_resets      = NESP_FRAMES_END
 ; was a frame before: its Reset may clear the RAM (a multicart's loader
 ; does), and the save RAM stays.
 net_crumb       = net_resets + NET_KEEP * 2
-.assert net_crumb + NET_KEEP <= SAVE_GAP_END, error, "the resets kept run out of the gap"
+; And every session NMI's since (net_beat_keep, net/net.inc), NET_KEEP
+; bytes: how many came after the last that reached the exchange (16 bits,
+; low first), the last one's flags and return address, TASK_BUSY_FLAG,
+; SOFT_PPU_CTRL, SOFT_PPU_MASK, the stack pointer it found, SOFT_8000_BANK,
+; SOFT_A000_BANK and CURRENT_TASK. A console stopped with its NMIs on
+; counts on; with them off, or its CPU stopped, it keeps where it was.
+net_beat        = net_crumb + NET_KEEP
+.assert net_beat + NET_KEEP <= SAVE_GAP_END, error, "the resets kept run out of the gap"
 
 NET_MENU_ON     = $80           ; in net_menu
 NET_MENU_FIRST  = $C0

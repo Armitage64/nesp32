@@ -396,13 +396,28 @@ net_menu_local:
 
 FLAG_I          = $04           ; the 6502's interrupt disable, in its flags
 
+; A session's NMI with a task at work (net_nmi): as the game's
+; NMI_TASK_BUSY, the screen's splits and nothing else, and then the game's
+; banks back from its shadows, which it writes before the MMC3's (this NMI
+; put the netplay's in at $A000).
+net_busy:
+    jsr net_beat_keep
+    lda #$00
+    sta CUR_IRQ_INDEX
+    ldy CURR_Y_SCROLL
+    lda CURR_Y_SCROLL+1
+    jsr UPDATE_IRQ_CHR_BANKS_SCROLL_LOC
+    jmp RETURN_FROM_NMI_ENABLE_INT_RESTORE_BANKS
+
 ; An NMI with the menu up, or in a session (net_nmi_check, net/cart.inc),
-; the game's TASK_BUSY_FLAG clear, A, X and Y saved.
+; A, X and Y saved.
 net_nmi:
     bit net_menu
     bpl :+
     jmp net_menu_nmi
 :
+    bit TASK_BUSY_FLAG
+    bmi net_busy
     ; A lag unless the NMI came where the main thread waits with nothing
     ; to do: the scheduler's idle loop, where it looks for a task to run,
     ; or the reset's wait for a frame. (At the reset, before there are
@@ -418,6 +433,7 @@ net_nmi:
     cmp #<UPDATE_CURRENT_TASK
     bcc @idle
 @lag:
+    jsr net_beat_keep           ; (a tick's or a stall's is net_crumb)
     ; As the game does when it finds the scheduler busy: the scroll and the
     ; screen's splits. And the music, as the game's NMI does when a task is
     ; at work and not in the scheduler, which is most of the time: in every
@@ -577,6 +593,44 @@ net_stalled:
     lda NES_PPU_STATUS
     jmp UPDATE_BG_AND_SPR_BANKS
 
+; Every session NMI, counted, and where it found the console (net_beat),
+; for one that stops with no exchange: on hardware, November 2026, a
+; console went black as a play began, and its last exchange (net_crumb)
+; was a tick like any other. The count goes back to 0 in an NMI that comes
+; to the exchange (net_nmi_read), which keeps its own (net_crumb): this
+; is only for the others, a lag's or a busy one's, as the cycles before a
+; tick's exchange are few (the first split comes in it, in some frames).
+net_beat_keep:
+    jsr net_sram_on
+    inc net_beat
+    bne :+
+    inc net_beat+1
+:
+    tsx
+    lda $0103,x                 ; the NMI's, past this call's
+    sta net_beat+2
+    lda $0104,x
+    sta net_beat+3
+    lda $0105,x
+    sta net_beat+4
+    txa
+    clc
+    adc #5
+    sta net_beat+8              ; the stack pointer the NMI found
+    lda TASK_BUSY_FLAG
+    sta net_beat+5
+    lda SOFT_PPU_CTRL
+    sta net_beat+6
+    lda SOFT_PPU_MASK
+    sta net_beat+7
+    lda SOFT_8000_BANK
+    sta net_beat+9
+    lda SOFT_A000_BANK
+    sta net_beat+10
+    lda CURRENT_TASK
+    sta net_beat+11
+    jmp net_sram_back
+
 ; The menu's NMI: its bank at $8000 too, and the game's handler does not
 ; run. The game's end of a busy NMI puts back the registers.
 net_menu_nmi:
@@ -639,6 +693,9 @@ net_nmi_read:
     lda a:$0101+i,x
     sta net_crumb+4+i
     .endrepeat
+    lda #$00
+    sta net_beat                ; no NMI since this one (net_beat_keep)
+    sta net_beat+1
     ; The STACK_KEEP bytes below this one's place in the stack, kept: the
     ; first task's are among them. Unrolled, as it is in every tick's NMI
     ; (a loop was some 700 cycles each way). a: keeps $0100-i,x absolute:

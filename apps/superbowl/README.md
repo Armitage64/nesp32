@@ -195,9 +195,17 @@ console sends its 2 KB of RAM to its nesp32 (`net_differ`, PEER's DUMP),
 whose log has it in 32 lines: the first try waits out the nesp32's
 return to the link's rate. Each console keeps it in the save RAM (`net_why`, with
 the tick), and a session's start clears it: a console that stops on its
-own keeps none. Below that, in hex, is where the last session NMI found
-the console (row 27, `net_crumb`), and above it what the last two resets found
-in the RAM before the game's reset cleared it (`net_resets`, To do 3). It
+own keeps none. Below that, in hex, on rows 25 to 27 (To do 3): what the
+last reset found in the RAM before the game's reset cleared it
+(`net_resets`, which keeps the one before too); where the last session
+NMI to come to the exchange found the console (`net_crumb`); and the
+session NMIs since, lags and those with a task at work (`net_beat`): how
+many, 16 bits with the low byte first, and the last one's flags, return
+address, `TASK_BUSY_FLAG`, `SOFT_PPU_CTRL`, `SOFT_PPU_MASK`, stack
+pointer, two banks and `CURRENT_TASK`. A session NMI with a task at
+work, which the game's own NMI took, now comes to the netplay's code to
+be counted (`net_busy`), and does as the game's, but for the banks put
+back from the game's shadows. It
 ends with a reset, by a session or not,
 so it uses the game's RAM: $0500 on (not $0300, where the NMI saves the
 registers) and the sprites' page at $0200. It turns off the MMC3's IRQ,
@@ -660,8 +668,21 @@ In order. Each step is tested in the simulation before the next.
    forcing, which takes most of a frame away when the IRQ is a split
    high on the screen, left a sleeping task's saved carry differing for
    a tick at a time afterwards, on its stack and nowhere else: not
-   explained yet, and not seen in the whole games. Next: the nesp32s'
-   logs of the next desync; then a
+   explained yet, and not seen in the whole games. With both fixes, on
+   hardware (two consoles, nesp32s at 298,296 bps both ways, by room
+   code), the joining console went black as a play began, some 8½
+   minutes in, and the host gave up 4 seconds later (OTHER STOPPED). The
+   two logs agree: the games alike to the last digest, the joining
+   console's requests stopping at once, no network trouble. Its last
+   session NMI to exchange (`F8 CE 16 01`, then `B4 FF 4D C2 A0 4E CB`)
+   was a tick like any other, in the idle loop at $CB4E with the main
+   thread's stack empty; its reset found tick $CF, no silent NMIs, and
+   the RAM cleared. So after one more tick, every NMI either came with a
+   task at work or as a lag, which nothing kept, or none came (the NMI
+   off, or the CPU stopped). Row 27 is now every session NMI since the
+   last exchange (`net_beat`), those with a task at work coming to the
+   netplay's code for it. Next: that row from the next one that stops,
+   and the nesp32s' logs of the next desync; then a
    whole game again, the title's choice, the samples against the line at
    14, how the lags feel against a game on one console, and the save's
    time across the Internet. The copy is at the link's rate; PEER's RATE

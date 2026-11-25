@@ -60,10 +60,10 @@ net_nmi_check:
 :
     bit net_menu
     bmi @netplay
+    bit net_mode
+    bmi @netplay                ; a task at work too (net_nmi), to be counted
     bit TASK_BUSY_FLAG
     bmi @busy
-    bit net_mode
-    bmi @netplay
 @game:
     jmp NMI_TASK_NOT_BUSY
 @busy:

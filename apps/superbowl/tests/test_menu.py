@@ -515,7 +515,7 @@ NET_MODE = 0x067D               # $80 in a session (net/net_ram.inc)
 DIGESTED = [*range(0x46, 0x49), *range(0x4B, 0xF0), *range(0x200, 0x300)]   # what the digest covers
 
 
-RESETS_ROW = 25                 # the last reset, the one before (net_resets), the last NMI (net_crumb)
+RESETS_ROW = 25                 # the last reset (net_resets), the last exchange's NMI (net_crumb), the NMIs since (net_beat)
 NET_KEEP = 12
 
 
@@ -533,6 +533,7 @@ def test_a_reset_in_play_is_kept_for_the_menu(net_console):
     tick, stack = sram(console, "net_tick"), bytes(console.ram[0x101 + sp + i] for i in range(4))
     last_crumb = bytes(sram(console, "net_crumb", i) for i in range(NET_KEEP))
     assert last_crumb[1] in (tick, (tick - 1) & 0xFF)      # this tick's NMI, or the last
+    last_beat = bytes(sram(console, "net_beat", i) for i in range(NET_KEEP))
     reset_button(console)
     console.mpu.sp = (sp - 3) & 0xFF           # the reset's three, with nothing written
     table.run(INTRO_FRAMES)
@@ -545,8 +546,12 @@ def test_a_reset_in_play_is_kept_for_the_menu(net_console):
     assert len(kept) == NET_KEEP
     assert kept[0] == sp and kept[1] == IN_SESSION and kept[2] == tick
     assert kept[8:] == stack
-    before = screen_row(console, RESETS_ROW + 1).replace(" ", "")
-    assert len(before) == 2 * NET_KEEP        # the session's start's own
-    # The last session NMI's, kept through the reset: as it was then.
-    crumb = bytes.fromhex(screen_row(console, RESETS_ROW + 2).replace(" ", ""))
+    # The last session NMI's that came to the exchange, kept through the
+    # reset: as it was then.
+    crumb = bytes.fromhex(screen_row(console, RESETS_ROW + 1).replace(" ", ""))
     assert crumb == last_crumb
+    # And the NMIs since, kept likewise.
+    beat = bytes.fromhex(screen_row(console, RESETS_ROW + 2).replace(" ", ""))
+    assert beat == last_beat
+    assert beat[0] + 256 * beat[1] < 60       # the console never stopped
+    assert beat[6] & 0x80                     # its NMI on (SOFT_PPU_CTRL)

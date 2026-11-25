@@ -1542,8 +1542,9 @@ menu_show:
     jsr menu_strings
 
 @resets:
-    ; And what the last two resets found (net_resets), and the last session
-    ; NMI (net_crumb, which follows them), in hex.
+    ; And what the last reset found (net_resets), the last session NMI that
+    ; came to the exchange (net_crumb) and the NMIs since (net_beat), in
+    ; hex. (The reset before the last is kept, not shown.)
     lda #>MENU_RESETS_AT
     sta NES_PPU_ADDR
     lda #<MENU_RESETS_AT
@@ -1554,6 +1555,7 @@ menu_show:
     sta NES_PPU_ADDR
     lda #<(MENU_RESETS_AT + 32)
     sta NES_PPU_ADDR
+    ldy #NET_KEEP * 2
     jsr menu_reset_row
     lda #>(MENU_RESETS_AT + 64)
     sta NES_PPU_ADDR
@@ -1561,6 +1563,7 @@ menu_show:
     sta NES_PPU_ADDR
     jsr menu_reset_row
     .assert net_crumb = net_resets + NET_KEEP * 2, error
+    .assert net_beat = net_crumb + NET_KEEP, error
 
 @shown:
     ; The scroll back, for the next NMI, which turns the picture on.
