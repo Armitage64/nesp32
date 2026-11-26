@@ -20,6 +20,7 @@
 - WEATHER PLACE and LAST_PLACE: the weather at a place named as typed, and the last one found; ZIP and LAST still work. Needs this release's firmware (#101)
 
 ### Other
+- The web site records a nesp32's log in Chrome, Edge or Opera, with no ESP-IDF: a game's crash dump, and the one the nesp32 kept from earlier, go into a GitHub issue with the log's end to paste (#105)
 - The web site's ROM patches are a page instead of a zip: each game's patch to download, the release of the game it needs (size, CRC32 and SHA-1), and how to apply it
 - Mesen emulator support for NESP32 added for local testing and development (#74)
 - Mesen: `nesp32.lua` starts the bridge itself when none is running, and the bridge stops a few seconds after Mesen does (#100)
