@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Games
+- Tecmo Super Bowl online added: the whole game, season included, with player 2's save replaced by player 1's when the two differ. Needs this release's firmware
 - River City Ransom online co-op added, running faster than the original's two-player game on one console (#76)
 - Bubble Bobble online sessions no longer drop at the start or in round 2: each console's leftover RAM from before the session is cleared
 

@@ -14,6 +14,8 @@
 #                   game for two (tools/bench.py)
 #   make import     tools/game.map again, from the disassembly (needs asm6f)
 #   make patches    write patches/ again from the sources in build/src
+#   make bps        dist/superbowl_net.bps again, the netplay ROM as a patch
+#                   to the game, which players apply to their own
 #   make clean
 #
 # The game is not here. Its disassembly, third_party/Tecmo_Super_Bowl_NES_
@@ -47,6 +49,12 @@ ROM := $(BUILD)/superbowl.nes
 NET_ROM := $(BUILD)/superbowl_net.nes
 SLOW_ROM := $(BUILD)/superbowl_net_slow.nes
 DEBUG_ROM := $(BUILD)/superbowl_net_debug.nes
+# The netplay ROM as a patch to the US release, for players who build
+# nothing: kept in the repository, as it holds none of the game
+# (tools/gen_patch.py refuses one that would). From the ROM for players,
+# not the debug one.
+DIST := dist
+GEN_PATCH := $(NESP32)/tools/gen_patch.py
 GEN := $(BUILD)/gen
 SRC := $(BUILD)/src
 CONVERTED := $(BUILD)/converted.stamp
@@ -61,7 +69,7 @@ DEBUG_OBJECTS := $(NAMES:%=$(BUILD)/debug/%.o)
 NET_SOURCES := $(wildcard net/*.inc net/*.asm) $(BUILD)/link.inc $(NESP_LIB) $(NESP)
 NET_INCLUDES := -I net -I $(BUILD) -I $(NESP_BUILD) -I $(NESP32)/nes/lib
 
-.PHONY: all verify test bench import patches clean FORCE
+.PHONY: all verify test bench import patches bps clean FORCE
 
 all: $(ROM) $(NET_ROM) $(SLOW_ROM) $(DEBUG_ROM)
 
@@ -136,6 +144,12 @@ $(SLOW_ROM): $(SLOW_OBJECTS) net/superbowl_net.cfg
 
 $(DEBUG_ROM): $(DEBUG_OBJECTS) net/superbowl_net.cfg
 	ld65 -C net/superbowl_net.cfg --dbgfile $(BUILD)/superbowl_net_debug.dbg -o $@ $(DEBUG_OBJECTS)
+
+# From the original as built, once it is known to be the game: the patch
+# is for the US release and no other.
+bps: verify $(NET_ROM)
+	mkdir -p $(DIST)
+	$(PYTHON) $(GEN_PATCH) $(ROM) $(NET_ROM) $(DIST)/superbowl_net.bps
 
 verify: $(ROM)
 	@test "$$(shasum -a 512 $(ROM) | cut -d' ' -f1)" = "$(SHA512_ORIGINAL)" \

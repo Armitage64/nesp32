@@ -1,6 +1,6 @@
 ---
 name: nes-netplay-port
-description: How a two-player NES game is made a nesp32 netplay ROM in this repo, and how one already made is changed, tested, measured and shipped. Use when starting a new game's port under apps/, changing an existing port (Contra, Dr. Mario, Tetris, TMNT II, Bubble Bobble, Jackal, River City Ransom), chasing a desync between two consoles, measuring frame time, or rebuilding a game's BPS patch.
+description: How a two-player NES game is made a nesp32 netplay ROM in this repo, and how one already made is changed, tested, measured and shipped. Use when starting a new game's port under apps/, changing an existing port (Contra, Dr. Mario, Tetris, TMNT II, Bubble Bobble, Jackal, River City Ransom, Tecmo Super Bowl), chasing a desync between two consoles, measuring frame time, or rebuilding a game's BPS patch.
 ---
 
 # A game for two consoles, on nesp32
@@ -13,7 +13,11 @@ had no disassembly to start from: their builds make one from the ROM
 (`tools/trace.py` notes where the game runs, in `entries.txt`;
 `tools/game.map` has the names; `tools/convert.py` makes ca65 source that
 rebuilds the ROM byte for byte). Start a game with no disassembly from
-theirs.
+theirs. Tecmo Super Bowl's (`apps/superbowl/README.md`) is the one with a
+save the two consoles share (PEER's SAVE ops), a whole game in a session
+from the main menu, a debug build (`NET_DEBUG`) for a console that stops,
+and the most on interrupts that break a session on hardware ("What has
+been learned").
 
 ## The layout of a port
 

@@ -53,6 +53,10 @@ lines are at the top of `firmware/README.md`.
   (`web/log/`), which can open a GitHub issue with it. The format is in
   `docs/PROTOCOL.md`, "A kept dump"; agent tools that parse it (the page)
   depend on it, so change it there first.
+- **A frozen console sends no dump.** Its log just goes quiet. For Tecmo
+  Super Bowl, ask the user to play the debug ROM
+  (`apps/superbowl/build/superbowl_net_debug.nes`) and read NETWORK GAME's
+  rows 25-27 after a Reset (`docs/DEVELOPMENT.md`, "Logs and crash dumps").
 
 ## Traps already met
 

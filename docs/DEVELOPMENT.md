@@ -61,6 +61,15 @@ source of it, and takes what the disassembly leaves out from the copy of
 the game that whoever builds supplies. The original built from that
 source is checked against the ROM's SHA-512.
 
+[Tecmo Super Bowl](../apps/superbowl) is built from bruddog's
+disassembly, a submodule at `third_party/Tecmo_Super_Bowl_NES_Disassembly`,
+which is for asm6f: its `tools/import.py` read it once, through asm6f's
+listing, into `tools/game.map` (addresses, names and comments, none of
+the game's bytes), and its `tools/convert.py` makes ca65 source of the
+copy of the game that whoever builds supplies with it, in `build/gen`.
+The original built from that source is checked against the ROM's
+SHA-512.
+
 ### Changing a borrowed program's code
 
 NES Radar's is changed in nes-radar itself, and the submodule moved to the
@@ -68,7 +77,7 @@ commit ([its README](../apps/nes-radar/README.md) has how). For the three
 games, the build copies the submodule's sources into the program's
 `build/` (`build/src` for Contra, `build/upstream` for Dr. Mario and
 Tetris) and applies its `patches/` there; the submodule is never
-written to. Bubble Bobble's, River City Ransom's and Jackal's builds apply their `patches/` to a
+written to. Bubble Bobble's, River City Ransom's, Jackal's and Tecmo Super Bowl's builds apply their `patches/` to a
 copy of their converted source, `build/gen` copied to `build/src`. To change what nesp32 adds to their own files, edit the
 copies, then
 
@@ -101,9 +110,9 @@ Players don't build the games: each game's `dist/` has the netplay ROM
 (Family BASIC's ROM) as a BPS patch to the original, which they apply to
 their own copy. `make bps` in the app writes it, from the original as
 built and verified (Dr. Mario, Tetris, Contra, TMNT II, Bubble Bobble,
-Jackal, River City Ransom) or from `baserom.nes` (Family BASIC); `tools/gen_patch.py` copies
+Jackal, River City Ransom, Tecmo Super Bowl) or from `baserom.nes` (Family BASIC); `tools/gen_patch.py` copies
 what it can from the player's ROM and refuses a patch that carries sixteen
-bytes in a row of the game. `make web` puts all eight, as committed, on
+bytes in a row of the game. `make web` puts all nine, as committed, on
 the web site's ROM patches page (`patches/`, from
 `web/patches/index.html`), which says which release of each game a player
 needs and how to apply the patch. The site's workflow has no copy of any
@@ -222,6 +231,41 @@ NESP32** does (RTS high 100 ms, DTR low, as esptool does), for a kept dump
 when the console is not to hand. `tests/test_web.py` holds the page to its
 build.
 
+**A console that stops: Tecmo Super Bowl's debug build.** A dump needs a
+console that is still running. One that freezes, or crashes into its
+reset, sends nothing, and the other only says `OTHER STOPPED`. For those,
+`make -C apps/superbowl` also builds `build/superbowl_net_debug.nes`, the
+netplay ROM assembled with `NET_DEBUG` (beside `superbowl_net.nes`, the
+ROM for players, and `superbowl_net_slow.nes`). The debug build keeps, in
+the save RAM past the game's save (from $7FA2, which the game's clear of a
+damaged save leaves alone), what the console last did:
+
+| Row on NETWORK GAME | Kept | Its 12 bytes |
+|---|---|---|
+| 25 | `net_resets`: what the last reset found, before the game's reset cleared the RAM (`net_reset_keep`, from the game's `RESET_START`); the reset before it is kept too, not shown | the stack pointer, `net_mode`, `net_tick`, `net_silent`, `TASK_BUSY_FLAG`, `net_nmi_busy`, the two banks' shadows, and the stack's top 4 bytes |
+| 26 | `net_crumb`: where the last session NMI that came to the exchange found the console (`net_nmi_read`) | the stack pointer, the tick, the two banks' shadows, and the stack's top 8 bytes |
+| 27 | `net_beat`: the session NMIs since that one, lags and those with a task at work (`net_beat_keep`) | how many (16 bits, low byte first), then the last one's pushed flags and return address (low, high), `TASK_BUSY_FLAG`, `SOFT_PPU_CTRL`, `SOFT_PPU_MASK`, the stack pointer, the two banks' shadows, `CURRENT_TASK` |
+
+To read them: put the debug ROM on the console, play, and after a stop
+press the console's Reset, then open NETWORK GAME from the title. Rows 26
+and 27 are in the battery-backed save RAM and outlast anything; row 25 is
+what the console's RAM held at the Reset, so switching it off instead
+loses that row, and on a flash cartridge whose Reset goes through its own
+loader (the N8 clone multicart's), which clears the RAM, row 25 is the
+loader's leftovers and only 26 and 27 tell. The
+rows are in hex, four bytes to a group. A count in row 27 that is small,
+with no NMI after the one it names, says the NMI stopped or the CPU did;
+a large one, that the console ran on outside the exchange. The README's
+"What has been learned" reads one through, the MiSTer's rows that found
+the NMI taken as PPUCTRL turned it off.
+
+The recording costs some 100 cycles in the NMIs that do not exchange, and
+none in those that do (the first split comes in them). The ROM for
+players has none of it: its rows are blank and it writes nothing there.
+The two play the same game, and a session may have one of each.
+`tests/test_menu.py`'s `test_a_reset_in_play_is_kept_for_the_menu` holds
+both builds to that. The other netplay games have no debug build yet.
+
 ## How far each part has got
 
 Each program's README has its own status, with the figures from hardware.
@@ -250,6 +294,7 @@ What is still to do on the hardware and the firmware is in
 | [Weather](../apps/weather), WEATHER | working on hardware, the ROM by itself |
 | [Bluesky](../apps/bluesky), BSKY | on a simulated console against the firmware's code; not yet on hardware |
 | [Family BASIC](../apps/family-basic), KBD (and its KEYS_ALL) | a prototype, working on hardware, the MiSTer and an EverDrive N8: programs typed in on a Bluetooth keyboard, every key of the Famicom's that a computer's has, edited and run, and kept over a reset (on the N8, after `SYSTEM`) |
+| [Tecmo Super Bowl](../apps/superbowl), PEER and its SAVE ops | working on hardware, a real NES and the MiSTer, two consoles by room code: the save copied, whole season games played; one console stopped after a play now and then, which a fix (November 2026) has not had since in two whole games |
 | [Family BASIC](../apps/family-basic)'s SAVE and LOAD, TAPE | working on hardware, the MiSTer and a real NES: a program saved, the console reset, and loaded again; BG GRAPHIC's not tried |
 
 ## What is where

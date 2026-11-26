@@ -393,6 +393,15 @@ on a StickS3 and a StickC Plus2 (November 2026); the web site's log page
 Restart button. A ROM's hello is in the log too (`radio: app TSBO version
 1`).
 
+A console that freezes sends no dump, and its nesp32's log goes quiet
+with the games alike to the last digest; the other's says the session
+ended (`OTHER STOPPED` on its console). Nothing on the nesp32 can tell
+more. For Tecmo Super Bowl, its debug build (`superbowl_net_debug.nes`,
+`NET_DEBUG`) keeps what the console last did in its own save RAM and
+shows it on NETWORK GAME after a Reset: `docs/DEVELOPMENT.md`, "Logs and
+crash dumps". That found the freeze of November 2026, which followed the
+StickC Plus2 though nothing in either nesp32's log was amiss.
+
 What `conn.c` leans on: lwIP's sockets from a task on the Wi-Fi's core, a
 non-blocking `connect` waited for with `select`, and a look for received
 bytes once a millisecond, with at most one datagram sent each time.

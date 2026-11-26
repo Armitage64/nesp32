@@ -1,15 +1,19 @@
 # Multiplayer: two consoles, one game
 
-Seven of the apps are netplay builds of a two-player game:
+Eight of the apps are netplay builds of a two-player game:
 [Contra](../apps/contra), [Dr. Mario](../apps/drmario),
 [Tetris](../apps/tetris), [TMNT II](../apps/tmnt2),
-[Bubble Bobble](../apps/bubblebobble), [Jackal](../apps/jackal) and
-[River City Ransom](../apps/rcr).
+[Bubble Bobble](../apps/bubblebobble), [Jackal](../apps/jackal),
+[River City Ransom](../apps/rcr) and
+[Tecmo Super Bowl](../apps/superbowl).
 Each is
 played on two consoles, each console with a nesp32 on controller port 2,
-the nesp32s joined over the network. The seven work the same way, and this
+the nesp32s joined over the network. The eight work the same way, and this
 is that way: what the player sees, what a tick is, how the two games are
-kept the same, and what is still left to do in all seven.
+kept the same, and what is still left to do in all eight. Tecmo Super
+Bowl is the one with a save: the two consoles' saves are made the same
+before a session (PEER's SAVE ops), so its whole game, the season with
+it, is played in one.
 
 What the nesp32s do between them is the PEER service's, in
 [`PROTOCOL.md`](PROTOCOL.md): its lobby, its exchange of buttons, the
@@ -27,6 +31,7 @@ and from hardware) is in its own docs:
 | Bubble Bobble | [apps/bubblebobble/README.md](../apps/bubblebobble/README.md) | its README, "How the netplay works" |
 | Jackal | [apps/jackal/README.md](../apps/jackal/README.md) | its README, "How the netplay works" |
 | River City Ransom | [apps/rcr/README.md](../apps/rcr/README.md) | its README, "How the netplay works" |
+| Tecmo Super Bowl | [apps/superbowl/README.md](../apps/superbowl/README.md) | its README, "The netplay ROM", "The menu" and "The save" |
 
 ## Playing
 
@@ -58,7 +63,7 @@ left.
   Internet, for a nesp32 that has no rooms, and for two networks that
   rooms cannot get through.
 
-All seven games' menus have both ways. Contra, TMNT II and Bubble Bobble
+All eight games' menus have both ways. Contra, TMNT II and Bubble Bobble
 write the foot of the screen as `SELECT   BY IP`, their fonts having no
 dash.
 
@@ -71,6 +76,7 @@ dash.
 | Bubble Bobble | 2P START | `BUBL` |
 | Jackal | 2 PLAYERS | `JACK` |
 | River City Ransom | 2P PLAY | `RIVR` |
+| Tecmo Super Bowl | NETWORK GAME, beside LOCAL GAME | `TSBO` |
 
 The console that hosted is player 1. When the two nesp32s are connected
 both consoles leave the menu and go straight into a game for two. Each
@@ -384,6 +390,7 @@ What the digest covers is each game's own:
 | TMNT II | its zero page, less the link's bytes, the sound engine's, what its IRQs keep and the flag of a frame under way, and its sprites |
 | Bubble Bobble | its zero page, less its scratch, the link's bytes, the sound engine's, the NMI's stack pointer as the tasks saw it and the PPU's status as the NMI read it, and its sprites |
 | River City Ransom | its zero page, less its scratch, the HUD's split, the link's bytes, the PPU's and the banks' shadows and the flag of a palette for the NMI, and its objects ($0300-$04FF), taken at the read that begins the tick |
+| Tecmo Super Bowl | its zero page ($46-$EF), less the IRQ's split ($49-$4A), and its sprites; not the library's zero page nor the sound engine's ($F0-$FF) |
 
 Each byte goes into the digest with the digest rotated a place, its bits
 round, and EORed: a step that loses nothing, so one byte that differs
@@ -509,19 +516,21 @@ passed over. With no session, the title passes over 2P CONTINUE.
 ## To do
 
 What is left on the nesp32 itself is in [`TODO.md`](TODO.md). In all
-seven games:
+eight games:
 
 
 - **Say why on the console** when a session ends (the other console left,
   the nesp32 went quiet, the games differed); it only goes back to the
-  title now.
+  title now, but for Tecmo Super Bowl, whose NETWORK GAME screen says
+  `LAST: GAMES DIFFERED`, `OTHER STOPPED` or `OTHER LEFT`.
 - **What the reset leaves**: Bubble Bobble's reset leaves some of the
   RAM as it was, and that broke its sessions ("Ending"). Whether the other
   games' resets clear all of theirs is not checked; Jackal and RCR have
   played long sessions without a drop.
 - **Games that differ** (for later): a dump of each console's RAM to its
-  nesp32 when the digests differ, to learn why, as Bubble Bobble's does
-  ("Ending"), in the other games too; and if it comes back, the
+  nesp32 when the digests differ, to learn why, as Bubble Bobble's and
+  Tecmo Super Bowl's do ("Ending"; the nesp32 keeps the last,
+  [PROTOCOL.md](PROTOCOL.md), "A kept dump"), in the other games too; and if it comes back, the
   host's game copied to the other in place of ending the session. Tetris
   would be the easiest: its NMI draws the playfields again from RAM, so
   the RAM is most of what has to be sent. Dr. Mario's bottles are in RAM
