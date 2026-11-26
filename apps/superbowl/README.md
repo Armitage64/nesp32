@@ -319,7 +319,12 @@ changed at random, which the game writes to the save. `tests/test_season.py`:
 TEAM CONTROL's change of a team, and a season game for two played to its
 end, its result in the season; SCHEDULE's autoskip and a week of the
 CPU's games played out with no buttons; and the season's last game into
-the standings and the first playoff game. Each from a session's start at
+the standings, each division's champion and the playoffs' wild cards. The
+way on from there to the first playoff game, the CPU's, is some 3,900
+frames more of the game showing the bracket and playing it: near 10
+minutes on a core, twice the next longest test, so
+`test_the_first_playoff_game` runs only with `NESP_SLOW_TESTS=1` (before a
+release, or after a change to the season's end). Each from a session's start at
 the main menu, the same game at every tick, the two saves alike at the
 end, and in the longer ones every bank the game picks one of its 30 (the
 netplay's are 30 and 31; `game_banks`).

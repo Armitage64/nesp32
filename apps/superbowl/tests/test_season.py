@@ -8,6 +8,9 @@ A whole season would take hours in the simulation, so a test that needs the
 season further on puts it there itself, the same on both consoles at a
 tick, with the save's checksum made right as the game makes it."""
 
+import os
+
+import pytest
 from drive import PAD_A, PAD_B, PAD_DOWN
 from netplay import Table
 from test_game import END_OF_GAME_STATS, GAME_BANKS, game_banks, in_session, scenes
@@ -167,13 +170,17 @@ def test_a_week_skipped(net_console):
     assert picked and max(picked) < GAME_BANKS
 
 
-def test_the_season_into_the_playoffs(net_console):
-    """The last game of the last week, which ends the season: the standings,
-    the playoffs' teams, and GAME START again, the first playoff game."""
-    table = Table(net_console, delay=ms(10))
-    table.start()
-    picked = game_banks(table)
+WILD_CARDS = ("AFC_WILD_CARD_ONE_HOME_TEAM_ID", "AFC_WILD_CARD_ONE_AWAY_TEAM_ID",
+              "AFC_WILD_CARD_TWO_HOME_TEAM_ID", "AFC_WILD_CARD_TWO_AWAY_TEAM_ID",
+              "NFC_WILD_CARD_ONE_HOME_TEAM_ID", "NFC_WILD_CARD_ONE_AWAY_TEAM_ID",
+              "NFC_WILD_CARD_TWO_HOME_TEAM_ID", "NFC_WILD_CARD_TWO_AWAY_TEAM_ID")
+# The whole way to the first playoff game is some 9,500 frames, near 10
+# minutes on a core, the longest test of all: only when asked for.
+SLOW = os.environ.get("NESP_SLOW_TESTS") == "1"
 
+
+def to_the_seasons_end(table):
+    """The last game of the last week, at GAME START: it ends the season."""
     def last_game(console):
         set_sram(console, "CURRENT_WEEK_IN_SEASON", LAST_WEEK)
         set_sram(console, "CURRENT_GAME_IN_WEEK", MAX_GAMES_PER_WEEK - 1)
@@ -182,6 +189,48 @@ def test_the_season_into_the_playoffs(net_console):
     tap(table, 0, PAD_DOWN, 30)
     tap(table, 0, PAD_A, 150)
     season_choice(table, GAME_START)
+
+
+def wild_cards(console):
+    return [sram(console, name) for name in WILD_CARDS]
+
+
+def test_the_season_into_the_playoffs(net_console):
+    """The last game of the last week, which ends the season: each
+    division's champion and the standings, and the playoffs' wild cards.
+    After those, until the first playoff game, the game only shows them
+    (some 3,000 frames), and that game is the CPU's, as a week's are
+    (test_a_week_skipped): `test_the_first_playoff_game` goes on to it."""
+    table = Table(net_console, delay=ms(10))
+    table.start()
+    picked = game_banks(table)
+    to_the_seasons_end(table)
+    host = table.consoles[0]
+    before = wild_cards(host)
+    for _ in range(PLAYOFF_PRESSES):
+        if sram(host, "CURRENT_WEEK_IN_SEASON") == PLAYOFFS and wild_cards(host) != before:
+            break
+        tap(table, 0, PAD_A, 150)
+    table.run(60)
+    for console in table.consoles:
+        assert sram(console, "CURRENT_WEEK_IN_SEASON") == PLAYOFFS
+        teams = wild_cards(console)
+        assert teams != before and all(team < TEAMS for team in teams)
+        assert len(set(teams)) == len(teams)
+    in_session(table)
+    assert table.same_game() > 1500
+    assert save_of(table.consoles[0]) == save_of(table.consoles[1])
+    assert picked and max(picked) < GAME_BANKS
+
+
+@pytest.mark.skipif(not SLOW, reason="some 10 minutes: NESP_SLOW_TESTS=1")
+def test_the_first_playoff_game(net_console):
+    """The season's end, its standings and the playoffs' teams, and GAME
+    START again: the first playoff game, played by the CPU, its score kept."""
+    table = Table(net_console, delay=ms(10))
+    table.start()
+    picked = game_banks(table)
+    to_the_seasons_end(table)
     host = table.consoles[0]
     played = False
     for _ in range(PLAYOFF_PRESSES):

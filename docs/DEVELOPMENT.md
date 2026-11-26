@@ -293,6 +293,12 @@ and the next run starts with the longest, one to a worker, so the run does
 not end waiting on one. Plain `pytest` runs them one at a time, which is
 what to use with `-s` or `--pdb`, or for a file or two.
 
+A program's run on every core ends with its longest test, so a test of
+many minutes, whose last stretch adds little that others do not try, is
+left out unless `NESP_SLOW_TESTS=1` is set (Tecmo Super Bowl's first
+playoff game, some 10 minutes): run them before a release, and after a
+change to what they cover.
+
 A new program's tests in `apps/<name>/tests` are found by `make test-apps`
 as they are. Written for it, a test has to stand other tests running at
 the same time, in other processes:
