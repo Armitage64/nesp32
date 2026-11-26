@@ -68,6 +68,16 @@ typedef struct {
     char name[NESP_WEATHER_PLACE_MAX];      /* for the report's first row, spaces after it */
 } nesp_weather_place_t;
 
+/* The last DUMP as the hal keeps it over power-off, with its RAM (kept.c). */
+typedef struct {
+    uint32_t count;                 /* dumps this nesp32 has kept, this one the count'th */
+    uint32_t tick;                  /* the tick whose digests differed, or 0 */
+    char app[NESP_APP_ID];          /* the ROM that sent it, as its hello named it */
+    uint8_t app_version;
+    uint8_t spare[3];               /* zeros: no padding, for keeping it whole */
+    char firmware[32];              /* the firmware that kept it (NESP_FIRMWARE_TEXT), zeros after */
+} nesp_dump_head_t;
+
 typedef struct {
     void *ctx;
     /* More of the reply's body. False: no more of it is wanted. */
@@ -197,6 +207,11 @@ typedef struct {
      * the last list written, whole. False: none has been kept. */
     bool (*favorites_last)(void *ctx, nesp_bsky_favorites_t *out);
     void (*favorites_keep)(void *ctx, const nesp_bsky_favorites_t *favorites);
+    /* Either may be NULL, likewise. The last whole DUMP a console sent, kept
+     * over power-off: its head and its NESP_PEER_DUMP_BYTES of RAM, written
+     * once a dump. False: none has been kept. */
+    bool (*dump_last)(void *ctx, nesp_dump_head_t *head, uint8_t *ram);
+    void (*dump_keep)(void *ctx, const nesp_dump_head_t *head, const uint8_t *ram);
     /* How long the network takes to the other nesp32 and back, in
      * microseconds, smoothed. 0: not known. */
     uint32_t (*peer_rtt)(void *ctx);
@@ -272,7 +287,10 @@ typedef struct {
  * PEER's connection over a network that loses packets. */
 #define NESP_ARQ_HEADER 24
 #define NESP_ARQ_CARRY 32           /* bytes a datagram carries at most */
-#define NESP_ARQ_HELD 96            /* bytes kept each way */
+/* Bytes kept each way: a window of them in flight, for PEER's save, a
+ * network's time there and back at a datagram a millisecond. A game's
+ * few bytes a frame are never more than a datagram carries. */
+#define NESP_ARQ_HELD 2048
 #define NESP_ARQ_NOTE 4
 #define NESP_ARQ_NEEDS (NESP_PEER_DELAY_MAX + 1)
 #define NESP_ARQ_PACKET (NESP_ARQ_HEADER + NESP_ARQ_CARRY)
@@ -282,9 +300,12 @@ typedef struct {
     uint32_t session;
     uint8_t out[NESP_ARQ_HELD];     /* sent, and not yet said to have come */
     uint16_t out_base;              /* where in the stream out[0] is */
-    uint8_t out_len;
+    uint16_t out_len;
+    uint16_t out_sent;              /* how many of out have gone at least once */
+    uint8_t dull;                   /* datagrams in a row that said nothing more of out had come */
+    uint32_t back_at;               /* when a window last went again from the oldest */
     uint8_t in[NESP_ARQ_HELD];      /* come, and not yet read */
-    uint8_t in_len;
+    uint16_t in_len;
     uint16_t in_next;               /* where in the other's stream this end has got to */
     bool sent;
     bool fresh;                     /* there is something new to say */
@@ -351,6 +372,7 @@ typedef struct {
     const nesp_hal_t *hal;
     char app[NESP_APP_ID];
     uint8_t app_version;
+    uint32_t hellos;                /* how many a ROM has said */
     uint8_t events[NESP_EVENT_QUEUE][2];
     uint8_t event_first;
     uint8_t event_count;
@@ -875,6 +897,21 @@ typedef struct {
     uint8_t rate_wanted;
     uint8_t rate;
     uint32_t rate_heard_at;
+    /* A game's save, the host's copied to the other before the first tick
+     * (SAVE). Each nesp32 sends its console's sum and length, and, if the
+     * two differ, the host's sends its save and the other's says when its
+     * console has it. Only then do the ticks cross. */
+    bool save_on;                   /* this console asked SAVE: the stream begins with a save's */
+    uint8_t save_head[4];           /* this console's sum and length, as they cross */
+    uint8_t save_head_sent;
+    uint8_t their_head[4];
+    uint8_t their_head_len;
+    uint16_t save_len;
+    uint16_t save_put;              /* the host: bytes of its save sent on */
+    uint16_t save_come;             /* the other: bytes of the host's that have come */
+    bool save_done_sent;            /* the other: its console has the host's save */
+    bool save_done_heard;           /* the host: and it has heard so */
+    uint8_t save_data[NESP_PEER_SAVE_MAX];
     /* A console's RAM (DUMP), and its lines for the log still to go. Last,
      * and kept through peer.c's reset(): a console that has given its
      * session up may say hello again before they have all gone. */
@@ -882,7 +919,37 @@ typedef struct {
     uint32_t dump_at;               /* when the next may go */
     uint32_t dump_tick;             /* the tick whose digests differed, or 0 */
     uint8_t dump[NESP_PEER_DUMP_BYTES];
+    struct nesp_kept *kept;         /* where a whole dump is kept, or NULL */
 } nesp_peer_t;
+
+/* The last DUMP kept over power-off and said to the log again (kept.c):
+ * NESP_KEPT_FIRST_MS after the first tick, and every NESP_KEPT_AGAIN_MS
+ * after, NESP_KEPT_TELLINGS times. A ROM's hello begins them again
+ * NESP_KEPT_FIRST_MS after it, and a new dump a minute after the log has
+ * had it (a hello then leaves that minute be). */
+#define NESP_KEPT_FIRST_MS 1000
+#define NESP_KEPT_AGAIN_MS 60000
+#define NESP_KEPT_TELLINGS 5
+typedef struct nesp_kept {
+    const nesp_hal_t *hal;
+    const nesp_sys_t *sys;          /* whose hellos begin the tellings again, or NULL */
+    uint32_t hellos;                /* the count of them last seen */
+    bool loaded;                    /* the hal has been asked for the one kept */
+    bool have;
+    nesp_dump_head_t head;
+    uint8_t ram[NESP_PEER_DUMP_BYTES];
+    uint8_t line;                   /* of a telling, the next: 0 the first */
+    uint8_t rounds;                 /* tellings still to come */
+    uint32_t at;                    /* when the next line, or telling, may go */
+    uint32_t now;
+} nesp_kept_t;
+
+void nesp_kept_init(nesp_kept_t *kept, const nesp_hal_t *hal, const nesp_sys_t *sys);
+/* A whole DUMP: kept, and handed to the hal to keep. */
+void nesp_kept_dump(nesp_kept_t *kept, uint32_t tick, const char *app, uint8_t app_version,
+                    const uint8_t *ram);
+/* The clock: the kept dump's lines for the log, when it is time. */
+bool nesp_kept_tick(nesp_kept_t *kept, uint32_t now);
 
 /* TUNER: a radio station as sampled sound (tuner.c). */
 /* A page for a console's screen of what a station is playing, from the
@@ -968,6 +1035,7 @@ typedef struct {
     nesp_kbd_t kbd;
     nesp_http_t http;
     nesp_tape_t tape;
+    nesp_kept_t kept;
     nesp_service_t services[14];
 } nesp_stick_t;
 

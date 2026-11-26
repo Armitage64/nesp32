@@ -108,6 +108,11 @@ JOIN_ROOM = 0x07        # code (4): join the other nesp32's room
 ROOM = 0x08             # the lobby's state, with the room's code and why a meeting failed
 RATE = 0x09             # period: a session's line at that many cycles a bit, both ways
 DUMP = 0x0A             # offset (2), bytes: the console's RAM, for the nesp32's log
+# A game's save, the host's copied to the other, before the first tick:
+SAVE = 0x0B             # sum (2), length (2): this console's save; and how the two stand (enum SAVE)
+SAVE_PUT = 0x0C         # offset (2), bytes: the host's save, for the other; and where it has got to (2)
+SAVE_GET = 0x0D         # offset (2): the host's save, as far as it has come, from there
+SAVE_DONE = 0x0E        # the other console has the host's save: the session may begin (enum SAVE)
 
 [services.DIAG]
 id = 0x05
@@ -331,6 +336,13 @@ GUEST = 5               # connected: this one called, and this console is player
 FAILED = 6              # the last call was not answered, or the connection was lost
 MEETING = 7             # finding where this one can be reached, or asking the rendezvous
 
+[enums.SAVE]            # PEER SAVE: how the two consoles' saves stand
+WAITING = 0             # the other's sum has not come
+SAME = 1                # the two are the same: the session may begin
+DIFFERENT = 2           # they differ: the host's goes to the other, if its player says yes
+DONE = 3                # the other console has the host's save now
+GONE = 4                # there is no session, or it was lost
+
 [enums.MEET]            # PEER: why a meeting at the rendezvous failed, with FAILED
 NONE = 0
 NO_SERVER = 1           # the rendezvous could not be asked, or said nothing that made sense
@@ -543,3 +555,4 @@ PEER_RATE_QUIET_MS = 500    # no good frame for this long at a session's rate, a
 PEER_DUMP_BYTES = 2048  # bytes of a console's RAM that DUMP takes: $0000-$07FF
 PEER_DUMP_LINE = 64     # of them to a line of the log
 PEER_DUMP_EVERY_MS = 100    # between two lines of it
+PEER_SAVE_MAX = 8192    # the longest save PEER copies

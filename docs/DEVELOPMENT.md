@@ -61,6 +61,15 @@ source of it, and takes what the disassembly leaves out from the copy of
 the game that whoever builds supplies. The original built from that
 source is checked against the ROM's SHA-512.
 
+[Tecmo Super Bowl](../apps/superbowl) is built from bruddog's
+disassembly, a submodule at `third_party/Tecmo_Super_Bowl_NES_Disassembly`,
+which is for asm6f: its `tools/import.py` read it once, through asm6f's
+listing, into `tools/game.map` (addresses, names and comments, none of
+the game's bytes), and its `tools/convert.py` makes ca65 source of the
+copy of the game that whoever builds supplies with it, in `build/gen`.
+The original built from that source is checked against the ROM's
+SHA-512.
+
 ### Changing a borrowed program's code
 
 NES Radar's is changed in nes-radar itself, and the submodule moved to the
@@ -68,7 +77,7 @@ commit ([its README](../apps/nes-radar/README.md) has how). For the three
 games, the build copies the submodule's sources into the program's
 `build/` (`build/src` for Contra, `build/upstream` for Dr. Mario and
 Tetris) and applies its `patches/` there; the submodule is never
-written to. Bubble Bobble's, River City Ransom's and Jackal's builds apply their `patches/` to a
+written to. Bubble Bobble's, River City Ransom's, Jackal's and Tecmo Super Bowl's builds apply their `patches/` to a
 copy of their converted source, `build/gen` copied to `build/src`. To change what nesp32 adds to their own files, edit the
 copies, then
 
@@ -101,9 +110,9 @@ Players don't build the games: each game's `dist/` has the netplay ROM
 (Family BASIC's ROM) as a BPS patch to the original, which they apply to
 their own copy. `make bps` in the app writes it, from the original as
 built and verified (Dr. Mario, Tetris, Contra, TMNT II, Bubble Bobble,
-Jackal, River City Ransom) or from `baserom.nes` (Family BASIC); `tools/gen_patch.py` copies
+Jackal, River City Ransom, Tecmo Super Bowl) or from `baserom.nes` (Family BASIC); `tools/gen_patch.py` copies
 what it can from the player's ROM and refuses a patch that carries sixteen
-bytes in a row of the game. `make web` puts all eight, as committed, on
+bytes in a row of the game. `make web` puts all nine, as committed, on
 the web site's ROM patches page (`patches/`, from
 `web/patches/index.html`), which says which release of each game a player
 needs and how to apply the patch. The site's workflow has no copy of any
@@ -186,6 +195,77 @@ The menu is in the last bank, which is the one an MMC1 has at `$C000` when
 the power comes on. Emulators do that, and most of the chips; one that did
 not would not start this cartridge.
 
+## Logs and crash dumps
+
+A nesp32's log is on its USB serial port. `firmware/deploy.sh watch`
+prints every connected board's without restarting it; `idf.py monitor`
+restarts the board when it opens the port. When a ROM says hello the log
+names it (`radio: app TSBO version 1`), and the nesp32's screen does too.
+
+**A desync's dump.** A netplay ROM whose digest differs from the other
+console's sends its 2 KB of RAM to its nesp32 (PEER's DUMP) before it
+gives the session up: Tecmo Super Bowl and Bubble Bobble do. The nesp32
+writes it to its log at once, a heading that names the ROM and the tick,
+32 lines of 64 bytes in hex and `dump end`. With both consoles' dumps,
+the bytes that differ are where the two games parted
+([MULTIPLAYER.md](MULTIPLAYER.md) has how Bubble Bobble's first ones were
+read).
+
+**The kept dump.** The nesp32 also keeps the last whole dump in its flash
+(NVS, `dumphead` and `dumpram`; `firmware/components/nesp_services/kept.c`
+and the hal's `dump_last` and `dump_keep`), with its tick, the ROM and the
+firmware's version, and says it again in its log a second after it starts
+and a second after a ROM says hello, then every minute, five times. So a
+dump from a game played with no computer on the cable can be had later:
+switch the console on again, or reset the nesp32, with the log open. The
+lines' exact form is in [PROTOCOL.md](PROTOCOL.md), "A kept dump".
+
+**For players: the web site's log page** (`web/log/`, pull request #105):
+the log recorded in the browser over Web Serial (Chrome, Edge or Opera on
+a computer), with no ESP-IDF. It keeps the last 10 recordings in the
+browser, finds each dump, live or kept, and counts it once, and **Report
+the problem** opens a GitHub issue with the dump, the game and the
+firmware's version in it, and copies the log's end to paste below. The
+page's open of the port does not restart the nesp32; **Restart the
+NESP32** does (RTS high 100 ms, DTR low, as esptool does), for a kept dump
+when the console is not to hand. `tests/test_web.py` holds the page to its
+build.
+
+**A console that stops: Tecmo Super Bowl's debug build.** A dump needs a
+console that is still running. One that freezes, or crashes into its
+reset, sends nothing, and the other only says `OTHER STOPPED`. For those,
+`make -C apps/superbowl` also builds `build/superbowl_net_debug.nes`, the
+netplay ROM assembled with `NET_DEBUG` (beside `superbowl_net.nes`, the
+ROM for players, and `superbowl_net_slow.nes`). The debug build keeps, in
+the save RAM past the game's save (from $7FA2, which the game's clear of a
+damaged save leaves alone), what the console last did:
+
+| Row on NETWORK GAME | Kept | Its 12 bytes |
+|---|---|---|
+| 25 | `net_resets`: what the last reset found, before the game's reset cleared the RAM (`net_reset_keep`, from the game's `RESET_START`); the reset before it is kept too, not shown | the stack pointer, `net_mode`, `net_tick`, `net_silent`, `TASK_BUSY_FLAG`, `net_nmi_busy`, the two banks' shadows, and the stack's top 4 bytes |
+| 26 | `net_crumb`: where the last session NMI that came to the exchange found the console (`net_nmi_read`) | the stack pointer, the tick, the two banks' shadows, and the stack's top 8 bytes |
+| 27 | `net_beat`: the session NMIs since that one, lags and those with a task at work (`net_beat_keep`) | how many (16 bits, low byte first), then the last one's pushed flags and return address (low, high), `TASK_BUSY_FLAG`, `SOFT_PPU_CTRL`, `SOFT_PPU_MASK`, the stack pointer, the two banks' shadows, `CURRENT_TASK` |
+
+To read them: put the debug ROM on the console, play, and after a stop
+press the console's Reset, then open NETWORK GAME from the title. Rows 26
+and 27 are in the battery-backed save RAM and outlast anything; row 25 is
+what the console's RAM held at the Reset, so switching it off instead
+loses that row, and on a flash cartridge whose Reset goes through its own
+loader (the N8 clone multicart's), which clears the RAM, row 25 is the
+loader's leftovers and only 26 and 27 tell. The
+rows are in hex, four bytes to a group. A count in row 27 that is small,
+with no NMI after the one it names, says the NMI stopped or the CPU did;
+a large one, that the console ran on outside the exchange. The README's
+"What has been learned" reads one through, the MiSTer's rows that found
+the NMI taken as PPUCTRL turned it off.
+
+The recording costs some 100 cycles in the NMIs that do not exchange, and
+none in those that do (the first split comes in them). The ROM for
+players has none of it: its rows are blank and it writes nothing there.
+The two play the same game, and a session may have one of each.
+`tests/test_menu.py`'s `test_a_reset_in_play_is_kept_for_the_menu` holds
+both builds to that. The other netplay games have no debug build yet.
+
 ## How far each part has got
 
 Each program's README has its own status, with the figures from hardware.
@@ -200,7 +280,7 @@ What is still to do on the hardware and the firmware is in
 | The firmware (`firmware/main/`): UART, Wi-Fi, HTTPS, the screen, the files, the USB drive, the connection to another nesp32 | working on a StickS3 and on a StickC Plus2, with the MiSTer and with a real NES ([its README](../firmware/README.md)) |
 | The nesp32's files, in a FAT filing system, with rips converted on the nesp32 itself | working on hardware: written over USB with `tools/put_files.py` to a StickC Plus2, and copied to a StickS3 as a USB drive |
 | A computer in place of a nesp32 (`host/serial_host.py`) | written, not run on a cable |
-| A nesp32 in the Mesen emulator ([`host/mesen/`](../host/mesen)): a Lua script and a bridge to the firmware's code, with the computer's keyboard as the Bluetooth keyboard | working in MesenCE: the cartridge's programs, HTTP and the keyboard; PEER not yet |
+| A nesp32 in the Mesen emulator ([`host/mesen/`](../host/mesen)): a Lua script and a bridge to the firmware's code, with the computer's keyboard as the Bluetooth keyboard | working in MesenCE: the cartridge's programs, HTTP, the keyboard, and PEER (Tetris and River City Ransom against a nesp32 on a real NES, Dr. Mario between two headless MesenCEs; [its README](../host/mesen/README.md)) |
 | The cartridge (`nes/cart/`): eight programs and a menu, on an MMC1 | working on hardware with the first five, a real NES and the MiSTer, with each board. NESradio, Weather and Bluesky start from the menu on a simulated console; the cartridge with them has not yet run on hardware |
 | [Setup](../apps/setup), SYS, NET, DIAG | working on hardware |
 | A Bluetooth keyboard: KBD, [Setup](../apps/setup)'s screen for it and its Wi-Fi password, [NESpedia](../apps/wiki)'s search and reader, and [Weather](../apps/weather)'s zip code; every program on the cartridge asks for KBD, to keep the keyboard connected, and takes its keys as the controller's buttons (NESradio's until its station plays) | working on hardware: a StickS3 with a Logitech MX Keys S, paired from Setup, typing NESpedia's searches and Weather's zip codes, and paging NESpedia's articles |
@@ -214,6 +294,7 @@ What is still to do on the hardware and the firmware is in
 | [Weather](../apps/weather), WEATHER | working on hardware, the ROM by itself |
 | [Bluesky](../apps/bluesky), BSKY | on a simulated console against the firmware's code; not yet on hardware |
 | [Family BASIC](../apps/family-basic), KBD (and its KEYS_ALL) | a prototype, working on hardware, the MiSTer and an EverDrive N8: programs typed in on a Bluetooth keyboard, every key of the Famicom's that a computer's has, edited and run, and kept over a reset (on the N8, after `SYSTEM`) |
+| [Tecmo Super Bowl](../apps/superbowl), PEER and its SAVE ops | working on hardware, a real NES and the MiSTer, two consoles by room code: the save copied, whole season games played; one console stopped after a play now and then, which a fix (November 2026) has not had since in two whole games |
 | [Family BASIC](../apps/family-basic)'s SAVE and LOAD, TAPE | working on hardware, the MiSTer and a real NES: a program saved, the console reset, and loaded again; BG GRAPHIC's not tried |
 
 ## What is where
@@ -223,10 +304,10 @@ What is still to do on the hardware and the firmware is in
 | `proto/nesp.toml`, `tools/gen_proto.py` | the numbers both ends share, and the C, ca65 and Python files written from them |
 | `docs/` | the protocol, the wiring, this file, the hardware and firmware to-do list, and write-ups of bugs found on hardware |
 | `firmware/components/nesp_core` | frames, CRC, services' registry |
-| `firmware/components/nesp_services` | every service, the text code WIKI lays articles out with, and the MP3 decoder TUNER plays a station with |
+| `firmware/components/nesp_services` | every service, the text code WIKI lays articles out with, the MP3 decoder TUNER plays a station with, and the last crash dump kept over power-off (`kept.c`) |
 | `firmware/main` | the board: UART and link task, Wi-Fi, HTTPS fetches, the connection to another nesp32, files, screen and buttons |
 | `hardware/` | the hat's board, its parts and pictures |
-| `web/` | the product page and the page that flashes a nesp32 from a browser (`make web`); `.github/workflows/web.yml` puts the site on GitHub Pages with the latest release's firmware and cartridge ([RELEASING.md](RELEASING.md)) |
+| `web/` | the product page, the page that flashes a nesp32 from a browser, and the one that records its log and reports a crash (`web/log/`) (`make web`); `.github/workflows/web.yml` puts the site on GitHub Pages with the latest release's firmware and cartridge ([RELEASING.md](RELEASING.md)) |
 | `VERSION`, `CHANGELOG.md` | the version of the firmware and the cartridge, and what changed in each release ([RELEASING.md](RELEASING.md)) |
 | `tools/put_files.py` | puts the jukebox's tracks on a nesp32, over USB, for a board that cannot be a drive |
 | `tools/lcd.py` | pictures of the nesp32's own screen, for trying a layout before flashing it |
@@ -257,6 +338,12 @@ and the next run starts with the longest, one to a worker, so the run does
 not end waiting on one. Plain `pytest` runs them one at a time, which is
 what to use with `-s` or `--pdb`, or for a file or two.
 
+A program's run on every core ends with its longest test, so a test of
+many minutes, whose last stretch adds little that others do not try, is
+left out unless `NESP_SLOW_TESTS=1` is set (Tecmo Super Bowl's first
+playoff game, some 10 minutes): run them before a release, and after a
+change to what they cover.
+
 A new program's tests in `apps/<name>/tests` are found by `make test-apps`
 as they are. Written for it, a test has to stand other tests running at
 the same time, in other processes:
@@ -285,7 +372,9 @@ the same time, in other processes:
   the buttons, and a sound handed to RAW, with the test as the console.
   The jukebox's ROM itself is run against this code in nes-jukebox's tests.
 - `test_peer.py`: the lobby, the greetings and the relay of buttons, with
-  the test as the network between two nesp32s. Dr. Mario's netplay ROM is
+  the test as the network between two nesp32s; a desync's dump to the log,
+  and the last one kept in the stand-in's flash and said again at the
+  start and at a hello. Dr. Mario's netplay ROM is
   run against this code, on two consoles, in nes-drmario's tests.
 - `test_peer_net.py`: a computer's stand-in for that network, on real
   sockets on this machine.
@@ -322,8 +411,9 @@ the same time, in other processes:
   keyboard's reports to characters, held to `firmware/main/keyboard.c`;
   pairing, forgetting and typing through KBD; a ROM's files kept and
   loaded again; fetches as the firmware makes them, with the test as
-  the site; and a bridge with `--exit-when-idle` stopping once no Mesen
-  is connected.
+  the site; a bridge with `--exit-when-idle` stopping once no Mesen
+  is connected; and PEER between two bridges, by address and in a room at
+  `host/rendezvous.py`'s stand-in, and against the idle opponent.
 - `test_vgm.py`: the converter of rips, held to the same bytes as
   nes-jukebox's Python over its rips, over made-up ones, and over 300 made
   at random.

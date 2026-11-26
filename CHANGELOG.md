@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Games
+- Tecmo Super Bowl online added: the whole game, season included, with player 2's save replaced by player 1's when the two differ. Needs this release's firmware (#106)
 - River City Ransom online co-op added, running faster than the original's two-player game on one console (#76)
 - Bubble Bobble online sessions no longer drop at the start or in round 2: each console's leftover RAM from before the session is cleared
 
@@ -12,9 +13,11 @@
 - Throughput test: 298296 baud to the console no longer fails a whole block at random; the test lost count of a block's first byte, not the line (#98)
 
 ### Firmware
+- The last crash dump from an online game whose consoles stopped matching is kept over power-off and printed again on the serial port when the nesp32 starts, so it can be collected later without ESP-IDF (#106)
 - Weather finds a place by its name, anywhere in the world, and a zip code kept by an earlier release is kept as a place (#101)
 - The Stick's screen says "Firmware update available" in red, with no console running a program, when the web site has newer firmware
 - Jukebox: sounds made for the two fastest rates (7 and 8 cycles a bit) start every time, where they often played noise or nothing (#98)
+- A game's save can be copied from the console that hosts to the other before an online session, for games whose two consoles must share one (PEER's SAVE ops); and large transfers between two nesp32s go many packets at a time (#106)
 
 ### Protocol
 - WEATHER PLACE and LAST_PLACE: the weather at a place named as typed, and the last one found; ZIP and LAST still work. Needs this release's firmware (#101)

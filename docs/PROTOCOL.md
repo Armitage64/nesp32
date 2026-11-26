@@ -350,6 +350,10 @@ Internet with no port forwarded, by a room's code at the rendezvous
 | `$08` | ROOM | | the same, and nothing done |
 | `$09` | RATE | `PERIOD` | `PERIOD`: the session's line at that rate, both ways, or `0`: the link's |
 | `$0A` | DUMP | `OFFSET[2]`, `BYTES` ... | nothing: the bytes into the console's RAM as the nesp32 keeps it |
+| `$0B` | SAVE | `SUM[2]`, `LENGTH[2]` | `SAVE`: this console's save, and how the two stand |
+| `$0C` | SAVE_PUT | `OFFSET[2]`, `BYTES` ... | `NEXT[2]`: the host's save, for the other, and how far it has gone |
+| `$0D` | SAVE_GET | `OFFSET[2]` | `BYTES` ...: the host's save from there, as much as has come |
+| `$0E` | SAVE_DONE | | `SAVE`: the other console has the host's save |
 | short | TICKS again, in five bytes and four | `N` ticks: `FIRST` and `WANTED`, `BUTTONS[1 or 2]` | `N` ticks: `BUTTONS[1]` |
 
 In every reply but LAST's, `ADDRESS` is the nesp32's own IPv4 address.
@@ -378,16 +382,56 @@ netplay ROM whose digest differs from the other's sends its RAM before it
 gives the session up, `PEER_DUMP_BYTES` bytes (2048, `$0000-$07FF`) in pieces:
 `OFFSET` (low byte first) is where in it the piece's bytes go, and a piece
 that would go past the end is `BAD_ARG`. The one that ends at the end
-finishes it, and the nesp32 writes the whole of it to its log, a line of
-`PEER_DUMP_LINE` (64) bytes in hex every `PEER_DUMP_EVERY_MS` (100):
-
-```
-peer: dump 0000: 0b1c...
-```
+finishes it, and the nesp32 writes the whole of it to its log: a heading,
+a line of `PEER_DUMP_LINE` (64) bytes in hex every `PEER_DUMP_EVERY_MS`
+(100), and an end.
 
 With both consoles' logs, the two dumps say which bytes differ. A nesp32
 whose firmware has no DUMP answers `NO_OP`, and the console goes on as
 before.
+
+**A kept dump.** Most players have no log open when a game desyncs, so the
+nesp32 also keeps the last whole dump in its flash (NVS), written once a
+dump, not a piece, with the tick, the ROM that sent it (its hello's `APP`
+and version) and the firmware's version. It says it again in its log
+`NESP_KEPT_FIRST_MS` (1 s) after it starts or a ROM says hello (the
+cartridge's menu, a game), and every `NESP_KEPT_AGAIN_MS` (60 s) after,
+`NESP_KEPT_TELLINGS` (5) times in all; a new dump begins them again a
+minute after its own lines, so the two never come together. A page on Web
+Serial that opens the port leaves DTR and RTS alone and does not reset the
+nesp32 (`idf.py monitor`'s open does): it hears the kept dump when the
+console is next switched on or reset, or when it resets the nesp32 itself,
+RTS high for 100 ms with DTR low, as esptool does. Nothing is read from the
+serial port: a dump stays kept until the next replaces it.
+
+The lines, the dump's and the kept one's alike but for the heading, each
+after the log's own prefix (`I (1234) nesp32: peer: `, perhaps with colour
+codes about it):
+
+```
+dump of the console's RAM, as it stood at tick 767, whose digests differed: 2048 bytes; app TSBO version 1
+dump 0000: 0b1c... (64 bytes: 128 hex digits, lower case, no spaces)
+... 32 lines, by the offset in 4 hex digits: 0000, 0040, ... 07c0 ...
+dump 07c0: ...
+dump end
+```
+
+and the kept one's heading:
+
+```
+dump of the console's RAM, kept 3, as it stood at tick 767: 2048 bytes; app TSBO version 1; firmware 0.9.2-4-gabc1234
+```
+
+Every heading begins `dump of the console's RAM`; `, as it stood at tick
+N` is left out where the console did not say. `kept N` is how many dumps
+this nesp32 has kept, so a page can tell a new one from one it has seen.
+`app` is the ROM's four letters, each that is not printable as `-` (`----`
+and `version 0` if no ROM had said hello); `firmware` is `-` if not known,
+and has no spaces. A dump is whole from its heading to `dump end` with all
+32 lines between.
+
+When a ROM says hello the log also says which it is
+(`I (1234) radio: app TSBO version 1`).
 
 | `STATE` | Name | |
 |---|---|---|
@@ -412,6 +456,37 @@ address, over power-off, for LAST to offer the next time.
 
 **A hello ends a game**, as it ends everything: a console that is reset is
 in none, and its nesp32 hangs up.
+
+#### A game's save
+
+A game that keeps a save the two consoles must have alike (Tecmo Super
+Bowl's season) has the host's copied to the other, once the two are
+connected and before the first tick. Each console sends SAVE, with a sum
+of its save and its length, until the two stand otherwise than `WAITING`;
+the first SAVE of a connection, before any TICKS, begins it, and a
+console that never asks has none, and its ticks are as ever.
+
+| `SAVE` | Name | |
+|---|---|---|
+| 0 | WAITING | the other's sum has not come |
+| 1 | SAME | the two are the same: the session may begin |
+| 2 | DIFFERENT | they differ: the host's goes to the other, if its player says yes |
+| 3 | DONE | the other console has the host's save |
+| 4 | GONE | there is no session, or it was lost |
+
+With `DIFFERENT`, the host's console sends its save with SAVE_PUT, from
+the `NEXT` each reply gives (bytes before it are passed over, and bytes
+after a gap are not taken), and its nesp32 sends it on as it can; the
+other's nesp32 keeps it, `PEER_SAVE_MAX` (8192) bytes at the most. The
+other console's player is asked. Yes: it takes the save with SAVE_GET,
+each reply as much as the console's replies hold, and none past what has
+come, and then sends SAVE_DONE, and both stand `DONE`. No: it hangs up
+(LEAVE), and the host's stands `GONE`. Then the ticks cross, tick 0 the
+first byte after the save's.
+
+Between the nesp32s the stream carries, ahead of the ticks, each one's
+`SUM[2]` and `LENGTH[2]`, and, if the two differ, the host's save one way
+and a byte the other, once its console has the save.
 
 #### Meeting in a room
 
@@ -553,7 +628,14 @@ Numbers are low byte first.
 | `NOTE` | four bytes of PEER's, the latest only (below) |
 
 A datagram goes at once when there is a new byte, every 8 ms while any
-byte is not yet said to have come, and every 50 ms otherwise. The one that
+byte is not yet said to have come, and every 50 ms otherwise. Each end
+keeps 2048 bytes each way. More than a datagram carries (a save) goes as a
+window: each new datagram carries the next 32 bytes not yet sent, the
+other end takes them in order and answers at once when one comes past a
+gap, and they go again from the oldest the other lacks after three such
+answers running, or when all have gone and none has been answered for the
+network's time there and back and a half. A game's few bytes are always
+within a datagram, and every one of its datagrams carries all of them. The one that
 calls sends calls, ten a second for three seconds, until one is answered;
 the one that waits answers the first caller and from then on takes only
 that session's datagrams, from wherever they come. An end that hears

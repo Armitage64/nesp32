@@ -6,7 +6,8 @@ import random
 
 import pytest
 from nesp import CONN_LOST, Stick
-from peer_player import CHECK_TICK, COPY_LAG, LEAD, VERSIONS, Player
+import nesp_proto as p
+from peer_player import CHECK_TICK, COPY_LAG, LEAD, PEER, SAVES, VERSIONS, Player, take_save
 from test_peer import AWAY, HOME, carry, connect, online, ticks
 
 APP = b"TMN2"
@@ -109,3 +110,47 @@ def test_a_copy_is_half_a_second_behind_at_a_games_own_tick_rate():
     player.theirs += bytes(range(1, 40))
     assert player.buttons(COPY_LAG // 2) == 1
     assert player.buttons(COPY_LAG // 2 - 1) == 0
+
+
+def test_a_save_game_takes_the_consoles_save_and_then_plays():
+    """Tecmo Super Bowl's consoles have the same save before the first tick:
+    the player, with none of its own, says its save differs, takes the
+    console's as it comes, says so, and the ticks go on as ever."""
+    console_stick, player_stick = online(Stick(), HOME, b"TSBO"), online(Stick(), AWAY, b"TSBO")
+    connect(console_stick, player_stick)
+    length = SAVES["TSBO"]
+    head = bytes((0x34, 0x12, length & 0xFF, length >> 8))
+    save = bytes(random.Random(3).randrange(256) for _ in range(length))
+    states = []
+    state = None
+    for _ in range(2000):
+        state = console_stick.ask(PEER, p.NESP_PEER_SAVE, head).payload[0]
+        if state == p.NESP_SAVE_DONE:
+            break
+        if state == p.NESP_SAVE_DIFFERENT:
+            # The console's save, a piece at a time, from where it has got to.
+            reply = console_stick.ask(PEER, p.NESP_PEER_SAVE_PUT, bytes((0, 0)))
+            sent = reply.payload[0] | reply.payload[1] << 8
+            console_stick.ask(PEER, p.NESP_PEER_SAVE_PUT,
+                              bytes((sent & 0xFF, sent >> 8)) + save[sent:sent + 64])
+        states.append(take_save(player_stick, length))
+        carry(console_stick, player_stick)
+    assert state == p.NESP_SAVE_DONE
+    assert p.NESP_SAVE_DIFFERENT in states and take_save(player_stick, length) == p.NESP_SAVE_DONE
+    console, player = Console(), Player("copy", seed=2)
+    while len(console.theirs) < TICKS:
+        console.exchange(console_stick)
+        player.exchange(player_stick)
+        carry(console_stick, player_stick)
+    assert bytes(player.theirs[:TICKS]) == console.mine[:TICKS]
+
+
+def test_a_save_games_length_is_the_one_its_build_says():
+    import os
+    import re
+    path = os.path.join(os.path.dirname(__file__), "..", "apps", "superbowl", "net", "net_ram.inc")
+    with open(path) as handle:
+        text = handle.read()
+    at = {name: int(value, 16) for name, value in
+          re.findall(r"^(SAVE_\w+)\s*=\s*\$([0-9A-F]{4})", text, re.M)}
+    assert SAVES["TSBO"] == (at["SAVE_GAP"] - at["SAVE_START"]) + (at["SAVE_END"] - at["SAVE_GAP_END"])

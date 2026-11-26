@@ -55,8 +55,9 @@ authors. It is short on purpose:
    tree, it makes the branch `release-0.3.0`. There it writes `VERSION`,
    turns **Unreleased** into `## 0.3.0 — <today>` under a new empty
    Unreleased, and commits the two.
-3. Push the branch and open a pull request. Edit the notes in it if you
-   like.
+3. Run every test, the slow ones too: `NESP_SLOW_TESTS=1 make test-all`
+   ([DEVELOPMENT.md](DEVELOPMENT.md), Tests). Push the branch and open a
+   pull request. Edit the notes in it if you like.
 4. Merge it. That's the release. `.github/workflows/release.yml` sees
    VERSION change on main and:
    - tags the merged commit `v0.3.0`;

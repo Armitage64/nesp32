@@ -182,7 +182,10 @@ def main():
 
     bridge = start_bridge(port, out, args.bridge_data, args.bridge_arg) if port else None
     try:
-        r = subprocess.run([MESEN, "--testrunner", os.path.abspath(args.rom), script],
+        # Mesen's test runner has a time limit of its own (some 100 s),
+        # after which it stops with 255: this run's, and some to spare.
+        r = subprocess.run([MESEN, "--testrunner", f"--timeout={int(args.timeout) + 10}",
+                            os.path.abspath(args.rom), script],
                            capture_output=True, text=True, timeout=args.timeout)
     except subprocess.TimeoutExpired:
         sys.exit(f"Mesen ran past {args.timeout:g} s")

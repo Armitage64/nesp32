@@ -1,0 +1,122 @@
+--- a/src/tsb.asm
++++ b/src/tsb.asm
+@@ -4,0 +5,3 @@
++.ifdef NETPLAY
++.include "net.asm"
++.endif
+@@ -21270,0 +21274,5 @@
++.ifdef NETPLAY
++    .byte $FD,<NET_TITLE_SCRIPT,>NET_TITLE_SCRIPT ; LOCAL GAME and NETWORK GAME (net/title.inc)
++    .byte $8A,$07                        ; and the rest as it was, blank: on row 16, blank already
++    .byte $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
++.else
+@@ -21274,0 +21283 @@
++.endif
+@@ -24523,0 +24533,3 @@
++.ifdef NETPLAY
++    .byte $9A,<TITLE_LOCAL,$0A,$00       ; LOCAL GAME flashed, where the title has it (net/title.inc)
++.else
+@@ -24524,0 +24537 @@
++.endif
+@@ -24527,0 +24541,3 @@
++.ifdef NETPLAY
++    .byte $8A,<TITLE_LOCAL,"LOCAL GAME"
++.else
+@@ -24528,0 +24545 @@
++.endif
+@@ -57307,0 +57325,5 @@
++.ifdef NETPLAY
++    jsr net_intro                        ; the same, or past the intro (net/cart.inc)
++    nop
++    nop
++.else
+@@ -57309,0 +57332 @@
++.endif
+@@ -57335,0 +57359,5 @@
++.ifdef NETPLAY
++    jsr net_title_start                  ; the same, LOCAL GAME chosen (net/cart.inc)
++    nop
++    nop
++.else
+@@ -57337,0 +57366 @@
++.endif
+@@ -57348,0 +57378,4 @@
++.ifdef NETPLAY
++    jsr net_title_pick                   ; the same, LOCAL GAME or NETWORK GAME (net/title.inc)
++    nop
++.else
+@@ -57350,0 +57384 @@
++.endif
+@@ -90344,0 +90379,5 @@
++.ifdef NET_FLICKER
++    jmp net_flicker                      ; the same, quicker (net/flicker.inc)
++    nop
++NET_FLICKER_ORDERS:
++.else
+@@ -90346,0 +90386 @@
++.endif
+@@ -91292,0 +91333,4 @@
++.ifdef NET_COLL
++    jmp net_coll                         ; the 11 defenders, quicker (net/coll.inc)
++    nop
++.else
+@@ -91294,0 +91339 @@
++.endif
+@@ -128388,0 +128434,12 @@
++.ifdef NETPLAY
++    sei
++    cld
++    lda #$07                             ; the netplay's bank at $A000
++    sta BANK_SELECT_MMC3
++    lda #NET_BANK
++    sta BANK_DATA_MMC3
++    jsr net_reset_keep                   ; what the reset is to clear, kept; X = $FF, A, Y = 0 (net/net.inc)
++    txs
++    ldx #$08
++    nop
++.else
+@@ -128401,0 +128459 @@
++.endif
+@@ -128457,0 +128516,5 @@
++.ifdef NETPLAY
++    jsr net_bank_in                      ; the netplay's reset, which makes these writes
++    jsr net_reset                        ; at its end (net/net.inc)
++    .res 8, $EA
++.else
+@@ -128468,0 +128532 @@
++.endif
+@@ -128536,0 +128601,4 @@
++.ifdef NETPLAY
++    lda #<(SAVE_END - SRAM_START)        ; to the netplay's memory, which it keeps (net/net_ram.inc)
++    ldx #>(SAVE_END - SRAM_START)
++.else
+@@ -128538,0 +128607 @@
++.endif
+@@ -128590,0 +128660,4 @@
++.ifdef NETPLAY
++    jmp net_nmi_check                    ; the same, and a session's tick, stall or lag (net/cart.inc)
++    nop
++.else
+@@ -128592,0 +128666 @@
++.endif
+@@ -128759,0 +128834,4 @@
++.ifdef NETPLAY
++    jsr net_sound_hook                   ; the read first, then the same (net/cart.inc)
++    nop
++.else
+@@ -128761,0 +128840 @@
++.endif
+@@ -128767,0 +128847,4 @@
++.ifdef NETPLAY
++    jmp net_read_hook                    ; the same, or a session's tick or stall (net/cart.inc)
++    .res 3, $EA
++.else
+@@ -128770,0 +128854 @@
++.endif
+@@ -130530,0 +130615,4 @@
++.ifdef NETPLAY
++    NET_FILL_D05F                        ; in place of L_D05F, which nothing calls (net/cart.inc)
++    .res $D081 - $D05F - (* - net_title_pick), $FF
++.else
+@@ -130549,0 +130638 @@
++.endif
