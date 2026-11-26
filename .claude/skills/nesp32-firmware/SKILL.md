@@ -47,6 +47,12 @@ lines are at the top of `firmware/README.md`.
   or measuring on; `watch` is safe, `flash` restarts it.
 - Read a log with `deploy.sh watch` under the Monitor tool, not with
   `idf.py monitor` (which restarts the board and wants a terminal).
+- **A desync's dump is kept on the board** (NVS `dumphead`/`dumpram`,
+  `nesp_services/kept.c`) and said again in the log a second after boot
+  and after each ROM hello. A player's is had with the web site's log page
+  (`web/log/`), which can open a GitHub issue with it. The format is in
+  `docs/PROTOCOL.md`, "A kept dump"; agent tools that parse it (the page)
+  depend on it, so change it there first.
 
 ## Traps already met
 

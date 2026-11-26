@@ -383,6 +383,16 @@ simulation. On hardware, look for the copy's time across the network
 0.2-0.5 s for the save in `tests/test_arq.py` at 5-60 ms each way), and
 that the ticks that follow it are numbered from the first byte after it.
 
+A desync's dump (PEER's DUMP, `docs/PROTOCOL.md`): the log has it at
+once, a heading naming the ROM and the tick, 32 lines of hex and `dump
+end`, and the nesp32 keeps the last one in NVS (`dumphead`, `dumpram`,
+written once a dump by the worker in `radio.c`) and says it again a second
+after it starts or a ROM says hello, then each minute, five times. Flashed
+on a StickS3 and a StickC Plus2 (November 2026); the web site's log page
+(`web/log/`, pull request #105) recorded a kept dump from earlier with its
+Restart button. A ROM's hello is in the log too (`radio: app TSBO version
+1`).
+
 What `conn.c` leans on: lwIP's sockets from a task on the Wi-Fi's core, a
 non-blocking `connect` waited for with `select`, and a look for received
 bytes once a millisecond, with at most one datagram sent each time.

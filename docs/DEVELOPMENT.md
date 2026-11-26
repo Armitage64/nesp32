@@ -186,6 +186,42 @@ The menu is in the last bank, which is the one an MMC1 has at `$C000` when
 the power comes on. Emulators do that, and most of the chips; one that did
 not would not start this cartridge.
 
+## Logs and crash dumps
+
+A nesp32's log is on its USB serial port. `firmware/deploy.sh watch`
+prints every connected board's without restarting it; `idf.py monitor`
+restarts the board when it opens the port. When a ROM says hello the log
+names it (`radio: app TSBO version 1`), and the nesp32's screen does too.
+
+**A desync's dump.** A netplay ROM whose digest differs from the other
+console's sends its 2 KB of RAM to its nesp32 (PEER's DUMP) before it
+gives the session up: Tecmo Super Bowl and Bubble Bobble do. The nesp32
+writes it to its log at once, a heading that names the ROM and the tick,
+32 lines of 64 bytes in hex and `dump end`. With both consoles' dumps,
+the bytes that differ are where the two games parted
+([MULTIPLAYER.md](MULTIPLAYER.md) has how Bubble Bobble's first ones were
+read).
+
+**The kept dump.** The nesp32 also keeps the last whole dump in its flash
+(NVS, `dumphead` and `dumpram`; `firmware/components/nesp_services/kept.c`
+and the hal's `dump_last` and `dump_keep`), with its tick, the ROM and the
+firmware's version, and says it again in its log a second after it starts
+and a second after a ROM says hello, then every minute, five times. So a
+dump from a game played with no computer on the cable can be had later:
+switch the console on again, or reset the nesp32, with the log open. The
+lines' exact form is in [PROTOCOL.md](PROTOCOL.md), "A kept dump".
+
+**For players: the web site's log page** (`web/log/`, pull request #105):
+the log recorded in the browser over Web Serial (Chrome, Edge or Opera on
+a computer), with no ESP-IDF. It keeps the last 10 recordings in the
+browser, finds each dump, live or kept, and counts it once, and **Report
+the problem** opens a GitHub issue with the dump, the game and the
+firmware's version in it, and copies the log's end to paste below. The
+page's open of the port does not restart the nesp32; **Restart the
+NESP32** does (RTS high 100 ms, DTR low, as esptool does), for a kept dump
+when the console is not to hand. `tests/test_web.py` holds the page to its
+build.
+
 ## How far each part has got
 
 Each program's README has its own status, with the figures from hardware.
@@ -200,7 +236,7 @@ What is still to do on the hardware and the firmware is in
 | The firmware (`firmware/main/`): UART, Wi-Fi, HTTPS, the screen, the files, the USB drive, the connection to another nesp32 | working on a StickS3 and on a StickC Plus2, with the MiSTer and with a real NES ([its README](../firmware/README.md)) |
 | The nesp32's files, in a FAT filing system, with rips converted on the nesp32 itself | working on hardware: written over USB with `tools/put_files.py` to a StickC Plus2, and copied to a StickS3 as a USB drive |
 | A computer in place of a nesp32 (`host/serial_host.py`) | written, not run on a cable |
-| A nesp32 in the Mesen emulator ([`host/mesen/`](../host/mesen)): a Lua script and a bridge to the firmware's code, with the computer's keyboard as the Bluetooth keyboard | working in MesenCE: the cartridge's programs, HTTP and the keyboard; PEER not yet |
+| A nesp32 in the Mesen emulator ([`host/mesen/`](../host/mesen)): a Lua script and a bridge to the firmware's code, with the computer's keyboard as the Bluetooth keyboard | working in MesenCE: the cartridge's programs, HTTP, the keyboard, and PEER (Tetris and River City Ransom against a nesp32 on a real NES, Dr. Mario between two headless MesenCEs; [its README](../host/mesen/README.md)) |
 | The cartridge (`nes/cart/`): eight programs and a menu, on an MMC1 | working on hardware with the first five, a real NES and the MiSTer, with each board. NESradio, Weather and Bluesky start from the menu on a simulated console; the cartridge with them has not yet run on hardware |
 | [Setup](../apps/setup), SYS, NET, DIAG | working on hardware |
 | A Bluetooth keyboard: KBD, [Setup](../apps/setup)'s screen for it and its Wi-Fi password, [NESpedia](../apps/wiki)'s search and reader, and [Weather](../apps/weather)'s zip code; every program on the cartridge asks for KBD, to keep the keyboard connected, and takes its keys as the controller's buttons (NESradio's until its station plays) | working on hardware: a StickS3 with a Logitech MX Keys S, paired from Setup, typing NESpedia's searches and Weather's zip codes, and paging NESpedia's articles |
@@ -223,10 +259,10 @@ What is still to do on the hardware and the firmware is in
 | `proto/nesp.toml`, `tools/gen_proto.py` | the numbers both ends share, and the C, ca65 and Python files written from them |
 | `docs/` | the protocol, the wiring, this file, the hardware and firmware to-do list, and write-ups of bugs found on hardware |
 | `firmware/components/nesp_core` | frames, CRC, services' registry |
-| `firmware/components/nesp_services` | every service, the text code WIKI lays articles out with, and the MP3 decoder TUNER plays a station with |
+| `firmware/components/nesp_services` | every service, the text code WIKI lays articles out with, the MP3 decoder TUNER plays a station with, and the last crash dump kept over power-off (`kept.c`) |
 | `firmware/main` | the board: UART and link task, Wi-Fi, HTTPS fetches, the connection to another nesp32, files, screen and buttons |
 | `hardware/` | the hat's board, its parts and pictures |
-| `web/` | the product page and the page that flashes a nesp32 from a browser (`make web`); `.github/workflows/web.yml` puts the site on GitHub Pages with the latest release's firmware and cartridge ([RELEASING.md](RELEASING.md)) |
+| `web/` | the product page, the page that flashes a nesp32 from a browser, and the one that records its log and reports a crash (`web/log/`) (`make web`); `.github/workflows/web.yml` puts the site on GitHub Pages with the latest release's firmware and cartridge ([RELEASING.md](RELEASING.md)) |
 | `VERSION`, `CHANGELOG.md` | the version of the firmware and the cartridge, and what changed in each release ([RELEASING.md](RELEASING.md)) |
 | `tools/put_files.py` | puts the jukebox's tracks on a nesp32, over USB, for a board that cannot be a drive |
 | `tools/lcd.py` | pictures of the nesp32's own screen, for trying a layout before flashing it |
@@ -285,7 +321,9 @@ the same time, in other processes:
   the buttons, and a sound handed to RAW, with the test as the console.
   The jukebox's ROM itself is run against this code in nes-jukebox's tests.
 - `test_peer.py`: the lobby, the greetings and the relay of buttons, with
-  the test as the network between two nesp32s. Dr. Mario's netplay ROM is
+  the test as the network between two nesp32s; a desync's dump to the log,
+  and the last one kept in the stand-in's flash and said again at the
+  start and at a hello. Dr. Mario's netplay ROM is
   run against this code, on two consoles, in nes-drmario's tests.
 - `test_peer_net.py`: a computer's stand-in for that network, on real
   sockets on this machine.
@@ -322,8 +360,9 @@ the same time, in other processes:
   keyboard's reports to characters, held to `firmware/main/keyboard.c`;
   pairing, forgetting and typing through KBD; a ROM's files kept and
   loaded again; fetches as the firmware makes them, with the test as
-  the site; and a bridge with `--exit-when-idle` stopping once no Mesen
-  is connected.
+  the site; a bridge with `--exit-when-idle` stopping once no Mesen
+  is connected; and PEER between two bridges, by address and in a room at
+  `host/rendezvous.py`'s stand-in, and against the idle opponent.
 - `test_vgm.py`: the converter of rips, held to the same bytes as
   nes-jukebox's Python over its rips, over made-up ones, and over 300 made
   at random.
