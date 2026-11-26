@@ -147,14 +147,13 @@ For later (November 2026).
   minutes, and four pairs at once on a 10-core Mac took 341 s. With
   random buttons on both, the ROM's own digest check (every 256 ticks)
   and its DUMP find a desync with no help from the test: a pair passes if
-  neither bridge loses the other before the end, and neither dumps. The
-  prototype is a script outside the repo (`soak.py`: per pair its own
-  bridges, UDP port, folder and seeded presses; the stand-in's URL to
-  both bridges). To do:
-  1. `tools/mesen_soak.py`, from that prototype: the game's ROM, how many
-     pairs and frames, the seeds; each game's way from power-on to a
-     session (the presses to its lobby, HOST by address and JOIN by
-     address), from a table per game.
+  neither bridge loses the other before the end, and neither dumps.
+  `tools/mesen_soak.py superbowl ROM --frames 70000 --seed 1 --seed 2`
+  does that for Tecmo Super Bowl: per pair its own bridges, UDP port,
+  folder and seeded presses. To do:
+  1. Each other game's way from power-on to a session in its `GAMES`
+     table (the presses to its lobby, HOST by address and JOIN by
+     address), tried until both screens are in the game.
   2. A `make soak-mesen` in each netplay app (Contra, Dr. Mario, Tetris,
      TMNT II, Bubble Bobble, Jackal, River City Ransom, Tecmo Super Bowl),
      opt-in like `NESP_SLOW_TESTS`: Mesen is a desktop program, not in
