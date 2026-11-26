@@ -137,12 +137,39 @@ on it. Each program in `apps/` keeps its own list in its README.
 
 For later (November 2026).
 
-- **A netplay session in Mesen with no window.** `tools/mesen_run.py
-  --bridge` gives one console a nesp32, but the bridge has no PEER, so a
-  session is tested only in the apps' simulations and on hardware. Two
-  Mesen runs, each with its bridge, and the two bridges joined as
-  `host/peer_net.py` joins two nesp32s, would put a session's picture and
-  timing where a test can see them.
+- **A soak of every netplay game in Mesen with no window.** Two headless
+  Mesens, each with its bridge, join in a session as two consoles do
+  (`tools/mesen_run.py`; one hosts by address, the other joins
+  127.0.0.1, with `host/rendezvous.py`'s stand-in so nothing reaches the
+  real rendezvous). Tried with Tecmo Super Bowl (November 2026): some 200
+  to 300 frames a second a console against py65's some 19 for a pair, so
+  a whole game at full-length quarters, some 70,000 frames, takes some 6
+  minutes, and four pairs at once on a 10-core Mac took 341 s. With
+  random buttons on both, the ROM's own digest check (every 256 ticks)
+  and its DUMP find a desync with no help from the test: a pair passes if
+  neither bridge loses the other before the end, and neither dumps. The
+  prototype is a script outside the repo (`soak.py`: per pair its own
+  bridges, UDP port, folder and seeded presses; the stand-in's URL to
+  both bridges). To do:
+  1. `tools/mesen_soak.py`, from that prototype: the game's ROM, how many
+     pairs and frames, the seeds; each game's way from power-on to a
+     session (the presses to its lobby, HOST by address and JOIN by
+     address), from a table per game.
+  2. A `make soak-mesen` in each netplay app (Contra, Dr. Mario, Tetris,
+     TMNT II, Bubble Bobble, Jackal, River City Ransom, Tecmo Super Bowl),
+     opt-in like `NESP_SLOW_TESTS`: Mesen is a desktop program, not in
+     the workflows. Run before a hardware session and a release.
+  3. A delay between the bridges (and a StickC Plus2's slower replies),
+     which the simulation's network has and localhost has not.
+
+  What it is not: a stand-in for the py65 tests. Those compare the two
+  consoles' whole RAM at every tick, change both saves at one tick, and
+  force an interrupt at a cycle; two Mesens in two processes do none of
+  that, and a failure there is not replayed from a seed. Four whole games
+  of the ROM that froze on hardware (Tecmo Super Bowl's 1496556f, a few
+  cycles' race) ran clean in Mesen. A Mesen console driven over a socket,
+  with `tests/console.py`'s interface, would let the lockstep tests run on
+  Mesen's timing too: a larger piece of work, for after the soak.
 - **Sound in Mesen with no window.** Mesen runs as fast as it can, so a
   stream's sound outruns the Internet and the bridge logs gaps. A run
   held to the console's own speed would let the sound be judged.
