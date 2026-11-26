@@ -4,7 +4,10 @@
 #                   two consoles and two nesp32s; and build/tsb_net_slow.nes,
 #                   the same with the game's own routines where the netplay
 #                   ROM has quicker ones, which it is held to and measured
-#                   against
+#                   against; and build/tsb_net_debug.nes, the netplay ROM
+#                   with NET_DEBUG: what a session's console last did, kept
+#                   in the save RAM and shown on NETWORK GAME, for one that
+#                   stops (README, "The menu")
 #   make verify     check the original against the ROM's SHA-512
 #   make test       the simulation's tests (needs requirements-dev.txt)
 #   make bench      how the frames go, the original against a session, in a
@@ -43,6 +46,7 @@ NESP_LIB := $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/gen_link.py
 ROM := $(BUILD)/tsb.nes
 NET_ROM := $(BUILD)/tsb_net.nes
 SLOW_ROM := $(BUILD)/tsb_net_slow.nes
+DEBUG_ROM := $(BUILD)/tsb_net_debug.nes
 GEN := $(BUILD)/gen
 SRC := $(BUILD)/src
 CONVERTED := $(BUILD)/converted.stamp
@@ -53,16 +57,17 @@ SOURCES := $(NAMES:%=$(SRC)/%.asm)
 OBJECTS := $(NAMES:%=$(BUILD)/orig/%.o)
 NET_OBJECTS := $(NAMES:%=$(BUILD)/net/%.o)
 SLOW_OBJECTS := $(NAMES:%=$(BUILD)/slow/%.o)
+DEBUG_OBJECTS := $(NAMES:%=$(BUILD)/debug/%.o)
 NET_SOURCES := $(wildcard net/*.inc net/*.asm) $(BUILD)/link.inc $(NESP_LIB) $(NESP)
 NET_INCLUDES := -I net -I $(BUILD) -I $(NESP_BUILD) -I $(NESP32)/nes/lib
 
 .PHONY: all verify test bench import patches clean FORCE
 
-all: $(ROM) $(NET_ROM) $(SLOW_ROM)
+all: $(ROM) $(NET_ROM) $(SLOW_ROM) $(DEBUG_ROM)
 
 .SECONDARY:
 
-$(BUILD) $(BUILD)/orig $(BUILD)/net $(BUILD)/slow:
+$(BUILD) $(BUILD)/orig $(BUILD)/net $(BUILD)/slow $(BUILD)/debug:
 	mkdir -p $@
 
 $(CONVERTED): tools/convert.py tools/game.map $(BASEROM) | $(BUILD)
@@ -116,6 +121,9 @@ $(BUILD)/net/%.o: $(SRC)/%.asm $(NET_SOURCES) | $(BUILD)/net
 $(BUILD)/slow/%.o: $(SRC)/%.asm $(NET_SOURCES) | $(BUILD)/slow
 	ca65 -D NETPLAY -D NET_SLOW --debug-info --bin-include-dir $(BUILD) -I $(SRC) $(NET_INCLUDES) -o $@ $<
 
+$(BUILD)/debug/%.o: $(SRC)/%.asm $(NET_SOURCES) | $(BUILD)/debug
+	ca65 -D NETPLAY -D NET_DEBUG --debug-info --bin-include-dir $(BUILD) -I $(SRC) $(NET_INCLUDES) -o $@ $<
+
 $(ROM): $(OBJECTS) superbowl.cfg
 	ld65 -C superbowl.cfg --dbgfile $(BUILD)/tsb.dbg -o $@ $(OBJECTS)
 
@@ -125,6 +133,9 @@ $(NET_ROM): $(NET_OBJECTS) net/superbowl_net.cfg
 
 $(SLOW_ROM): $(SLOW_OBJECTS) net/superbowl_net.cfg
 	ld65 -C net/superbowl_net.cfg --dbgfile $(BUILD)/tsb_net_slow.dbg -o $@ $(SLOW_OBJECTS)
+
+$(DEBUG_ROM): $(DEBUG_OBJECTS) net/superbowl_net.cfg
+	ld65 -C net/superbowl_net.cfg --dbgfile $(BUILD)/tsb_net_debug.dbg -o $@ $(DEBUG_OBJECTS)
 
 verify: $(ROM)
 	@test "$$(shasum -a 512 $(ROM) | cut -d' ' -f1)" = "$(SHA512_ORIGINAL)" \

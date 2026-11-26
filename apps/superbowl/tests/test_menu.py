@@ -521,20 +521,34 @@ RESETS_ROW = 25                 # the last reset (net_resets), the last exchange
 NET_KEEP = 12
 
 
-@pytest.mark.parametrize("damaged", [False, True])
-def test_a_reset_in_play_is_kept_for_the_menu(net_console, damaged):
+@pytest.mark.parametrize("debug, damaged", [(True, False), (True, True), (False, False)])
+def test_a_reset_in_play_is_kept_for_the_menu(net_console, debug_console, debug, damaged):
     """A console reset in play by no drop of the session's (on hardware,
-    November 2026, one went to the title so, and the other then hung): what
-    its RAM held is kept through the reset, and NETWORK GAME's first screen
-    shows it, the stack pointer and the session's state first. Damaged: its
-    save fails the game's check at the reset, which clears it (a console
-    that stopped dead after a play, as its stats went into the save, did on
-    hardware), and the netplay's memory is kept all the same."""
-    table = Table(net_console)
+    November 2026, one went to the title so, and the other then hung): in
+    the debug build (NET_DEBUG), what its RAM held is kept through the
+    reset, and NETWORK GAME's first screen shows it, the stack pointer and
+    the session's state first. Damaged: its save fails the game's check at
+    the reset, which clears it (a console that stopped dead after a play,
+    as its stats went into the save, did on hardware), and the netplay's
+    memory is kept all the same. The build for players keeps none of it,
+    and the rows are blank."""
+    table = Table(debug_console if debug else net_console)
     table.start()
     table.to_game()
     table.play(100, moves(5))
     console = table.consoles[1]
+    if not debug:
+        for name in ("net_resets", "net_crumb", "net_beat"):
+            assert not any(sram(console, name, i) for i in range(NET_KEEP)), name
+        reset_button(console)
+        table.run(INTRO_FRAMES)
+        table.run(3, pads=(0, PAD_START))
+        table.run(TITLE_FRAMES)
+        open_menu(table, 1)
+        for row in range(RESETS_ROW, RESETS_ROW + 3):
+            assert screen_row(console, row).strip() == ""
+        assert not any(sram(console, "net_resets", i) for i in range(NET_KEEP))
+        return
     sp = console.mpu.sp
     tick, stack = sram(console, "net_tick"), bytes(console.ram[0x101 + sp + i] for i in range(4))
     last_crumb = bytes(sram(console, "net_crumb", i) for i in range(NET_KEEP))

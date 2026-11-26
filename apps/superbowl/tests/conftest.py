@@ -61,3 +61,10 @@ def console(build):
 def net_console(build):
     """Make a Console on the netplay ROM."""
     return _maker(build, "tsb_net")
+
+
+@pytest.fixture
+def debug_console(build):
+    """Make a Console on the netplay ROM built with NET_DEBUG, which keeps
+    what a session's console last did and shows it on NETWORK GAME."""
+    return _maker(build, "tsb_net_debug")

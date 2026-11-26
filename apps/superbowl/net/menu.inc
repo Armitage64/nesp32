@@ -1542,9 +1542,11 @@ menu_show:
     jsr menu_strings
 
 @resets:
+.ifdef NET_DEBUG
     ; And what the last reset found (net_resets), the last session NMI that
     ; came to the exchange (net_crumb) and the NMIs since (net_beat), in
-    ; hex. (The reset before the last is kept, not shown.)
+    ; hex, in the debug build (tsb_net_debug.nes) alone. (The reset before
+    ; the last is kept, not shown.)
     lda #>MENU_RESETS_AT
     sta NES_PPU_ADDR
     lda #<MENU_RESETS_AT
@@ -1564,6 +1566,7 @@ menu_show:
     jsr menu_reset_row
     .assert net_crumb = net_resets + NET_KEEP * 2, error
     .assert net_beat = net_crumb + NET_KEEP, error
+.endif
 
 @shown:
     ; The scroll back, for the next NMI, which turns the picture on.
@@ -1575,6 +1578,7 @@ menu_show:
     sta NES_PPU_CTRL
     rts
 
+.ifdef NET_DEBUG
 ; One reset's NET_KEEP bytes of net_resets, from Y, in hex, in fours with
 ; a blank between. Y past them.
 MENU_RESETS_AT = $2000 + 25 * 32 + 3
@@ -1612,6 +1616,7 @@ menu_hex:
     adc #'0'
     sta NES_PPU_DATA
     rts
+.endif
 
 ; A screen's lines, as screen_text makes them, from menu_ptr to its 0.
 menu_strings:

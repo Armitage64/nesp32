@@ -29,9 +29,11 @@ SHA-512.
 
 ```sh
 git submodule update --init third_party/Tecmo_Super_Bowl_NES_Disassembly
-make            # build/tsb.nes, the original, build/tsb_net.nes, and
+make            # build/tsb.nes, the original, build/tsb_net.nes,
                 # build/tsb_net_slow.nes, the netplay ROM with the game's
-                # own routines where it has quicker ones ("Quicker routines")
+                # own routines where it has quicker ones ("Quicker routines"),
+                # and build/tsb_net_debug.nes, the netplay ROM that keeps
+                # what a session's console last did ("The menu")
 make verify     # the original matches its SHA-512
 make test       # the simulation's tests (needs requirements-dev.txt)
 make bench      # the original's frames against a session's ("The frame rate")
@@ -195,7 +197,13 @@ console sends its 2 KB of RAM to its nesp32 (`net_differ`, PEER's DUMP),
 whose log has it in 32 lines: the first try waits out the nesp32's
 return to the link's rate. Each console keeps it in the save RAM (`net_why`, with
 the tick), and a session's start clears it: a console that stops on its
-own keeps none. Below that, in hex, on rows 25 to 27 (To do 3): what the
+own keeps none.
+
+**The debug build** (`build/tsb_net_debug.nes`, built with `NET_DEBUG`)
+also shows, below that, in hex, on rows 25 to 27 (To do 3), what a console
+that stopped with no word to the other last did, for whoever chases it;
+the build for players keeps none of it, and the rows are blank. It is
+the same game, and a session may have one of each. What the
 last reset found in the RAM before the game's reset cleared it
 (`net_resets`, which keeps the one before too); where the last session
 NMI to come to the exchange found the console (`net_crumb`); and the
@@ -204,10 +212,12 @@ many, 16 bits with the low byte first, and the last one's flags, return
 address, `TASK_BUSY_FLAG`, `SOFT_PPU_CTRL`, `SOFT_PPU_MASK`, stack
 pointer, two banks and `CURRENT_TASK`. They are at $7FA2 on, past the
 save, which the game's clear of a save that fails its check leaves
-alone. A session NMI with a task at
-work, which the game's own NMI took, now comes to the netplay's code to
-be counted (`net_busy`), and does as the game's, but for the banks put
-back from the game's shadows. It
+alone (in both builds). A session NMI with a task at
+work, which the game's own NMI took, comes to the netplay's code
+(`net_busy`), to be counted in the debug build, and does as the game's,
+but for the banks put back from the game's shadows.
+
+The menu
 ends with a reset, by a session or not,
 so it uses the game's RAM: $0500 on (not $0300, where the NMI saves the
 registers) and the sprites' page at $0200. It turns off the MMC3's IRQ,

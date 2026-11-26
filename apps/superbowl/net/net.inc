@@ -108,8 +108,11 @@ net_sram_back:
 ; that went to the title by no drop of the session's, or one that hung,
 ; and was then reset by its button, which keeps the RAM. Then the game's
 ; write to $A001, and its zero page counter for the clear of the RAM.
+; What it keeps is NET_DEBUG's (tsb_net_debug.nes): the rest is every
+; build's.
 ; OUT: X = $FF, for the stack; A, Y = 0.
 net_reset_keep:
+.ifdef NET_DEBUG
     lda #MMC3_SRAM_WRITE
     sta MMC3_PRG_RAM
     ldx #NET_KEEP - 1
@@ -118,12 +121,16 @@ net_reset_keep:
     sta net_resets+NET_KEEP,x
     dex
     bpl :-
+.endif
     tsx
     txa
     clc
     adc #5
+.ifdef NET_DEBUG
     sta net_resets
+.endif
     tax
+.ifdef NET_DEBUG
     lda net_mode
     sta net_resets+1
     lda net_tick
@@ -142,6 +149,7 @@ net_reset_keep:
     lda $0101+i,x
     sta net_resets+8+i
     .endrepeat
+.endif
     lda #MMC3_SRAM_OFF          ; the game's
     sta MMC3_PRG_RAM
     lda #$00
@@ -401,7 +409,9 @@ FLAG_I          = $04           ; the 6502's interrupt disable, in its flags
 ; banks back from its shadows, which it writes before the MMC3's (this NMI
 ; put the netplay's in at $A000). PPUSTATUS first, as for a lag (net_nmi).
 net_busy:
+.ifdef NET_DEBUG
     jsr net_beat_keep
+.endif
     lda NES_PPU_STATUS
     lda #$00
     sta CUR_IRQ_INDEX
@@ -434,7 +444,9 @@ net_nmi:
     cmp #<UPDATE_CURRENT_TASK
     bcc @idle
 @lag:
+.ifdef NET_DEBUG
     jsr net_beat_keep           ; (a tick's or a stall's is net_crumb)
+.endif
     ; As the game does when it finds the scheduler busy: the scroll and the
     ; screen's splits. And the music, as the game's NMI does when a task is
     ; at work and not in the scheduler, which is most of the time: in every
@@ -612,6 +624,8 @@ net_stalled:
 ; to the exchange (net_nmi_read), which keeps its own (net_crumb): this
 ; is only for the others, a lag's or a busy one's, as the cycles before a
 ; tick's exchange are few (the first split comes in it, in some frames).
+; NET_DEBUG's alone (tsb_net_debug.nes), as net_crumb and net_resets are.
+.ifdef NET_DEBUG
 net_beat_keep:
     jsr net_sram_on
     inc net_beat
@@ -642,6 +656,7 @@ net_beat_keep:
     lda CURRENT_TASK
     sta net_beat+11
     jmp net_sram_back
+.endif
 
 ; The menu's NMI: its bank at $8000 too, and the game's handler does not
 ; run. The game's end of a busy NMI puts back the registers.
@@ -692,6 +707,7 @@ net_nmi_read:
 
 @session:
     jsr net_sram_on
+.ifdef NET_DEBUG
     ; Where this NMI found the console (net_crumb), for one that stops.
     tsx
     stx net_crumb
@@ -708,6 +724,7 @@ net_nmi_read:
     lda #$00
     sta net_beat                ; no NMI since this one (net_beat_keep)
     sta net_beat+1
+.endif
     ; The STACK_KEEP bytes below this one's place in the stack, kept: the
     ; first task's are among them. Unrolled, as it is in every tick's NMI
     ; (a loop was some 700 cycles each way). a: keeps $0100-i,x absolute:
