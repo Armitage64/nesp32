@@ -77,7 +77,7 @@ class Timed(Console):
 
 
 def test_the_splits_on_time_and_the_music_in_every_nmi(build):
-    make = functools.partial(Timed, str(build / "tsb_net.nes"), str(build / "tsb_net.dbg"))
+    make = functools.partial(Timed, str(build / "superbowl_net.nes"), str(build / "superbowl_net.dbg"))
     table = Table(make, delay=ms(10))
     table.start()
     table.to_game()
@@ -118,7 +118,7 @@ def test_a_reply_misheard_holds_no_split_back(build):
     and again, with the voice's samples: a reply misheard and asked again
     in the same NMI is a second exchange, which ran past the first split
     (line 32, some 6,000 cycles into the frame, in most of play)."""
-    make = functools.partial(Timed, str(build / "tsb_net.nes"), str(build / "tsb_net.dbg"))
+    make = functools.partial(Timed, str(build / "superbowl_net.nes"), str(build / "superbowl_net.dbg"))
     table = Table(make, delay=ms(10))
     table.start()
     table.to_game()
@@ -166,7 +166,7 @@ def test_an_nmi_that_runs_into_the_next_is_let_be(build):
     netplay's code in another bank. Now it gives the registers back and
     nothing else (net_nmi_check), and the NMI it came in goes back to the
     start of the idle loop, whose registers it no longer has."""
-    make = functools.partial(Late, str(build / "tsb_net.nes"), str(build / "tsb_net.dbg"))
+    make = functools.partial(Late, str(build / "superbowl_net.nes"), str(build / "superbowl_net.dbg"))
     table = Table(make, delay=ms(10))
     table.start()
     table.to_game()
@@ -207,7 +207,7 @@ def test_an_nmi_in_the_irqs_handler_lets_no_irq_in(build):
     Y, and a lag's music let the next split's IRQ in, which saved its own
     over them. Now a lag's NMI that came with the IRQ off keeps it off to
     its RTI, and has no music (net_lag_waits)."""
-    make = functools.partial(InIrq, str(build / "tsb_net.nes"), str(build / "tsb_net.dbg"))
+    make = functools.partial(InIrq, str(build / "superbowl_net.nes"), str(build / "superbowl_net.dbg"))
     table = Table(make, delay=ms(10))
     table.start()
     table.to_game()
@@ -254,7 +254,7 @@ def test_an_nmi_in_an_irq_on_the_idle_loop_is_a_tick(build):
     each NMI, finding the handler where the main thread was, took itself
     for a lag. Now it looks under the handler, at where the IRQ found the
     main thread (net_where): the idle loop, and a tick."""
-    make = functools.partial(LastLine, str(build / "tsb_net.nes"), str(build / "tsb_net.dbg"))
+    make = functools.partial(LastLine, str(build / "superbowl_net.nes"), str(build / "superbowl_net.dbg"))
     table = Table(make, delay=ms(10))
     games = ({}, {})            # each tick's game but for the stack's page
     for side, console in enumerate(table.consoles):
@@ -309,7 +309,7 @@ def test_an_nmi_taken_as_ppuctrl_turns_it_off_brings_no_other(build):
     the NMI off, and one more in the first's PPUCTRL, which turned it on
     with the vblank's flag still up: the second saved its registers over
     the main thread's. A lag's or a busy task's NMI reads PPUSTATUS first."""
-    make = functools.partial(Raced, str(build / "tsb_net.nes"), str(build / "tsb_net.dbg"))
+    make = functools.partial(Raced, str(build / "superbowl_net.nes"), str(build / "superbowl_net.dbg"))
     table = Table(make, delay=ms(10))
     table.start()
     table.to_game()

@@ -1,10 +1,10 @@
 # Tecmo Super Bowl build.
 #
-#   make            build/tsb.nes, the original, and build/tsb_net.nes, for
-#                   two consoles and two nesp32s; and build/tsb_net_slow.nes,
+#   make            build/superbowl.nes, the original, and build/superbowl_net.nes, for
+#                   two consoles and two nesp32s; and build/superbowl_net_slow.nes,
 #                   the same with the game's own routines where the netplay
 #                   ROM has quicker ones, which it is held to and measured
-#                   against; and build/tsb_net_debug.nes, the netplay ROM
+#                   against; and build/superbowl_net_debug.nes, the netplay ROM
 #                   with NET_DEBUG: what a session's console last did, kept
 #                   in the save RAM and shown on NETWORK GAME, for one that
 #                   stops (README, "The menu")
@@ -23,7 +23,7 @@
 # tools/convert.py makes ca65 source of baserom.nes with it, in build/gen.
 # baserom.nes is the ROM, which whoever builds has to put here. The source
 # is copied to build/src, and patches/ puts the netplay's lines into the
-# copy, all under .ifdef NETPLAY, so tsb.nes stays the original, byte for
+# copy, all under .ifdef NETPLAY, so superbowl.nes stays the original, byte for
 # byte, and `make verify` says so.
 
 PYTHON ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
@@ -43,10 +43,10 @@ NESP_BUILD ?= $(abspath $(BUILD))/nesp
 export NESP32 NESP_BUILD
 NESP := $(NESP_BUILD)/nesp.stamp
 NESP_LIB := $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/gen_link.py
-ROM := $(BUILD)/tsb.nes
-NET_ROM := $(BUILD)/tsb_net.nes
-SLOW_ROM := $(BUILD)/tsb_net_slow.nes
-DEBUG_ROM := $(BUILD)/tsb_net_debug.nes
+ROM := $(BUILD)/superbowl.nes
+NET_ROM := $(BUILD)/superbowl_net.nes
+SLOW_ROM := $(BUILD)/superbowl_net_slow.nes
+DEBUG_ROM := $(BUILD)/superbowl_net_debug.nes
 GEN := $(BUILD)/gen
 SRC := $(BUILD)/src
 CONVERTED := $(BUILD)/converted.stamp
@@ -125,17 +125,17 @@ $(BUILD)/debug/%.o: $(SRC)/%.asm $(NET_SOURCES) | $(BUILD)/debug
 	ca65 -D NETPLAY -D NET_DEBUG --debug-info --bin-include-dir $(BUILD) -I $(SRC) $(NET_INCLUDES) -o $@ $<
 
 $(ROM): $(OBJECTS) superbowl.cfg
-	ld65 -C superbowl.cfg --dbgfile $(BUILD)/tsb.dbg -o $@ $(OBJECTS)
+	ld65 -C superbowl.cfg --dbgfile $(BUILD)/superbowl.dbg -o $@ $(OBJECTS)
 
 $(NET_ROM): $(NET_OBJECTS) net/superbowl_net.cfg
-	ld65 -C net/superbowl_net.cfg --dbgfile $(BUILD)/tsb_net.dbg \
-		-m $(BUILD)/tsb_net.map -o $@ $(NET_OBJECTS)
+	ld65 -C net/superbowl_net.cfg --dbgfile $(BUILD)/superbowl_net.dbg \
+		-m $(BUILD)/superbowl_net.map -o $@ $(NET_OBJECTS)
 
 $(SLOW_ROM): $(SLOW_OBJECTS) net/superbowl_net.cfg
-	ld65 -C net/superbowl_net.cfg --dbgfile $(BUILD)/tsb_net_slow.dbg -o $@ $(SLOW_OBJECTS)
+	ld65 -C net/superbowl_net.cfg --dbgfile $(BUILD)/superbowl_net_slow.dbg -o $@ $(SLOW_OBJECTS)
 
 $(DEBUG_ROM): $(DEBUG_OBJECTS) net/superbowl_net.cfg
-	ld65 -C net/superbowl_net.cfg --dbgfile $(BUILD)/tsb_net_debug.dbg -o $@ $(DEBUG_OBJECTS)
+	ld65 -C net/superbowl_net.cfg --dbgfile $(BUILD)/superbowl_net_debug.dbg -o $@ $(DEBUG_OBJECTS)
 
 verify: $(ROM)
 	@test "$$(shasum -a 512 $(ROM) | cut -d' ' -f1)" = "$(SHA512_ORIGINAL)" \
@@ -152,7 +152,7 @@ test:
 
 # Each seed's original and session side by side, on every core.
 bench: $(ROM) $(NET_ROM) $(NESP)
-	$(PYTHON) tools/bench.py $(ROM) $(BUILD)/tsb.dbg $(NET_ROM) $(BUILD)/tsb_net.dbg $(BENCH_OPTIONS)
+	$(PYTHON) tools/bench.py $(ROM) $(BUILD)/superbowl.dbg $(NET_ROM) $(BUILD)/superbowl_net.dbg $(BENCH_OPTIONS)
 
 # The map again, from the disassembly: only when it changes, or the import.
 import: $(BASEROM)

@@ -108,7 +108,7 @@ net_sram_back:
 ; that went to the title by no drop of the session's, or one that hung,
 ; and was then reset by its button, which keeps the RAM. Then the game's
 ; write to $A001, and its zero page counter for the clear of the RAM.
-; What it keeps is NET_DEBUG's (tsb_net_debug.nes): the rest is every
+; What it keeps is NET_DEBUG's (superbowl_net_debug.nes): the rest is every
 ; build's.
 ; OUT: X = $FF, for the stack; A, Y = 0.
 net_reset_keep:
@@ -624,7 +624,7 @@ net_stalled:
 ; to the exchange (net_nmi_read), which keeps its own (net_crumb): this
 ; is only for the others, a lag's or a busy one's, as the cycles before a
 ; tick's exchange are few (the first split comes in it, in some frames).
-; NET_DEBUG's alone (tsb_net_debug.nes), as net_crumb and net_resets are.
+; NET_DEBUG's alone (superbowl_net_debug.nes), as net_crumb and net_resets are.
 .ifdef NET_DEBUG
 net_beat_keep:
     jsr net_sram_on

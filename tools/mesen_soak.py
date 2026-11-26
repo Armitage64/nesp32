@@ -13,7 +13,7 @@ from here: a pair passes if neither bridge loses the other before the end
 and neither has a dump. The end of a run is not a loss: whichever Mesen
 finishes first leaves, and the other's bridge says LOST then.
 
-    tools/mesen_soak.py superbowl apps/superbowl/build/tsb_net.nes \\
+    tools/mesen_soak.py superbowl apps/superbowl/build/superbowl_net.nes \\
         --frames 70000 --seed 1 --seed 2 --seed 3 --seed 4
 
 70,000 frames, a whole Tecmo Super Bowl game at full-length quarters,

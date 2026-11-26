@@ -1545,7 +1545,7 @@ menu_show:
 .ifdef NET_DEBUG
     ; And what the last reset found (net_resets), the last session NMI that
     ; came to the exchange (net_crumb) and the NMIs since (net_beat), in
-    ; hex, in the debug build (tsb_net_debug.nes) alone. (The reset before
+    ; hex, in the debug build (superbowl_net_debug.nes) alone. (The reset before
     ; the last is kept, not shown.)
     lda #>MENU_RESETS_AT
     sta NES_PPU_ADDR

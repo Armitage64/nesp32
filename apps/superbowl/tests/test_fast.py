@@ -1,5 +1,5 @@
 """The netplay ROM's quicker ways through the game's busy routines do what
-the game's own do. The netplay ROM is held to tsb_net_slow.nes, the same
+the game's own do. The netplay ROM is held to superbowl_net_slow.nes, the same
 build with the game's own routines: each routine from memory at random,
 and a session's whole game tick by tick.
 
@@ -15,7 +15,7 @@ from netplay import Table
 from test_lockstep import moves
 from wire import ms
 
-ROMS = ("tsb_net", "tsb_net_slow")
+ROMS = ("superbowl_net", "superbowl_net_slow")
 SENTINEL = 0x5000               # where the routine returns to: nothing is there
 PASSES = 300
 

@@ -29,10 +29,10 @@ SHA-512.
 
 ```sh
 git submodule update --init third_party/Tecmo_Super_Bowl_NES_Disassembly
-make            # build/tsb.nes, the original, build/tsb_net.nes,
-                # build/tsb_net_slow.nes, the netplay ROM with the game's
+make            # build/superbowl.nes, the original, build/superbowl_net.nes,
+                # build/superbowl_net_slow.nes, the netplay ROM with the game's
                 # own routines where it has quicker ones ("Quicker routines"),
-                # and build/tsb_net_debug.nes, the netplay ROM that keeps
+                # and build/superbowl_net_debug.nes, the netplay ROM that keeps
                 # what a session's console last did ("The menu")
 make verify     # the original matches its SHA-512
 make test       # the simulation's tests (needs requirements-dev.txt)
@@ -199,7 +199,7 @@ return to the link's rate. Each console keeps it in the save RAM (`net_why`, wit
 the tick), and a session's start clears it: a console that stops on its
 own keeps none.
 
-**The debug build** (`build/tsb_net_debug.nes`, built with `NET_DEBUG`)
+**The debug build** (`build/superbowl_net_debug.nes`, built with `NET_DEBUG`)
 also shows, below that, in hex, on rows 25 to 27 (To do 3), what a console
 that stopped with no word to the other last did, for whoever chases it;
 the build for players keeps none of it, and the rows are blank. It is
@@ -302,7 +302,7 @@ nesp32, and HOST GAME and JOIN GAME, by an address and by a room's code,
 into a session that plays the same game on both; the same saves, and
 different ones, with player 2's YES (its save becomes player 1's, and the
 session is one game) and its NO. `tests/test_fast.py`: the netplay ROM's
-quicker routines against `tsb_net_slow.nes` ("Quicker routines").
+quicker routines against `superbowl_net_slow.nes` ("Quicker routines").
 `tests/test_frame.py`: in a session's play, the screen's splits taken on
 time, with replies misheard too, and the music in every NMI; and each
 interrupt that broke a console on hardware or in the simulation, forced
@@ -408,7 +408,7 @@ profile of the original's ticks, by routine): the players' movement
 some 6,700 cycles a tick, the checks of each offensive player against the
 defense (`CHECK_OFF_PLAYER_VS_ALL_DEF_LOOP`) 1,600, the sprites' flicker
 1,900, the task switches 2,300, the music 1,500. The netplay ROM has
-quicker ways through some of them, and `build/tsb_net_slow.nes` is the
+quicker ways through some of them, and `build/superbowl_net_slow.nes` is the
 same ROM with the game's own (built with `NET_SLOW`): `tests/test_fast.py`
 holds the one to the other, each routine from memory at random (its
 memory, registers, flags and the MMC3's banks after), and a session's
@@ -656,18 +656,17 @@ In order. Each step is tested in the simulation before the next.
    collision checks are done (lags 10.4% to 3.9%, the original's 2.2%);
    next, of what is left, the check for players near each other
    (`PLAYER_NEARBY_CHECK`), the music, or the players' movement if room
-   can be found for it. Each against `tsb_net_slow.nes` in
+   can be found for it. Each against `superbowl_net_slow.nes` in
    `tests/test_fast.py`, then `make bench` again.
-2. **For players**: the netplay ROM named `superbowl.nes`, not
-   `tsb_net.nes`, so that it says what it is (and its `_slow` twin, its
-   `.dbg` and `.map`, and the patch to match: the Makefile, the README and
-   `tests/conftest.py` and `test_fast.py` name it today). Then `make bps`
-   and the patch in `dist/`, `tests/test_patch.py`,
-   the hello's version, and every document that lists the games (the
-   `nes-netplay-port` skill's "Shipping a change"), with `TSBO` in
-   `VERSIONS` (`host/peer_player.py`), which `tests/test_peer_player.py`
-   fails without (the one failure of nesp32's `make test` on this branch).
-   The save needs the firmware with PEER's SAVE ops (in `CHANGELOG.md`
+2. **For players**: the ROMs are named for the game now
+   (`superbowl.nes`, the original; `superbowl_net.nes`, the netplay ROM;
+   `superbowl_net_slow.nes` and `superbowl_net_debug.nes`, with their
+   `.dbg` and `.map`), as the other games' `<game>_net.nes` are. Then
+   `make bps` and the patch in `dist/` (`superbowl_net.bps`, from the ROM
+   for players, not the debug one), `tests/test_patch.py`, the hello's
+   version, and every document that lists the games (the
+   `nes-netplay-port` skill's "Shipping a change"); `TSBO` is in
+   `VERSIONS` (`host/peer_player.py`) already. The save needs the firmware with PEER's SAVE ops (in `CHANGELOG.md`
    under Unreleased): the patch's entry in `PATCHES` names the release that
    brings them, and a nesp32 with older firmware should be told to update
    (its SAVE answers `NO_OP`; the menu now gives the session up after
