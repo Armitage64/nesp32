@@ -372,6 +372,7 @@ typedef struct {
     const nesp_hal_t *hal;
     char app[NESP_APP_ID];
     uint8_t app_version;
+    uint32_t hellos;                /* how many a ROM has said */
     uint8_t events[NESP_EVENT_QUEUE][2];
     uint8_t event_first;
     uint8_t event_count;
@@ -923,13 +924,16 @@ typedef struct {
 
 /* The last DUMP kept over power-off and said to the log again (kept.c):
  * NESP_KEPT_FIRST_MS after the first tick, and every NESP_KEPT_AGAIN_MS
- * after, NESP_KEPT_TELLINGS times; a new dump begins them again a minute
- * after the log has had it. */
+ * after, NESP_KEPT_TELLINGS times. A ROM's hello begins them again
+ * NESP_KEPT_FIRST_MS after it, and a new dump a minute after the log has
+ * had it (a hello then leaves that minute be). */
 #define NESP_KEPT_FIRST_MS 1000
 #define NESP_KEPT_AGAIN_MS 60000
 #define NESP_KEPT_TELLINGS 5
 typedef struct nesp_kept {
     const nesp_hal_t *hal;
+    const nesp_sys_t *sys;          /* whose hellos begin the tellings again, or NULL */
+    uint32_t hellos;                /* the count of them last seen */
     bool loaded;                    /* the hal has been asked for the one kept */
     bool have;
     nesp_dump_head_t head;
@@ -940,7 +944,7 @@ typedef struct nesp_kept {
     uint32_t now;
 } nesp_kept_t;
 
-void nesp_kept_init(nesp_kept_t *kept, const nesp_hal_t *hal);
+void nesp_kept_init(nesp_kept_t *kept, const nesp_hal_t *hal, const nesp_sys_t *sys);
 /* A whole DUMP: kept, and handed to the hal to keep. */
 void nesp_kept_dump(nesp_kept_t *kept, uint32_t tick, const char *app, uint8_t app_version,
                     const uint8_t *ram);

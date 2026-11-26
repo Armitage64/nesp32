@@ -394,13 +394,15 @@ before.
 nesp32 also keeps the last whole dump in its flash (NVS), written once a
 dump, not a piece, with the tick, the ROM that sent it (its hello's `APP`
 and version) and the firmware's version. It says it again in its log
-`NESP_KEPT_FIRST_MS` (1 s) after it starts, and every `NESP_KEPT_AGAIN_MS`
-(60 s) after, `NESP_KEPT_TELLINGS` (5) times in all; a new dump begins
-them again a minute after its own lines, so the two never come together.
-Opening the nesp32's serial port resets it (the StickC Plus2's CH9102 by
-DTR and RTS; on a StickS3, the USB's own reset), so a page that has just
-connected hears it from its start. Nothing is read from the serial port: a
-dump stays kept until the next replaces it.
+`NESP_KEPT_FIRST_MS` (1 s) after it starts or a ROM says hello (the
+cartridge's menu, a game), and every `NESP_KEPT_AGAIN_MS` (60 s) after,
+`NESP_KEPT_TELLINGS` (5) times in all; a new dump begins them again a
+minute after its own lines, so the two never come together. A page on Web
+Serial that opens the port leaves DTR and RTS alone and does not reset the
+nesp32 (`idf.py monitor`'s open does): it hears the kept dump when the
+console is next switched on or reset, or when it resets the nesp32 itself,
+RTS high for 100 ms with DTR low, as esptool does. Nothing is read from the
+serial port: a dump stays kept until the next replaces it.
 
 The lines, the dump's and the kept one's alike but for the heading, each
 after the log's own prefix (`I (1234) nesp32: peer: `, perhaps with colour

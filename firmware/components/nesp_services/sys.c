@@ -30,6 +30,7 @@ static void hello(nesp_sys_t *sys, const nesp_request_t *request, nesp_reply_t *
                                      data[2 + NESP_APP_ID], missing);
     memcpy(sys->app, data + 1, NESP_APP_ID);
     sys->app_version = data[1 + NESP_APP_ID];
+    sys->hellos++;
     sys->event_first = sys->event_count = 0;
     nesp_link_set_attention(sys->link, false);
     if (sys->hal->app != NULL) {
@@ -246,7 +247,7 @@ void nesp_stick_init(nesp_stick_t *stick, const nesp_hal_t *hal)
     nesp_kbd_service(&stick->services[11], &stick->kbd, hal);
     nesp_http_service(&stick->services[12], &stick->http, hal);
     nesp_tape_service(&stick->services[13], &stick->tape, hal);
-    nesp_kept_init(&stick->kept, hal);
+    nesp_kept_init(&stick->kept, hal, &stick->sys);
     stick->peer.kept = &stick->kept;
     for (size_t index = 0; index < sizeof(stick->services) / sizeof(stick->services[0]);
          index++) {

@@ -673,6 +673,21 @@ def test_a_kept_dump_is_said_each_minute_some_times(stick):
     assert len(lines) == KEPT_TELLINGS * (2048 // 64 + 2)
 
 
+def test_a_hello_begins_the_tellings_again(stick):
+    """A page that connected after the first minutes hears it when the
+    console is switched on again: the cartridge's menu says hello."""
+    stick.set_kept_dump(2, 99, "TSBO", 1, "0.9.2", RAM)
+    done = KEPT_FIRST_MS + KEPT_AGAIN_MS * (KEPT_TELLINGS + 1)
+    kept_lines(stick, 0, done, step=50)
+    assert kept_lines(stick, done, KEPT_AGAIN_MS, step=50) == []
+    assert stick.hello(app=b"CART", version=1).ok
+    at = done + KEPT_AGAIN_MS
+    assert kept_lines(stick, at, KEPT_FIRST_MS - 50, step=50) == []
+    lines = kept_lines(stick, at + KEPT_FIRST_MS - 50, 5000, step=50)
+    assert lines[0].startswith("dump of the console's RAM, kept 2, as it stood at tick 99:")
+    assert lines[-1] == "dump end" and len(lines) == 34
+
+
 def test_nothing_is_said_with_none_kept(stick):
     assert kept_lines(stick, 0, 3 * KEPT_FIRST_MS) == []
 

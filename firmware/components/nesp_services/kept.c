@@ -4,9 +4,10 @@
  * lines go to the log at once (peer.c). Most players have no log open
  * then: so the whole of it is also handed to the hal to keep (in the flash,
  * once a dump, not a piece), and said again from the start, a second after
- * the nesp32 starts, and every minute after for some minutes. A computer
- * that opens the nesp32's serial port resets it, so a page that has just
- * connected hears it from the start. The lines are the live dump's
+ * the nesp32 starts or a ROM says hello (the cartridge's menu, a game), and
+ * every minute after for some minutes. A page that has connected to the
+ * serial port hears it when the console is next switched on or reset, or
+ * when the page resets the nesp32. The lines are the live dump's
  * (peer.c), but for the heading (docs/PROTOCOL.md, "A kept dump"):
  *
  *     dump of the console's RAM, kept 3, as it stood at tick 767: 2048 bytes; app TSBO version 2; firmware 0.9.2
@@ -27,10 +28,11 @@ _Static_assert(KEPT_LINES + 2 < 255, "a telling's lines are counted in a byte");
 _Static_assert(sizeof(NESP_FIRMWARE_TEXT) <= sizeof(((nesp_dump_head_t *)0)->firmware),
                "the firmware's version fits the kept dump's head");
 
-void nesp_kept_init(nesp_kept_t *kept, const nesp_hal_t *hal)
+void nesp_kept_init(nesp_kept_t *kept, const nesp_hal_t *hal, const nesp_sys_t *sys)
 {
     memset(kept, 0, sizeof(*kept));
     kept->hal = hal;
+    kept->sys = sys;
 }
 
 void nesp_kept_dump(nesp_kept_t *kept, uint32_t tick, const char *app, uint8_t app_version,
@@ -94,6 +96,16 @@ bool nesp_kept_tick(nesp_kept_t *kept, uint32_t now)
                      && kept->hal->dump_last(kept->hal->ctx, &kept->head, kept->ram);
         kept->rounds = kept->have ? NESP_KEPT_TELLINGS : 0;
         kept->at = now + NESP_KEPT_FIRST_MS;
+        kept->hellos = kept->sys != NULL ? kept->sys->hellos : 0;
+    }
+    if (kept->sys != NULL && kept->sys->hellos != kept->hellos) {
+        /* A ROM said hello: from its start again, but no sooner than a
+         * new dump's own lines leave room for. */
+        kept->hellos = kept->sys->hellos;
+        kept->rounds = NESP_KEPT_TELLINGS;
+        if (kept->line == 0 && (int32_t)(kept->at - (now + NESP_KEPT_FIRST_MS)) < 0) {
+            kept->at = now + NESP_KEPT_FIRST_MS;
+        }
     }
     if (!kept->have || kept->hal->watch == NULL || (int32_t)(now - kept->at) < 0) {
         return false;
