@@ -621,8 +621,10 @@ wherever a frame ends, and a quicker routine makes a different game.
   NMI now do too (`test_an_nmi_taken_as_ppuctrl_turns_it_off_brings_no_other`).
   The window is a few cycles of a frame, so it is chance when it comes:
   nine short games in the simulation with one nesp32 as slow to reply as
-  the Plus2 met none, and why it followed the Plus2 is not known. The fix
-  is not yet tried on hardware.
+  the Plus2 met none, and why it followed the Plus2 is not known. With
+  the fix, on hardware (November 2026, a StickS3 and a StickC Plus2):
+  two whole season games for two, with the save, and no stop, where
+  before one came in every game or two. Too few yet to call it gone.
 - **What was ruled out on the way**, in the simulation: an IRQ forced at
   $C382, with and without an NMI after; a swap of $8000 and $C000 by the
   MMC3's bank select's bit 6; the APU's frame and DMC IRQs, which the
@@ -777,10 +779,11 @@ In order. Each step is tested in the simulation before the next.
    (`test_an_nmi_taken_as_ppuctrl_turns_it_off_brings_no_other`). The
    simulation's nine short games with one nesp32 replying as slowly as
    the StickC Plus2 (0.45 to 0.62 ms) had not met it: the window is a
-   few cycles. Not yet tried on hardware ("What has been learned").
-   Next: whole games on hardware with the fix and the StickC Plus2, its
-   rows read after any stop, and the nesp32s' logs of the next desync;
-   then a
+   few cycles. On hardware with the fix, two whole season games for two
+   with the save had no stop ("What has been learned").
+   Next: more whole games on hardware with the StickC Plus2, its rows
+   read after any stop, and the dump of the next desync (now kept on the
+   nesp32, docs/PROTOCOL.md, "A kept dump"); then a
    whole game again, the title's choice, the samples against the line at
    14, how the lags feel against a game on one console, and the save's
    time across the Internet. The copy is at the link's rate; PEER's RATE
