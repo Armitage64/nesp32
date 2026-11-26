@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.0 — 2026-11-26
+
 ### Games
 - Tecmo Super Bowl online added: the whole game, season included, with player 2's save replaced by player 1's when the two differ. Needs this release's firmware (#106)
 - River City Ransom online co-op added, running faster than the original's two-player game on one console (#76)
