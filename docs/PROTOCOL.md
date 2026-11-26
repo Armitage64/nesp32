@@ -382,16 +382,54 @@ netplay ROM whose digest differs from the other's sends its RAM before it
 gives the session up, `PEER_DUMP_BYTES` bytes (2048, `$0000-$07FF`) in pieces:
 `OFFSET` (low byte first) is where in it the piece's bytes go, and a piece
 that would go past the end is `BAD_ARG`. The one that ends at the end
-finishes it, and the nesp32 writes the whole of it to its log, a line of
-`PEER_DUMP_LINE` (64) bytes in hex every `PEER_DUMP_EVERY_MS` (100):
-
-```
-peer: dump 0000: 0b1c...
-```
+finishes it, and the nesp32 writes the whole of it to its log: a heading,
+a line of `PEER_DUMP_LINE` (64) bytes in hex every `PEER_DUMP_EVERY_MS`
+(100), and an end.
 
 With both consoles' logs, the two dumps say which bytes differ. A nesp32
 whose firmware has no DUMP answers `NO_OP`, and the console goes on as
 before.
+
+**A kept dump.** Most players have no log open when a game desyncs, so the
+nesp32 also keeps the last whole dump in its flash (NVS), written once a
+dump, not a piece, with the tick, the ROM that sent it (its hello's `APP`
+and version) and the firmware's version. It says it again in its log
+`NESP_KEPT_FIRST_MS` (1 s) after it starts, and every `NESP_KEPT_AGAIN_MS`
+(60 s) after, `NESP_KEPT_TELLINGS` (5) times in all; a new dump begins
+them again a minute after its own lines, so the two never come together.
+Opening the nesp32's serial port resets it (the StickC Plus2's CH9102 by
+DTR and RTS; on a StickS3, the USB's own reset), so a page that has just
+connected hears it from its start. Nothing is read from the serial port: a
+dump stays kept until the next replaces it.
+
+The lines, the dump's and the kept one's alike but for the heading, each
+after the log's own prefix (`I (1234) nesp32: peer: `, perhaps with colour
+codes about it):
+
+```
+dump of the console's RAM, as it stood at tick 767, whose digests differed: 2048 bytes; app TSBO version 1
+dump 0000: 0b1c... (64 bytes: 128 hex digits, lower case, no spaces)
+... 32 lines, by the offset in 4 hex digits: 0000, 0040, ... 07c0 ...
+dump 07c0: ...
+dump end
+```
+
+and the kept one's heading:
+
+```
+dump of the console's RAM, kept 3, as it stood at tick 767: 2048 bytes; app TSBO version 1; firmware 0.9.2-4-gabc1234
+```
+
+Every heading begins `dump of the console's RAM`; `, as it stood at tick
+N` is left out where the console did not say. `kept N` is how many dumps
+this nesp32 has kept, so a page can tell a new one from one it has seen.
+`app` is the ROM's four letters, each that is not printable as `-` (`----`
+and `version 0` if no ROM had said hello); `firmware` is `-` if not known,
+and has no spaces. A dump is whole from its heading to `dump end` with all
+32 lines between.
+
+When a ROM says hello the log also says which it is
+(`I (1234) radio: app TSBO version 1`).
 
 | `STATE` | Name | |
 |---|---|---|

@@ -12,6 +12,7 @@
 - Throughput test: 298296 baud to the console no longer fails a whole block at random; the test lost count of a block's first byte, not the line (#98)
 
 ### Firmware
+- The last crash dump from an online game whose consoles stopped matching is kept over power-off and printed again on the serial port when the nesp32 starts, so it can be collected later without ESP-IDF
 - Weather finds a place by its name, anywhere in the world, and a zip code kept by an earlier release is kept as a place (#101)
 - The Stick's screen says "Firmware update available" in red, with no console running a program, when the web site has newer firmware
 - Jukebox: sounds made for the two fastest rates (7 and 8 cycles a bit) start every time, where they often played noise or nothing (#98)

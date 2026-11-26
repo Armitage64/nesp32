@@ -49,7 +49,7 @@
 static const char *TAG = "radio";
 
 typedef enum { ORDER_SCAN, ORDER_JOIN, ORDER_FORGET, ORDER_AIRPORT, ORDER_PLACE,
-               ORDER_SCREEN, ORDER_FAVORITES, ORDER_REGION } order_kind_t;
+               ORDER_SCREEN, ORDER_FAVORITES, ORDER_REGION, ORDER_DUMP } order_kind_t;
 #define SETTINGS "nesp32"           /* conn.c's too */
 #define SETTING_AIRPORT "airport"
 #define SETTING_ZIP "zip"           /* WEATHER's zip code, from before PLACE: zip_v1_t */
@@ -57,6 +57,8 @@ typedef enum { ORDER_SCAN, ORDER_JOIN, ORDER_FORGET, ORDER_AIRPORT, ORDER_PLACE,
 #define SETTING_FAVORITES "bsky"    /* BSKY's favorites, a nesp_bsky_favorites_t */
 #define SETTING_SCREEN "screen"     /* NESP_SCREEN_UPRIGHT or _FLIPPED */
 #define SETTING_REGION "region"     /* NESP_REGION_*: the console's clock last settled on */
+#define SETTING_DUMP_HEAD "dumphead"  /* PEER's last whole DUMP: its nesp_dump_head_t */
+#define SETTING_DUMP_RAM "dumpram"    /* and its NESP_PEER_DUMP_BYTES of the console's RAM */
 
 typedef struct {
     order_kind_t kind;
@@ -90,6 +92,9 @@ static nesp_weather_place_t place;          /* under lock */
 static bool have_place;                     /* under lock */
 static nesp_bsky_favorites_t favorites;     /* under lock */
 static bool have_favorites;                 /* under lock */
+static nesp_dump_head_t dump_head;          /* under lock */
+static uint8_t dump_ram[NESP_PEER_DUMP_BYTES];  /* under lock */
+static bool have_dump;                      /* under lock */
 /* Which way up the screen is: the build's, until the console chooses. */
 static uint8_t screen = CONFIG_NESP_DISPLAY_FLIPPED ? NESP_SCREEN_FLIPPED
                                                     : NESP_SCREEN_UPRIGHT;  /* under lock */
@@ -238,6 +243,13 @@ static void hal_app(void *ctx, const char *id, uint8_t version)
     memcpy(app_id, id, NESP_APP_ID);
     app_version = version;
     portEXIT_CRITICAL(&lock);
+    /* For the log's reader: which ROM a session's lines, or a dump, are of. */
+    char shown[NESP_APP_ID + 1];
+    for (size_t index = 0; index < NESP_APP_ID; index++) {
+        shown[index] = id[index] > ' ' && id[index] < 0x7F ? id[index] : '-';
+    }
+    shown[NESP_APP_ID] = 0;
+    ESP_LOGI(TAG, "app %s version %u", shown, (unsigned)version);
 }
 
 /* Memory for something big. From the PSRAM if the board has it; a piece
@@ -509,6 +521,31 @@ static bool hal_favorites_last(void *ctx, nesp_bsky_favorites_t *out)
     return have;
 }
 
+static bool hal_dump_last(void *ctx, nesp_dump_head_t *head, uint8_t *ram)
+{
+    (void)ctx;
+    portENTER_CRITICAL(&lock);
+    bool have = have_dump;
+    if (have) {
+        *head = dump_head;
+        memcpy(ram, dump_ram, sizeof(dump_ram));
+    }
+    portEXIT_CRITICAL(&lock);
+    return have;
+}
+
+static void hal_dump_keep(void *ctx, const nesp_dump_head_t *head, const uint8_t *ram)
+{
+    (void)ctx;
+    order_t order = {.kind = ORDER_DUMP};
+    portENTER_CRITICAL(&lock);
+    dump_head = *head;
+    memcpy(dump_ram, ram, sizeof(dump_ram));
+    have_dump = true;
+    portEXIT_CRITICAL(&lock);
+    xQueueSend(orders, &order, 0);  /* the flash is the worker's to write */
+}
+
 static void hal_favorites_keep(void *ctx, const nesp_bsky_favorites_t *list)
 {
     (void)ctx;
@@ -589,6 +626,23 @@ static void do_order(order_t *order)
         portEXIT_CRITICAL(&lock);
         if (nvs_open(SETTINGS, NVS_READWRITE, &settings) == ESP_OK) {
             nvs_set_blob(settings, SETTING_FAVORITES, &kept, sizeof(kept));
+            nvs_commit(settings);
+            nvs_close(settings);
+        }
+        break;
+    }
+    case ORDER_DUMP: {
+        /* Static, as the favorites are: the one worker, a small stack. */
+        static nesp_dump_head_t head;
+        static uint8_t ram[NESP_PEER_DUMP_BYTES];
+        nvs_handle_t settings;
+        portENTER_CRITICAL(&lock);
+        head = dump_head;
+        memcpy(ram, dump_ram, sizeof(ram));
+        portEXIT_CRITICAL(&lock);
+        if (nvs_open(SETTINGS, NVS_READWRITE, &settings) == ESP_OK) {
+            nvs_set_blob(settings, SETTING_DUMP_RAM, ram, sizeof(ram));
+            nvs_set_blob(settings, SETTING_DUMP_HEAD, &head, sizeof(head));
             nvs_commit(settings);
             nvs_close(settings);
         }
@@ -716,6 +770,12 @@ void radio_settings(void)
         size = sizeof(favorites);
         have_favorites = nvs_get_blob(settings, SETTING_FAVORITES, &favorites, &size) == ESP_OK
                          && size == sizeof(favorites);
+        size = sizeof(dump_head);
+        have_dump = nvs_get_blob(settings, SETTING_DUMP_HEAD, &dump_head, &size) == ESP_OK
+                    && size == sizeof(dump_head);
+        size = sizeof(dump_ram);
+        have_dump = have_dump && nvs_get_blob(settings, SETTING_DUMP_RAM, dump_ram, &size) == ESP_OK
+                    && size == sizeof(dump_ram);
         uint8_t kept;
         if (nvs_get_u8(settings, SETTING_SCREEN, &kept) == ESP_OK
             && (kept == NESP_SCREEN_UPRIGHT || kept == NESP_SCREEN_FLIPPED)) {
@@ -824,6 +884,8 @@ const nesp_hal_t *radio_hal(void)
     hal.place_keep = hal_place_keep;
     hal.favorites_last = hal_favorites_last;
     hal.favorites_keep = hal_favorites_keep;
+    hal.dump_last = hal_dump_last;
+    hal.dump_keep = hal_dump_keep;
     hal.peer_rtt = conn_rtt;
     hal.peer_note = conn_note;
     hal.peer_noted = conn_noted;

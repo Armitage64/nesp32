@@ -277,6 +277,17 @@ def library():
         lib.host_place_size.restype = ctypes.c_size_t
         lib.host_place_keeps.restype = ctypes.c_uint32
         lib.host_place_keeps.argtypes = [ctypes.c_void_p]
+        lib.host_kept_dump.restype = ctypes.c_bool
+        lib.host_kept_dump.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32),
+                                       ctypes.POINTER(ctypes.c_uint32), ctypes.c_char_p,
+                                       ctypes.POINTER(ctypes.c_uint8), ctypes.c_char_p,
+                                       ctypes.c_char_p]
+        lib.host_set_kept_dump.restype = None
+        lib.host_set_kept_dump.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32,
+                                           ctypes.c_char_p, ctypes.c_uint8, ctypes.c_char_p,
+                                           ctypes.c_char_p]
+        lib.host_dump_keeps.restype = ctypes.c_uint32
+        lib.host_dump_keeps.argtypes = [ctypes.c_void_p]
         lib.host_set_favorites.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint8]
         lib.host_favorites.restype = ctypes.c_int
         lib.host_favorites.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
@@ -899,6 +910,30 @@ class Stick:
     def set_rendezvous(self, url):
         self._url = url.encode()
         self._lib.host_set_rendezvous(self._host, self._url)
+
+    @property
+    def kept_dump(self):
+        """The last DUMP as the flash keeps it: a dict of its head and its
+        RAM, or None."""
+        count, tick, version = ctypes.c_uint32(), ctypes.c_uint32(), ctypes.c_uint8()
+        app = ctypes.create_string_buffer(proto.NESP_APP_ID)
+        firmware = ctypes.create_string_buffer(32)
+        ram = ctypes.create_string_buffer(proto.NESP_PEER_DUMP_BYTES)
+        if not self._lib.host_kept_dump(self._host, ctypes.byref(count), ctypes.byref(tick), app,
+                                        ctypes.byref(version), firmware, ram):
+            return None
+        return {"count": count.value, "tick": tick.value, "app": app.raw.rstrip(b"\0").decode(),
+                "version": version.value, "firmware": firmware.value.decode(), "ram": ram.raw}
+
+    def set_kept_dump(self, count, tick, app, version, firmware, ram):
+        """One in the flash already, as from before a power-off."""
+        self._lib.host_set_kept_dump(self._host, count, tick, app.encode().ljust(proto.NESP_APP_ID, b"\0"),
+                                     version, firmware.encode(), bytes(ram))
+
+    @property
+    def dump_keeps(self):
+        """How often a whole DUMP was written to the flash."""
+        return self._lib.host_dump_keeps(self._host)
 
     @property
     def peer_dump(self):

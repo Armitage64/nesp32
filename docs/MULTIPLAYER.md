@@ -457,9 +457,14 @@ too, in 32 pieces of PEER's DUMP (`net_differ`; about 0.3 s). Its nesp32
 writes it out a line of 64 bytes at a time:
 
 ```
-peer: dump of the console's RAM, as it stood at tick 2047, whose digests differed: 2048 bytes
+peer: dump of the console's RAM, as it stood at tick 2047, whose digests differed: 2048 bytes; app BUBL version 2
 peer: dump 0000: 0b1c...
+...
+peer: dump end
 ```
+
+The nesp32 keeps the last one over power-off and says it again when it
+starts (`docs/PROTOCOL.md`, "A kept dump").
 
 With both players' logs, the bytes that differ are where the two games
 parted. The link's own bytes and the stack below the dump's calls are the

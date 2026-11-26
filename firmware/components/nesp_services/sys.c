@@ -222,7 +222,9 @@ size_t nesp_stick_feed(nesp_stick_t *stick, const uint8_t *data, size_t len, uin
 
 bool nesp_stick_tick(nesp_stick_t *stick, uint32_t now_ms)
 {
-    return nesp_link_tick(&stick->link, now_ms);
+    bool soon = nesp_link_tick(&stick->link, now_ms);
+    nesp_kept_tick(&stick->kept, now_ms);
+    return soon;
 }
 
 void nesp_stick_init(nesp_stick_t *stick, const nesp_hal_t *hal)
@@ -244,6 +246,8 @@ void nesp_stick_init(nesp_stick_t *stick, const nesp_hal_t *hal)
     nesp_kbd_service(&stick->services[11], &stick->kbd, hal);
     nesp_http_service(&stick->services[12], &stick->http, hal);
     nesp_tape_service(&stick->services[13], &stick->tape, hal);
+    nesp_kept_init(&stick->kept, hal);
+    stick->peer.kept = &stick->kept;
     for (size_t index = 0; index < sizeof(stick->services) / sizeof(stick->services[0]);
          index++) {
         nesp_link_register(&stick->link, &stick->services[index]);

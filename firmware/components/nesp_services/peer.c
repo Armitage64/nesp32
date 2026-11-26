@@ -47,7 +47,7 @@
 _Static_assert(1 + NESP_PEER_PER_FRAME <= NESP_SHORT_DATA, "TICKS does not fit a short frame");
 _Static_assert(NESP_PEER_PER_FRAME == 2, "a short frame's length is by counts of 2 and under");
 #define DUMP_LINES (NESP_PEER_DUMP_BYTES / NESP_PEER_DUMP_LINE)
-_Static_assert(DUMP_LINES < 255, "a dump's lines, and the one before them, are counted in a byte");
+_Static_assert(DUMP_LINES + 2 < 255, "a dump's lines, a heading and an end are counted in a byte");
 #define SHOW_MS 500
 #define WATCH_MS 2000
 #define STOPPED_MS 1000            /* a session's console that has not asked for this long has stopped */
@@ -363,9 +363,13 @@ static void dump(nesp_peer_t *peer, const nesp_request_t *request, nesp_reply_t 
     }
     memcpy(peer->dump + offset, request->data + 2, count);
     if (count != 0 && offset + count == NESP_PEER_DUMP_BYTES) {
-        peer->dump_lines = DUMP_LINES + 1;
+        peer->dump_lines = DUMP_LINES + 2;     /* a heading, the lines, an end */
         peer->dump_at = peer->now;
         peer->dump_tick = peer->differed_at;
+        if (peer->kept != NULL) {
+            nesp_kept_dump(peer->kept, peer->dump_tick, peer->sys->app, peer->sys->app_version,
+                           peer->dump);
+        }
     }
 }
 
@@ -376,17 +380,30 @@ static void dump_said(nesp_peer_t *peer, uint32_t now)
         return;
     }
     char text[RADIO_TEXT];
-    if (peer->dump_lines == DUMP_LINES + 1) {
-        if (peer->dump_tick != 0) {
-            snprintf(text, sizeof(text), "dump of the console's RAM, as it stood at tick %lu, "
-                     "whose digests differed: %u bytes", (unsigned long)peer->dump_tick,
-                     (unsigned)NESP_PEER_DUMP_BYTES);
-        } else {
-            snprintf(text, sizeof(text), "dump of the console's RAM: %u bytes",
-                     (unsigned)NESP_PEER_DUMP_BYTES);
+    if (peer->dump_lines == DUMP_LINES + 2) {
+        char app[NESP_APP_ID + 1];
+        for (size_t index = 0; index < NESP_APP_ID; index++) {
+            char letter = peer->sys->app[index];
+            app[index] = letter > ' ' && letter < 0x7F ? letter : '-';
         }
+        app[NESP_APP_ID] = 0;
+        size_t length;
+        if (peer->dump_tick != 0) {
+            length = (size_t)snprintf(text, sizeof(text), "dump of the console's RAM, as it stood at "
+                                      "tick %lu, whose digests differed: %u bytes",
+                                      (unsigned long)peer->dump_tick, (unsigned)NESP_PEER_DUMP_BYTES);
+        } else {
+            length = (size_t)snprintf(text, sizeof(text), "dump of the console's RAM: %u bytes",
+                                      (unsigned)NESP_PEER_DUMP_BYTES);
+        }
+        if (length < sizeof(text)) {
+            snprintf(text + length, sizeof(text) - length, "; app %s version %u", app,
+                     (unsigned)peer->sys->app_version);
+        }
+    } else if (peer->dump_lines == 1) {
+        snprintf(text, sizeof(text), "dump end");
     } else {
-        size_t from = (size_t)(DUMP_LINES - peer->dump_lines) * NESP_PEER_DUMP_LINE;
+        size_t from = (size_t)(DUMP_LINES + 1 - peer->dump_lines) * NESP_PEER_DUMP_LINE;
         size_t length = (size_t)snprintf(text, sizeof(text), "dump %04x:", (unsigned)from);
         for (size_t index = 0; index < NESP_PEER_DUMP_LINE && length + 3 < sizeof(text); index++) {
             length += (size_t)snprintf(text + length, sizeof(text) - length, "%s%02x",
