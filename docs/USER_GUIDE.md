@@ -115,7 +115,7 @@ This guide describes the StickS3 and points out where the Plus2 differs.
 | PAL NES from Sweden, Norway, Denmark or Finland | Should work: its controller ports are the same as the North American NES's. Not tried yet |
 | PAL NES from Germany, France, the Netherlands or Spain | **No**, not without a change inside the console (see below) |
 | PAL NES from the UK, Italy, Australia or New Zealand | Not known yet. Use the test below |
-| AV Famicom (the later Famicom with NES-style controller ports) | Should work. Not tried yet |
+| AV Famicom (the later Famicom with NES-style controller ports) | **Yes.** Tested |
 | The original Famicom | **No.** Its controllers are built in, so there's no port 2 to plug into |
 
 **Why some European consoles don't work.** Many PAL consoles sold in
