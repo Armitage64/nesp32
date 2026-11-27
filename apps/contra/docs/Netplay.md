@@ -109,6 +109,24 @@ its own delay, from 1 tick to 5, as its nesp32 advises; and one tick in
 256 carries a digest of the game in place of buttons, here of its zero
 page and its sprites.
 
+When the two digests differ, each console sends its 2 KB of RAM to its
+nesp32 before it gives the session up (PEER's DUMP, `net_differ`, as
+Bubble Bobble and Tecmo Super Bowl do), as it stood at the start of the
+tick whose digests differed: in the NMI, after its writes to the PPU and
+before the game's work. So the dump has what the NMI writes before the
+exchange, and those bytes are no help in finding where the games parted:
+its scratch ($00-$07), `NMI_CHECK`, `GRAPHICS_BUFFER_OFFSET` and
+`PREVIOUS_ROM_BANK`. Nor are the link's zero page and the stack below the
+dump's calls. The nesp32 writes the dump to its log and keeps the last
+over power-off, for the web site's log page. The requests are at the
+link's rate, and a nesp32 at the session's hears them only once it has
+gone back to the link's after `PEER_RATE_QUIET_MS` (500 ms), so the
+whole dump takes about a second, with the screen off. A 64-byte piece
+does not fit in netplay's memory at $0752-$07BF, so the link's request
+is in the PRG RAM, at $7B00, past what the reset copies there. On
+hardware a dump was made and read back from the web site's log page
+(November 2026); `tests/test_lockstep.py` checks it in the simulation.
+
 ### The cartridge
 
 The game's own board is a UxROM: 128 KB of PRG ROM in banks of 16 KB, one

@@ -477,6 +477,16 @@ With both players' logs, the bytes that differ are where the two games
 parted. The link's own bytes and the stack below the dump's calls are the
 dump's own doing, and `PPUCTRL_COPY` ($FF) has the NMI's bit cleared.
 
+Tecmo Super Bowl and Contra send theirs the same way. Theirs are at the
+session's faster line (PEER's RATE), and a dump's requests at the link's
+rate are heard only once the nesp32 has gone back to it, so the first
+piece is tried for up to twice `PEER_RATE_QUIET_MS` and the dump takes
+about a second. Contra's is taken in the NMI after its writes to the PPU,
+so its scratch ($00-$07), `NMI_CHECK`, `GRAPHICS_BUFFER_OFFSET` and
+`PREVIOUS_ROM_BANK` are the NMI's and not where the games parted
+(`apps/contra/docs/Netplay.md`). One has been made on hardware and read
+back from the web site's log page.
+
 The first such dumps, from round 2 on two consoles across the Internet,
 differed in three bytes alone: sprite 6's tile, attributes and X, a sprite
 the game had hidden. One from a session that ended at its first check,
@@ -528,8 +538,8 @@ eight games:
   games' resets clear all of theirs is not checked; Jackal and RCR have
   played long sessions without a drop.
 - **Games that differ** (for later): a dump of each console's RAM to its
-  nesp32 when the digests differ, to learn why, as Bubble Bobble's and
-  Tecmo Super Bowl's do ("Ending"; the nesp32 keeps the last,
+  nesp32 when the digests differ, to learn why, as Bubble Bobble's,
+  Tecmo Super Bowl's and Contra's do ("Ending"; the nesp32 keeps the last,
   [PROTOCOL.md](PROTOCOL.md), "A kept dump"), in the other games too; and if it comes back, the
   host's game copied to the other in place of ending the session. Tetris
   would be the easiest: its NMI draws the playfields again from RAM, so
