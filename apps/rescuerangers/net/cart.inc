@@ -36,7 +36,7 @@ NET_IMAGE_RUN   = $6000         ; and where it runs
 ; The pages the reset copies: as many on the slow ROM (NET_SLOW, with no
 ; net/fast.inc) as on the netplay ROM, so that the two take as long to
 ; start the game, and tests/test_fast.py can hold them alike from power-on.
-NET_IMAGE_PAGES = 9
+NET_IMAGE_PAGES = 10
 .assert __NETCODE_SIZE__ <= NET_IMAGE_PAGES * $100, lderror, "NET_IMAGE_PAGES too few for the image"
 .assert NET_IMAGE_RUN + NET_IMAGE_PAGES * $100 <= NET_RAM, lderror, "the image runs into net/net_ram.inc's memory"
 

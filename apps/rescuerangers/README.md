@@ -232,7 +232,8 @@ tick):
 | the original, a local game for two | none | 0.04% |
 | a session, the line at 21 | some 3690 | 1.41% (5 ms network), 1.45% (20 ms) |
 | a session, the line at 14 | some 3090 | 0.91% (5 ms), 0.97% (20 ms) |
-| a session, the line at 14, and the faster ways below | some 3090 | 0.41% (5 ms) |
+| a session, the line at 14, and the first two faster ways below | some 3090 | 0.41% (5 ms) |
+| a session, the line at 14, and all three | some 3090 | 0.27% (5 ms) |
 
 Nearly all are single frames, and nearly none are stalls: the delay the
 nesp32s advise covers both networks. (The original's figure is of
@@ -247,8 +248,8 @@ NMI some 4000, and 0.82% over 26700, which the exchange would push past
 the vblank. The busiest frames are busy with more of the same: the
 sprites' places (`L5_802F`), the objects' looks at the level's collision
 map (`L7_EA8F` and `L7_EB3B`), and the objects' looks at each other. The
-netplay ROM has faster ways through two routines, each doing what the
-game's does to the byte, scratch and flags too, from the PRG RAM:
+netplay ROM has faster ways through three routines, each doing what the
+game's does to the byte, from the PRG RAM:
 
 - **The sprites' slots hidden** (`L7_C21E`, `fast_hide_sprites`): the
   game hides every slot it did not use this frame, some 54 of 64, in a
@@ -258,16 +259,30 @@ game's does to the byte, scratch and flags too, from the PRG RAM:
   `L7_EA8F` calls in its place): its shifts are tables, and two loads are
   not made twice. Some 20 cycles a call, 12 calls in a frame and 17 in a
   busy one.
+- **The sprites' places** (`L5_8164` on, the end of `L5_802F`,
+  `fast_sprites`): the game adds each sprite's offset to its object's
+  place, then reads the offset again for its sign, to tell from the carry
+  whether the sprite is off the screen. Off is the sum outside 0-255,
+  which is the overflow of the same sum with the place's top bit flipped:
+  the places are kept so, in the loop's own loads, and the sum flipped
+  back. Some 16 cycles a sprite of some 101, 24 sprites in a frame and 43
+  in a busy one. A and the flags are left otherwise than the game's, and
+  are dead: both calls of `L5_802F` go on with `INC $96` and `LDX $96`.
 
 `make` also builds `build/rescuerangers_net_slow.nes`, the netplay ROM
 with the game's own routines (`NET_SLOW`). `tests/test_fast.py` holds the
 two alike: each routine from memory and registers at random (every slot,
-every point), and a game for two from power-on through the menu and
-LOCAL GAME, tick for tick. Both copy as many pages to the PRG RAM at the
-reset (`NET_IMAGE_PAGES`, 9), and so start the game in the same frame,
-one later than before. The next would be the sprites' places, whose
-loop reads each sprite's offset twice for its sign (some 12 cycles a
-sprite, of some 100), and then the objects' looks at each other.
+every point), the sprites' places from each of their calls in a game for
+two and again with the object anywhere, and a game for two from power-on
+through the menu and LOCAL GAME, tick for tick. Both copy as many pages
+to the PRG RAM at the reset (`NET_IMAGE_PAGES`, 10), and so start the
+game in the same frame, one later than before. What is left is worth
+less, or risks more: hiding only the slots the last frame used (some 200
+cycles more a frame, if nothing else writes them), the objects' looks at
+each other (some 2300 cycles in a busy frame, in four routines), and the
+sound engine (some 3000 in each NMI, not yet all traced, and heard). The
+profile is of the first level alone; the later zones and the bosses may
+be busier, or busy elsewhere.
 
 ## Not done
 

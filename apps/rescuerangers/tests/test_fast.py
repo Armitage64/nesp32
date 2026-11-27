@@ -99,6 +99,60 @@ def test_an_objects_look_at_the_map_is_the_games(build):
         assert call(fast, address, bytes(ram), *regs) == call(slow, address, bytes(ram), *regs)
 
 
+def calls_in_a_game(build, label, bank, ticks=600):
+    """The memory and registers at each call of a routine in a game for
+    two on the slow ROM, from LOCAL GAME on."""
+    nes = Console(str(build / "rescuerangers_net_slow.nes"), str(build / "rescuerangers_net_slow.dbg"))
+    for pads in menu_to_local_game():
+        nes.run(1, pads=pads)
+    address = nes.labels[label]
+    seen = []
+    step = nes.mpu.step
+
+    def stepped():
+        mpu = nes.mpu
+        if mpu.pc == address and nes.bus.bank_at(address) == bank:
+            seen.append((bytes(nes.ram), mpu.a, mpu.x, mpu.y, mpu.p))
+        step()
+    nes.mpu.step = stepped
+    game = [(0, 0)] * STORY_FRAMES + press(PAD_START, rest=LEVEL_FRAMES) + list(islice(moves(7), ticks))
+    play_ticks(nes, game)
+    nes.mpu.step = step
+    return seen
+
+
+SPRITES_BANK = 5                # L5_802F's
+OBJECT_X, OBJECT_Y = 0x04F0, 0x0510
+
+
+def test_the_sprites_places_are_the_games(build):
+    """L5_802F, whose last part is fast_sprites on the netplay ROM: from
+    each of its calls in a game for two, and from each again with the
+    object somewhere at random, so that its sprites fall off every edge of
+    the screen. The memory, X and Y as the game's leaves them; A and the
+    flags are dead, as both calls of L5_802F go on with INC $96 and LDX $96
+    (net/fast.inc)."""
+    fast, slow = roms(build)
+    for nes in (fast, slow):
+        nes.bus.map_mmc3(2 * SPRITES_BANK, 2 * SPRITES_BANK + 1)
+    address = slow.labels["L5_802F"]
+    rng = random.Random(4)
+    calls = calls_in_a_game(build, "L5_802F", SPRITES_BANK)
+    assert len(calls) > 1000
+    drawn = 0
+    for ram, a, x, y, p in calls:
+        for moved in (False, True):
+            ram = bytearray(ram)
+            if moved:
+                ram[OBJECT_X + x] = rng.randrange(256)
+                ram[OBJECT_Y + x] = rng.randrange(256)
+            got = call(fast, address, bytes(ram), a, x, y, p)
+            want = call(slow, address, bytes(ram), a, x, y, p)
+            assert (got[0], got[2], got[3], got[5]) == (want[0], want[2], want[3], want[5])
+            drawn += got[0][0x97] != ram[0x97]
+    assert drawn > 500                  # sprites were placed, not only skipped
+
+
 def menu_to_local_game():
     """From power-on: 2 PLAYERS on the title, the menu (no nesp32 answers),
     and LOCAL GAME, frame by frame."""

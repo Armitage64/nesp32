@@ -1,4 +1,4 @@
-; Faster ways through two of the game's busiest routines, for the frames
+; Faster ways through three of the game's busiest routines, for the frames
 ; that a session's exchange would push past the vblank (README.md, "The
 ; frame rate"). Each does what the game's own does, to the byte: the same
 ; memory written, scratch ($02-$09) and all, and the same registers and
@@ -172,6 +172,95 @@ fast_tile_at:
     lsr a
     lsr a
     lsr a
+    rts
+
+; L5_8164 on (L5_802F's last part): an object's sprites into the sprites'
+; slots from $97, each hidden (Y $F8) where it falls off the screen. The
+; game adds each sprite's offset to the object's place and reads the offset
+; again for its sign, to tell from the carry whether the sprite is off: off
+; is the sum outside 0-255, which is the overflow of the same sum with the
+; place's top bit flipped. So the places are kept here with it flipped,
+; written into the loop's loads (it runs in the PRG RAM), and the sum's top
+; bit flipped back: the same bytes in the slots, some 16 cycles a sprite
+; fewer. $97 is written once, at the end, with what it would have been.
+; The memory, X and Y are left as the game's leaves them; A and the flags
+; are not, and are dead: both of L5_802F's calls (L5_800B, L5_8020) go on
+; with INC $96 and LDX $96.
+fast_sprites:
+    lda $0450,x
+    sta $13
+    eor #$80
+    sta @x+1
+    lda $0440,x
+    sta $12
+    eor #$80
+    sta @y+1
+    ldy #$00
+    lda ($02),y
+    sta $04
+    iny
+    lda ($02),y
+    clc
+    adc $11
+    pha
+    lda $0400,x
+    and #$20
+    sta $11
+    pla
+    tax
+    lda L5_B08E,x
+    sec
+    sbc #$02
+    sta $05
+    lda L5_B145,x
+    sbc #$00
+    sta $06
+    ldx $97
+    beq @done
+@sprite:
+    iny
+    lda ($02),y
+    sta $0201,x
+@y:
+    lda #$00                    ; the object's Y, its top bit flipped
+    clc
+    adc ($05),y
+    eor #$80
+    sta $0200,x
+    bvs @off_y
+    iny
+    lda ($02),y
+    eor $10
+    ora $11
+    sta $0202,x
+@x:
+    lda #$00                    ; the object's X, its top bit flipped
+    clc
+    adc ($05),y
+    eor #$80
+    sta $0203,x
+    bvs @off
+    inx
+    inx
+    inx
+    inx
+    beq @full
+    dec $04
+    bpl @sprite
+    stx $97
+@done:
+    rts
+@full:
+    stx $97                     ; every slot taken: the game stops here too
+    rts
+@off_y:
+    iny
+@off:
+    lda #$F8
+    sta $0200,x
+    dec $04
+    bpl @sprite
+    stx $97
     rts
 
 .popseg
