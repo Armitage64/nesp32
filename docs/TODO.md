@@ -132,6 +132,21 @@ on it. Each program in `apps/` keeps its own list in its README.
   further than that. The port's CLK pin, which every read of `$4017`
   pulses, is the other line the hat leaves alone
   ([the jukebox's plan](../apps/jukebox/PLAN.md), "clocked link").
+- **The StickC Plus2 on ESP-IDF 6.1.1**, as the StickS3 and the generic
+  ESP32-S3 are. It is built with 6.0.3 for now: 6.1.1 renamed or removed
+  the DAC functions M5GFX's Panel_CVBS calls, so M5GFX doesn't build for
+  the ESP32 with it (m5stack/M5GFX#425). 6.0.3 has the same Mbed TLS
+  (4.1.1). Once an M5GFX release has the fix, move to it, with the
+  M5Unified made for it (`firmware/main/idf_component.yml` says why the
+  two move together); build the Plus2 with 6.1.1 in
+  `.github/workflows/release.yml`; take out or reword every note that the
+  Plus2 is built with 6.0.3 or needs an ESP-IDF older than 6.1.1; and try
+  the Plus2 on hardware. This finds the notes, with mentions of 6.0.3
+  that are history and stay:
+
+  ```sh
+  git grep -n -F -e 6.0.3 -e 'older than 6.1.1' -e M5GFX#425
+  ```
 
 ## Tools for development
 

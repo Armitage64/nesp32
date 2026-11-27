@@ -6,6 +6,18 @@ CONFIG_FREERTOS_HZ=1000
 CONFIG_UART_ISR_IN_IRAM=y
 # Wi-Fi on core 0; the link task has core 1 to itself (main/link.c).
 CONFIG_ESP_WIFI_TASK_PINNED_TO_CORE_0=y
+# FreeRTOS's functions and the ring buffer's run from RAM. Each request
+# goes through them: the link task waits on the UART's event queue, reads
+# the request from the driver's receive ring buffer and writes the reply to
+# its transmit one, and from flash any of those calls can wait on a cache
+# miss. ESP-IDF 6 puts both in flash by default and keeps in RAM only what
+# interrupts and the scheduler call; these two bring the rest back, for
+# about 11 KB of internal RAM. ESP-IDF 5.5 kept them in RAM without being
+# asked: FreeRTOS through a hidden option that defaults to y, the ring
+# buffer because RINGBUF_PLACE_FUNCTIONS_INTO_FLASH defaults to n. 5.5 has
+# no RINGBUF_IN_IRAM and warns of an unknown symbol.
+CONFIG_FREERTOS_IN_IRAM=y
+CONFIG_RINGBUF_IN_IRAM=y
 CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
@@ -25,8 +37,6 @@ CONFIG_WL_SECTOR_SIZE_512=y
 # judged not worth what it might cost.
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
 
-# Size, where it costs no speed.
-CONFIG_NEWLIB_NANO_FORMAT=y
 # What a Stick never does: be an access point, join an enterprise network
 # (NET's scan marks those as not joinable), or use IPv6.
 CONFIG_ESP_WIFI_SOFTAP_SUPPORT=n
@@ -40,6 +50,22 @@ CONFIG_LWIP_IPV6=n
 #   CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT=y
 #   CONFIG_ESP_ERR_TO_NAME_LOOKUP=n
 #   CONFIG_ESP_SYSTEM_PANIC_SILENT_REBOOT=y
+
+# The services are TLS clients only, of TLS 1.2 (ESP-IDF's default leaves
+# 1.3 out); the firmware is never a TLS server. Renegotiation is left out
+# too: esp-tls turns it on whenever Mbed TLS has it, and without it a
+# server's HelloRequest is answered with a no_renegotiation warning and the
+# connection carries on.
+CONFIG_MBEDTLS_TLS_CLIENT_ONLY=y
+CONFIG_MBEDTLS_SSL_RENEGOTIATION=n
+# Only the elliptic curves in use: X25519 and P-256, which the services'
+# servers choose for the key exchange, and P-256, P-384 and P-521, which
+# their certificates and the bundle's roots have keys on. None of them
+# uses secp256k1 or a Brainpool curve.
+CONFIG_MBEDTLS_ECP_DP_SECP256K1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_BP256R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_BP384R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_BP512R1_ENABLED=n
 
 # The PSRAM both boards have, for what is too big for the chip's own memory
 # (an article is a quarter of a megabyte). A board whose PSRAM does not

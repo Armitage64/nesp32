@@ -32,3 +32,17 @@ CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL=y
 CONFIG_BT_NIMBLE_GATTC_AUTO_PAIR=y
 # Wi-Fi and Bluetooth take turns at the one radio.
 CONFIG_ESP_COEX_SW_COEXIST_ENABLE=y
+
+# Mbed TLS's memory by malloc's rules, rather than ESP-IDF's default of
+# internal RAM only. With PSRAM in malloc (SPIRAM_USE_MALLOC) and
+# SPIRAM_MALLOC_ALWAYSINTERNAL at 16384, ESP-IDF's defaults for both,
+# its 16 KB record buffer is over the limit and goes to PSRAM, and the
+# rest stays internal; each falls back to the other if it has to. On this
+# chip IRAM and DRAM share one block of RAM, so the FreeRTOS and ring
+# buffer functions that sdkconfig.defaults puts in IRAM come out of the
+# heap that Wi-Fi and the link need. A board whose PSRAM does not answer
+# still starts, and Mbed TLS takes its memory from internal RAM (a classic
+# ESP32 with none got an HTTPS page so). EXTERNAL_MEM_ALLOC would
+# not start on one: Mbed TLS's crypto is set up at startup, and that
+# option has no fallback.
+CONFIG_MBEDTLS_DEFAULT_MEM_ALLOC=y
