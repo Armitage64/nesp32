@@ -26,6 +26,7 @@ NET_IMAGE_RUN   = $6000         ; and where it runs
 ; boot, and the tests can hold one to another tick by tick from power-on.
 NET_IMAGE_PAGES = $1B
 .assert net_image_end <= NET_IMAGE_RUN + NET_IMAGE_PAGES * $100, error, "net_cart_reset copies too little"
+.assert NET_IMAGE_RUN + NET_IMAGE_PAGES * $100 <= nesp_tx, error, "the copy runs into nesp_tx (net/ram.inc)"
 
 .pushseg
 .segment "BANK_8"

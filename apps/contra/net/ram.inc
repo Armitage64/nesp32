@@ -26,6 +26,11 @@ CHECK_TICK      = $FF
 ; and kept until each comes to send it: a few ticks later, by its delay.
 CHECK_AT        = CHECK_TICK - 8
 .assert NET_DELAY_MAX < CHECK_TICK - CHECK_AT, error
+; When the two differ, this console's RAM goes to its nesp32 for its log
+; first (net_differ), in pieces of this many bytes, each but the first
+; asked up to DUMP_TRIES times.
+DUMP_PIECE      = 64
+DUMP_TRIES      = 4
 
 .assert RING & (RING - 1) = 0, error, "RING must be a power of two"
 .assert RING = 8, error, "the session's rings are laid out for 8 ticks"
@@ -34,7 +39,7 @@ CHECK_AT        = CHECK_TICK - 8
 ; The link's library (nesp32's nes/lib/nesp.inc). The game has no run of
 ; zero page to spare, so its memory is placed here, a byte at a time.
 NESP_RX_MASK    = $1F           ; the longest reply payload: 32 bytes
-NESP_TX_MAX     = 8             ; the longest request: a hello for one service
+NESP_TX_MAX     = DUMP_PIECE + 2    ; the longest request: a piece of the RAM (net_differ)
 NESP_TIMEOUT    = 1             ; passes of 4.15 ms waited for a reply
 NESP_NMI_ONLY   = 1             ; every exchange is made in an NMI
 NESP_OWN_MEMORY = 1
@@ -81,19 +86,26 @@ nesp_status     = NET_RAM + 38
 nesp_attention  = NET_RAM + 39
 nesp_rng        = NET_RAM + 40  ; 2
 nesp_rx         = NET_RAM + 42
-nesp_tx         = nesp_rx + NESP_RX_MASK + 1 + 7
 ; A session's line at its own rate (net_rate, net/net.inc).
-nesp_fast       = nesp_tx + NESP_TX_MAX + 7 ; bit 7: a session's exchanges at its own rate
+nesp_fast       = nesp_rx + NESP_RX_MASK + 1 + 7 ; bit 7: a session's exchanges at its own rate
 net_rate_ask    = nesp_fast + 1 ; not 00: ask for it this many NMIs of the session on, less one
 net_rate_tries  = nesp_fast + 2 ; times it has been asked for in this session
 net_rate_misses = nesp_fast + 3 ; exchanges in a row that had no reply, at it
-NET_RAM_END     = nesp_fast + 4
+net_dumped      = nesp_fast + 4 ; pieces of the RAM sent (net_differ)
+NET_RAM_END     = nesp_fast + 5
 NET_RATE_TRIES  = 3
 NET_RATE_MISSES = 30            ; half a second: and the line is the link's again
 NET_RATE_WAIT   = 46            ; and asked for again after 3/4 of a second, once the nesp32
                                 ; has gone back to the link's (PEER_RATE_QUIET_MS)
 
 .assert NET_RAM_END <= $07C0, error, "netplay's memory runs into the palettes"
+
+; The request, which a piece of the RAM (net_differ) makes too long for
+; the console's own memory: in the PRG RAM, past what the reset copies
+; there (net/cart.inc). Nothing clears it, and a request is written whole
+; before it is sent. On one page, as the serial routines read it.
+nesp_tx         = $7B00
+.assert >nesp_tx = >(nesp_tx + NESP_TX_MAX + 7 - 1), error, "nesp_tx crosses a page"
 
 ; Outside what the reset clears: the order to start a session, which is
 ; carried through one (net_start_session, net_reset).

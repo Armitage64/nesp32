@@ -213,6 +213,7 @@ class Table:
         self.sticks = []
         self.ports = []
         self.traces = ({}, {})
+        self.rams = None            # ({tick: RAM}, {tick: RAM}) if a test asks for them
         port_options = port_options or ({}, {})
         for side, console in enumerate(self.consoles):
             options = dict(turnaround=turnaround)
@@ -294,6 +295,8 @@ class Table:
             lives = console.labels["P1_NUM_LIVES"]
             console.ram[lives] = console.ram[lives + 1] = LIVES
         self.traces[side][tick] = game_state(console)
+        if self.rams is not None:
+            self.rams[side][tick] = bytes(console.ram)
 
     def ticks(self, side):
         """The tick a console is at, past the 8 bits it keeps. A session
