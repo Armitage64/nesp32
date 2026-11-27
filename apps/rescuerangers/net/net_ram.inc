@@ -48,6 +48,10 @@ CHECK_AT        = CHECK_TICK - 8
 ; DUMP_TRIES times.
 DUMP_PIECE      = 64
 DUMP_TRIES      = 3
+; The first piece is tried for longer: a dump's requests are at the link's
+; rate, and a nesp32 at the session's hears them only once it has gone
+; back to the link's (PEER_RATE_QUIET_MS; 12 ms a try).
+DUMP_FIRST_TRIES = 2 * NESP_PEER_RATE_QUIET_MS / 12
 
 .assert RING & (RING - 1) = 0, error, "RING must be a power of two"
 .assert NET_DELAY_MAX + PER_FRAME < RING, error
@@ -107,8 +111,17 @@ net_dumped      = NET_RAM_END       ; pieces of the RAM sent (net_differ)
 net_lags        = NET_RAM_END + 1   ; NMIs that found the game at work (a count, for the tests)
 net_select      = NET_RAM_END + 2   ; the MMC3 register last picked at $8000 (net/cart.inc)
 net_select_nmi  = NET_RAM_END + 3   ; the one the NMI broke in on
+; A session's line at its own rate (net_rate, net/net.asm).
+nesp_fast       = NET_RAM_END + 4   ; bit 7: a session's exchanges at its own rate
+net_rate_ask    = NET_RAM_END + 5   ; not 00: ask for it this many NMIs of the session on, less one
+net_rate_tries  = NET_RAM_END + 6   ; times it has been asked for in this session
+net_rate_misses = NET_RAM_END + 7   ; exchanges in a row that had no reply, at it
+NET_RATE_TRIES  = 3
+NET_RATE_MISSES = 30            ; half a second: and the line is the link's again
+NET_RATE_WAIT   = 46            ; and asked for again after 3/4 of a second, once the nesp32
+                                ; has gone back to the link's (PEER_RATE_QUIET_MS)
 
-.assert net_select_nmi < MENU_RAM, error
+.assert net_rate_misses < MENU_RAM, error
 .assert >nesp_tx = >(nesp_tx + NESP_TX_MAX + 6), error, "nesp_tx on one page"
 NET_MENU_ON     = $80           ; in net_menu
 NET_MENU_FIRST  = $C0

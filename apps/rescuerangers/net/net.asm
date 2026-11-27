@@ -96,6 +96,10 @@ net_reset:
     sta net_stalled
     sta net_menu
     sta net_autostart
+    sta nesp_fast               ; the link's rate, until a session asks for its own
+    sta net_rate_ask
+    sta net_rate_tries
+    sta net_rate_misses
     lda net_boot
     cmp #NET_BOOT_MARK
     bne @exit
@@ -141,6 +145,7 @@ net_reset:
     sta net_tune
     sta net_silent
     lda #$01
+    sta net_rate_ask            ; the session's own rate, asked for in its first NMI
     sta net_mode                ; last, when the rest is in place
 
 @exit:
@@ -202,6 +207,7 @@ net_differ:
     sta PPUCTRL
     sta PPUMASK
     sta net_dumped
+    sta nesp_fast               ; the link's rate, which nesp_call's are at
 @piece:
     lda net_dumped              ; where the piece begins: 64 bytes a piece
     lsr a
@@ -222,6 +228,10 @@ net_differ:
     dey
     bpl @copy
     lda #DUMP_TRIES
+    ldx net_dumped
+    bne :+
+    lda #DUMP_FIRST_TRIES
+:
     sta net_temp
     lda #NESP_SVC_PEER
     ldx #NESP_PEER_DUMP
@@ -251,6 +261,14 @@ net_differ:
 ; go to net_pads, for the game's read (net_ctrl_read); with them not here,
 ; net_stalled is set, and the NMI goes on with the music alone.
 net_frame:
+    lda net_rate_ask
+    beq @ticks
+    dec net_rate_ask
+    bne @ticks
+    jsr net_rate                ; in place of this NMI's exchange: a stall
+    jmp net_stall
+
+@ticks:
     lda net_tick
     clc
     adc net_delay
@@ -532,7 +550,7 @@ net_exchange:
     lda #NESP_PEER_TUNE
     ldy #$02
     jsr net_ask
-    bcs @exit
+    bcs @missed
     cmp #NESP_SHORT_NONE
     beq @drop
     pha
@@ -556,12 +574,14 @@ net_exchange:
     sta net_temp                ; how many ticks of buttons go
     ldy #$01
     jsr net_ask
-    bcs @exit
+    bcs @missed
     cmp #NESP_SHORT_NONE
     beq @drop                   ; the other console is gone, or the nesp32 was switched off and on
     pha                         ; whether one of the other's buttons came
 
 @acks:
+    lda #$00
+    sta net_rate_misses
     lda net_acked               ; the nesp32 holds what it was sent
     clc
     adc net_temp
@@ -583,6 +603,9 @@ net_exchange:
 @exit:
     rts
 
+@missed:
+    jmp net_rate_missed
+
 @drop:
     jmp net_drop
 
@@ -603,6 +626,62 @@ net_ask:
     pla
     txa
     clc
+    rts
+
+; Ask the nesp32 for the session's line at its own rate, NESP_SHORT_PERIOD
+; cycles a bit (PEER's RATE), at the link's rate. With its answer that it
+; is at that rate, from its next request on, this console's exchanges are
+; at it too (nesp32's nesp.inc, nesp_fast). With any other answer, or none,
+; or from a nesp32 whose firmware has no RATE (NO_OP), the line stays the
+; link's. Made where the exchange would be: it takes less time than the
+; exchange it stands in for.
+net_rate:
+    lda #$00
+    sta net_rate_ask
+    sta net_rate_misses
+    inc net_rate_tries
+    lda #NESP_SHORT_PERIOD
+    sta nesp_request
+    lda #NESP_SVC_PEER
+    ldx #NESP_PEER_RATE
+    ldy #$01
+    jsr nesp_call
+    bcs @exit
+    cmp #NESP_ST_OK
+    bne @exit
+    lda nesp_reply_len
+    cmp #$01
+    bne @exit
+    lda nesp_reply
+    cmp #NESP_SHORT_PERIOD
+    bne @exit
+    lda #$80
+    sta nesp_fast
+
+@exit:
+    rts
+
+; An exchange at the session's own rate had no reply. Many in a row, and
+; the line may not be good enough at it, or the nesp32 has gone back to
+; the link's (it does when it hears nothing at it for a while): this
+; console goes back to the link's rate too, and asks again once the nesp32
+; will have, a few times a session at the most.
+net_rate_missed:
+    bit nesp_fast
+    bpl @exit
+    inc net_rate_misses
+    lda net_rate_misses
+    cmp #NET_RATE_MISSES
+    bcc @exit
+    lda #$00
+    sta nesp_fast
+    lda net_rate_tries
+    cmp #NET_RATE_TRIES
+    bcs @exit
+    lda #NET_RATE_WAIT          ; once the nesp32 has gone back to the link's too
+    sta net_rate_ask
+
+@exit:
     rts
 
 ; A = how many ticks of this console's buttons the nesp32 does not hold.

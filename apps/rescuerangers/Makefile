@@ -84,11 +84,17 @@ $(NESP): FORCE | $(BUILD)
 	$(MAKE) -s -C $(NESP32) BUILD=$(NESP_BUILD) proto host
 	@test -f $@ || touch $@
 
+# The session's line, in CPU cycles a bit (PEER's RATE): the netplay ROM
+# asks its nesp32 for it once a session has begun. 21 is the link's own.
+NET_RATE ?= 14
+
 # The library's serial routines: the receiver that gives up by counting,
 # since every exchange is made in an NMI, and both routines on the one page
-# net/rescuerangers_net.cfg has for them.
-$(BUILD)/link.inc: $(NESP_LIB) $(NESP)
-	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $@ --timeout --pack $(LINK_OPTIONS)
+# net/rescuerangers_net.cfg has for them; and the session's pair at
+# NET_RATE, on pages of their own.
+$(BUILD)/link.inc: $(NESP_LIB) $(NESP) Makefile
+	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $@ --timeout --pack \
+		--short-period=$(NET_RATE) $(LINK_OPTIONS)
 
 $(BUILD)/orig/%.o: $(SRC)/%.asm | $(BUILD)/orig
 	ca65 --debug-info --bin-include-dir $(BUILD) -o $@ $<

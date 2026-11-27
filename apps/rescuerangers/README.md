@@ -203,6 +203,32 @@ digests differ, each console sends its RAM to its nesp32's log first
 
 **The hello** is `RESC`, version 1.
 
+**The session's line** is at 14 CPU cycles a bit (`NET_RATE` in the
+Makefile), as Jackal's, TMNT II's and Contra's are: each console asks its
+nesp32 for it in the session's first NMI (PEER's RATE), goes back to the
+link's 21 when its replies at 14 stop coming, and asks again, three times
+a session at the most. A nesp32 whose firmware has no RATE keeps the line
+at 21. A dump goes at 21, its first piece tried for long enough for the
+nesp32 to have gone back to it.
+
+**The frame rate.** Rescue Rangers finishes most of its frames with little
+to spare, and the exchange in each NMI pushes some past the vblank: those
+frames are lags, and the game stands still for one. In the simulation,
+4 seeds of 3000 ticks each of the first level for two (`moves`, the
+buttons chosen by the tick, so both builds play the same game, tick for
+tick):
+
+| | exchange, cycles a tick | frames that stood still |
+|---|---|---|
+| the original, a local game for two | none | 0.04% |
+| a session, the line at 21 | some 3690 | 1.41% (5 ms network), 1.45% (20 ms) |
+| a session, the line at 14 | some 3090 | 0.91% (5 ms), 0.97% (20 ms) |
+
+Nearly all are single frames, and nearly none are stalls: the delay the
+nesp32s advise covers both networks. (The original's figure is of
+another game, by the frame, as a game with no session is.) None of this
+has been measured on hardware yet.
+
 ## Not done
 
 1. **Hardware**: two consoles, each with a nesp32, a session by room
@@ -222,4 +248,5 @@ digests differ, each console sends its RAM to its nesp32's log first
 5. **`make bps`** and `dist/rescuerangers_net.bps`, `make ines`, and the
    documents that list the games (the nes-netplay-port skill, "Shipping
    a change").
-6. **A faster line** (`NET_RATE`), as Jackal's, if the frames want it.
+6. **The line at 14 on hardware**, with the frames that stand still
+   counted there.
