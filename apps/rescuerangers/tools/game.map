@@ -1,0 +1,60 @@
+# Names and comments for Chip 'n Dale Rescue Rangers (USA), which
+# tools/convert.py puts into the source it makes from the ROM. None of the
+# game is here: only addresses, names and comments. The format is in
+# convert.py's Map. A name is only what has been read in the ROM so far;
+# what is not named is not yet known.
+
+# --- The fixed bank -------------------------------------------------------
+
+code 7:C000 NMI          The NMI. Unless the picture is off (RENDER_OFF or $9A), the PPU's writes and the OAM's DMA; then, in every NMI, the frame count, the tasks' sleeps, and the sound engine in bank 3 (unless a bank switch is under way, which then runs it: SOUND_MISSED)
+note 7:C0A1              Every NMI from here, the picture's writes or not
+code 7:C115 PPU_FLUSH    The list of writes at $0360 to the PPU
+code 7:C162 CTRL_READ    Both controllers, D0 and D1 of each, into PAD_HELD and PAD_PRESSED; Up with Down, or Left with Right, are taken as neither. Called by SCHEDULE as it goes back to task 0
+code 7:C1BA PPU_FILL     A nametable cleared: A its high byte
+code 7:FE00 RESET_MAIN   The reset, from each bank's stub at $BFE0: the PPU, the APU (no samples), the RAM cleared, the MMC1 set (PRG mode 3, CHR in 4 KB banks), and task 0 started at $C574
+code 7:FE90 SCHEDULE     The tasks: the first that is ready (TASKS state 4 or more) runs, from where it stopped or from its start (8); with none ready, round again until the NMI has woken one. An NMI while looking (NMI_SEEN) starts the look again
+code 7:FED5 TASK_START   Task X (the current one's index times 4 in X, from TASK_INDEX) to start at TASK_ARG
+code 7:FEE5 TASK_KILL    Task A ended
+code 7:FEED TASK_END     The current task ended, and on to SCHEDULE
+code 7:FEFD TASK_SLEEP   The current task sleeps a frame, X times
+code 7:FF04 TASK_YIELD   The current task sleeps TASK_ARG frames (one from here), keeping its stack, and on to SCHEDULE
+code 7:FF1F SET_CHR0     A to the MMC1's CHR bank 0 ($0000, 4 KB)
+code 7:FF39 SET_CHR1     A to the MMC1's CHR bank 1 ($1000, 4 KB)
+code 7:FF53 SET_PRG      A to the MMC1's PRG bank at $8000. An NMI that comes in the middle leaves the sound engine to this (SOUND_MISSED), which runs it and switches again
+note 7:FFB0              48 bytes nothing seen yet runs or reads
+
+# --- Bank 3: the sound engine ----------------------------------------------
+
+code 3:8000 SOUND_RUN    A frame of the music and the sounds
+code 3:8003 SOUND_PLAY   A: the music or sound to start
+
+# --- RAM ------------------------------------------------------------------
+
+ram 0014 PAD_PRESSED     Buttons pressed this frame, controller 1 then 2
+ram 0016 PAD_HELD        Buttons held, controller 1 then 2
+ram 0018 PAL_DIRTY       The palette at $0300 to the PPU in the next NMI
+ram 0019 PPU_LIST        The list at $0360 to the PPU in the next NMI
+ram 001A CHR0_NEXT       A CHR bank for $0000 in the next NMI (bit 7: set)
+ram 001B CHR1_NEXT       A CHR bank for $1000 in the next NMI
+ram 001C PPU_LIST_80     The list at $03E0 to the PPU in the next NMI
+ram 001D PPU_LIST_58     The list at $03B8 to the PPU in the next NMI
+ram 0080 TASKS           Four tasks, four bytes each: state (0 none, 1 asleep, 2 running, 4 ready, 8 to start), frames to sleep, and its stack pointer (or start address)
+ram 0090 NMI_SEEN        $FF from the NMI: SCHEDULE looks again
+ram 0091 TASK_INDEX      The task running
+ram 0092 FRAME_COUNT     Counted in every NMI
+ram 0093 TASK_ARG        Two bytes: an address or a count for the task routines
+ram 00DB SOUND_HEAD      The next of SOUND_QUEUE for the sound engine
+ram 00DC SOUND_QUEUE     Eight sounds to start, $88 none
+ram 00E4 RANDOM          Four bytes that change every frame, the pause's too: the random numbers, it seems
+ram 00F0 RENDER_OFF      Not 0: the NMI leaves the PPU alone
+ram 00F1 PRG_BANK        The PRG bank at $8000
+ram 00F2 CHR0_BANK
+ram 00F3 CHR1_BANK
+ram 00F4 PRG_BANK_WANTED The bank SET_PRG was asked for
+ram 00F5 BANK_SWITCHING  Not 0 while SET_PRG writes the MMC1
+ram 00F6 SOUND_MISSED    The NMI found BANK_SWITCHING set
+ram 00FA SCROLL_Y
+ram 00FC SCROLL_X
+ram 00FD SCROLL_PAGE     Bit 0: the nametable at the left
+ram 00FE PPUMASK_COPY
+ram 00FF PPUCTRL_COPY
