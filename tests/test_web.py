@@ -37,3 +37,14 @@ def test_page_and_patches_agree(tmp_path, monkeypatch):
     monkeypatch.setattr(gen_web, "PATCHES", patches + [("apps/drmario/Makefile", "0.2.0")])
     with pytest.raises(SystemExit, match="has no link to Makefile"):
         gen_web.write_patches_page(str(tmp_path), "9.9.9", None, {})
+
+
+def test_log_page(tmp_path):
+    """The log page has no placeholder the build would stop at, and asks for
+    the style sheet by its fingerprint."""
+    target = tmp_path / "index.html"
+    gen_web.page(os.path.join(gen_web.WEB, "log", "index.html"), str(target),
+                 {"style.css": "abcd1234"}, {})
+    text = target.read_text()
+    assert 'href="../style.css?v=abcd1234"' in text
+    assert "navigator.serial" in text

@@ -2,26 +2,32 @@
 
 ## Unreleased
 
-### Games
-- River City Ransom online co-op added, running faster than the original's two-player game on one console (#76)
-- Bubble Bobble online sessions no longer drop at the start or in round 2: each console's leftover RAM from before the session is cleared
-
-### Cartridge
-- The cartridge menu says, under its title, when the firmware or the cartridge needs an update: when the two are from different releases, or the web site has a newer one (#80)
-- Throughput test: 298296 baud to the console no longer fails a whole block at random; the test lost count of a block's first byte, not the line (#98)
-
 ### Firmware
-- The Stick's screen says "Firmware update available" in red, with no console running a program, when the web site has newer firmware
-- Jukebox: sounds made for the two fastest rates (7 and 8 cycles a bit) start every time, where they often played noise or nothing (#98)
 - Built with ESP-IDF 6 instead of 5.5.5: 6.1.1 for the StickS3 and the generic ESP32-S3, 6.0.3 for the StickC Plus2 (#92, #17)
 
-### Other
-- The web site's ROM patches are a page instead of a zip: each game's patch to download, the release of the game it needs (size, CRC32 and SHA-1), and how to apply it
-- Mesen emulator support for NESP32 added for local testing and development (#74)
+## 0.4.0 — 2026-11-26
+
+### Games
+- Tecmo Super Bowl online VS added: the entire game with whole sesons, player 2's saved game gets replaced by player 1's when the two differ. Optimized for improved framerate. Requires firmware 0.4.0 (#106)
+- River City Ransom online co-op added, optimized to run faster than the original's two-player local game (#76)
+- Bubble Bobble bugfixes to prevent game desyncs (#82)
+
+### Cartridge
+- Weather: you can now search for a location anywhere in the world, not just US zip codes. Requires firmware 0.4.0 (#101)
+- Cartridge menu now tells you when new firmware and/or ROM file are available for update (#80)
+- Bugfix for throughput test and jukebox's highest bitrates (#98)
+
+### Firmware
+- When consoles desync, a crash dump is saved to ESP32 non-volatile storage and can be collected later on the website (#106)
+- The LCD screen indicates when a new firmware update is available (#79)
+- Implemented game save copy from one console to another for Techmo Super Bowl (#106)
 - NESP32 logo displayed on Stick LCD screen at boot (#75)
-- The Stick's log says why each online session ended, and Bubble Bobble sends its RAM to the log when the two games differ
-- `firmware/deploy.sh` says what is wrong when ESP-IDF is missing or not installed, instead of stopping without a word, and the README lists ESP-IDF among what building needs (#93)
-- `firmware/deploy.sh` and the tests find ESP-IDF where Espressif's installer puts it, `~/.espressif/v<version>/esp-idf`, as well as in `~/esp/esp-idf`
+
+### Other
+- Mesen emulator support for NESP32 added for local testing and development (#74) with PEER support (#102)
+- Mesen lua script starts and stops the NESP32 bridge automatically (#100)
+- Mesen bridge now stores NESP32 saved settings like bluetooth keyboard, radar's airport, and weather's location (#103)
+- firmware/deploy.sh no longer fails silently when ESP-IDF is missing (#93)
 
 ## 0.3.0 — 2026-11-08
 

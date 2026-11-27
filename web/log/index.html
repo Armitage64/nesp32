@@ -1,0 +1,702 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Record a NESP32 log</title>
+<link rel="stylesheet" href="../style.css">
+<style>
+  button { font: inherit; cursor: pointer; }
+  button.button { border: 0; }
+  button.button.quiet { border: 1px solid var(--accent); }
+  button:disabled, a[aria-disabled="true"] { opacity: .45; cursor: default; pointer-events: none; }
+  #status { margin: 16px 0 0; font-weight: 600; }
+  #status.warn { color: var(--accent); }
+  #counts { margin: 4px 0 0; }
+  #which { margin: 8px 0 0; }
+  /* The last lines heard, newest at the bottom. */
+  pre#tail {
+    margin: 16px 0 0; padding: 12px; height: 260px; overflow: auto;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+    font: 12px/1.45 ui-monospace, "SF Mono", Menlo, monospace;
+    white-space: pre-wrap; word-break: break-all;
+  }
+  pre#tail:empty::before { content: "Nothing heard yet."; color: var(--dim); }
+  .dump { color: var(--accent); }
+  /* The recordings kept in this browser. */
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  td { padding: 8px 8px 8px 0; border-top: 1px solid var(--line); vertical-align: top; }
+  td small { display: block; }
+  td .crash { color: var(--accent); font-weight: 600; }
+  td.act { text-align: right; white-space: nowrap; }
+  td.act button, td.act a { background: none; border: 0; color: var(--accent); padding: 0 0 0 12px;
+                            text-decoration: underline; font-size: 15px; }
+</style>
+</head>
+<body>
+<main>
+  <h1><picture><img class="logo" src="../img/logo.png" alt="NESP32" width="360" height="128"></picture></h1>
+  <p class="lead">Record your NESP32's log while you play. If a game crashes or
+    two consoles stop with GAMES DIFFERED, the log shows what happened, and
+    this page puts it in a problem report for you.</p>
+
+  <div class="card">
+    <p><strong>Plug the NESP32 into this computer with a USB data cable, leave
+      it in the controller port, and press Start.</strong></p>
+    <p class="actions">
+      <button class="button" id="start">Start recording</button>
+      <button class="button quiet" id="stop" hidden>Stop</button>
+      <a class="button quiet" id="report" target="_blank" rel="noopener" aria-disabled="true">Report the problem</a>
+    </p>
+    <p id="which" class="dim"></p>
+    <p id="unsupported" class="note" hidden>This browser cannot reach a USB
+      serial port. Use Chrome, Edge or Opera on a computer.</p>
+    <p id="insecure" class="note" hidden>This page has to be opened over
+      HTTPS, or from localhost, to reach a USB serial port.</p>
+    <p id="kept" class="dim" hidden>Weren't recording when it crashed? The
+      NESP32 keeps its last crash dump, and tells it again a second after the
+      console is switched on or reset. Press the console's Reset button, or
+      restart the NESP32. Either ends a game being played.
+      <button class="button quiet" id="restart">Restart the NESP32</button></p>
+    <p id="status" class="dim" aria-live="polite">Not recording.</p>
+    <p id="counts" class="dim"></p>
+    <pre id="tail"></pre>
+  </div>
+
+  <h2>Then</h2>
+  <ol>
+    <li>Play until the problem happens. Keep this tab open: the page keeps
+      the computer from sleeping while it records.</li>
+    <li>Press <strong>Report the problem</strong>. A new GitHub issue opens with
+      the crash dump in it, and the end of the log is copied for you: paste it
+      into the issue, and answer its questions.</li>
+    <li>If we ask for the whole log, press <strong>Save</strong> beside the
+      recording below and drag the file into the issue.</li>
+  </ol>
+
+  <h2>Note</h2>
+  <ul>
+    <li>Nothing is sent anywhere until you submit the issue. Until then the log
+      stays in this browser.</li>
+    <li>The last 10 recordings are kept in this browser, so closing the tab
+      by mistake loses nothing. Those with a crash dump are listed first.</li>
+    <li>If the NESP32 restarts or its cable is pulled, the page goes on
+      recording when it comes back.</li>
+    <li><strong>On Windows, a StickC Plus2</strong> may need the driver for its
+      USB serial chip (CH9102) before the browser can see it.</li>
+  </ul>
+
+  <h2>Recordings in this browser</h2>
+  <table><tbody id="sessions"></tbody></table>
+  <p id="none" class="dim">None yet.</p>
+</main>
+<script>
+"use strict";
+
+// What the NESP32's log says, as this page looks for it (docs/PROTOCOL.md,
+// PEER, "A kept dump"). A crash dump is a heading line, then the console's
+// RAM in DUMP_ROWS lines of "dump 0000: 0102...", then "dump end", each
+// after the log's own "I (ms) tag: ". Firmware before the kept dump has
+// "01 02 ..." in its rows and no end line. A kept dump, printed again at
+// boot and every minute for five, says "kept N" in its heading.
+const DUMP_HEAD = /dump of the console's RAM.*/;
+const DUMP_ROW = /dump ([0-9a-f]{4}): ?((?:[0-9a-f]{2} ?)+)\s*$/;
+const DUMP_END = /dump end\s*$/;
+const DUMP_ROWS = 32;
+const KEPT = /, kept (\d+)/;
+// "app TSBO version 1": in a dump's heading, and the log's line when a ROM
+// says hello. "----" is none.
+const APP = /\bapp (\S{4}) version (\d+)/;
+const FIRMWARE = /; firmware (\S+)/;
+const GAMES = {
+  TSBO: "Tecmo Super Bowl", BUBL: "Bubble Bobble", CNTR: "Contra",
+  TMN2: "TMNT II", DRMA: "Dr. Mario", TTRS: "Tetris", JACK: "Jackal",
+  RIVR: "River City Ransom",
+};
+// The ESP32's boot ROM, at a reset.
+const BOOT = /^(ESP-ROM:|rst:0x|ets [A-Z][a-z]{2} )/;
+const KEEP = 10;          // recordings kept in the browser
+const TAIL = 400;         // lines shown
+const BAUD = 115200;      // the StickC Plus2's UART; the StickS3's USB ignores it
+// GitHub turns away a new-issue link much over 8,000 characters, and an
+// issue's text over 65,536: the dump goes in the link, the log's end is
+// pasted, and both have to fit.
+const ISSUES = "https://github.com/Armitage64/nesp32/issues/new";
+const LINK_MOST = 7800;
+const PASTE_MOST = 50000;
+
+const $ = id => document.getElementById(id);
+const ansi = /\x1b\[[0-9;]*[A-Za-z]/g;
+
+let db = null;
+let port = null;          // the port chosen, kept to reopen after a reset
+let reader = null;
+let recording = null;     // the recording under way: what the list shows of it
+let last = null;          // the latest recording this page made, under way or not
+let pending = [];         // lines not yet stored
+let memory = [];          // the latest recording, whole, for a browser that stores nothing
+let partial = "";         // the end of a line not yet whole
+let dump = null;          // a dump coming in: its heading and rows so far
+let openedAt = 0;
+let wakeLock = null;
+
+// --- Storage: each recording, and its lines in pieces. ---
+
+function openDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open("nesp32-log", 1);
+    request.onupgradeneeded = () => {
+      const d = request.result;
+      d.createObjectStore("sessions", {keyPath: "id"});
+      d.createObjectStore("chunks", {autoIncrement: true}).createIndex("session", "session");
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function store(names, mode, work) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(names, mode);
+    const result = work(tx);
+    tx.oncomplete = () => resolve(result && result.result !== undefined ? result.result : result);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function flush() {
+  if (!recording || pending.length === 0) return;
+  const text = pending.join("\n") + "\n";
+  pending = [];
+  memory.push(text);
+  if (!db) return;
+  const session = Object.assign({}, recording);
+  await store(["sessions", "chunks"], "readwrite", tx => {
+    tx.objectStore("chunks").add({session: session.id, text: text});
+    tx.objectStore("sessions").put(session);
+  }).catch(() => {});
+}
+
+// The recordings, newest first.
+async function sessions() {
+  if (!db) return last ? [last] : [];
+  const list = await store(["sessions"], "readonly", tx => tx.objectStore("sessions").getAll());
+  return list.sort((a, b) => b.id - a.id);
+}
+
+async function textOf(id) {
+  if (last && last.id === id) {
+    await flush();
+    if (!db || memory.length) return memory.join("");
+  }
+  if (!db) return "";
+  const chunks = await store(["chunks"], "readonly",
+    tx => tx.objectStore("chunks").index("session").getAll(id));
+  return chunks.map(c => c.text).join("");
+}
+
+async function forget(id) {
+  ends.delete(id);
+  if (last && last.id === id) { last = null; memory = []; }
+  if (!db) return;
+  await store(["sessions", "chunks"], "readwrite", tx => {
+    tx.objectStore("sessions").delete(id);
+    const cursor = tx.objectStore("chunks").index("session").openKeyCursor(IDBKeyRange.only(id));
+    cursor.onsuccess = () => {
+      const c = cursor.result;
+      if (c) { tx.objectStore("chunks").delete(c.primaryKey); c.continue(); }
+    };
+  });
+}
+
+// --- Times, as the page shows them. ---
+
+const two = n => String(n).padStart(2, "0");
+
+function stamp(date) {
+  return two(date.getHours()) + ":" + two(date.getMinutes()) + ":" + two(date.getSeconds()) +
+    "." + String(date.getMilliseconds()).padStart(3, "0");
+}
+
+function clock(iso) {
+  const d = new Date(iso);
+  return two(d.getHours()) + ":" + two(d.getMinutes());
+}
+
+function day(id) {
+  return new Date(id).toLocaleDateString(undefined, {weekday: "short", day: "numeric", month: "short"});
+}
+
+function span(s) {
+  const minutes = Math.round((new Date(s.ended || s.started) - new Date(s.started)) / 60000);
+  return day(s.id) + ", " + clock(s.started) + "–" + clock(s.ended || s.started) +
+    " (" + (minutes < 60 ? minutes + " min" : Math.floor(minutes / 60) + " h " + minutes % 60 + " min") + ")";
+}
+
+// --- The log, a line at a time. ---
+
+function heard(line) {
+  line = line.replace(ansi, "").replace(/\r$/, "");
+  const now = new Date();
+  let mark = false;
+  const head = line.match(DUMP_HEAD);
+  const row = line.match(DUMP_ROW);
+  const app = line.match(APP);
+  if (app && app[1] !== "----") {
+    recording.app = app[1];
+    recording.appVersion = Number(app[2]);
+  }
+  if (head) {
+    const kept = head[0].match(KEPT);
+    const firmware = head[0].match(FIRMWARE);
+    if (firmware && firmware[1] !== "-") recording.firmware = firmware[1];
+    dump = {head: head[0], rows: [], kept: kept ? Number(kept[1]) : null,
+            app: app && app[1] !== "----" ? app[1] : null};
+    mark = true;
+  } else if (dump && row) {
+    mark = true;
+    dump.rows.push(row[1] + ": " + row[2].replace(/ /g, ""));
+    // Whole at its last row; "dump end", which older firmware has not, only marks it.
+    if (dump.rows.length === DUMP_ROWS) {
+      dumped(dump, now);
+      dump = null;
+    }
+  } else if (DUMP_END.test(line)) {
+    mark = true;
+  }
+  if (BOOT.test(line)) {
+    recording.resets++;
+    dump = null;
+    if (performance.now() - openedAt < 2000 && recording.lines < 40) {
+      status("Connecting restarted the NESP32. Please say so in your report.", true);
+    }
+  }
+  recording.lines++;
+  recording.ended = now.toISOString();
+  pending.push(stamp(now) + " " + line);
+  show(line, mark);
+  counts();
+}
+
+// A whole dump. One already heard in this recording (a kept dump is printed
+// again five times, and the live one is kept) is not counted again.
+function dumped(d, now) {
+  const same = recording.seen.indexOf(d.rows.join("")) >= 0;
+  if (same) return;
+  recording.seen.push(d.rows.join(""));
+  recording.dumps++;
+  recording.dumpAt = now.toISOString();
+  recording.dump = {head: d.head, rows: d.rows, kept: d.kept, app: d.app};
+  status(d.kept != null
+    ? "A crash dump the NESP32 kept from earlier was found. Press Report the problem."
+    : "Crash dump recorded. Press Report the problem.", true);
+  flush().then(list);
+}
+
+function note(text) {
+  // The page's own lines, told from the NESP32's.
+  if (!recording) return;
+  pending.push(stamp(new Date()) + " -- " + text);
+  show("-- " + text, false);
+}
+
+function show(line, mark) {
+  const tail = $("tail");
+  const atBottom = tail.scrollHeight - tail.scrollTop - tail.clientHeight < 24;
+  const row = document.createElement("div");
+  row.textContent = line;
+  if (mark) row.className = "dump";
+  tail.appendChild(row);
+  while (tail.childNodes.length > TAIL) tail.removeChild(tail.firstChild);
+  if (atBottom) tail.scrollTop = tail.scrollHeight;
+}
+
+function status(text, warn) {
+  $("status").textContent = text;
+  $("status").className = warn ? "warn" : "dim";
+}
+
+function plural(n, one) {
+  return n + " " + one + (n == 1 ? "" : "s");
+}
+
+function counts() {
+  const r = recording;
+  if (!r) return;
+  $("counts").textContent = plural(r.lines, "line") +
+    (r.dumps ? ", " + plural(r.dumps, "crash dump") : "") +
+    (r.resets ? ", " + plural(r.resets, "restart") : "");
+}
+
+// --- The port. ---
+
+async function listen() {
+  const decoder = new TextDecoder();
+  while (port && port.readable && recording) {
+    reader = port.readable.getReader();
+    try {
+      for (;;) {
+        const piece = await reader.read();
+        if (piece.done) break;
+        partial += decoder.decode(piece.value, {stream: true});
+        const lines = partial.split("\n");
+        partial = lines.pop();
+        lines.forEach(heard);
+      }
+    } catch (e) {
+      // A break or a framing error goes on; a lost device ends the loop below.
+    } finally {
+      reader.releaseLock();
+      reader = null;
+    }
+  }
+}
+
+async function open() {
+  await port.open({baudRate: BAUD});
+  openedAt = performance.now();
+  status("Recording. Play until the problem happens.", false);
+  note("connected");
+  listen().then(async () => {
+    if (!recording) return;
+    try { await port.close(); } catch (e) {}
+    note("the NESP32 went away");
+    status("The NESP32 went away. Recording goes on when it comes back.", true);
+    flush();
+  });
+}
+
+function sameDevice(other) {
+  const a = port.getInfo(), b = other.getInfo();
+  return a.usbVendorId === b.usbVendorId && a.usbProductId === b.usbProductId;
+}
+
+if ("serial" in navigator) {
+  navigator.serial.addEventListener("connect", async e => {
+    if (!recording || !port) return;
+    if (e.target !== port && !sameDevice(e.target)) return;
+    port = e.target;
+    try { await open(); } catch (err) { status("Could not reopen the port: " + err.message, true); }
+  });
+}
+
+async function start() {
+  try {
+    port = await navigator.serial.requestPort();
+  } catch (e) {
+    return; // no port chosen
+  }
+  const started = new Date();
+  recording = {id: started.getTime(), started: started.toISOString(), ended: null,
+               lines: 0, dumps: 0, resets: 0, dumpAt: null, dump: null, seen: [],
+               app: null, appVersion: null, firmware: null};
+  dump = null;
+  partial = "";
+  memory = [];
+  $("tail").textContent = "";
+  pending.push("NESP32 log, recorded " + started.toString());
+  pending.push("Browser: " + navigator.userAgent);
+  const info = port.getInfo();
+  if (info.usbVendorId !== undefined) {
+    pending.push("USB device: " + info.usbVendorId.toString(16).padStart(4, "0") + ":" +
+                 info.usbProductId.toString(16).padStart(4, "0"));
+  }
+  try {
+    await open();
+  } catch (e) {
+    recording = null;
+    pending = [];
+    status("Could not open the port: " + e.message +
+           ". Is another program (a terminal, or the Install page) using it?", true);
+    return;
+  }
+  last = recording;
+  await flush();
+  $("start").hidden = true;
+  $("stop").hidden = false;
+  $("kept").hidden = false;
+  awake();
+  counts();
+  list();
+}
+
+async function stop() {
+  const r = recording;
+  if (!r) return;
+  note("stopped");
+  await flush();
+  recording = null;
+  if (reader) { try { await reader.cancel(); } catch (e) {} }
+  try { await port.close(); } catch (e) {}
+  if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+  $("start").hidden = false;
+  $("stop").hidden = true;
+  $("kept").hidden = true;
+  status("Not recording.", false);
+  ends.delete(r.id);
+  list();
+}
+
+// A restart, for the kept dump, which the NESP32 prints a second after it
+// starts, and after any ROM's hello (docs/PROTOCOL.md, "A kept dump").
+// Opening the port does not restart it: this does, as esptool does,
+// with RTS (the chip's enable) held a moment while DTR (its boot pin) stays up.
+async function restart() {
+  if (!recording || !port) return;
+  if (!confirm("Restart the NESP32? A game being played on it ends.")) return;
+  note("restarting the NESP32 for its kept dump");
+  status("Restarting the NESP32. Its kept crash dump comes a second after it starts.", false);
+  try {
+    await port.setSignals({dataTerminalReady: false, requestToSend: true});
+    await new Promise(done => setTimeout(done, 100));
+    await port.setSignals({requestToSend: false});
+  } catch (e) {
+    status("Could not restart the NESP32: " + e.message + ". Turn it off and on instead.", true);
+  }
+}
+
+async function awake() {
+  if (!("wakeLock" in navigator) || !recording) return;
+  try { wakeLock = await navigator.wakeLock.request("screen"); } catch (e) {}
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && recording) awake();
+});
+
+// --- Saving. ---
+
+function fileName(s) {
+  const d = new Date(s.id);
+  return "nesp32-log-" + d.getFullYear() + two(d.getMonth() + 1) + two(d.getDate()) +
+    "-" + two(d.getHours()) + two(d.getMinutes()) + (s.dumps ? "-crash" : "") + ".txt";
+}
+
+async function save(s) {
+  const text = await textOf(s.id);
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([text], {type: "text/plain"}));
+  link.download = fileName(s);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+}
+
+// --- The report: the dump in the issue's link, the log's end on the clipboard. ---
+
+// The game a recording is of: its dump's, or the last a ROM said hello as.
+function game(s) {
+  const id = (s.dump && s.dump.app) || s.app;
+  return id ? GAMES[id] || id : "";
+}
+
+function issueLink(s, pasted) {
+  const ask = [
+    "**Game, and one console or netplay:** " + game(s),
+    "",
+    "**What happened, and when:**",
+    "",
+    "**Board** (StickS3, StickC Plus2, or a generic ESP32-S3):",
+    "",
+    "**Console** (NES, Famicom, MiSTer with SNAC, ...):",
+    "",
+    s.firmware ? "**Firmware version:** " + s.firmware
+               : "**Firmware version** (on the cartridge menu):",
+    "",
+    "**Recording:** " + span(s) + ", " + plural(s.lines, "line") +
+      (s.resets ? ", " + plural(s.resets, "restart") : ""),
+    "",
+  ];
+  const paste = pasted
+    ? ["**The log's end** (it is on your clipboard: paste it here with Ctrl+V, or ⌘V on a Mac):", "", ""]
+    : ["**The log:** save it on the log page and drag the file here.", "", ""];
+  const link = body => ISSUES + "?" + new URLSearchParams({
+    title: (s.dumps ? "Crash dump: " : "Problem: ") + game(s),
+    body: body.join("\n"),
+  }).toString();
+  if (s.dump) {
+    const withDump = ask.concat([
+      "**Crash dump** (" + (s.dump.kept != null
+        ? "kept on the NESP32 from earlier, found at " : "recorded at ") +
+        clock(s.dumpAt) + "; " + s.dump.head + "):",
+      "```", ...s.dump.rows, "```", "",
+    ], paste);
+    const url = link(withDump);
+    if (url.length <= LINK_MOST) return url;
+    return link(ask.concat(["**Crash dump:** too long for the link; it is in the log below.", ""], paste));
+  }
+  return link(ask.concat(paste));
+}
+
+// The log's newest pieces, newest first, until they hold PASTE_MOST.
+async function lastPieces(id) {
+  if (last && last.id === id && (!db || memory.length)) {
+    const pieces = [];
+    let size = 0;
+    for (let i = memory.length - 1; i >= 0 && size <= PASTE_MOST; i--) {
+      pieces.push(memory[i]);
+      size += memory[i].length;
+    }
+    return pieces;
+  }
+  if (!db) return [];
+  return store(["chunks"], "readonly", tx => {
+    const pieces = [];
+    let size = 0;
+    const cursor = tx.objectStore("chunks").index("session").openCursor(IDBKeyRange.only(id), "prev");
+    cursor.onsuccess = () => {
+      const c = cursor.result;
+      if (!c || size > PASTE_MOST) return;
+      pieces.push(c.value.text);
+      size += c.value.text.length;
+      c.continue();
+    };
+    return pieces;
+  });
+}
+
+// The log's last lines, as many as the issue can take, in a code block.
+async function logEnd(s) {
+  const text = (await lastPieces(s.id)).reverse().join("").replace(/\n$/, "");
+  const lines = text.split("\n");
+  const kept = [];
+  let size = 0;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    size += lines[i].length + 1;
+    if (size > PASTE_MOST) break;
+    kept.unshift(lines[i]);
+  }
+  const cut = kept.length < s.lines;
+  return (cut ? "The log's last " + kept.length + " lines (it has " + s.lines + "):\n" : "") +
+    "```\n" + kept.join("\n") + "\n```\n";
+}
+
+// Each recording's log end, made ready before a click: a browser copies,
+// and opens a tab, only in the click itself, not after waiting for a read.
+const ends = new Map();
+
+async function ready(all) {
+  for (const s of all) {
+    const live = recording && recording.id === s.id;
+    if (live || !ends.has(s.id)) {
+      try { ends.set(s.id, await logEnd(s)); } catch (e) {}
+    }
+  }
+}
+
+function copy(text) {
+  // execCommand, unlike the clipboard API, copies at once, so the tab the
+  // link opens comes after it.
+  const box = document.createElement("textarea");
+  box.value = text;
+  box.setAttribute("readonly", "");
+  box.style.position = "fixed";
+  box.style.opacity = "0";
+  document.body.appendChild(box);
+  box.select();
+  let done = false;
+  try { done = document.execCommand("copy"); } catch (e) {}
+  box.remove();
+  return done;
+}
+
+// A link that opens the issue for `s`: with its log end copied, or, when
+// the copy fails, asking for the saved file instead.
+function reportLink(a, s) {
+  a.href = issueLink(s, true);
+  a.target = "_blank";
+  a.rel = "noopener";
+  a.onclick = e => {
+    const text = ends.get(s.id);
+    if (text && copy(text)) {
+      status("The issue is opening in a new tab: paste the log's end into it.", false);
+      return;
+    }
+    a.href = issueLink(s, false);
+    status("The log could not be copied: save it, and drag the file into the issue.", true);
+    setTimeout(() => { a.href = issueLink(s, true); });
+  };
+}
+
+// The recording a report is of: the latest with a crash dump, or the latest.
+function chosen(all) {
+  return all.find(s => s.dumps) || all[0] || null;
+}
+
+// --- The recordings kept. ---
+
+async function list() {
+  const all = await sessions();
+  // The oldest go, past KEEP, but never the one recording.
+  for (const s of all.slice(KEEP)) {
+    if (!recording || s.id !== recording.id) await forget(s.id);
+  }
+  const kept = all.slice(0, KEEP);
+  // Those with a crash dump first, each lot newest first.
+  const shown = kept.filter(s => s.dumps).concat(kept.filter(s => !s.dumps));
+  const body = $("sessions");
+  body.textContent = "";
+  $("none").hidden = kept.length > 0;
+  for (const s of shown) {
+    const live = recording && recording.id === s.id;
+    const row = body.insertRow();
+    const what = row.insertCell();
+    what.appendChild(document.createTextNode((game(s) ? game(s) + ": " : "") +
+      span(s) + (live ? " (recording)" : "")));
+    if (s.dumps) {
+      const crash = what.appendChild(document.createElement("small"));
+      crash.className = "crash";
+      crash.textContent = (s.dump && s.dump.kept != null ? "Kept crash dump found at " : "Crash dump at ") +
+        clock(s.dumpAt) + (s.dumps > 1 ? " (the last of " + s.dumps + ")" : "");
+    }
+    const more = what.appendChild(document.createElement("small"));
+    more.className = "dim";
+    more.textContent = plural(s.lines, "line") + (s.resets ? ", " + plural(s.resets, "restart") : "");
+    const act = row.insertCell();
+    act.className = "act";
+    const button = (text, work) => {
+      const b = act.appendChild(document.createElement("button"));
+      b.textContent = text;
+      b.onclick = work;
+    };
+    const link = act.appendChild(document.createElement("a"));
+    link.textContent = "Report";
+    reportLink(link, s);
+    button("Save", () => save(s));
+    if (!live) button("Delete", async () => { await forget(s.id); list(); });
+  }
+  const pick = chosen(kept);
+  $("report").setAttribute("aria-disabled", pick ? "false" : "true");
+  if (pick) reportLink($("report"), pick);
+  await ready(kept);
+  $("which").textContent = pick
+    ? "Reports the recording from " + span(pick) +
+      (pick.dumps ? ", with its crash dump at " + clock(pick.dumpAt) : "") +
+      ". To report another, use its Report below."
+    : "";
+}
+
+// --- Start. ---
+
+window.addEventListener("beforeunload", e => {
+  if (recording) { flush(); e.preventDefault(); e.returnValue = ""; }
+});
+setInterval(() => { if (recording && pending.length) flush().then(list); }, 2000);
+
+// A browser has Web Serial only on a secure page: HTTPS, or localhost. On
+// any other (a file, or a computer's address on the network) it looks
+// like a browser without it.
+if (!("serial" in navigator)) {
+  $(window.isSecureContext ? "unsupported" : "insecure").hidden = false;
+  $("start").disabled = true;
+}
+$("start").onclick = start;
+$("stop").onclick = stop;
+$("restart").onclick = restart;
+
+openDb().then(d => { db = d; return list(); }).catch(() => {
+  status("This browser keeps no recordings (private window?): report or save before closing the tab.", true);
+});
+</script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 """WEATHER, with no console: requests in, replies out, and the test in place
-of Zippopotam, of Open-Meteo and of the clock."""
+of Open-Meteo (its geocoding and its forecast) and of the clock."""
 
 import json
 import os
@@ -21,10 +21,15 @@ SUN, MOON, PARTLY, CLOUD = (p.NESP_PICTURE_SUN, p.NESP_PICTURE_MOON, p.NESP_PICT
 FOG, RAIN, SNOW, STORM = (p.NESP_PICTURE_FOG, p.NESP_PICTURE_RAIN, p.NESP_PICTURE_SNOW,
                           p.NESP_PICTURE_STORM)
 DAY_COLUMNS = (1, 7, 13, 19, 25)
+WHERE_URL = "https://geocoding-api.open-meteo.com/v1/search?count=1&language=en&format=json"
 WEATHER_URL = ("https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f"
                "&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,is_day"
                "&daily=weather_code,temperature_2m_max,temperature_2m_min"
                "&forecast_days=5&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto")
+METRIC_URL = WEATHER_URL.replace("fahrenheit", "celsius").replace("mph", "kmh")
+US, IMPERIAL = 0x01, 0x02           # a kept place's flags (nesp_weather_place_t)
+# What the nesp32 keeps of 90210 once it has found it.
+KEPT_90210 = (b"90210", 34090100, -118406500, b"BEVERLY HILLS, CA", US | IMPERIAL)
 
 
 def fixture(name):
@@ -32,14 +37,20 @@ def fixture(name):
         return handle.read()
 
 
-def where_reply(name="Beverly Hills", state="CA", north="34.0901", east="-118.4065", **more):
-    """Zippopotam's answer to where a zip code is."""
-    place = {"place name": name, "longitude": east, "latitude": north, "state": "Somewhere",
-             "state abbreviation": state}
+def where_reply(name="Beverly Hills", admin1="California", country="US", north=34.0901,
+                east=-118.4065, **more):
+    """The geocoding's answer to where a place is: the first, and only, of
+    its results."""
+    place = {"id": 5328041, "name": name, "latitude": north, "longitude": east,
+             "feature_code": "PPL", "country_code": country, "admin1": admin1,
+             "timezone": "America/Los_Angeles", "postcodes": ["90209", "90210", "90211"]}
     place.update(more)
     place = {key: value for key, value in place.items() if value is not None}
-    return json.dumps({"country": "United States", "country abbreviation": "US",
-                       "post code": "90210", "places": [place]}).encode("utf-8")
+    return json.dumps({"results": [place], "generationtime_ms": 0.2},
+                      ensure_ascii=False).encode("utf-8")
+
+
+NOWHERE = b'{"generationtime_ms":0.10693073}'
 
 
 def weather_reply(now=72.0, code=0, day=1, humidity=43, wind=9.2, dates=None, codes=None,
@@ -79,21 +90,33 @@ class Sky:
         self.id = 0
         self.serial = 0
         self.why = b""
+        self.last = (p.NESP_WEATHER_ZIP, b"90210")
 
     def wait(self, ms=0):
         self.now += ms
         self.stick.tick(self.now)
 
-    def zip(self, digits=b"90210", new=True):
-        """The state of a zip code: a new choice, or the last again."""
+    def ask(self, op, text, new):
+        """The state of a place: a new choice, or the last again."""
         if new:
             self.id = (self.id + 1) & 0xFF
-        reply = self.stick.ask(WEATHER, p.NESP_WEATHER_ZIP, bytes((self.id,)) + digits)
+        self.last = (op, text)
+        reply = self.stick.ask(WEATHER, op, bytes((self.id,)) + text)
         assert reply.ok and len(reply.payload) >= 3 and reply.payload[1] == self.id
         self.serial, self.why = reply.payload[2], reply.payload[3:]
         assert (self.serial != 0) == (reply.payload[0] == READY)
         assert not self.why or reply.payload[0] == FAILED
         return reply.payload[0]
+
+    def zip(self, digits=b"90210", new=True):
+        return self.ask(p.NESP_WEATHER_ZIP, digits, new)
+
+    def place(self, text=b"PORTLAND, ME", new=True):
+        return self.ask(p.NESP_WEATHER_PLACE, text, new)
+
+    def again(self):
+        """The last request again: how it stands now."""
+        return self.ask(*self.last, new=False)
 
     def row(self, number):
         reply = self.stick.ask(WEATHER, p.NESP_WEATHER_ROW, bytes((self.id, number)))
@@ -106,7 +129,7 @@ class Sky:
         return READY, reply.payload[4:].decode("latin-1")
 
     def rows(self):
-        assert self.zip(new=False) == READY
+        assert self.again() == READY
         return [self.row(number)[1] for number in range(ROWS)]
 
     def land(self, body, pieces=None):
@@ -128,15 +151,15 @@ class Sky:
         assert self.zip(digits) == LOOKING
         self.wait()
         assert self.stick.fetching
-        assert self.stick.fetch_url == "https://api.zippopotam.us/us/" + digits.decode()
+        assert self.stick.fetch_url == WHERE_URL + "&countryCode=US&name=" + digits.decode()
 
     def find(self, digits=b"90210", where=None):
         """Choose a zip code, be told where it is, and be at the fetch of
         its weather."""
         self.look(digits)
         self.land(where or where_reply())
-        assert self.zip(digits, new=False) == FETCHING
-        assert self.stick.fetching and "open-meteo" in self.stick.fetch_url
+        assert self.again() == FETCHING
+        assert self.stick.fetching and "api.open-meteo.com" in self.stick.fetch_url
 
     def report(self, body=None, **weather):
         """A zip code's report, from a reply made of these."""
@@ -153,13 +176,13 @@ def sky(stick):
 # --- the report ----------------------------------------------------------------
 
 def test_a_report_from_what_the_two_sites_really_sent(sky):
-    sky.find(where=fixture("zip_90210.json"))
-    assert sky.stick.fetch_url == WEATHER_URL % (34.0901, -118.4065)
+    sky.find(where=fixture("geo_90210.json"))
+    assert sky.stick.fetch_url == WEATHER_URL % (34.0736, -118.4004)
     assert sky.stick.fetch_agent.startswith("nesp32-weather/")
     sky.land(fixture("openmeteo_90210.json"), pieces=100)
     sun, cloud = picture(SUN), picture(CLOUD)
     assert sky.rows() == [line.ljust(COLUMNS) for line in (
-        "BEVERLY HILLS, CA      90210",
+        "BEVERLY HILLS, CA",
         "",
         sun[0] + "  72" + DEGREE + "F  CLEAR",
         sun[1] + "  HIGH 74" + DEGREE + "  LOW 55" + DEGREE,
@@ -174,6 +197,93 @@ def test_a_report_from_what_the_two_sites_really_sent(sky):
         " 55    61    66    74    76",
     )]
     assert sky.stick.shown(0) == "90210: 72F"
+
+
+def test_a_place_as_typed_is_asked_for_by_its_name(sky):
+    assert sky.place(b"PORTLAND, ME") == LOOKING
+    sky.wait()
+    assert sky.stick.fetch_url == WHERE_URL + "&name=PORTLAND%2C%20ME"   # anywhere in the world
+    sky.land(fixture("geo_portland_me.json"))
+    assert sky.again() == FETCHING
+    assert sky.stick.fetch_url == WEATHER_URL % (43.6574, -70.2589)
+    sky.land(weather_reply())
+    rows = sky.rows()
+    assert rows[0] == "PORTLAND, ME".ljust(COLUMNS)
+    assert rows[2][4:8] == "72" + DEGREE + "F"
+    assert sky.stick.shown(0) == "PORTLAND, ME: 72F"
+
+
+def test_a_place_abroad_has_its_weather_in_celsius_and_kilometres_an_hour(sky):
+    assert sky.place(b"DUBLIN, IRELAND") == LOOKING
+    sky.wait()
+    assert sky.stick.fetch_url == WHERE_URL + "&name=DUBLIN%2C%20IRELAND"
+    sky.land(fixture("geo_dublin_ireland.json"))
+    assert sky.stick.fetch_url == METRIC_URL % (53.3331, -6.2489)
+    sky.land(fixture("openmeteo_dublin.json"))
+    weather = json.loads(fixture("openmeteo_dublin.json"))
+    now = round(weather["current"]["temperature_2m"])
+    wind = round(weather["current"]["wind_speed_10m"])
+    rows = sky.rows()
+    assert rows[0] == "DUBLIN, LEINSTER, IE".ljust(COLUMNS)
+    assert rows[2][4:].startswith("%d%sC  " % (now, DEGREE))
+    assert rows[5] == ("    WIND %d KM/H" % wind).ljust(COLUMNS)
+    assert sky.stick.shown(0) == "DUBLIN, IRELAND: %dC" % now
+    assert sky.stick.place[4] == 0                  # not a zip code, nor in degrees F
+
+
+def test_a_place_the_geocoding_says_much_of_is_read_all_the_same(sky):
+    """Washington, D.C.'s one result has its 255 zip codes with it: more
+    than 2 KB."""
+    body = fixture("geo_washington.json")
+    assert len(body) > 2048
+    assert sky.place(b"WASHINGTON") == LOOKING
+    sky.wait()
+    sky.land(body, pieces=512)
+    assert sky.again() == FETCHING
+    sky.land(weather_reply())
+    assert sky.rows()[0] == "WASHINGTON D.C., DC".ljust(COLUMNS)
+
+
+def test_a_place_there_is_none_of(sky):
+    assert sky.place(b"NOWHERE, XQ") == LOOKING
+    sky.wait()
+    sky.land(fixture("geo_none.json"))
+    assert sky.again() == NOT_FOUND and sky.why == b""
+    sky.wait(POLL)
+    assert not sky.stick.fetching                   # and it is not asked after again
+    assert sky.stick.place is None
+
+
+def test_a_place_is_a_rows_characters_less_the_spaces_round_it(sky):
+    too_long = b"X" * (p.NESP_WEATHER_QUERY_MAX + 1)
+    for payload in (b"", b"\x01", b"\x01   ", b"\x01" + too_long, b"\x01paris",
+                    b"\x01PARIS\x0A", b"\x01CAF\xc9"):
+        assert sky.stick.ask(WEATHER, p.NESP_WEATHER_PLACE, payload).status == \
+            p.NESP_ST_BAD_ARG
+    assert sky.stick.fetches == 0
+    assert sky.place(b"  ST. JOHN'S, NL  ") == LOOKING
+    sky.wait()
+    assert sky.stick.fetch_url == WHERE_URL + "&name=ST%2E%20JOHN%27S%2C%20NL"
+    longest = b"Y" * p.NESP_WEATHER_QUERY_MAX
+    assert sky.place(longest) == LOOKING
+    sky.wait()
+    assert sky.stick.fetch_url == WHERE_URL + "&name=" + longest.decode()
+
+
+def test_a_place_of_the_digits_of_the_zip_code_kept_is_that_zip_code(sky):
+    sky.find()
+    sky.land(weather_reply())
+    assert sky.place(b"90210") == FETCHING          # as typed: the one kept, not asked after
+    sky.wait()
+    assert sky.stick.fetch_url == WEATHER_URL % (34.0901, -118.4065)
+    for _ in range(3):
+        assert sky.again() == FETCHING              # and asked again, it is the same choice
+        sky.wait()
+    sky.land(weather_reply())
+    assert sky.again() == READY
+    assert sky.place(b"10001") == LOOKING           # another is asked after anywhere
+    sky.wait()
+    assert sky.stick.fetch_url == WHERE_URL + "&name=10001"
 
 
 def test_every_row_is_tiles_the_console_has(sky):
@@ -234,19 +344,42 @@ def test_a_reply_laid_out_with_spaces_reads_the_same(sky):
     assert sky.rows() == plain
 
 
-@pytest.mark.parametrize("name,state,shown", [
-    ("Beverly Hills", "CA", "BEVERLY HILLS, CA"),
-    ("Española", "NM", "ESPANOLA, NM"),
-    ("St. Mary's \"Point\"", "MN", "ST. MARY'S \"POINT\", MN"),
-    ("Rancho Santa Margarita", "CA", "RANCHO SANTA MARGA, CA"),
-    ("Washington", None, "WASHINGTON"),
-    (None, "DC", "DC"),
+@pytest.mark.parametrize("name,admin1,country,shown", [
+    ("Beverly Hills", "California", "US", "BEVERLY HILLS, CA"),
+    ("Española", "New Mexico", "US", "ESPANOLA, NM"),
+    ("St. Mary's \"Point\"", "Minnesota", "US", "ST. MARY'S \"POINT\", MN"),
+    ("Rancho Santa Margarita", "California", "US", "RANCHO SANTA MARGARITA, CA"),
+    ("Washington D.C.", "District of Columbia", "US", "WASHINGTON D.C., DC"),
+    ("Dublin", "Leinster", "IE", "DUBLIN, LEINSTER, IE"),
+    ("Tokyo", "Tokyo", "JP", "TOKYO, JP"),               # its region is the city again
+    ("Paris", "Île-de-France Region", "FR", "PARIS, FR"),   # it would not fit
+    ("São Paulo", "São Paulo", "BR", "SAO PAULO, BR"),
+    ("San Juan", "San Juan", "PR", "SAN JUAN, PR"),
+    ("Llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogoch", "Wales", "GB",
+     "LLANFAIRPWLLGWYNGYLLGOGE, GB"),
+    ("Springfield", "Somewhere", "US", "SPRINGFIELD, SOMEWHERE, US"),   # no state of ours
+    ("Washington", None, None, "WASHINGTON"),
+    (None, "Maine", "US", "ME"),
 ])
-def test_a_place_is_its_name_and_its_state_in_capitals(sky, name, state, shown):
-    sky.find(where=where_reply(name=name, state=state))
+def test_a_place_is_its_name_with_its_state_or_its_country_in_capitals(sky, name, admin1,
+                                                                         country, shown):
+    sky.find(where=where_reply(name=name, admin1=admin1, country=country))
     sky.land(weather_reply())
-    assert sky.rows()[0] == shown.ljust(COLUMNS - 5) + "90210"
+    assert sky.rows()[0] == shown.ljust(COLUMNS)
     assert len(shown) <= p.NESP_WEATHER_PLACE_MAX
+
+
+@pytest.mark.parametrize("country,imperial", [("US", True), ("PR", True), ("GU", True),
+                                              ("CA", False), ("GB", False), (None, False)])
+def test_the_united_states_have_degrees_f_and_the_rest_of_the_world_c(sky, country,
+                                                                      imperial):
+    sky.find(where=where_reply(country=country))
+    assert sky.stick.fetch_url == (WEATHER_URL if imperial else METRIC_URL) % (34.0901,
+                                                                               -118.4065)
+    sky.land(weather_reply())
+    rows = sky.rows()
+    assert rows[2][4:8] == "72" + DEGREE + ("F" if imperial else "C")
+    assert rows[5].strip() == ("WIND 9 MPH" if imperial else "WIND 9 KM/H")
 
 
 def test_a_name_with_its_letters_escaped(sky):
@@ -274,12 +407,14 @@ def test_a_zip_code_is_five_digits(sky):
 
 def test_a_zip_code_there_is_none_of(sky):
     sky.look(b"00000")
-    sky.fail(b"THE SITE SAID 404")
+    sky.land(NOWHERE)
     assert sky.zip(b"00000", new=False) == NOT_FOUND and sky.why == b""
     sky.wait(POLL)
     assert not sky.stick.fetching               # and it is not asked after again
-    assert sky.stick.zip is None
+    assert sky.stick.place is None
     sky.look(b"90210")                          # until another is chosen
+    sky.fail(b"THE SITE SAID 404")              # and a 404 is nothing there, likewise
+    assert sky.again() == NOT_FOUND and sky.why == b""
 
 
 def test_a_site_that_is_down_is_not_a_zip_code_there_is_none_of(sky):
@@ -298,23 +433,30 @@ def test_a_site_that_is_down_is_not_a_zip_code_there_is_none_of(sky):
 
 
 @pytest.mark.parametrize("where", [
-    b"", b"{}", b"[]", b'{"places": []}', b'{"places": [{}]}', b'{"places": "none"}',
-    where_reply(north=None), where_reply(east="east"), where_reply(north="91"),
-    where_reply(east="-180.5"), where_reply(north="nan"), where_reply()[:-20],
-    b'{"places": [{"latitude": "34", "longitude": "-118"', b'{"places',
-    b'{"places": [{"latitude": "34", "longitude": "-118"}', where_reply() + b"}",
+    b"", b"[]", b'{"results": [{}]}', b'{"results": [3]}',
+    where_reply(north=None), where_reply(east="east"), where_reply(north=91),
+    where_reply(east=-180.5), where_reply(north="nan"), where_reply()[:-20],
+    b'{"results": [{"latitude": 34, "longitude": -118', b'{"results',
+    b'{"results": [{"latitude": 34, "longitude": -118}', where_reply() + b"}",
 ])
 def test_an_answer_with_no_place_in_it(sky, where):
     sky.look()
     sky.land(where)
-    assert sky.zip(new=False) == FAILED and sky.why == b"THE SITE MADE NO SENSE"
-    assert sky.stick.zip is None
+    assert sky.again() == FAILED and sky.why == b"THE SITE MADE NO SENSE"
+    assert sky.stick.place is None
+
+
+@pytest.mark.parametrize("where", [b"{}", b'{"results": []}', b'{"results": "none"}'])
+def test_an_answer_with_no_results_is_nothing_there(sky, where):
+    sky.look()
+    sky.land(where)
+    assert sky.again() == NOT_FOUND and sky.why == b""
 
 
 def test_a_reply_longer_than_is_read(sky):
     sky.look()
     assert sky.stick.fetch_body(b" " * p.NESP_PAYLOAD_MAX)
-    long = b"{" + b" " * 4096
+    long = b"{" + b" " * (2 * 4096)
     took = [sky.stick.fetch_body(long[at:at + 512]) for at in range(0, len(long), 512)]
     assert not all(took)
     sky.stick.fetch_done(True)
@@ -369,10 +511,10 @@ def test_what_an_old_fetch_brings_is_dropped(sky):
     sky.stick.fetch_done(True, fetch=old)
     sky.wait()
     assert sky.zip(b"10001", new=False) == LOOKING
-    sky.land(where_reply(name="New York", state="NY", north="40.7484", east="-73.9967"))
+    sky.land(where_reply(name="New York", admin1="New York", north=40.7484, east=-73.9967))
     sky.land(weather_reply())
     assert sky.zip(b"10001", new=False) == READY
-    assert sky.row(0)[1] == "NEW YORK, NY           10001"
+    assert sky.row(0)[1] == "NEW YORK, NY".ljust(COLUMNS)
 
 
 def test_a_row_of_another_zip_code_is_told_so(sky):
@@ -478,47 +620,67 @@ def test_a_console_that_is_reset_starts_again(sky):
     assert sky.zip(new=False) == FETCHING       # where it is, is known still
 
 
-# --- the zip code kept over power-off --------------------------------------------
+# --- the place kept over power-off ----------------------------------------------
 
-def test_the_last_zip_code_found_is_kept_and_only_when_it_is_news(sky):
+def test_the_last_place_found_is_kept_and_only_when_it_is_news(sky):
     stick = sky.stick
-    assert stick.zip is None
+    assert stick.place is None
     assert stick.ask(WEATHER, p.NESP_WEATHER_LAST).payload == b""
+    assert stick.ask(WEATHER, p.NESP_WEATHER_LAST_PLACE).payload == b""
     sky.look(b"00000")
-    sky.fail(b"THE SITE SAID 404")
-    assert stick.zip is None and stick.zip_keeps == 0       # not one that is nowhere
+    sky.land(NOWHERE)
+    assert stick.place is None and stick.place_keeps == 0       # not one that is nowhere
     sky.find()
-    assert stick.zip == (b"90210", 34090100, -118406500, b"BEVERLY HILLS, CA")
-    assert stick.zip_keeps == 1
+    assert stick.place == KEPT_90210 and stick.place_keeps == 1
     assert stick.ask(WEATHER, p.NESP_WEATHER_LAST).payload == b"90210"
+    assert stick.ask(WEATHER, p.NESP_WEATHER_LAST_PLACE).payload == b"90210"
     assert sky.zip() == FETCHING                # chosen again: nothing to ask or to write
     sky.wait()
-    assert stick.zip_keeps == 1 and "open-meteo" in stick.fetch_url
-    sky.find(b"10001", where_reply(name="New York", state="NY", north="40.7484",
-                                    east="-73.9967"))
-    assert stick.zip == (b"10001", 40748400, -73996700, b"NEW YORK, NY")
-    assert stick.zip_keeps == 2
-    assert stick.ask(WEATHER, p.NESP_WEATHER_LAST).payload == b"10001"
+    assert stick.place_keeps == 1 and "api.open-meteo.com" in stick.fetch_url
+    assert sky.place(b"DUBLIN, IRELAND") == LOOKING
+    sky.wait()
+    sky.land(fixture("geo_dublin_ireland.json"))
+    assert stick.place == (b"DUBLIN, IRELAND", 53333060, -6248890, b"DUBLIN, LEINSTER, IE", 0)
+    assert stick.place_keeps == 2
+    assert stick.ask(WEATHER, p.NESP_WEATHER_LAST).payload == b""       # it is no zip code
+    assert stick.ask(WEATHER, p.NESP_WEATHER_LAST_PLACE).payload == b"DUBLIN, IRELAND"
+    assert sky.place(b"DUBLIN, IRELAND") == FETCHING    # as typed, it is the one kept
+
+
+def test_a_nesp32_switched_on_knows_the_place_it_kept(stick):
+    stick.place = (b"PORTLAND, ME", 43657370, -70258900, b"PORTLAND, ME", IMPERIAL)
+    sky = Sky(stick)
+    assert stick.ask(WEATHER, p.NESP_WEATHER_LAST_PLACE).payload == b"PORTLAND, ME"
+    assert stick.ask(WEATHER, p.NESP_WEATHER_LAST).payload == b""
+    assert sky.place(b"PORTLAND, ME") == FETCHING   # with nothing asked of the geocoding
+    sky.wait()
+    assert stick.fetch_url == WEATHER_URL % (43.6574, -70.2589)
+    sky.land(weather_reply())
+    assert sky.rows()[0] == "PORTLAND, ME".ljust(COLUMNS)
+    assert stick.place_keeps == 0
+    assert sky.zip(b"04101") == LOOKING             # nor is a zip code the same place
 
 
 def test_a_nesp32_switched_on_knows_the_zip_code_it_kept(stick):
-    stick.zip = (b"90210", 34090100, -118406500, b"BEVERLY HILLS, CA")
+    stick.place = KEPT_90210
     sky = Sky(stick)
     assert stick.ask(WEATHER, p.NESP_WEATHER_LAST).payload == b"90210"
-    assert sky.zip() == FETCHING                # with nothing asked of Zippopotam
+    assert sky.zip() == FETCHING
     sky.wait()
     assert stick.fetch_url == WEATHER_URL % (34.0901, -118.4065)
     sky.land(weather_reply())
-    assert sky.rows()[0] == "BEVERLY HILLS, CA      90210"
-    assert stick.zip_keeps == 0
+    assert sky.rows()[0] == "BEVERLY HILLS, CA".ljust(COLUMNS)
+    assert stick.place_keeps == 0
     sky.look(b"10001")                          # another zip code is asked after
 
 
-def test_asking_for_the_last_zip_code_does_not_start_anything(stick):
-    stick.zip = (b"90210", 34090100, -118406500, b"BEVERLY HILLS, CA")
+def test_asking_for_the_last_place_does_not_start_anything(stick):
+    stick.place = KEPT_90210
     sky = Sky(stick)
     for _ in range(5):
         assert stick.ask(WEATHER, p.NESP_WEATHER_LAST).ok
+        assert stick.ask(WEATHER, p.NESP_WEATHER_LAST_PLACE).ok
         sky.wait(POLL)
     assert stick.fetches == 0 and sky.row(0) == (IDLE, None)
     assert stick.ask(WEATHER, p.NESP_WEATHER_LAST, b"\x00").status == p.NESP_ST_BAD_ARG
+    assert stick.ask(WEATHER, p.NESP_WEATHER_LAST_PLACE, b"\x00").status == p.NESP_ST_BAD_ARG

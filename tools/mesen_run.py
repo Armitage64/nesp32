@@ -24,6 +24,8 @@ host/mesen/nesp32.lua in Mesen to reach it, so the cartridge's programs
 get past WAITING FOR LINK. The bridge's log is bridge.log in --out, and
 --bridge-data DIR keeps its files (a paired keyboard, a ROM's saves) over
 runs. The bridge fetches from the Internet as the firmware would.
+--bridge-arg passes an option on to the bridge, once for each word, such
+as --bridge-arg=--peer --bridge-arg=idle for an opponent in a game for two.
 
 MESEN is the Mesen program (default: the one in /Applications).
 """
@@ -55,11 +57,13 @@ def press(spec):
 
 
 def lua_bridge(port):
-    """Lua that runs nesp32.lua, pointed at a bridge on this port."""
+    """Lua that runs nesp32.lua, pointed at a bridge on this port, which it
+    does not start: start_bridge does."""
     return f"""
 do
   local src = assert(io.open({lua_str(os.path.abspath(NESP32_LUA))})):read("a")
   src = src:gsub("local BRIDGE_PORT = %d+", "local BRIDGE_PORT = {port}", 1)
+  src = src:gsub("local BRIDGE_START = true", "local BRIDGE_START = false", 1)
   assert(load(src, "nesp32.lua"))()
 end
 """
@@ -75,7 +79,7 @@ def free_port():
         return s.getsockname()[1]
 
 
-def start_bridge(port, out, data):
+def start_bridge(port, out, data, more=()):
     """nesp32_bridge.py on the port, once it listens."""
     lib = "libnesp_host.dylib" if sys.platform == "darwin" else "libnesp_host.so"
     for need in ("nesp_proto.py", lib):
@@ -84,6 +88,7 @@ def start_bridge(port, out, data):
     cmd = [sys.executable, BRIDGE, "--port", str(port), "--nesp32", os.path.abspath(ROOT)]
     if data:
         cmd += ["--data", os.path.abspath(data)]
+    cmd += list(more)
     path = os.path.join(out, "bridge.log")
     log = open(path, "w")
     proc = subprocess.Popen([*cmd[:1], "-u", *cmd[1:]], stdout=log, stderr=subprocess.STDOUT)
@@ -161,6 +166,7 @@ def main():
     ap.add_argument("--timeout", type=float, default=120)
     ap.add_argument("--bridge", action="store_true")
     ap.add_argument("--bridge-data")
+    ap.add_argument("--bridge-arg", action="append", default=[])
     args = ap.parse_args()
 
     asked = args.shot + args.ram + [f + n - 1 for f, n, _ in args.press]
@@ -169,14 +175,17 @@ def main():
         args.shot = [frames]
     out = os.path.abspath(args.out)
     os.makedirs(out, exist_ok=True)
-    port = free_port() if args.bridge or args.bridge_data else None
+    port = free_port() if args.bridge or args.bridge_data or args.bridge_arg else None
     script = os.path.join(out, "run.lua")
     with open(script, "w") as f:
         f.write(lua_script(frames, args.press, args.shot, args.ram, out, port))
 
-    bridge = start_bridge(port, out, args.bridge_data) if port else None
+    bridge = start_bridge(port, out, args.bridge_data, args.bridge_arg) if port else None
     try:
-        r = subprocess.run([MESEN, "--testrunner", os.path.abspath(args.rom), script],
+        # Mesen's test runner has a time limit of its own (some 100 s),
+        # after which it stops with 255: this run's, and some to spare.
+        r = subprocess.run([MESEN, "--testrunner", f"--timeout={int(args.timeout) + 10}",
+                            os.path.abspath(args.rom), script],
                            capture_output=True, text=True, timeout=args.timeout)
     except subprocess.TimeoutExpired:
         sys.exit(f"Mesen ran past {args.timeout:g} s")

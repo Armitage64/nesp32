@@ -1,33 +1,38 @@
 # Weather
 
-The weather for a US zip code on a NES: what it is now, and five days of
-it, on one screen, with a small picture for each. A [nesp32](../..) on
-controller port 2 asks the Internet where the zip code is and what the
-weather is there, and lays the answer out; the ROM draws it.
+The weather for a place anywhere in the world on a NES: what it is now,
+and five days of it, on one screen, with a small picture for each. A
+[nesp32](../..) on controller port 2 asks the Internet where the place
+is and what the weather is there, and lays the answer out; the ROM draws
+it.
 
-The zip code is entered once. The nesp32 keeps it in its flash, and the
-next time the ROM starts its form has those digits in it: A, and the
-weather is on the screen.
+A place is typed as a city, a comma, and its state or country:
+`PORTLAND, ME`, `DUBLIN, IRELAND`. It is entered once. The nesp32 keeps
+it in its flash, and the next time the ROM starts its form has the place
+in it: A, and the weather is on the screen.
 
 On the nesp32 it is the WEATHER service, in
 [nesp32's `docs/PROTOCOL.md`](../../docs/PROTOCOL.md).
 
 ## Status
 
-**It works on hardware**: the ROM by itself, from a StickC Plus2 and on
-the MiSTer. It is the seventh program on nesp32's cartridge (`make cart`
-at the top), where it starts from the menu on a simulated console; the
-cartridge with it on has not yet run on hardware. On a simulated console the ROM is run against
-nesp32's own firmware code, over a line that models every bit, with the
-test as the two sites: a zip code entered with the controller, or the
-kept one taken with A, its report on the screen tile for tile as the
-nesp32 laid it out, and every write to the screen inside a vblank.
+**It works on hardware**: the ROM by itself, from a StickC Plus2. Places,
+typed on the screen's keyboard, worked there on 2026-11-23, with the
+nesp32's firmware from the same change, which they need; the zip-code
+version before them also ran on the MiSTer. It is the seventh program on nesp32's cartridge (`make cart` at the top),
+where it starts from the menu on a simulated console; the cartridge with
+it on has not yet run on hardware. On a simulated console the ROM is run
+against nesp32's own firmware code, over a line that models every bit,
+with the test as the two sites: a place entered with the controller or
+typed on a keyboard, or the kept one taken with A, its report on the
+screen tile for tile as the nesp32 laid it out, and every write to the
+screen inside a vblank.
 
 | Part | State |
 |---|---|
-| WEATHER on the nesp32: a zip code to a place, the place's weather to rows of tiles | working on a StickC Plus2; tested on a computer, from replies the two sites really sent |
-| The ROM (`build/weather.nes`) | working on hardware, with a StickC Plus2 and on the MiSTer; tested on py65 against that code, over the simulated line |
-| A Bluetooth keyboard on the form (nesp32's KBD) | working on hardware, a StickS3 with a Logitech MX Keys S; tested on py65 against nesp32's service |
+| WEATHER on the nesp32: a place as typed to where it is, its weather to rows of tiles | working on a StickC Plus2; tested on a computer, from replies Open-Meteo really sent |
+| The ROM (`build/weather.nes`) | working on hardware with a StickC Plus2; tested on py65 against that code, over the simulated line. The zip-code version before it also worked on the MiSTer |
+| A Bluetooth keyboard on the form (nesp32's KBD) | letters tested on py65 against nesp32's service, not yet on hardware; digits worked on hardware, a StickS3 with a Logitech MX Keys S |
 | The cartridge | on it, the seventh program; starts from its menu on a simulated console, and not yet run there on hardware |
 
 ## Building
@@ -49,53 +54,72 @@ make preview    # docs/screen.png and docs/screen-form.png
 With the nesp32 on a Wi-Fi network (the [setup ROM](../setup) joins one)
 and on controller port 2, start `build/weather.nes`. The screen's header
 is nesp32's, with `WEATHER` under the name; the nesp32's own screen calls
-the program `Weather`, and shows the zip code and the temperature.
+the program `Weather`, and shows the place as typed and the temperature.
 
-The form comes up first, every time: five digits in a box, `00000` the
-first time and after that the zip code the nesp32 keeps. One digit
-pulses, white through the header's blues and back, as the key under
-[NESpedia](../wiki)'s cursor does; it is the one that Up and Down change.
+The form comes up first, every time: a box of 24 characters, empty the
+first time and after that with the place the nesp32 keeps, with `SEARCH`
+over it as on NESpedia's; under it two places as they are to be typed; and a keyboard, as
+[NESpedia](../wiki)'s search has: the digits and `-`, the letters with
+`'`, `,` and `.`, and a space bar. The key the cursor is on pulses, white
+through the header's blues and back.
 
 | | |
 |---|---|
-| **Left**, **Right** | the next digit, either way; from the last round to the first |
-| **Up**, **Down** | change it, `9` round to `0`. Held down, it goes on changing |
-| **A** or **Start** | ask for that zip code's weather (`A : SUBMIT`) |
-| **Select** | on nesp32's cartridge, back to its menu (`SELECT : MENU`), here or from a report; built by itself, nothing |
+| **D-pad** | move over the keys, round at the edges; held down, it goes on moving. Up and Down keep the column, and the space bar is under the last four |
+| **A** | type the key (`A:TYPE`), at the end of the place, while there is room |
+| **B** | delete the last character (`B:DELETE`) |
+| **Start** | ask for that place's weather (`START:SUBMIT`). An empty form asks nothing |
+| **Select** | on nesp32's cartridge, back to its menu (`SELECT:MENU`), here or from a report; built by itself, nothing |
 
 and with the report on the screen:
 
 | | |
 |---|---|
-| **B** | the form again (`B : BACK`), to enter another zip code |
+| **B** | the form again (`B : BACK`), to enter another place |
 
 A Bluetooth keyboard paired with a StickS3 ([Setup](../setup) pairs one)
-types the zip code too: a digit goes in the pulsing place and the next one
-pulses, from the last round to the first; **Enter** asks for its weather,
-**Backspace** goes back a digit, the arrows are the D-pad, and **Esc** is
-B on a report (the form again) and Select on the form (on the cartridge,
-its menu). A digit typed with a report on the screen is the form again, from its
-first digit, so the next zip code can just be typed.
+types the place too: a letter (small or capital), a digit or a sign that
+the screen's keyboard has is typed; **Backspace** deletes, **Enter** asks
+for the weather, the arrows move the cursor as the D-pad does, and
+**Esc** is B on a report (the form again) and nothing on the form. A character typed with a report on the screen is the
+form again, empty, so the next place can just be typed.
 
-A report is the place's name and state, the temperature now with a word
-or two for the sky, today's high and low, the humidity and the wind; and
-under those five days, today the first, each with its picture, its high
-and its low. A day's name is three letters over a picture two tiles wide,
-so the ROM draws it in tiles of its own with the letters half a tile to
-the left, centered over the picture; the nesp32 sends the plain letters. Degrees are Fahrenheit and the wind is in miles an hour. The
-nesp32 fetches the weather again every 15 minutes, and the screen follows
-within a second or so.
+**The first place found is the one taken.** What is typed goes to
+Open-Meteo's geocoding as it is, and the nesp32 takes the first place it
+gives back, the likeliest: `PORTLAND` alone is Portland, Oregon, and
+`PORTLAND, ME` is Portland, Maine. The comma matters (`PORTLAND MAINE`
+finds nothing), and a state goes by its two letters or its name, a
+country by its name (`DUBLIN, IRELAND`; `PARIS, FR` finds nothing). A
+place's name on the report shows which one was found, so a wrong one can
+be put right in the form.
+
+A report is the place's name with its state in the United States
+(`PORTLAND, ME`), and elsewhere with its region and its country's two
+letters (`DUBLIN, LEINSTER, IE`) or, where those would not fit or say the
+city again, its country's alone (`TOKYO, JP`); then the temperature now
+with a word or two for the sky, today's high and low, the humidity and
+the wind; and under those five days, today the first, each with its
+picture, its high and its low. A day's name is three letters over a
+picture two tiles wide, so the ROM draws it in tiles of its own with the
+letters half a tile to the left, centered over the picture; the nesp32
+sends the plain letters. In the United States and its territories degrees
+are Fahrenheit and the wind is in miles an hour, and everywhere else
+degrees are Celsius and the wind is in kilometres an hour. The nesp32
+fetches the weather again every 15 minutes, and the screen follows within
+a second or so.
 
 The status line, under the header, says what is going on when the report
-is not there: `FINDING THE ZIP CODE`, `FETCHING THE WEATHER`, and when
+is not there: `FINDING THE PLACE`, `FETCHING THE WEATHER`, and when
 something is wrong `WAITING FOR LINK` (nothing answers), `UPDATE NESP32`
-(the firmware there has no WEATHER), `NO WI-FI`, `NO SUCH ZIP CODE`, or
-the nesp32's own words for a site that failed (`THE SITE DID NOT ANSWER`,
-`THE SITE SAID 503`). With either of the last two the form is back, to
-put the zip code right or to ask again.
+(the firmware there has no WEATHER, or one from before places), `NO
+WI-FI`, `NO SUCH PLACE`, or the nesp32's own words for a site that failed
+(`THE SITE DID NOT ANSWER`, `THE SITE SAID 503`). With either of the last
+two the form is back, to put the place right or to ask again.
 
-**Only a zip code that was found is kept.** One that no place has is not
-remembered, and neither is one typed while a site was down.
+**Only a place that was found is kept.** One the geocoding has nothing
+for is not remembered, and neither is one typed while a site was down. A
+zip code kept by firmware from before places is kept as a place: its five
+digits.
 
 ### The pictures
 
@@ -111,30 +135,34 @@ screen the nesp32 puts them.
 
 ## Where the weather comes from
 
-- Where a zip code is, and what the place is called:
-  [Zippopotam](https://zippopotam.us) (`api.zippopotam.us/us/90210`),
-  asked once for a zip code and not again while the nesp32 keeps it.
-- The weather: [Open-Meteo](https://open-meteo.com)
-  (`api.open-meteo.com/v1/forecast`), whose data is under
-  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); both views
-  say `WEATHER DATA: OPEN-METEO.COM`, in a 3 x 5 font of its own. **Its free service is for
-  non-commercial use**, up to 10000 requests a day; a nesp32 makes one
-  when a zip code is chosen and one every 15 minutes while its report is
-  on a screen.
+Both from [Open-Meteo](https://open-meteo.com), whose data is under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); both views say
+`WEATHER DATA: OPEN-METEO.COM`, in a 3 x 5 font of its own.
 
-Neither wants a key or an account.
+- Where a place is, and what it is called: its geocoding
+  (`geocoding-api.open-meteo.com/v1/search`), from
+  [GeoNames](https://www.geonames.org), asked once for a place and not
+  again while the nesp32 keeps it.
+- The weather: its forecast (`api.open-meteo.com/v1/forecast`).
+
+**Its free service is for non-commercial use**, up to 10000 requests a
+day; a nesp32 makes one when a place is chosen and one every 15 minutes
+while its report is on a screen. Neither wants a key or an account.
 
 ## Not done
 
-- The cartridge with this on it, on hardware.
-- Zip codes only, and so the United States only. Fahrenheit and miles an
-  hour only.
+- The cartridge with this on it, on hardware; and places typed on a
+  Bluetooth keyboard, on hardware.
+- One place for what is typed, the first the geocoding gives: no list to
+  choose from. A misspelt place finds nothing.
+- No choosing between degrees F and C: the place's country decides.
 - No hourly forecast: it was left out for the room it took.
 - A report that could not be refreshed stays on the screen and does not
   say how old it is.
 - The time the report was made is not shown, nor is the nesp32's clock
   used for anything.
-- A place's name is cut to fit beside its state: 18 characters.
+- A place's name is cut to fit its row, with its state or country:
+  28 characters.
 
 ## Tests
 

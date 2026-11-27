@@ -30,6 +30,8 @@ and the ROM patches are this tree's, so they go up without a release.
     flash/plus2-*.bin     the StickC Plus2's, from firmware/build-esp32
     flash/s3-generic-*.bin  the generic ESP32-S3's, from
                           firmware/build-esp32s3-generic
+    log/index.html        web/log/index.html, as it is: records a nesp32's
+                          log in the browser, for a problem report
 
 The firmware's pieces go as they are, each to its own offset, and are not
 merged into one image: an image from 0 to the end of the firmware would
@@ -115,6 +117,7 @@ PATCHES = [("apps/drmario/dist/drmario_net.bps", "0.2.0"),
            ("apps/bubblebobble/dist/bubblebobble_net.bps", "0.2.0"),
            ("apps/jackal/dist/jackal_net.bps", "0.2.0"),
            ("apps/rcr/dist/rcr_net.bps", "0.3.0"),
+           ("apps/superbowl/dist/superbowl_net.bps", "0.4.0"),
            ("apps/family-basic/dist/fbasic.bps", "0.2.0")]
 
 
@@ -283,6 +286,8 @@ def main(out, cart=None, release=None):
     versions = {name: fingerprint(os.path.join(out, name)) for name in files}
     fill = {"{version}": about["version"], "{notes}": about["notes"]}
     page(os.path.join(WEB, "flash", "index.html"), os.path.join(flash, "index.html"), versions, fill)
+    os.makedirs(os.path.join(out, "log"), exist_ok=True)
+    page(os.path.join(WEB, "log", "index.html"), os.path.join(out, "log", "index.html"), versions, fill)
     page(os.path.join(WEB, "product", "index.html"), os.path.join(out, "index.html"), versions, fill)
     write_patches_page(out, about["version"], release, versions)
     unpacked.cleanup()

@@ -10,6 +10,14 @@
  * before it, and nothing waits for anything. The other end says what it
  * has in every datagram of its own.
  *
+ * More than a datagram carries (PEER's save, before a game) goes as a
+ * window: each new datagram carries the next bytes not yet sent, and the
+ * other end takes them in order, passing over any that come before those
+ * they follow. When all have gone and no word of the rest has come back
+ * in a while, they go again from the oldest the other end lacks; or at
+ * once, when the other end says three times running that it has no more,
+ * which it says as soon as one comes that is past a gap.
+ *
  * Each datagram also carries its sender's clock, and gives back the last
  * clock it heard with the time it was held added on, from which the other
  * end has how long the network takes there and back. And it carries a
@@ -53,6 +61,22 @@
 #define AGAIN_US 8000
 #define QUIET_US 50000
 
+static uint16_t least(uint16_t one, uint16_t other)
+{
+    return one < other ? one : other;
+}
+
+/* How long, with bytes not yet said to have come, before they go again: a
+ * window of them waits for the network's time there and back, and a half. */
+static uint32_t again_us(const nesp_arq_t *arq)
+{
+    uint32_t wait = arq->rtt + arq->rtt / 2;
+    if (arq->out_len <= NESP_ARQ_CARRY || wait < AGAIN_US) {
+        return AGAIN_US;
+    }
+    return wait;
+}
+
 static void put16(uint8_t *out, uint16_t value)
 {
     out[0] = (uint8_t)value;
@@ -93,7 +117,7 @@ size_t nesp_arq_write(nesp_arq_t *arq, const uint8_t *data, size_t len)
         len = room;
     }
     memcpy(arq->out + arq->out_len, data, len);
-    arq->out_len = (uint8_t)(arq->out_len + len);
+    arq->out_len = (uint16_t)(arq->out_len + len);
     if (len != 0) {
         arq->fresh = true;
     }
@@ -106,7 +130,7 @@ size_t nesp_arq_read(nesp_arq_t *arq, uint8_t *out, size_t max)
         max = arq->in_len;
     }
     memcpy(out, arq->in, max);
-    arq->in_len = (uint8_t)(arq->in_len - max);
+    arq->in_len = (uint16_t)(arq->in_len - max);
     memmove(arq->in, arq->in + max, arq->in_len);
     return max;
 }
@@ -114,26 +138,42 @@ size_t nesp_arq_read(nesp_arq_t *arq, uint8_t *out, size_t max)
 bool nesp_arq_due(const nesp_arq_t *arq, uint32_t now_us)
 {
     uint32_t since = now_us - arq->sent_at;
-    if (!arq->sent || arq->fresh) {
+    if (!arq->sent || arq->fresh || arq->out_sent < arq->out_len) {
         return true;
     }
-    return since >= (arq->out_len != 0 ? AGAIN_US : QUIET_US);
+    return since >= (arq->out_len != 0 ? again_us(arq) : QUIET_US);
 }
 
 size_t nesp_arq_packet(nesp_arq_t *arq, uint8_t kind, uint32_t now_us, uint8_t *out)
 {
-    uint8_t count = arq->out_len < NESP_ARQ_CARRY ? arq->out_len : NESP_ARQ_CARRY;
+    /* The bytes carried end at the next not yet sent, or, with all of them
+     * gone, they are the oldest: and a window that has all gone, and has
+     * waited, goes again from the oldest. */
+    uint16_t end;
+    if (arq->out_sent < arq->out_len) {
+        end = least(arq->out_len, (uint16_t)(arq->out_sent + NESP_ARQ_CARRY));
+    } else {
+        if (arq->out_len > NESP_ARQ_CARRY && !arq->fresh) {
+            arq->out_sent = 0;
+        }
+        end = least(arq->out_len, NESP_ARQ_CARRY);
+    }
+    if (end > arq->out_sent) {
+        arq->out_sent = end;
+    }
+    uint16_t start = end > NESP_ARQ_CARRY ? (uint16_t)(end - NESP_ARQ_CARRY) : 0;
+    uint8_t count = (uint8_t)(end - start);
     out[0] = 'N';
     out[1] = 'E';
     out[AT_KIND] = (uint8_t)(kind | (arq->heard ? KIND_BACK : 0));
     out[AT_COUNT] = count;
     put32(out + AT_SESSION, arq->session);
-    put16(out + AT_BASE, arq->out_base);
+    put16(out + AT_BASE, (uint16_t)(arq->out_base + start));
     put16(out + AT_NEXT, arq->in_next);
     put32(out + AT_CLOCK, now_us);
     put32(out + AT_BACK, arq->their_clock + (now_us - arq->heard_at));
     memcpy(out + AT_NOTE, arq->note_out, NESP_ARQ_NOTE);
-    memcpy(out + NESP_ARQ_HEADER, arq->out, count);
+    memcpy(out + NESP_ARQ_HEADER, arq->out + start, count);
     arq->sent = true;
     arq->fresh = false;
     arq->sent_at = now_us;
@@ -160,14 +200,29 @@ int nesp_arq_take(nesp_arq_t *arq, uint32_t now_us, const uint8_t *data, size_t 
     /* What of this end's bytes the other has: they need not be kept. An
      * old datagram says less than is known, and is passed over. */
     uint16_t have = (uint16_t)(get16(data + AT_NEXT) - arq->out_base);
+    if (have == 0 && arq->out_len > NESP_ARQ_CARRY && arq->out_sent != 0) {
+        /* Three of these running, from a window: one was lost, and the
+         * rest are being passed over. Not more than once a time there and
+         * back, which is how long the last going back takes to be heard. */
+        if (++arq->dull >= 3 && now_us - arq->back_at >= arq->rtt) {
+            arq->out_sent = 0;
+            arq->back_at = now_us;
+            arq->dull = 0;
+        }
+    }
     if (have != 0 && have <= arq->out_len) {
+        arq->dull = 0;
         memmove(arq->out, arq->out + have, (size_t)(arq->out_len - have));
-        arq->out_len = (uint8_t)(arq->out_len - have);
+        arq->out_len = (uint16_t)(arq->out_len - have);
+        arq->out_sent = arq->out_sent > have ? (uint16_t)(arq->out_sent - have) : 0;
         arq->out_base = (uint16_t)(arq->out_base + have);
     }
     /* Its bytes: those past what has come, if they begin no later than
      * that, and as far as there is room. */
     uint16_t skip = (uint16_t)(arq->in_next - get16(data + AT_BASE));
+    if (data[AT_COUNT] != 0 && skip >= 0x8000) {
+        arq->fresh = true;          /* past a gap: say at once what has come */
+    }
     if (skip < data[AT_COUNT]) {
         size_t more = (size_t)(data[AT_COUNT] - skip);
         size_t room = (size_t)(NESP_ARQ_HELD - arq->in_len);
@@ -175,7 +230,7 @@ int nesp_arq_take(nesp_arq_t *arq, uint32_t now_us, const uint8_t *data, size_t 
             more = room;
         }
         memcpy(arq->in + arq->in_len, data + NESP_ARQ_HEADER + skip, more);
-        arq->in_len = (uint8_t)(arq->in_len + more);
+        arq->in_len = (uint16_t)(arq->in_len + more);
         arq->in_next = (uint16_t)(arq->in_next + more);
         if (more != 0) {
             arq->fresh = true;      /* say so soon: the other end need not send them again */

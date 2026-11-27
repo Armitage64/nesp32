@@ -1,9 +1,11 @@
-# NESP32 Build Guide
+# NESP32 DIY Build Guide
 
 This guide is for building the NESP32 **hat**, the small circuit board
 that connects an M5Stack Stick to the NES controller plug. If you already
 have a finished, tested hat, you don't need this guide; go straight to
-the [User Guide](USER_GUIDE.md).
+the [User Guide](USER_GUIDE.md). 
+
+If you want to purchase a complete DIY kit or would rather just buy a pre-built NESP32, head over to [Joe's Computer Museum](https://jcm-1.com/product/nesp32-v1/).
 
 ## Contents
 
@@ -38,25 +40,13 @@ damage the Stick.
 
 ## 2. What you need
 
-### Parts for one hat
+### Components
 
-| Qty | Part |
-|---:|---|
-| 1 | NESP32 hat circuit board ([order from PCBWay](https://www.pcbway.com/project/shareproject/NESP32_Hat_for_M5_StickS3_d23db4e5.html)) |
-| 2 | 2N3904 NPN transistors |
-| 1 | 1 kΩ resistor |
-| 2 | 10 kΩ resistors |
-| 1 | 3.3 kΩ resistor |
-| 1 | 100 kΩ resistor |
-| 2 | 100 pF ceramic capacitors (C0G/NP0, 50 V) |
-| 1 | Reverse 8-pin, 2.54 mm, right-angle male header |
-| 1 | NES controller pigtail, or a controller extension cable cut to make one |
+- One M5Stick S3, available directly from M5Stack, Digikey, and [Amazon](https://link.amazon/B04mbvbxx) 
+- The NESP32 hat PCB - Gerbers and PCBWay project link on the [Hardware](../hardware) page*
+- Each of the components listed in the [Bill of Materials](../hardware#bill-of-materials) on the Hardware page
 
-The two 100 pF capacitors are speed-up capacitors. With them, inexpensive bulk 2N3904s work as well as ones from a reputable vendor such as Digikey or Mouser, and the hat reaches the link's fastest rate in both directions. Without them, slow transistors lower the maximum throughput. See [WIRING.md](WIRING.md#m5stick-diy-hat) for details.
-
-Part references and photos of both sides of a finished board are in
-[hardware/README.md](../hardware/README.md). Keep the photos open while
-you work.
+\* It's a good idea to keep the photos on the Hardware page open while you work.
 
 ### Tools
 

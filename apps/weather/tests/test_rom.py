@@ -4,6 +4,7 @@ import gen_screen as layout
 import nesp
 import nesp_proto as p
 import pytest
+from conftest import fixture_bytes
 from forecast import (KEPT, NOT_FOUND, PAD_A, PAD_B, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_SELECT,
                       PAD_START, PAD_UP, VIEW_REPORT)
 
@@ -12,10 +13,10 @@ COLUMNS = p.NESP_WEATHER_COLUMNS
 DEGREE = chr(p.NESP_WEATHER_DEGREE)
 SUN, CLOUD = (layout.picture_rows(which) for which in (p.NESP_PICTURE_SUN,
                                                        p.NESP_PICTURE_CLOUD))
-# What the nesp32 makes of the two sites' answers for 90210 (nesp32's
+# What the nesp32 makes of the two sites' answers for PORTLAND, ME (nesp32's
 # tests/test_weather.py holds its service to the same rows).
 REPORT = [line.ljust(COLUMNS) for line in (
-    "BEVERLY HILLS, CA      90210",
+    "PORTLAND, ME",
     "",
     SUN[0] + "  72" + DEGREE + "F  CLEAR",
     SUN[1] + "  HIGH 74" + DEGREE + "  LOW 55" + DEGREE,
@@ -36,7 +37,13 @@ SHOWN = layout.on_screen(REPORT)
 def test_the_layout_is_the_nesp32s():
     assert (layout.ROWS, layout.COLUMNS) == (p.NESP_WEATHER_ROWS, p.NESP_WEATHER_COLUMNS)
     assert (layout.PICTURE, layout.DEGREE) == (p.NESP_WEATHER_PICTURE, p.NESP_WEATHER_DEGREE)
-    assert layout.ZIP_LEN == p.NESP_WEATHER_ZIP_LEN
+    assert layout.QUERY_MAX == p.NESP_WEATHER_QUERY_MAX
+    assert all(0x20 <= ord(char) <= 0x5F for char in layout.FORM_CHARS)
+    assert layout.FORM_CHARS == " ',-." + "0123456789" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    assert {len(keys) for keys in layout.KEYS} == {len(layout.KEYS[0])}
+    for place in ("PORTLAND, ME", "DUBLIN, IRELAND"):   # the examples can be typed
+        assert any(place in text for _, text in layout.FORM_EXAMPLES)
+        assert all(char in layout.FORM_CHARS for char in place)
     names = [name for name, _ in layout.PICTURES]
     assert names == [name[len("NESP_PICTURE_"):] for name in sorted(
         (name for name in dir(p) if name.startswith("NESP_PICTURE_")),
@@ -66,7 +73,7 @@ def test_with_no_nesp32_it_says_so(sky):
     assert s.status == "WAITING FOR LINK"
     credit = layout.build_screen().nametable()[32 * layout.CREDIT_ROW:][:32]
     assert s.c.tiles(layout.CREDIT_ROW, 0, 32) == credit and len(set(credit)) > 10
-    assert all(row.strip() == "" for row in s.rows()) and s.foot == ""
+    assert all(row.strip() == "" for row in s.rows()) and s.foot == ("", "")
     s.c.press(PAD_A)                # and no button does anything
     s.c.press(PAD_UP)
     s.c.run(20)
@@ -90,77 +97,147 @@ def test_the_header_is_nesp32s_with_what_this_is(sky):
     assert bytes(s.c.vram[0x23C0:0x2400]) == ours[960:]
 
 
-def test_with_nothing_kept_the_form_comes_up_and_a_zip_code_is_entered(sky):
+def test_with_nothing_kept_the_form_comes_up_empty_and_a_place_is_entered(sky):
     s = sky()
-    assert s.form_is_up() == "00000" and s.lit == 0 and s.status == ""
-    assert s.asked(p.NESP_WEATHER_LAST) == [b""]
-    assert s.asked(p.NESP_WEATHER_ZIP) == []        # the form asks nothing
-    s.enter("90210")
-    s.press(PAD_A)
+    assert s.form_is_up() == "" and s.lit == layout.CURSOR_KEY and s.status == ""
+    assert s.asked(p.NESP_WEATHER_LAST_PLACE) == [b""]
+    assert s.asked(p.NESP_WEATHER_PLACE) == []      # the form asks nothing
+    s.enter("BATH, ME")             # on the screen's keyboard
+    assert s.form_is_up() == "BATH, ME"
+    s.press(PAD_START)
     assert s.report_is_up() == SHOWN
-    assert s.stick.zip == KEPT and s.stick.zip_keeps == 1
-    assert s.asked(p.NESP_WEATHER_ZIP)[0] == b"\x0190210"
+    assert s.asked(p.NESP_WEATHER_PLACE)[0] == b"\x01BATH, ME"
     assert [url.split("?")[0] for url in s.served] == [
-        "https://api.zippopotam.us/us/90210", "https://api.open-meteo.com/v1/forecast"]
-    assert s.stick.shown(0) == "90210: 72F"
+        "https://geocoding-api.open-meteo.com/v1/search", "https://api.open-meteo.com/v1/forecast"]
+    assert s.served[0].endswith("&name=BATH%2C%20ME")
+    assert s.stick.place == (b"BATH, ME",) + KEPT[1:] and s.stick.place_keeps == 1
+    assert s.stick.shown(0) == "BATH, ME: 72F"
     s.writes_were_in_time()
 
 
-def test_the_status_line_says_how_it_stands_on_the_way(sky):
-    s = sky()
+def test_the_form_has_two_places_as_they_are_to_be_typed(sky):
+    s = sky(kept=KEPT)
     s.form_is_up()
-    s.enter("90210")
-    s.c.press(PAD_START)            # Start asks too; and the sites take their time
+    rows = s.rows()
+    shown = [rows[row].strip() for row, _ in layout.FORM_EXAMPLES]
+    assert shown == ["E.G. PORTLAND, ME", "OR DUBLIN, IRELAND"]
+    prompt = s.prompt                               # and over the box, what it is for,
+    assert prompt.strip() == "SEARCH"               # from the place's first character
+    assert prompt.index("S") == layout.FORM_TEXT_COLUMN
+    s.go()
+    s.report_is_up()                                # which a report has not
+    for row, keys in enumerate(layout.KEYS):        # and the keys under them
+        line = rows[layout.KEY_ROW + layout.KEY_STEP * row]
+        assert line.split() == list(keys.strip()) + (["SPACE"] if " " in keys else [])
+
+
+def test_the_status_line_says_how_it_stands_on_the_way(sky):
+    s = sky(kept=KEPT)
+    s.form_is_up()
+    s.c.press(PAD_START)            # Start asks too; and the site takes its time
     s.c.run_until(lambda: s.stick.fetching, 60)
     s.c.run(10)
-    assert s.status == "FINDING THE ZIP CODE"
-    assert s.view == VIEW_REPORT and s.lit is None and s.digits == "90210"
+    assert s.status == "FETCHING THE WEATHER"
+    assert s.view == VIEW_REPORT and s.lit is None and s.text == "PORTLAND, ME"
+    s.c.press(PAD_A)                # the form is on the screen still, and cannot be typed on
+    s.c.run(4)
+    assert s.text == "PORTLAND, ME" and s.lit is None
+    s.serve()
+    assert s.report_is_up() == SHOWN
+
+def test_the_status_line_says_it_is_finding_the_place(sky):
+    s = sky()
+    s.form_is_up()
+    typed(s, b"PORTLAND, ME")
+    s.stick.kbd_type(ENTER)
+    s.c.run_until(lambda: s.stick.fetching, 60)
+    s.c.run(10)
+    assert s.status == "FINDING THE PLACE"
     s.serve()
     s.c.run_until(lambda: s.stick.fetching, 60)
     s.c.run(10)
     assert s.status == "FETCHING THE WEATHER"
-    s.c.press(PAD_UP)               # the form is on the screen still, and cannot be changed
-    assert s.digits == "90210"
     s.serve()
     assert s.report_is_up() == SHOWN
 
-
-def test_a_zip_code_the_nesp32_keeps_is_in_the_form_and_a_is_all_it_takes(sky):
+def test_a_place_the_nesp32_keeps_is_in_the_form_and_a_is_all_it_takes(sky):
     s = sky(kept=KEPT)
-    assert s.form_is_up() == "90210" and s.lit == 0 and s.status == ""
-    assert s.asked(p.NESP_WEATHER_LAST) == [b""]
+    assert s.form_is_up() == "PORTLAND, ME"
+    assert s.status == "" and s.asked(p.NESP_WEATHER_LAST_PLACE) == [b""]
     s.run(120)                      # and there it waits: nothing is asked or fetched
-    assert s.asked(p.NESP_WEATHER_ZIP) == [] and s.served == []
+    assert s.asked(p.NESP_WEATHER_PLACE) == [] and s.served == []
     assert s.view != VIEW_REPORT
-    s.press(PAD_A)
+    s.press(PAD_START)
     assert s.report_is_up() == SHOWN
-    assert all("zippopotam" not in url for url in s.served) and len(s.served) == 1
-    assert s.stick.zip_keeps == 0
+    assert all("geocoding" not in url for url in s.served) and len(s.served) == 1
+    assert s.stick.place_keeps == 0
     s.writes_were_in_time()
 
 
-def test_b_in_the_form_does_nothing_on_no_cartridge(sky):
-    s = sky(kept=KEPT)
-    assert s.form_is_up() == "90210" and s.c.byte("on_cart") == 0
-    assert s.foot == layout.FOOT_FORM   # and says nothing of it
-    s.press(PAD_B)
+def test_a_zip_code_kept_from_before_places_is_in_the_form_as_a_place(sky):
+    s = sky(kept=(b"90210", 34090100, -118406500, b"BEVERLY HILLS, CA", 0x01 | 0x02))
+    assert s.form_is_up() == "90210"
+    s.press(PAD_START)
+    rows = s.report_is_up()
+    assert rows[0] == "BEVERLY HILLS, CA".ljust(COLUMNS) and rows[2:] == SHOWN[2:]
+    assert s.served and all("geocoding" not in url for url in s.served)
+
+
+def test_a_place_as_long_as_the_form(sky):
+    longest = b"LLANFAIRPWLLGWYNGYLL, GB"
+    assert len(longest) == p.NESP_WEATHER_QUERY_MAX
+    s = sky(kept=(longest,) + KEPT[1:])
+    assert s.form_is_up() == longest.decode()
+    assert layout.CURSOR not in s.row(layout.FORM_TEXT_ROW)  # no room for the mark
+    s.press(PAD_A)                  # nor for another character
+    assert s.form_is_up() == longest.decode()
+    s.press(PAD_START)
+    s.report_is_up()
+    assert s.asked(p.NESP_WEATHER_PLACE)[0] == b"\x01" + longest
+
+
+def test_an_empty_form_asks_nothing(sky):
+    s = sky()
+    s.form_is_up()
+    s.press(PAD_START)
     s.run(30)
-    assert s.form_is_up() == "90210" and s.asked(p.NESP_WEATHER_ZIP) == []
+    assert s.form_is_up() == "" and s.asked(p.NESP_WEATHER_PLACE) == []
+    s.enter("   ")                  # nor does one of spaces
+    assert s.form_is_up() == "   "
+    s.press(PAD_START)
+    s.run(30)
+    assert s.view != VIEW_REPORT and s.asked(p.NESP_WEATHER_PLACE) == []
+
+
+def test_b_in_the_form_deletes_and_never_leaves_it_on_no_cartridge(sky):
+    s = sky(kept=KEPT)
+    assert s.form_is_up() == "PORTLAND, ME" and s.c.byte("on_cart") == 0
+    assert s.foot == layout.FOOT_FORM   # and says nothing of Select
+    s.press(PAD_B)
+    assert s.form_is_up() == "PORTLAND, M"
+    for _ in range(30):
+        s.press(PAD_B)
+    assert s.form_is_up() == ""     # and with none left, nothing
+    assert s.asked(p.NESP_WEATHER_PLACE) == [] and s.view != VIEW_REPORT
+
+
+def test_b_on_the_report_and_then_in_the_form(sky):
+    s = sky(kept=KEPT)
     s.go()
     s.report_is_up()
     s.press(PAD_B)
-    s.form_is_up()
-    s.press(PAD_B)                  # nor once a report has been asked for
+    assert s.form_is_up() == "PORTLAND, ME"
+    s.press(PAD_B)                  # in the form, it deletes, and asks for nothing
     s.run(30)
-    assert s.form_is_up() == "90210" and s.view != VIEW_REPORT
+    assert s.form_is_up() == "PORTLAND, M" and s.view != VIEW_REPORT
 
 
 def test_select_does_nothing_on_no_cartridge(sky):
     s = sky(kept=KEPT)
-    assert s.form_is_up() == "90210" and s.c.byte("on_cart") == 0
+    assert s.form_is_up() == "PORTLAND, ME" and s.c.byte("on_cart") == 0
     s.press(PAD_SELECT)
     s.run(30)
-    assert s.form_is_up() == "90210" and s.asked(p.NESP_WEATHER_ZIP) == []
+    assert s.form_is_up() == "PORTLAND, ME" and s.asked(p.NESP_WEATHER_PLACE) == []
     s.go()
     s.report_is_up()
     s.press(PAD_SELECT)
@@ -194,7 +271,7 @@ def test_the_days_names_are_centered_over_their_pictures(sky):
     assert s.report_is_up()[layout.DAY_ROW] == SHOWN[layout.DAY_ROW]
 
 
-def test_the_lit_digit_pulses_and_nothing_does_on_the_report(sky):
+def test_the_cursors_key_pulses_and_nothing_does_on_the_report(sky):
     s = sky(kept=KEPT)
     s.form_is_up()
     seen = []
@@ -206,8 +283,8 @@ def test_the_lit_digit_pulses_and_nothing_does_on_the_report(sky):
     start = seen.index(layout.PULSE[0])
     assert seen[start:start + 3] == list(layout.PULSE[:3]) or len(seen) - start < 3
     s.press(PAD_RIGHT)
-    assert s.form_is_up() == "90210" and s.lit == 1    # the next one's square, and only it
-    s.press(PAD_A)
+    assert s.form_is_up() == "PORTLAND, ME" and s.lit == (1, 1)    # the W's square, and only it
+    s.press(PAD_START)
     s.report_is_up()                # where no square has that palette
     still = s.pulse
     s.run(40)
@@ -215,86 +292,108 @@ def test_the_lit_digit_pulses_and_nothing_does_on_the_report(sky):
     s.writes_were_in_time()
 
 
-def test_a_zip_code_entered_is_there_the_next_time_the_program_is_started(sky):
+def test_every_key_has_a_square_of_the_screen_to_itself():
+    first, count, cells = layout.key_attributes()
+    columns = len(layout.KEYS[0])
+    keys = [cell for index, cell in enumerate(cells)
+            if layout.KEYS[index // columns][index % columns] != " "]
+    assert len(set(keys)) == len(keys) and count <= 16
+    attributes = layout.build_screen().nametable()[960:]
+    assert all(byte == 0 for byte in attributes[first:first + count])     # none lit at first
+
+
+def test_a_place_entered_is_there_the_next_time_the_program_is_started(sky):
     s = sky()
     s.form_is_up()
-    s.enter("90210")
-    s.press(PAD_A)
+    typed(s, b"PORTLAND, ME" + ENTER)
     s.report_is_up()
     s.c.reset()                     # the console's reset button
     s.run(3)
     assert s.c.byte("serial_have") == 0
-    assert s.form_is_up() == "90210"    # the form, with the digits in it
-    s.press(PAD_A)
+    assert s.form_is_up() == "PORTLAND, ME"     # the form, with the place in it
+    s.press(PAD_START)
     assert s.report_is_up() == SHOWN
-    assert len(s.served) == 3 and "open-meteo" in s.served[2]
-    kept = s.stick.zip
+    assert len(s.served) == 3 and "api.open-meteo.com" in s.served[2]
+    kept = s.stick.place
     again = sky(kept=kept)          # and its power, and the nesp32's
-    assert again.form_is_up() == "90210"
+    assert again.form_is_up() == "PORTLAND, ME"
     again.press(PAD_START)
     assert again.report_is_up() == SHOWN
 
 
-def test_the_digits_go_round_and_so_does_the_mark(sky):
+def test_the_cursor_goes_round_the_keys(sky):
     s = sky()
-    s.form_is_up()
-    s.press(PAD_DOWN)
-    assert s.form_is_up() == "90000"
-    s.press(PAD_UP)
-    s.press(PAD_UP)
-    assert s.form_is_up() == "10000"
+    assert s.form_is_up() == "" and s.lit == (1, 0)     # on the Q
     s.press(PAD_LEFT)
-    assert s.form_is_up() == "10000" and s.lit == 4
-    s.press(PAD_UP)
+    s.form_is_up()
+    assert s.lit == (1, 10)                         # round, to the row's last
     s.press(PAD_RIGHT)
-    assert s.form_is_up() == "10001" and s.lit == 0
-    for place in (1, 2, 3, 4, 0):
-        s.press(PAD_RIGHT)
-        s.form_is_up()
-        assert s.lit == place
-    s.press(PAD_UP | PAD_RIGHT)     # both at once: the mark moves, and its digit changes
-    assert s.form_is_up() == "11001" and s.lit == 1
+    s.press(PAD_UP)
+    s.form_is_up()
+    assert s.lit == (0, 0)
+    s.press(PAD_UP)                                 # round, to the last row
+    s.form_is_up()
+    assert s.lit == (3, 0)
+    s.press(PAD_LEFT)                               # the space bar, from its row's first
+    s.form_is_up()
+    assert s.lit == (3, layout.SPACE_KEY)
+    s.press(PAD_A)
+    assert s.form_is_up() == " "
+    s.press(PAD_LEFT)                               # and from it the key before
+    s.form_is_up()
+    assert s.lit == (3, layout.SPACE_KEY - 1)
+    s.press(PAD_RIGHT)
+    s.press(PAD_RIGHT)                              # and after it, the row's first
+    s.form_is_up()
+    assert s.lit == (3, 0)
+    s.press(PAD_LEFT)
+    s.press(PAD_UP)                                 # up from the space bar: its column
+    s.form_is_up()
+    assert s.lit == (2, 10)
+    s.press(PAD_A)
+    s.press(PAD_DOWN | PAD_A)                       # both at once: the key, then the move
+    assert s.form_is_up() == " .." and s.lit == (3, layout.SPACE_KEY)
 
 
 def test_a_direction_held_down_counts_again_and_again(sky):
     s = sky()
     s.form_is_up()
-    s.run(15, pad=PAD_UP)
-    assert s.digits == "10000"      # not at once
-    s.run(30, pad=PAD_UP)           # then after 20 frames, and every 5 from there
-    held = int(s.form_is_up()[0])
-    assert 5 <= held <= 7
+    s.run(15, pad=PAD_RIGHT)
+    assert s.c.byte("key_col") == 1     # not at once
+    s.run(30, pad=PAD_RIGHT)            # then after 20 frames, and every 5 from there
+    s.form_is_up()
+    held = s.c.byte("key_col")
+    assert 6 <= held <= 8
     s.run(1, pad=0)
     s.run(40)
-    assert int(s.form_is_up()[0]) == held
+    assert s.c.byte("key_col") == held
 
 
-def test_a_zip_code_there_is_none_of_goes_back_to_the_form(sky):
+def test_a_place_there_is_none_of_goes_back_to_the_form(sky):
     s = sky(where=NOT_FOUND)
     s.form_is_up()
-    s.enter("00001")
-    s.press(PAD_A)
-    s.run_until(lambda: s.status == "NO SUCH ZIP CODE")
-    assert s.form_is_up() == "00001"
-    assert s.stick.zip is None
-    asked = len(s.asked(p.NESP_WEATHER_ZIP))
+    typed(s, b"NOWHERE, XQ" + ENTER)
+    s.run_until(lambda: s.status == "NO SUCH PLACE")
+    assert s.form_is_up() == "NOWHERE, XQ"
+    assert s.stick.place is None
+    asked = len(s.asked(p.NESP_WEATHER_PLACE))
     s.run(120)
-    assert len(s.asked(p.NESP_WEATHER_ZIP)) == asked    # and waits there, asking nothing
-    assert s.status == "NO SUCH ZIP CODE"
+    assert len(s.asked(p.NESP_WEATHER_PLACE)) == asked  # and waits there, asking nothing
+    assert s.status == "NO SUCH PLACE"
 
 
-def test_a_zip_code_put_right_after_one_there_is_none_of(sky, where):
+def test_a_place_put_right_after_one_there_is_none_of(sky, where):
     s = sky(where=NOT_FOUND)
     s.form_is_up()
-    s.enter("90211")
-    s.press(PAD_A)
-    s.run_until(lambda: s.status == "NO SUCH ZIP CODE")
-    s.form_is_up()
+    typed(s, b"PORTLAND ME" + ENTER)
+    s.run_until(lambda: s.status == "NO SUCH PLACE")
+    assert s.form_is_up() == "PORTLAND ME"
     s.where = where
-    s.enter("90210")
-    s.press(PAD_A)
+    typed(s, BACKSPACE * 3 + b", ME")
+    assert s.form_is_up() == "PORTLAND, ME"
+    typed(s, ENTER)
     assert s.report_is_up() == SHOWN
-    ids = [payload[0] for payload in s.asked(p.NESP_WEATHER_ZIP)]
+    ids = [payload[0] for payload in s.asked(p.NESP_WEATHER_PLACE)]
     assert sorted(set(ids)) == [1, 2]                   # each asking has an id of its own
 
 
@@ -302,12 +401,11 @@ def test_a_zip_code_put_right_after_one_there_is_none_of(sky, where):
 def test_a_site_that_fails_says_why_and_goes_back_to_the_form(sky, which, where, weather):
     s = sky(**{which: (False, b"THE SITE SAID 503")})
     s.form_is_up()
-    s.enter("90210")
-    s.press(PAD_A)
+    typed(s, b"PORTLAND, ME" + ENTER)
     s.run_until(lambda: s.status == "THE SITE SAID 503")
-    assert s.form_is_up() == "90210"
+    assert s.form_is_up() == "PORTLAND, ME"
     s.where, s.weather = where, weather
-    s.press(PAD_A)                  # the same again, once the site is back
+    s.press(PAD_START)              # the same again, once the site is back
     assert s.report_is_up() == SHOWN
     s.writes_were_in_time()
 
@@ -317,11 +415,12 @@ def test_words_as_long_as_the_line_and_then_shorter_ones(sky):
     assert len(long) == layout.STATUS_WIDTH
     s = sky(where=(False, long))
     s.form_is_up()
-    s.press(PAD_A)
+    s.enter("X")
+    s.press(PAD_START)
     s.run_until(lambda: s.status == long.decode())
     s.form_is_up()
     s.where = (False, b"NO")
-    s.press(PAD_A)
+    s.press(PAD_START)
     s.run_until(lambda: s.status == "NO")
     assert s.c.text(layout.STATUS_ROW, layout.STATUS_COLUMN, layout.STATUS_WIDTH) == \
         "NO".center(layout.STATUS_WIDTH)
@@ -346,25 +445,25 @@ def test_b_on_the_report_is_the_form(sky):
     s.run(20)
     assert s.view == VIEW_REPORT and s.rows() == SHOWN
     s.press(PAD_B)
-    assert s.form_is_up() == "90210" and s.lit == 0
+    assert s.form_is_up() == "PORTLAND, ME"
 
 
-def test_another_zip_code_takes_the_place_of_the_report(sky, where, weather):
+def test_another_place_takes_the_place_of_the_report(sky, where, weather):
     s = sky(kept=KEPT)
     s.go()
     s.report_is_up()
     s.press(PAD_B)
     s.form_is_up()
-    s.where = where.replace(b"Beverly Hills", b"New York").replace(b'"CA"', b'"NY"')
+    s.where = fixture_bytes("geo_dublin_ireland.json")
     s.weather = weather.replace(b'"temperature_2m":72.0', b'"temperature_2m":-3.6')
-    assert s.where != where and s.weather != weather
-    s.enter("10001")
-    s.press(PAD_A)
+    assert s.weather != weather
+    typed(s, BACKSPACE * 12 + b"dublin, ireland" + ENTER)
     rows = s.report_is_up()
-    assert rows[0] == "NEW YORK, NY           10001"
-    assert rows[2] == (SUN[0] + "  -4" + DEGREE + "F  CLEAR").ljust(COLUMNS)
-    assert rows[3:] == SHOWN[3:]
-    assert s.stick.zip[0] == b"10001"
+    assert rows[0] == "DUBLIN, LEINSTER, IE".ljust(COLUMNS)
+    assert rows[2] == (SUN[0] + "  -4" + DEGREE + "C  CLEAR").ljust(COLUMNS)
+    assert rows[5] == "    WIND 9 KM/H".ljust(COLUMNS)
+    assert rows[3:5] + rows[6:] == SHOWN[3:5] + SHOWN[6:]
+    assert s.stick.place[0] == b"DUBLIN, IRELAND"
 
 
 def test_a_newer_report_is_drawn_when_the_nesp32_has_one(sky, weather):
@@ -386,10 +485,10 @@ def test_a_report_on_the_screen_is_asked_after_about_once_a_second(sky):
     s = sky(kept=KEPT)
     s.go()
     s.report_is_up()
-    before = len(s.asked(p.NESP_WEATHER_ZIP))
+    before = len(s.asked(p.NESP_WEATHER_PLACE))
     s.run(640)
-    assert 8 <= len(s.asked(p.NESP_WEATHER_ZIP)) - before <= 11
-    assert not any(service == WEATHER and op != p.NESP_WEATHER_ZIP
+    assert 8 <= len(s.asked(p.NESP_WEATHER_PLACE)) - before <= 11
+    assert not any(service == WEATHER and op != p.NESP_WEATHER_PLACE
                    for service, op, _ in s.requests()[-300:])      # and nothing else of it
     assert s.rows() == SHOWN
 
@@ -418,7 +517,22 @@ def test_a_nesp32_without_the_service_is_told_to_be_updated(sky):
     s = sky(to_console=older)
     s.run_until(lambda: s.status == "UPDATE NESP32")
     s.run(60)
-    assert s.asked(p.NESP_WEATHER_LAST) == [] and all(row.strip() == "" for row in s.rows())
+    assert s.asked(p.NESP_WEATHER_LAST_PLACE) == [] and all(row.strip() == "" for row in s.rows())
+
+
+def test_a_nesp32_from_before_places_is_told_to_be_updated(sky):
+    def older(data):
+        reply = nesp.parse(data)
+        if reply.svc == WEATHER and reply.ok and reply.payload == b"":   # LAST_PLACE's
+            return nesp.reply_frame(reply.svc, p.NESP_ST_NO_OP, reply.seq, b"")
+        return data
+
+    s = sky(to_console=older)
+    s.run_until(lambda: s.status == "UPDATE NESP32")
+    s.press(PAD_A)
+    s.run(60)
+    assert s.status == "UPDATE NESP32" and s.asked(p.NESP_WEATHER_PLACE) == []
+    assert all(row.strip() == "" for row in s.rows())
 
 
 # --- a Bluetooth keyboard on the nesp32 ---------------------------------------------
@@ -437,47 +551,57 @@ def typed(s, keys):
     s.run(4)
 
 
-def test_a_zip_code_typed_on_a_keyboard_is_asked_for_with_enter(sky):
+def test_a_place_typed_on_a_keyboard_is_asked_for_with_enter(sky):
     s = sky()
     s.form_is_up()
     assert s.stick.kbd_on                           # the hello asked for KBD
-    typed(s, b"90a2-1")                             # what is no digit is no key of the form's
-    assert s.form_is_up() == "90210" and s.lit == 4
-    typed(s, BACKSPACE + BACKSPACE + b"21")         # Backspace goes back a digit
-    assert s.form_is_up() == "90210" and s.lit == 4
-    typed(s, b"0")
-    assert s.form_is_up() == "90210" and s.lit == 0     # after the last, the first
-    assert s.asked(p.NESP_WEATHER_ZIP) == []
-    typed(s, ENTER)
+    typed(s, b"portland; m{e")                      # small letters are capitals; what is no
+    assert s.form_is_up() == "PORTLAND ME"          # key of the screen's, nothing
+    typed(s, BACKSPACE * 3 + b", ME")               # Backspace deletes
+    assert s.form_is_up() == "PORTLAND, ME" and s.lit == layout.CURSOR_KEY
+    typed(s, LEFT)                                  # the arrows move the cursor
+    assert s.form_is_up() == "PORTLAND, ME" and s.lit == (1, 10)
+    assert s.asked(p.NESP_WEATHER_PLACE) == []
+    typed(s, ENTER)                                 # and Enter is Start, not A
     assert s.report_is_up() == SHOWN
-    assert s.asked(p.NESP_WEATHER_ZIP)[0] == b"\x0190210"
+    assert s.asked(p.NESP_WEATHER_PLACE)[0] == b"\x01PORTLAND, ME"
 
 
-def test_backspace_stops_at_the_first_digit_and_the_arrows_are_the_d_pad(sky):
+def test_backspace_stops_at_the_first_and_the_arrows_are_the_d_pad(sky):
     s = sky()
     s.form_is_up()
     typed(s, BACKSPACE)
-    assert s.form_is_up() == "00000" and s.lit == 0
+    assert s.form_is_up() == ""
     typed(s, LEFT)                                  # the arrows go round, as the D-pad does
-    assert s.form_is_up() == "00000" and s.lit == 4
+    assert s.form_is_up() == "" and s.lit == (1, 10)
     typed(s, UP + UP + RIGHT + DOWN)
-    assert s.form_is_up() == "90002" and s.lit == 0
+    assert s.form_is_up() == "" and s.lit == (0, 0)
 
 
-def test_a_digit_typed_over_a_report_begins_the_next_zip_code(sky, where, weather):
+def test_typing_past_the_room_there_is_types_nothing(sky):
+    s = sky()
+    s.form_is_up()
+    typed(s, b"ABCDEFGHIJKLMNOPQRSTUVWX")
+    assert s.form_is_up() == "ABCDEFGHIJKLMNOPQRSTUVWX"
+    typed(s, b"YZ")
+    assert s.form_is_up() == "ABCDEFGHIJKLMNOPQRSTUVWX"
+
+
+def test_a_character_typed_over_a_report_begins_the_next_place(sky, where, weather):
     s = sky(kept=KEPT)
     s.go()
     s.report_is_up()
-    typed(s, ENTER + UP)                            # no keys of the report's
+    typed(s, ENTER + UP + BACKSPACE)                # no keys of the report's
     assert s.view == VIEW_REPORT and s.rows() == SHOWN
-    typed(s, b"1")
-    assert s.form_is_up() == "10210" and s.lit == 1
-    typed(s, b"0001" + ESCAPE + SELECT)             # Escape is B, nothing on the form, and Ctrl
-    assert s.form_is_up() == "10001" and s.lit == 0     # and Escape Select: off the cartridge, nothing
+    typed(s, b"d")
+    assert s.form_is_up() == "D"
+    typed(s, b"UBLIN, IRELAND" + ESCAPE + SELECT)   # Escape is nothing on the form, and
+    assert s.form_is_up() == "DUBLIN, IRELAND"      # Select, off the cartridge, nothing
+    s.where = fixture_bytes("geo_dublin_ireland.json")
     typed(s, START)                                 # Ctrl and Enter: Start, as A is
     s.report_is_up()
     typed(s, ESCAPE)                                # and on the report, Escape is B: the form
-    assert s.form_is_up() == "10001"
+    assert s.form_is_up() == "DUBLIN, IRELAND"
 
 
 def test_a_nesp32_without_kbd_is_used_all_the_same(sky):
@@ -489,13 +613,13 @@ def test_a_nesp32_without_kbd_is_used_all_the_same(sky):
         return data
 
     s = sky(kept=KEPT, to_console=older)
-    assert s.form_is_up() == "90210" and s.status == ""
+    assert s.form_is_up() == "PORTLAND, ME" and s.status == ""
     assert s.c.byte("greeted") and not s.c.byte("typing")
     s.stick.kbd_type(b"1")
     s.run(60)
     assert s.stick.kbd_unread == 1
     assert not any(service == p.NESP_SVC_KBD for service, _, _ in s.requests())
-    s.press(PAD_A)
+    s.press(PAD_START)
     assert s.report_is_up() == SHOWN
 
 
@@ -510,10 +634,9 @@ def test_it_gets_through_a_line_that_loses_and_damages_replies(sky):
             return data[:6] + bytes((data[6] ^ 0x40,)) + data[7:]
         return data
 
-    s = sky(to_console=rough)
+    s = sky(kept=KEPT, to_console=rough)
     s.form_is_up()
-    s.enter("90210")
-    s.press(PAD_A)
+    s.press(PAD_START)
     assert s.report_is_up(2000) == SHOWN
     assert s.c.word("link_failed") > 10
     s.writes_were_in_time()

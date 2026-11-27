@@ -32,12 +32,12 @@ of an ordinary NES. Nothing inside the console is changed. With it, NES
 software can reach the Internet, so the console can:
 
 - read Wikipedia articles,
-- show the weather for your zip code,
+- show the weather for a place anywhere in the world,
 - show live air traffic around an airport,
 - play live Internet radio and NES music through its own sound chip,
 - read Bluesky posts,
-- play Dr. Mario, Tetris, Contra, TMNT II, Bubble Bobble, Jackal and River
-  City Ransom online with a friend.
+- play Dr. Mario, Tetris, Contra, TMNT II, Bubble Bobble, Jackal, River
+  City Ransom and Tecmo Super Bowl online with a friend.
 
 A NESP32 is an **M5Stack StickS3** (a small ready-made computer, about
 $20, with its own screen, battery and buttons) plus a little circuit board
@@ -59,7 +59,9 @@ This guide describes the StickS3 and points out where the Plus2 differs.
 > **Note:** the NESP32 works with both **NTSC** consoles (North American
 > and Japanese) and **PAL** consoles (European and Australian). It tells
 > which one it is plugged into by itself, and the Stick's screen shows
-> **PAL:** in place of **NES:** for a PAL console. On a PAL console:
+> **PAL:** in place of **NES:** for a PAL console. Some European
+> consoles can't be used; see [Which consoles work](#which-consoles-work).
+> On a PAL console:
 >
 > - Games made for NTSC consoles, which include the online games, run at
 >   5/6 of their speed and their music a little lower, as any NTSC game
@@ -88,7 +90,7 @@ This guide describes the StickS3 and points out where the Plus2 differs.
 
 | Item | Notes |
 |---|---|
-| An NES | NTSC or PAL. A MiSTer FPGA running the NES core with a SNAC adapter also works, in either region |
+| An NES | NTSC or PAL, but **some European consoles can't be used**: see [Which consoles work](#which-consoles-work) below. A MiSTer FPGA running the NES core with a SNAC adapter also works, in either region |
 | An M5Stack StickS3 | [Buy one here](https://amzn.to/3TVUV0y). The StickC Plus2 also works, without Bluetooth or the USB drive |
 | The NESP32 hat, with its cable | Build it with the [Build Guide](BUILD_GUIDE.md), or get one already built and tested |
 | A way to run a ROM file on the NES | A flash cartridge such as an Everdrive, or a MiSTer |
@@ -102,6 +104,36 @@ This guide describes the StickS3 and points out where the Plus2 differs.
 > own battery, or from a USB charger. Charge it before you start. If the
 > Stick's screen is dark, the NESP32 won't work, however the cable is
 > connected.
+
+### Which consoles work
+
+| Console | Works? |
+|---|---|
+| NES front-loader (NES-001), North America | **Yes.** Tested |
+| MiSTer FPGA, NES core, with a SNAC adapter | **Yes.** Tested, on both its NTSC and PAL settings |
+| NES top-loader (NES-101) | Should work. Not tried yet |
+| PAL NES from Sweden, Norway, Denmark or Finland | Should work: its controller ports are the same as the North American NES's. Not tried yet |
+| PAL NES from Germany, France, the Netherlands or Spain | **No**, not without a change inside the console (see below) |
+| PAL NES from the UK, Italy, Australia or New Zealand | Not known yet. Use the test below |
+| AV Famicom (the later Famicom with NES-style controller ports) | Should work. Not tried yet |
+| The original Famicom | **No.** Its controllers are built in, so there's no port 2 to plug into |
+
+**Why some European consoles don't work.** Many PAL consoles sold in
+Germany, France, the Netherlands and Spain have extra parts called diodes
+inside their controller ports. The diodes stop the console's signal to the
+controller from reaching the NESP32 unless the plugged-in device helps it
+along, and the NESP32 hat doesn't. These consoles came with PAL
+controllers marked **NES-004E**, which are built to cope with the diodes.
+The same diodes are why a North American controller doesn't work on them.
+
+**The quick test.** Plug an ordinary North American NES controller (model
+**NES-004**) into the console. If it works, the console doesn't have the
+diodes. If it doesn't, the NESP32 won't work on that console either.
+
+A console with the diodes can be changed inside to go around them, after
+which both kinds of controller work on it, and the NESP32 should too
+(not tried yet). That needs
+soldering, so leave it to someone who's done that kind of repair before.
 
 ---
 
@@ -190,7 +222,7 @@ cartridge") and copy it to your flash cartridge's SD card, or to your
 MiSTer, as you would any NES game.
 
 The online games (Dr. Mario, Tetris, Contra, TMNT II, Bubble Bobble,
-Jackal and River City Ransom) are **not** on
+Jackal, River City Ransom and Tecmo Super Bowl) are **not** on
 the cartridge, because they contain the original games. See
 [Chapter 11](#11-playing-online-with-a-friend). Nor is
 [Family BASIC](#family-basic-not-on-the-cartridge), for the same reason.
@@ -455,7 +487,7 @@ Hold **Ctrl**, tap **Enter** or **Esc**, then let go of Ctrl. A key held
 down repeats, as on a computer (except Enter and Esc).
 
 Where a program has a box to type into, the keyboard types into it
-directly: NESpedia's search, Weather's zip code, NES Radar's airport
+directly: NESpedia's search, Weather's place, NES Radar's airport
 code, and Setup's Wi-Fi password and network name. There, **Enter** sends
 what you typed and **Backspace** deletes.
 
@@ -528,20 +560,32 @@ The marker at the right edge shows how far through the article you are.
 
 ### Weather
 
-Current conditions and a 5-day forecast for a **US zip code**, in °F and
-miles per hour. The NESP32 remembers your zip code.
+Current conditions and a 5-day forecast for **a place anywhere in the
+world**. Type a city, a comma, and its state or country:
+
+- `PORTLAND, ME`
+- `DUBLIN, IRELAND`
+
+The comma matters, and a country goes by its name (`PARIS, FRANCE`, not
+`PARIS, FR`). A city alone, such as `PORTLAND`, gets the best-known
+place by that name. The report's first line shows which place was found;
+if it's the wrong one, press **B** and be more specific. The NESP32
+remembers your place.
+
+In the United States the weather is in °F and miles per hour; everywhere
+else in °C and kilometres per hour.
 
 | Controller | What it does |
 |---|---|
-| **Left**, **Right** | Move to the next digit |
-| **Up**, **Down** | Change the digit |
-| **A** or **Start** | Get the weather |
-| **B** | From a report, back to the zip code |
+| **D-pad** | Move over the on-screen keyboard |
+| **A** | Type the key |
+| **B** | On the form, delete the last letter; on a report, back to the form |
+| **Start** | Get the weather |
 | **Select** | Back to the cartridge menu |
 
-On a keyboard, just **type the five digits** and press **Enter**.
-**Backspace** goes back a digit. On a report, typing a digit starts a new
-zip code. The weather refreshes by itself every 15 minutes.
+On a keyboard, just **type the place** and press **Enter**. **Backspace**
+deletes. On a report, typing starts a new place. The weather refreshes by
+itself every 15 minutes.
 
 ### NES Radar
 
@@ -711,8 +755,8 @@ does.
 
 ## 11. Playing online with a friend
 
-Dr. Mario, Tetris, Contra, TMNT II, Bubble Bobble, Jackal and River City
-Ransom have special two-console versions.
+Dr. Mario, Tetris, Contra, TMNT II, Bubble Bobble, Jackal, River City
+Ransom and Tecmo Super Bowl have special two-console versions.
 Each player needs:
 
 - their own NES, with a NESP32 in port 2 and a controller in port 1,
@@ -745,6 +789,7 @@ be handed out ready-made. Instead, you patch your own copy of each game:
 | Bubble Bobble | `bubblebobble_net.bps` | Bubble Bobble (USA) | 163856 bytes, `D3A91B41` |
 | Jackal | `jackal_net.bps` | Jackal (USA) | 131088 bytes, `2E52D091` |
 | River City Ransom | `rcr_net.bps` | River City Ransom (USA) | 262160 bytes, `C3508F7E` |
+| Tecmo Super Bowl | `superbowl_net.bps` | Tecmo Super Bowl (USA) | 393232 bytes, `1F7C5660` |
 
 Both players need the same patched game. Use the patches from the same
 release as your NESP32's firmware. The online games' patches from November
@@ -752,13 +797,15 @@ release as your NESP32's firmware. The online games' patches from November
 both players patch again from the ROM patches page. Contra, TMNT II and
 Jackal play a little faster online with firmware newer than 0.2.0, which
 runs their link to the NESP32 faster; with 0.2.0 they play as before.
-River City Ransom needs firmware 0.3.0 or newer. Ask on the
+River City Ransom needs firmware 0.3.0 or newer, and Tecmo Super Bowl
+0.4.0 or newer, which copies a save from one NESP32 to the other. Ask on the
 [Discord](https://discord.gg/kwSC7pwtmb) if you need help.
 
-Contra, TMNT II, Jackal and River City Ransom need a flash cartridge or
-emulator that supports their cartridge type (MMC3); River City Ransom's
-also has 8 KB of RAM and twice the original's program ROM, which its
-header asks for. Bubble Bobble keeps its own (MMC1), but needs the
+Contra, TMNT II, Jackal, River City Ransom and Tecmo Super Bowl need a
+flash cartridge or emulator that supports their cartridge type (MMC3);
+River City Ransom's and Tecmo Super Bowl's also have twice the original's
+program ROM, and 8 KB of RAM (Tecmo Super Bowl's kept by its battery, as
+the original's is), which their headers ask for. Bubble Bobble keeps its own (MMC1), but needs the
 8 KB of RAM that one can have, which most flash cartridges and emulators
 give it.
 
@@ -767,8 +814,10 @@ give it.
 1. On the title screen, choose the two-player option: **2 PLAYERS**
    (Contra, Tetris), **2 PLAYER GAME** (Dr. Mario), **2 TURTLES**
    (TMNT II), **2P START** (Bubble Bobble), **2 PLAYERS** chosen with
-   **Select** and then **Start** (Jackal), or **2P PLAY** chosen with
-   **Down** and then **Start** (River City Ransom).
+   **Select** and then **Start** (Jackal), **2P PLAY** chosen with
+   **Down** and then **Start** (River City Ransom), or **NETWORK GAME**,
+   below **LOCAL GAME**, chosen with **Down** and then **Start** or **A**
+   (Tecmo Super Bowl).
 2. One player chooses **HOST GAME**. Their screen, and the Stick's screen,
    show a **four-character room code**. Codes never use easily confused
    pairs like 0 and O, or 1 and I.
@@ -809,6 +858,18 @@ version is new: fighting through the town has been played, but the
 shops, the bosses and the ending have not been played online yet. If
 you run into a problem there, tell us on the
 [Discord](https://discord.gg/kwSC7pwtmb).
+
+**Tecmo Super Bowl:** the whole game is played online: the preseason,
+the season, the Pro Bowl and TEAM DATA, from the main menu, where both
+consoles start. The season is in each console's save, so the two must
+have the same one. When they connect, if the two saves differ, player 2
+is asked whether to replace theirs with player 1's (**YES** copies it, a
+few seconds; **NO** goes back to the menu). From then on, each console
+keeps the season as it is played. The **NETWORK GAME** screen says how
+the last online game ended if it ended early: `LAST: GAMES DIFFERED`,
+`OTHER STOPPED` or `OTHER LEFT`. This online version is new: whole season
+games have been played on a real NES and a MiSTer; if you run into a
+problem, tell us on the [Discord](https://discord.gg/kwSC7pwtmb).
 
 ### Playing by address
 

@@ -127,10 +127,13 @@ class SocketNetwork:
     last_path is where the address last joined is kept. stun: the STUN
     servers a meeting asks what the Internet sees of its socket, as (name,
     port); none for a test on one machine, which has no need to. meet_call_s: how long a meeting's
-    call, or the wait for it, is kept up."""
+    call, or the wait for it, is kept up. last_path None: the address is
+    kept nowhere (the caller may keep stick.last). fetches False: the
+    nesp32's fetches, the rendezvous's among them, are left to the caller,
+    which has a fetcher of its own."""
 
     def __init__(self, stick, port=None, last_path=LAST_PATH, stun=STUN_SERVERS,
-                 meet_call_s=MEET_CALL_S):
+                 meet_call_s=MEET_CALL_S, fetches=True):
         self.stick = stick
         self.port = port
         self.last_path = last_path
@@ -138,7 +141,7 @@ class SocketNetwork:
         self.meet_call_s = meet_call_s
         self.error = ""
         self._orders = Orders(stick)
-        self._fetches = HttpFetches(stick)
+        self._fetches = HttpFetches(stick) if fetches else None
         self._punches = stick.punches
         self._meeting = None        # when the meeting's socket was opened, while it waits
         self._asked = {}            # STUN: the id of each request out, by server
@@ -158,6 +161,8 @@ class SocketNetwork:
         stick.last = self._load_last()
 
     def _load_last(self):
+        if self.last_path is None:
+            return None
         try:
             with open(self.last_path, "rb") as handle:
                 data = handle.read()
@@ -166,6 +171,8 @@ class SocketNetwork:
         return data if len(data) == 4 else None
 
     def _save_last(self):
+        if self.last_path is None:
+            return
         try:
             with open(self.last_path, "wb") as handle:
                 handle.write(self.stick.last)
@@ -188,7 +195,8 @@ class SocketNetwork:
 
     def poll(self):
         stick = self.stick
-        self._fetches.poll()
+        if self._fetches is not None:
+            self._fetches.poll()
         if self._orders.new():
             self.close()            # whatever there was is not wanted now
             if stick.conn == CONN_LISTENING:
@@ -225,12 +233,21 @@ class SocketNetwork:
         self.close()
         self.stick.conn = CONN_FAILED
 
-    def _open(self, port):
+    def _open(self, port, any_port=False):
+        """any_port: if this port is taken, any other will do (a meeting's
+        socket, whose port the rendezvous is told: two nesp32s stood in for
+        on one computer cannot both have the firmware's)."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.bind(("0.0.0.0", port))
+            try:
+                sock.bind(("0.0.0.0", port))
+            except OSError as error:
+                if not (any_port and port and error.errno == errno.EADDRINUSE):
+                    raise
+                sock.bind(("0.0.0.0", 0))
             sock.setblocking(False)
         except OSError as error:
+            sock.close()
             self._fail("listen", error)
             return False
         self._sock = sock
@@ -255,7 +272,7 @@ class SocketNetwork:
     # --- a meeting -----------------------------------------------------------------
 
     def _meet(self):
-        if not self._open(self._port()):
+        if not self._open(self._port(), any_port=True):
             return
         self._meeting = time.monotonic()
         self._mapped = {}
@@ -418,13 +435,17 @@ class SocketNetwork:
 class IdleNetwork:
     """HOST and JOIN both connect at once, to an opponent who says what
     this nesp32 says of itself and then, for every tick of buttons sent,
-    sends a tick of none."""
+    sends a tick of none. The tick that carries a digest in place of
+    buttons (one in 256, its low byte FF) it sends back as it came: the
+    opponent's game is the same, and a game whose digests differ gives the
+    session up."""
 
     def __init__(self, stick):
         self.stick = stick
         self.error = ""
         self._orders = Orders(stick)
         self._greeted = 0
+        self._ticks = 0             # ticks of buttons come since the greeting
         self._punches = stick.punches
         self._fetches = stick.fetches
 
@@ -448,7 +469,7 @@ class IdleNetwork:
         stick = self.stick
         self._room()
         if self._orders.new():
-            self._greeted = 0
+            self._greeted = self._ticks = 0
             if stick.conn == CONN_LISTENING:
                 stick.conn = CONN_ANSWERED
             elif stick.conn == CONN_CALLING:
@@ -464,4 +485,8 @@ class IdleNetwork:
         sent = stick.conn_take()
         greeting = sent[:GREETING - self._greeted]
         self._greeted += len(greeting)
-        stick.conn_give(greeting + bytes(len(sent) - len(greeting)))
+        ticks = sent[len(greeting):]
+        answer = bytes(pad if (self._ticks + index) & 0xFF == 0xFF else 0
+                       for index, pad in enumerate(ticks))
+        self._ticks += len(ticks)
+        stick.conn_give(greeting + answer)

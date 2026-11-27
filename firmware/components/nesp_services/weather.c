@@ -1,17 +1,21 @@
-/* WEATHER: the weather at a zip code, as rows for a console's screen
+/* WEATHER: the weather at a place, as rows for a console's screen
  * (docs/PROTOCOL.md).
  *
- * The console names a place by its zip code, five digits. The nesp32 asks
- * Zippopotam where that is and what it is called, once, and keeps the
- * answer over power-off; then asks Open-Meteo for the weather there, now
- * and for five days, and lays it out as NESP_WEATHER_ROWS rows of
- * NESP_WEATHER_COLUMNS tiles, pictures and all. The console asks for the
- * rows by number and draws them: it works nothing out.
+ * The console names a place as it was typed, "PORTLAND, ME" or "DUBLIN,
+ * IRELAND", or by a US zip code. The nesp32 asks Open-Meteo's geocoding
+ * where that is and what it is called, takes the first place it gives,
+ * once, and keeps the answer over power-off; then asks Open-Meteo for the
+ * weather there, now and for five days, and lays it out as
+ * NESP_WEATHER_ROWS rows of NESP_WEATHER_COLUMNS tiles, pictures and all.
+ * The console asks for the rows by number and draws them: it works nothing
+ * out. A place in the United States has its weather in degrees Fahrenheit
+ * and miles an hour, and every other in degrees Celsius and kilometres an
+ * hour.
  *
- * ZIP is both "this zip code" and "how does it stand", as RADAR's AIRPORT
- * is. The console gives each choice an id and may send the same request as
- * often as it likes: an id or digits that are new choose the zip code, and
- * the same again only answers.
+ * PLACE (and ZIP) is both "this place" and "how does it stand", as RADAR's
+ * AIRPORT is. The console gives each choice an id and may send the same
+ * request as often as it likes: an id or a place that is new chooses it,
+ * and the same again only answers.
  *
  * Two tasks meet here, as in radar.c. The link's task runs handle() and
  * tick(), and the report is its alone. The fetch's task runs body() and
@@ -33,32 +37,35 @@
 #define ROWS NESP_WEATHER_ROWS
 #define COLUMNS NESP_WEATHER_COLUMNS
 #define ZIP NESP_WEATHER_ZIP_LEN
+#define QUERY NESP_WEATHER_QUERY_MAX
 #define PLACE NESP_WEATHER_PLACE_MAX
 #define DAYS NESP_WEATHER_DAYS
-#define AGENT "nesp32-weather/0.1 (Weather on a nesp32; +https://github.com/Armitage64/nesp32)"
-/* Where a zip code is: {"places": [{"place name": "Beverly Hills",
- * "longitude": "-118.4065", "latitude": "34.0901", "state abbreviation":
- * "CA", ...}], ...}. A zip code that there is none of is a 404, which the
- * fetch gives as these words. */
-#define WHERE "https://api.zippopotam.us/us/"
+#define AGENT "nesp32-weather/0.2 (Weather on a nesp32; +https://github.com/Armitage64/nesp32)"
+/* Where a place is: {"results": [{"name": "Portland", "latitude": 43.65737,
+ * "longitude": -70.2589, "country_code": "US", "admin1": "Maine", ...}],
+ * ...}, the likeliest first. A place there is none of has no "results". A
+ * zip code is asked for with &countryCode=US, since other countries' post
+ * codes have five digits too. */
+#define WHERE "https://geocoding-api.open-meteo.com/v1/search?count=1&language=en&format=json"
+#define WHERE_US "&countryCode=US"
 #define NO_SUCH "THE SITE SAID 404"
 /* The weather there: {"current": {"temperature_2m": 71.8, ...}, "daily":
  * {"time": ["2026-10-13", ...], "weather_code": [3, ...], ...}, ...}, in
- * degrees Fahrenheit and miles an hour, its days the place's own. */
+ * the place's units, its days the place's own. */
 #define SOURCE "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f" \
                "&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,is_day" \
                "&daily=weather_code,temperature_2m_max,temperature_2m_min" \
-               "&forecast_days=5&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto"
+               "&forecast_days=5&temperature_unit=%s&wind_speed_unit=%s&timezone=auto"
 #define NONSENSE "THE SITE MADE NO SENSE"
 
 #define LANDED_WELL 1
 #define LANDED_BADLY 2
 #define LANDED_NONE 3               /* the site has nothing by that name */
 
-/* What is known of where the zip code is. */
+/* What is known of where the place is. */
 #define PLACE_UNKNOWN 0             /* not asked yet, or being asked */
 #define PLACE_KNOWN 1
-#define PLACE_NONE 2                /* no place has that zip code */
+#define PLACE_NONE 2                /* nothing goes by that name */
 #define PLACE_FAILED 3              /* the asking failed */
 
 /* The report: where on it things are. */
@@ -68,6 +75,30 @@
 #define ROW_DAYS 8                  /* the days' names; under each its picture, high and low */
 #define COLUMN_NOW 4
 static const uint8_t day_column[DAYS] = {1, 7, 13, 19, 25};
+
+/* The places whose weather is in degrees Fahrenheit: the United States and
+ * the territories the geocoding gives countries of their own. */
+static const char imperial_countries[][3] = {"US", "PR", "GU", "VI", "AS", "MP"};
+
+/* A state's two letters, for "PORTLAND, ME": the geocoding gives its name. */
+static const struct {
+    const char *name;
+    char code[3];
+} states[] = {
+    {"ALABAMA", "AL"}, {"ALASKA", "AK"}, {"ARIZONA", "AZ"}, {"ARKANSAS", "AR"},
+    {"CALIFORNIA", "CA"}, {"COLORADO", "CO"}, {"CONNECTICUT", "CT"}, {"DELAWARE", "DE"},
+    {"DISTRICT OF COLUMBIA", "DC"}, {"FLORIDA", "FL"}, {"GEORGIA", "GA"}, {"HAWAII", "HI"},
+    {"IDAHO", "ID"}, {"ILLINOIS", "IL"}, {"INDIANA", "IN"}, {"IOWA", "IA"}, {"KANSAS", "KS"},
+    {"KENTUCKY", "KY"}, {"LOUISIANA", "LA"}, {"MAINE", "ME"}, {"MARYLAND", "MD"},
+    {"MASSACHUSETTS", "MA"}, {"MICHIGAN", "MI"}, {"MINNESOTA", "MN"}, {"MISSISSIPPI", "MS"},
+    {"MISSOURI", "MO"}, {"MONTANA", "MT"}, {"NEBRASKA", "NE"}, {"NEVADA", "NV"},
+    {"NEW HAMPSHIRE", "NH"}, {"NEW JERSEY", "NJ"}, {"NEW MEXICO", "NM"}, {"NEW YORK", "NY"},
+    {"NORTH CAROLINA", "NC"}, {"NORTH DAKOTA", "ND"}, {"OHIO", "OH"}, {"OKLAHOMA", "OK"},
+    {"OREGON", "OR"}, {"PENNSYLVANIA", "PA"}, {"RHODE ISLAND", "RI"},
+    {"SOUTH CAROLINA", "SC"}, {"SOUTH DAKOTA", "SD"}, {"TENNESSEE", "TN"}, {"TEXAS", "TX"},
+    {"UTAH", "UT"}, {"VERMONT", "VT"}, {"VIRGINIA", "VA"}, {"WASHINGTON", "WA"},
+    {"WEST VIRGINIA", "WV"}, {"WISCONSIN", "WI"}, {"WYOMING", "WY"},
+};
 
 static void lock(nesp_weather_t *weather)
 {
@@ -579,6 +610,11 @@ static int weekday(span_t value)
     return (int)((days + 3) % 7);
 }
 
+static bool imperial(const nesp_weather_t *weather)
+{
+    return (weather->here.flags & NESP_WEATHER_PLACE_IMPERIAL) != 0;
+}
+
 /* The reply as a report. False if it is not the weather. */
 static bool lay_out(nesp_weather_t *weather, uint8_t rows[ROWS][COLUMNS], long *now)
 {
@@ -596,21 +632,22 @@ static bool lay_out(nesp_weather_t *weather, uint8_t rows[ROWS][COLUMNS], long *
         return false;
     }
     memset(rows, ' ', ROWS * COLUMNS);
-    memcpy(rows[ROW_PLACE], weather->name, PLACE);
-    memcpy(rows[ROW_PLACE] + COLUMNS - ZIP, weather->zip, ZIP);
+    memcpy(rows[ROW_PLACE], weather->here.name, PLACE);
 
     bool day = !number_of(at_once, "is_day", &value) || value != 0.0;
     const char *words = sky(whole(code), day, &which);
     picture(rows, ROW_NOW, 0, which);
     *now = whole(temperature);
-    snprintf(text, sizeof(text), "%ld%cF  %s", *now, NESP_WEATHER_DEGREE, words);
+    snprintf(text, sizeof(text), "%ld%c%c  %s", *now, NESP_WEATHER_DEGREE,
+             imperial(weather) ? 'F' : 'C', words);
     put(rows[ROW_NOW], COLUMN_NOW, text);
     if (number_of(at_once, "relative_humidity_2m", &value)) {
         snprintf(text, sizeof(text), "HUMIDITY %ld%%", whole(value));
         put(rows[ROW_AIR], COLUMN_NOW, text);
     }
     if (number_of(at_once, "wind_speed_10m", &value)) {
-        snprintf(text, sizeof(text), "WIND %ld MPH", whole(value));
+        snprintf(text, sizeof(text), "WIND %ld %s", whole(value),
+                 imperial(weather) ? "MPH" : "KM/H");
         put(rows[ROW_AIR + 1], COLUMN_NOW, text);
     }
 
@@ -643,7 +680,7 @@ static void show(nesp_weather_t *weather, const char *text)
     weather->hal->show(weather->hal->ctx, 0, text);
 }
 
-/* No zip code's weather is wanted any more, or another's is. */
+/* No place's weather is wanted any more, or another's is. */
 static void drop(nesp_weather_t *weather)
 {
     weather->hal->fetch_stop(weather->hal->ctx);
@@ -676,7 +713,7 @@ static bool begin(nesp_weather_t *weather, const char *url, bool lookup)
 static void reported(nesp_weather_t *weather, uint8_t landed)
 {
     uint8_t rows[ROWS][COLUMNS];
-    char text[32];
+    char text[QUERY + 16];
     long now = 0;
     if (landed != LANDED_WELL) {
         weather->failed = true;
@@ -692,7 +729,8 @@ static void reported(nesp_weather_t *weather, uint8_t landed)
     weather->failed = false;
     weather->held = true;
     weather->serial = next(weather->serial);
-    snprintf(text, sizeof(text), "%.*s: %ldF", ZIP, weather->zip, now);
+    snprintf(text, sizeof(text), "%.*s: %ld%c", weather->here.query_len, weather->here.query,
+             now, imperial(weather) ? 'F' : 'C');
     show(weather, text);
 }
 
@@ -701,34 +739,117 @@ static void fetch(nesp_weather_t *weather, uint32_t now_ms)
     char url[400];
     weather->fetched = true;
     weather->fetch_at = now_ms;
-    snprintf(url, sizeof(url), SOURCE, weather->latitude / 1e6, weather->longitude / 1e6);
+    snprintf(url, sizeof(url), SOURCE, weather->here.latitude / 1e6,
+             weather->here.longitude / 1e6, imperial(weather) ? "fahrenheit" : "celsius",
+             imperial(weather) ? "mph" : "kmh");
     if (!begin(weather, url, false)) {
         weather->failed = true;
         why_is(weather, "THE NESP32 IS BUSY");
     }
 }
 
-/* Ask where the zip code is. */
+/* Ask where the place is: its name as typed, with every character but a
+ * letter or a digit written as %XX. */
 static void look(nesp_weather_t *weather)
 {
-    char url[sizeof(WHERE) + ZIP];
-    memcpy(url, WHERE, sizeof(WHERE) - 1);
-    memcpy(url + sizeof(WHERE) - 1, weather->zip, ZIP);
-    url[sizeof(WHERE) - 1 + ZIP] = 0;
+    static const char hex[] = "0123456789ABCDEF";
+    char url[sizeof(WHERE) + sizeof(WHERE_US) + sizeof("&name=") + 3 * QUERY];
+    size_t at = (size_t)snprintf(url, sizeof(url), "%s%s&name=", WHERE,
+                                 (weather->here.flags & NESP_WEATHER_PLACE_US) ? WHERE_US : "");
+    for (size_t index = 0; index < weather->here.query_len; index++) {
+        uint8_t letter = (uint8_t)weather->here.query[index];
+        if ((letter >= 'A' && letter <= 'Z') || (letter >= '0' && letter <= '9')) {
+            url[at++] = (char)letter;
+        } else {
+            url[at++] = '%';
+            url[at++] = hex[letter >> 4];
+            url[at++] = hex[letter & 0x0F];
+        }
+    }
+    url[at] = 0;
     if (!begin(weather, url, true)) {
         weather->place = PLACE_FAILED;
         why_is(weather, "THE NESP32 IS BUSY");
     }
 }
 
-/* The asking has ended: the place it brought, if it brought one that is a
- * place on the earth, and its name. */
+/* Text for a row, as far as it goes: as tiles(), or nothing. */
+static size_t text_of(span_t object, const char *name, char *out, size_t max)
+{
+    span_t value;
+    return member(object, name, &value) ? tiles(value, out, max) : 0;
+}
+
+/* The report's first row for a place the geocoding gave: "PORTLAND, ME" in
+ * the United States, "DUBLIN, LEINSTER, IE" elsewhere, or "TOKYO, JP" when
+ * its region would not fit or is the city again. As much of the city's
+ * name as leaves room for the rest. */
+static void name_of(span_t first, char name[PLACE])
+{
+    char city[PLACE], region[48], country[2], after[PLACE];
+    size_t city_len = text_of(first, "name", city, sizeof(city));
+    size_t region_len = text_of(first, "admin1", region, sizeof(region));
+    size_t country_len = text_of(first, "country_code", country, sizeof(country));
+    size_t after_len = 0;
+    bool state = false;
+    if (country_len == 2 && memcmp(country, "US", 2) == 0) {
+        for (size_t index = 0; index < sizeof(states) / sizeof(states[0]); index++) {
+            if (region_len == strlen(states[index].name)
+                && memcmp(region, states[index].name, region_len) == 0) {
+                memcpy(after, states[index].code, 2);
+                after_len = 2;
+                state = true;
+                break;
+            }
+        }
+    }
+    if (!state) {
+        if (region_len > 0 && country_len > 0
+            && !(region_len == city_len && memcmp(region, city, city_len) == 0)
+            && city_len + 2 + region_len + 2 + country_len <= PLACE) {
+            memcpy(after, region, region_len);
+            after_len = region_len;
+            after[after_len++] = ',';
+            after[after_len++] = ' ';
+        }
+        memcpy(after + after_len, country, country_len);
+        after_len += country_len;
+    }
+    memset(name, ' ', PLACE);
+    size_t room = after_len > 0 ? PLACE - 2 - after_len : PLACE;
+    size_t length = city_len < room ? city_len : room;
+    memcpy(name, city, length);
+    if (after_len > 0) {
+        if (length > 0) {
+            name[length++] = ',';
+            length++;
+        }
+        memcpy(name + length, after, after_len);
+    }
+}
+
+static bool imperial_country(span_t first)
+{
+    char country[2];
+    if (text_of(first, "country_code", country, sizeof(country)) != 2) {
+        return false;
+    }
+    for (size_t index = 0; index < sizeof(imperial_countries) / sizeof(imperial_countries[0]);
+         index++) {
+        if (memcmp(country, imperial_countries[index], 2) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* The asking has ended: the first place it brought, if it brought one that
+ * is a place on the earth, and its name. */
 static void located(nesp_weather_t *weather, uint8_t landed)
 {
-    span_t reply, places, first, value;
+    span_t reply, results, first;
     double north, east;
-    char name[PLACE];
-    char text[ZIP + 1];
+    char text[QUERY + 1];
     if (landed == LANDED_NONE) {
         weather->place = PLACE_NONE;
         return;
@@ -739,43 +860,32 @@ static void located(nesp_weather_t *weather, uint8_t landed)
         return;
     }
     why_is(weather, NONSENSE);
-    if (!entire(weather->reply, weather->reply_len, &reply)
-        || !member(reply, "places", &places) || !item(places, 0, &first)
-        || !number_of(first, "latitude", &north) || !number_of(first, "longitude", &east)
+    if (!entire(weather->reply, weather->reply_len, &reply)) {
+        return;
+    }
+    if (!member(reply, "results", &results) || !item(results, 0, &first)) {
+        weather->place = PLACE_NONE;    /* the site knows of nothing by that name */
+        return;
+    }
+    if (!number_of(first, "latitude", &north) || !number_of(first, "longitude", &east)
         || !(north >= -90.0 && north <= 90.0) || !(east >= -180.0 && east <= 180.0)) {
         return;
     }
-    /* "BEVERLY HILLS, CA": as much of the name as leaves room for the state. */
-    memset(name, ' ', sizeof(name));
-    size_t length = member(first, "place name", &value) ? tiles(value, name, PLACE - 4) : 0;
-    char state_of[2];
-    if (member(first, "state abbreviation", &value) && tiles(value, state_of, 2) == 2) {
-        if (length > 0) {
-            name[length++] = ',';
-            length++;
-        }
-        memcpy(name + length, state_of, 2);
-    }
-    weather->latitude = (int32_t)nearbyint(north * 1e6);
-    weather->longitude = (int32_t)nearbyint(east * 1e6);
-    memcpy(weather->name, name, PLACE);
+    weather->here.latitude = (int32_t)nearbyint(north * 1e6);
+    weather->here.longitude = (int32_t)nearbyint(east * 1e6);
+    name_of(first, weather->here.name);
+    weather->here.flags = (uint8_t)((weather->here.flags & NESP_WEATHER_PLACE_US)
+                                    | (imperial_country(first) ? NESP_WEATHER_PLACE_IMPERIAL : 0));
     weather->place = PLACE_KNOWN;
-    if (!weather->known || memcmp(weather->known_zip, weather->zip, ZIP) != 0
-        || weather->known_latitude != weather->latitude
-        || weather->known_longitude != weather->longitude
-        || memcmp(weather->known_name, name, PLACE) != 0) {
+    if (!weather->known || memcmp(&weather->kept, &weather->here, sizeof(weather->here)) != 0) {
         weather->known = true;
-        memcpy(weather->known_zip, weather->zip, ZIP);
-        weather->known_latitude = weather->latitude;
-        weather->known_longitude = weather->longitude;
-        memcpy(weather->known_name, name, PLACE);
-        if (weather->hal->zip_keep != NULL) {
-            weather->hal->zip_keep(weather->hal->ctx, weather->zip, weather->latitude,
-                                   weather->longitude, name);
+        weather->kept = weather->here;
+        if (weather->hal->place_keep != NULL) {
+            weather->hal->place_keep(weather->hal->ctx, &weather->kept);
         }
     }
-    memcpy(text, weather->zip, ZIP);
-    text[ZIP] = 0;
+    memcpy(text, weather->here.query, weather->here.query_len);
+    text[weather->here.query_len] = 0;
     show(weather, text);
 }
 
@@ -821,37 +931,72 @@ static bool tick(void *ctx, uint32_t now_ms)
 
 /* --- the link's task: the console's requests ----------------------------------- */
 
-static void zip(nesp_weather_t *weather, const nesp_request_t *request, nesp_reply_t *reply)
+/* A place as the console gave it, made one the nesp32 asks after: its
+ * characters, less the spaces round them. False if there are none, or one
+ * is no character of a row's. */
+static bool query_of(const uint8_t *text, size_t len, uint8_t flags, nesp_weather_place_t *out)
 {
-    if (request->len != 1 + ZIP) {
-        reply->status = NESP_ST_BAD_ARG;
-        return;
+    while (len > 0 && text[0] == ' ') {
+        text++;
+        len--;
     }
-    const uint8_t *digits = request->data + 1;
-    for (size_t index = 0; index < ZIP; index++) {
-        if (digits[index] < '0' || digits[index] > '9') {
-            reply->status = NESP_ST_BAD_ARG;
-            return;
+    while (len > 0 && text[len - 1] == ' ') {
+        len--;
+    }
+    if (len == 0 || len > QUERY) {
+        return false;
+    }
+    memset(out, 0, sizeof(*out));
+    for (size_t index = 0; index < len; index++) {
+        if (text[index] < 0x20 || text[index] > 0x5F) {
+            return false;
         }
+        out->query[index] = (char)text[index];
     }
-    if (!weather->chosen || weather->zip_id != request->data[0]
-        || memcmp(weather->zip, digits, ZIP) != 0) {
+    out->query_len = (uint8_t)len;
+    out->flags = flags;
+    return true;
+}
+
+/* The same text. */
+static bool same_text(const nesp_weather_place_t *one, const nesp_weather_place_t *other)
+{
+    return one->query_len == other->query_len
+           && memcmp(one->query, other->query, one->query_len) == 0;
+}
+
+/* The same place, asked the same way. */
+static bool same_query(const nesp_weather_place_t *one, const nesp_weather_place_t *other)
+{
+    return same_text(one, other)
+           && (one->flags & NESP_WEATHER_PLACE_US) == (other->flags & NESP_WEATHER_PLACE_US);
+}
+
+/* PLACE, and ZIP, which is PLACE for a zip code: choose it if it is new,
+ * and say how it stands. */
+static void choose(nesp_weather_t *weather, uint8_t id, const nesp_weather_place_t *asked,
+                   nesp_reply_t *reply)
+{
+    if (!weather->chosen || weather->choice_id != id || !same_query(&weather->here, asked)) {
         drop(weather);
         weather->chosen = true;
-        weather->zip_id = request->data[0];
-        memcpy(weather->zip, digits, ZIP);
+        weather->choice_id = id;
+        weather->here = *asked;
         weather->place = PLACE_UNKNOWN;
-        if (weather->known && memcmp(weather->known_zip, digits, ZIP) == 0) {
-            weather->latitude = weather->known_latitude;
-            weather->longitude = weather->known_longitude;
-            memcpy(weather->name, weather->known_name, PLACE);
+        /* The place kept, by what was typed: and a zip code kept is the
+         * same place typed in the form, which is how a ROM of places
+         * gets one from firmware that knew only zip codes. */
+        if (weather->known && same_text(&weather->kept, asked)) {
+            weather->here = weather->kept;
+            weather->here.flags = (uint8_t)((weather->kept.flags & ~NESP_WEATHER_PLACE_US)
+                                            | (asked->flags & NESP_WEATHER_PLACE_US));
             weather->place = PLACE_KNOWN;
         }
         show(weather, "");
     }
     weather->asked = true;
     reply->data[0] = state(weather);
-    reply->data[1] = weather->zip_id;
+    reply->data[1] = weather->choice_id;
     reply->data[2] = weather->held ? weather->serial : 0;
     reply->len = 3;
     if (reply->data[0] == NESP_SKY_FAILED) {
@@ -863,6 +1008,33 @@ static void zip(nesp_weather_t *weather, const nesp_request_t *request, nesp_rep
         reply->len = (uint8_t)(3 + length);
     }
     reply->once = true;             /* the same request again asks how it stands now */
+}
+
+static void zip(nesp_weather_t *weather, const nesp_request_t *request, nesp_reply_t *reply)
+{
+    nesp_weather_place_t asked;
+    if (request->len != 1 + ZIP) {
+        reply->status = NESP_ST_BAD_ARG;
+        return;
+    }
+    for (size_t index = 0; index < ZIP; index++) {
+        if (request->data[1 + index] < '0' || request->data[1 + index] > '9') {
+            reply->status = NESP_ST_BAD_ARG;
+            return;
+        }
+    }
+    query_of(request->data + 1, ZIP, NESP_WEATHER_PLACE_US, &asked);
+    choose(weather, request->data[0], &asked, reply);
+}
+
+static void place(nesp_weather_t *weather, const nesp_request_t *request, nesp_reply_t *reply)
+{
+    nesp_weather_place_t asked;
+    if (request->len < 2 || !query_of(request->data + 1, request->len - 1u, 0, &asked)) {
+        reply->status = NESP_ST_BAD_ARG;
+        return;
+    }
+    choose(weather, request->data[0], &asked, reply);
 }
 
 static void row(nesp_weather_t *weather, const nesp_request_t *request, nesp_reply_t *reply)
@@ -877,8 +1049,8 @@ static void row(nesp_weather_t *weather, const nesp_request_t *request, nesp_rep
     reply->data[2] = 0;
     reply->data[3] = request->data[1];
     reply->len = 4;
-    if (!weather->chosen || weather->zip_id != request->data[0]) {
-        return;                     /* another zip code's: the console chooses it again */
+    if (!weather->chosen || weather->choice_id != request->data[0]) {
+        return;                     /* another place's: the console chooses it again */
     }
     weather->asked = true;
     reply->data[0] = state(weather);
@@ -890,17 +1062,33 @@ static void row(nesp_weather_t *weather, const nesp_request_t *request, nesp_rep
     reply->len = 4 + COLUMNS;
 }
 
-/* The digits of the last zip code found, for the console to begin with:
- * five bytes, or none if nothing is kept. */
+/* LAST: the digits of the last place found, if it was a zip code, for a
+ * console from before PLACE to begin with: five bytes, or none. */
 static void last(nesp_weather_t *weather, const nesp_request_t *request, nesp_reply_t *reply)
 {
     if (request->len != 0) {
         reply->status = NESP_ST_BAD_ARG;
         return;
     }
-    if (weather->known) {
-        memcpy(reply->data, weather->known_zip, ZIP);
+    if (weather->known && (weather->kept.flags & NESP_WEATHER_PLACE_US)
+        && weather->kept.query_len == ZIP) {
+        memcpy(reply->data, weather->kept.query, ZIP);
         reply->len = ZIP;
+    }
+    reply->once = true;
+}
+
+/* LAST_PLACE: the last place found, as it was typed, or nothing. */
+static void last_place(nesp_weather_t *weather, const nesp_request_t *request,
+                       nesp_reply_t *reply)
+{
+    if (request->len != 0 || reply->max < QUERY) {
+        reply->status = NESP_ST_BAD_ARG;
+        return;
+    }
+    if (weather->known) {
+        memcpy(reply->data, weather->kept.query, weather->kept.query_len);
+        reply->len = weather->kept.query_len;
     }
     reply->once = true;
 }
@@ -912,11 +1100,17 @@ static void handle(void *ctx, const nesp_request_t *request, nesp_reply_t *reply
     case NESP_WEATHER_ZIP:
         zip(weather, request, reply);
         break;
+    case NESP_WEATHER_PLACE:
+        place(weather, request, reply);
+        break;
     case NESP_WEATHER_ROW:
         row(weather, request, reply);
         break;
     case NESP_WEATHER_LAST:
         last(weather, request, reply);
+        break;
+    case NESP_WEATHER_LAST_PLACE:
+        last_place(weather, request, reply);
         break;
     default:
         reply->status = NESP_ST_NO_OP;
@@ -930,12 +1124,10 @@ static void activate(void *ctx)
     drop(weather);
     weather->chosen = false;
     weather->asked = false;
-    if (!weather->known && weather->hal->zip_last != NULL) {
+    if (!weather->known && weather->hal->place_last != NULL) {
         /* Nothing found since the power came on: what was kept from before. */
-        weather->known = weather->hal->zip_last(weather->hal->ctx, weather->known_zip,
-                                                &weather->known_latitude,
-                                                &weather->known_longitude,
-                                                weather->known_name);
+        weather->known = weather->hal->place_last(weather->hal->ctx, &weather->kept)
+                         && weather->kept.query_len > 0 && weather->kept.query_len <= QUERY;
     }
     weather->timed = false;
 }

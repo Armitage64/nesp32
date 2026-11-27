@@ -51,7 +51,7 @@ USB drive is taken back first, as B does. Setup built as a ROM of its own
 has no menu to go back to, and no Quit.
 
 A Bluetooth keyboard is for the programs that take text: NESpedia's search,
-Weather's zip code, and here a Wi-Fi password. Put it in its pairing mode, then choose PAIR
+Weather's place, and here a Wi-Fi password. Put it in its pairing mode, then choose PAIR
 DEVICE on the Bluetooth screen and the keyboard from the list; there is no
 code to type on it. The nesp32 keeps it, and connects it again whenever a
 program that uses it is running and a key is pressed on it. Only a StickS3

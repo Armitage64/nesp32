@@ -22,3 +22,7 @@
 	path = third_party/NES-Jackal_Disassembly_Fully_Commented
 	url = https://github.com/RayofJay/NES-Jackal_Disassembly_Fully_Commented.git
 	shallow = true
+[submodule "third_party/Tecmo_Super_Bowl_NES_Disassembly"]
+	path = third_party/Tecmo_Super_Bowl_NES_Disassembly
+	url = https://github.com/bruddog/Tecmo_Super_Bowl_NES_Disassembly.git
+	shallow = true

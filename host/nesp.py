@@ -12,6 +12,7 @@ no console.
 
 import ctypes
 import os
+import struct
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -254,7 +255,7 @@ def library():
             getattr(lib, name).argtypes = [ctypes.c_void_p]
         lib.host_arq_last_at.restype = ctypes.c_uint32
         lib.host_arq_last_at.argtypes = [ctypes.c_void_p]
-        lib.host_arq_unsaid.restype = ctypes.c_uint8
+        lib.host_arq_unsaid.restype = ctypes.c_uint16
         lib.host_arq_unsaid.argtypes = [ctypes.c_void_p]
         lib.host_arq_note.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
         lib.host_arq_noted.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
@@ -270,13 +271,23 @@ def library():
                                      ctypes.POINTER(ctypes.c_int32)]
         lib.host_airport_keeps.restype = ctypes.c_uint32
         lib.host_airport_keeps.argtypes = [ctypes.c_void_p]
-        lib.host_set_zip.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int32,
-                                     ctypes.c_int32, ctypes.c_char_p]
-        lib.host_zip.restype = ctypes.c_bool
-        lib.host_zip.argtypes = [ctypes.c_void_p, ctypes.c_char_p,
-                                 ctypes.POINTER(ctypes.c_int32), ctypes.c_char_p]
-        lib.host_zip_keeps.restype = ctypes.c_uint32
-        lib.host_zip_keeps.argtypes = [ctypes.c_void_p]
+        lib.host_set_place.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        lib.host_place.restype = ctypes.c_bool
+        lib.host_place.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        lib.host_place_size.restype = ctypes.c_size_t
+        lib.host_place_keeps.restype = ctypes.c_uint32
+        lib.host_place_keeps.argtypes = [ctypes.c_void_p]
+        lib.host_kept_dump.restype = ctypes.c_bool
+        lib.host_kept_dump.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32),
+                                       ctypes.POINTER(ctypes.c_uint32), ctypes.c_char_p,
+                                       ctypes.POINTER(ctypes.c_uint8), ctypes.c_char_p,
+                                       ctypes.c_char_p]
+        lib.host_set_kept_dump.restype = None
+        lib.host_set_kept_dump.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32,
+                                           ctypes.c_char_p, ctypes.c_uint8, ctypes.c_char_p,
+                                           ctypes.c_char_p]
+        lib.host_dump_keeps.restype = ctypes.c_uint32
+        lib.host_dump_keeps.argtypes = [ctypes.c_void_p]
         lib.host_set_favorites.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint8]
         lib.host_favorites.restype = ctypes.c_int
         lib.host_favorites.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
@@ -789,30 +800,37 @@ class Stick:
     def airport_keeps(self):
         return self._lib.host_airport_keeps(self._host)
 
+    # WEATHER's kept place, as weather.c's nesp_weather_place_t lays it out.
+    PLACE_LAYOUT = "<ii%dsBB2x%ds" % (proto.NESP_WEATHER_QUERY_MAX, proto.NESP_WEATHER_PLACE_MAX)
+
     @property
-    def zip(self):
-        """The zip code the nesp32 keeps over power-off: (its digits, its
-        latitude, its longitude, its place's name), the two in millionths
-        of a degree and the name with no spaces after it. None if it keeps
-        none."""
-        digits = ctypes.create_string_buffer(proto.NESP_WEATHER_ZIP_LEN)
-        place = (ctypes.c_int32 * 2)()
-        name = ctypes.create_string_buffer(proto.NESP_WEATHER_PLACE_MAX)
-        if not self._lib.host_zip(self._host, digits, place, name):
+    def place(self):
+        """The place the nesp32 keeps over power-off: (as it was typed, its
+        latitude, its longitude, its name for the report, its flags), the
+        two in millionths of a degree and the name with no spaces after it.
+        None if it keeps none."""
+        size = self._lib.host_place_size()
+        assert size == struct.calcsize(self.PLACE_LAYOUT)
+        raw = ctypes.create_string_buffer(size)
+        if not self._lib.host_place(self._host, raw):
             return None
-        return digits.raw, place[0], place[1], name.raw.rstrip(b" ")
+        latitude, longitude, query, length, flags, name = struct.unpack(self.PLACE_LAYOUT,
+                                                                        raw.raw)
+        return query[:length], latitude, longitude, name.rstrip(b" "), flags
 
-    @zip.setter
-    def zip(self, kept):
+    @place.setter
+    def place(self, kept):
         if kept is None:
-            self._lib.host_set_zip(self._host, None, 0, 0, None)
-        else:
-            self._lib.host_set_zip(self._host, bytes(kept[0]), kept[1], kept[2],
-                                   bytes(kept[3]).ljust(proto.NESP_WEATHER_PLACE_MAX))
+            self._lib.host_set_place(self._host, None)
+            return
+        query, latitude, longitude, name, flags = kept
+        self._lib.host_set_place(self._host, struct.pack(
+            self.PLACE_LAYOUT, latitude, longitude, bytes(query), len(query), flags,
+            bytes(name).ljust(proto.NESP_WEATHER_PLACE_MAX)))
 
     @property
-    def zip_keeps(self):
-        return self._lib.host_zip_keeps(self._host)
+    def place_keeps(self):
+        return self._lib.host_place_keeps(self._host)
 
     @property
     def favorites(self):
@@ -892,6 +910,30 @@ class Stick:
     def set_rendezvous(self, url):
         self._url = url.encode()
         self._lib.host_set_rendezvous(self._host, self._url)
+
+    @property
+    def kept_dump(self):
+        """The last DUMP as the flash keeps it: a dict of its head and its
+        RAM, or None."""
+        count, tick, version = ctypes.c_uint32(), ctypes.c_uint32(), ctypes.c_uint8()
+        app = ctypes.create_string_buffer(proto.NESP_APP_ID)
+        firmware = ctypes.create_string_buffer(32)
+        ram = ctypes.create_string_buffer(proto.NESP_PEER_DUMP_BYTES)
+        if not self._lib.host_kept_dump(self._host, ctypes.byref(count), ctypes.byref(tick), app,
+                                        ctypes.byref(version), firmware, ram):
+            return None
+        return {"count": count.value, "tick": tick.value, "app": app.raw.rstrip(b"\0").decode(),
+                "version": version.value, "firmware": firmware.value.decode(), "ram": ram.raw}
+
+    def set_kept_dump(self, count, tick, app, version, firmware, ram):
+        """One in the flash already, as from before a power-off."""
+        self._lib.host_set_kept_dump(self._host, count, tick, app.encode().ljust(proto.NESP_APP_ID, b"\0"),
+                                     version, firmware.encode(), bytes(ram))
+
+    @property
+    def dump_keeps(self):
+        """How often a whole DUMP was written to the flash."""
+        return self._lib.host_dump_keeps(self._host)
 
     @property
     def peer_dump(self):
@@ -1121,6 +1163,8 @@ class Stick:
 
 ARQ_NOTE = 4
 ARQ_PACKET = 56
+ARQ_CARRY = 32
+ARQ_HELD = 2048            # bytes kept each way (NESP_ARQ_HELD)
 ARQ_CALL, ARQ_ANSWER, ARQ_DATA, ARQ_BYE = range(4)
 
 

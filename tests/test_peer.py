@@ -551,11 +551,12 @@ def test_the_ram_of_a_console_whose_digest_differed_goes_to_the_log(pair):
     lines = dump_lines(host, at, frames=200)
     dumped = [line for line in lines if line.startswith("dump")]
     assert dumped[0] == ("dump of the console's RAM, as it stood at tick 767, whose digests "
-                         "differed: 2048 bytes")
-    assert len(dumped) == 1 + 2048 // 64
+                         "differed: 2048 bytes; app TEST version 1")
+    assert len(dumped) == 1 + 2048 // 64 + 1
     assert dumped[1] == "dump 0000: " + RAM[:64].hex()
-    assert dumped[-1] == "dump 07c0: " + RAM[0x7C0:].hex()
-    assert bytes.fromhex("".join(line.split(": ")[1] for line in dumped[1:])) == RAM
+    assert dumped[32] == "dump 07c0: " + RAM[0x7C0:].hex()
+    assert dumped[-1] == "dump end"
+    assert bytes.fromhex("".join(line.split(": ")[1] for line in dumped[1:-1])) == RAM
 
 
 def test_the_lines_go_no_faster_than_the_log_takes_them(pair):
@@ -565,7 +566,7 @@ def test_the_lines_go_no_faster_than_the_log_takes_them(pair):
     host.tick(0)
     for now in range(1, p.NESP_PEER_DUMP_EVERY_MS):
         host.tick(now)
-    assert host.watched.startswith("dump of the console's RAM: 2048 bytes")
+    assert host.watched == "dump of the console's RAM: 2048 bytes; app TEST version 1"
     host.tick(p.NESP_PEER_DUMP_EVERY_MS)
     assert host.watched.startswith("dump 0000: ")
 
@@ -578,7 +579,7 @@ def test_a_dump_goes_on_being_said_after_a_hello(pair):
     host.tick(0)
     assert host.hello(services=[PEER]).ok
     lines = dump_lines(host, 20, frames=200)
-    assert lines[-1] == "dump 07c0: " + RAM[0x7C0:].hex()
+    assert lines[-2:] == ["dump 07c0: " + RAM[0x7C0:].hex(), "dump end"]
 
 
 def test_pieces_in_any_order_and_again_end_at_the_last(pair):
@@ -587,7 +588,7 @@ def test_pieces_in_any_order_and_again_end_at_the_last(pair):
     send_dump(host, order=[64, 0, 0, 128] + list(range(192, 2048, 64)))
     lines = dump_lines(host, 0, frames=200)
     assert lines[1] == "dump 0000: " + RAM[:64].hex()
-    assert lines[-1] == "dump 07c0: " + RAM[0x7C0:].hex()
+    assert lines[-2:] == ["dump 07c0: " + RAM[0x7C0:].hex(), "dump end"]
 
 
 def test_a_piece_past_the_end_is_refused(pair):
@@ -598,6 +599,109 @@ def test_a_piece_past_the_end_is_refused(pair):
     assert host.ask(PEER, DUMP, b"\x00\x08").ok        # nothing, at the end: nothing to say
     host.tick(1000)
     assert not host.watched.startswith("dump")
+
+
+# --- the last dump, kept over power-off (kept.c) ------------------------------------
+
+KEPT_FIRST_MS, KEPT_AGAIN_MS, KEPT_TELLINGS = 1000, 60000, 5     # nesp_services.h
+
+
+def kept_lines(stick, at, ms, step=20):
+    """The dump's lines the log is given, a tick each `step` ms."""
+    return [line for line in dump_lines_every(stick, at, ms, step) if line.startswith("dump")]
+
+
+def dump_lines_every(stick, at, ms, step):
+    lines = []
+    count = stick.watch_count
+    for now in range(at, at + ms, step):
+        stick.tick(now)
+        new = stick.watch_count - count
+        count = stick.watch_count
+        if new:
+            lines += stick.watched_lines[-new:]
+    return lines
+
+
+def test_a_whole_dump_is_kept_once_with_what_sent_it(pair):
+    """Once a dump, not a piece: the flash wears."""
+    host, guest = pair
+    connect(host, guest)
+    at = play(host, stream(3, {}), stream(5, {767: 0x3C}), 0, 768)
+    send_dump(host, order=[64, 0, 0, 128] + list(range(192, 2048, 64)))
+    assert host.dump_keeps == 1
+    kept = host.kept_dump
+    assert kept["count"] == 1 and kept["tick"] == 767
+    assert kept["app"] == "TEST" and kept["version"] == 1
+    assert kept["firmware"] != "" and kept["ram"] == RAM
+    other = bytes(reversed(RAM))
+    send_dump(host, ram=other)
+    assert host.dump_keeps == 2
+    assert host.kept_dump["count"] == 2 and host.kept_dump["ram"] == other
+    host.tick(at)
+
+
+def test_none_kept_until_the_last_piece(pair):
+    host, guest = pair
+    connect(host, guest)
+    send_dump(host, order=list(range(0, 2048 - 64, 64)))
+    assert host.dump_keeps == 0 and host.kept_dump is None
+
+
+def test_a_kept_dump_is_said_a_second_after_the_start(stick):
+    """With no console: a page that opened the serial port reset the
+    nesp32, and hears it from the start."""
+    stick.set_kept_dump(3, 767, "TSBO", 2, "0.9.2-4-gabc1234", RAM)
+    assert kept_lines(stick, 0, KEPT_FIRST_MS) == []
+    lines = kept_lines(stick, KEPT_FIRST_MS, 5000)
+    assert lines[0] == ("dump of the console's RAM, kept 3, as it stood at tick 767: 2048 bytes; "
+                        "app TSBO version 2; firmware 0.9.2-4-gabc1234")
+    assert len(lines) == 1 + 2048 // 64 + 1
+    assert lines[1] == "dump 0000: " + RAM[:64].hex()
+    assert lines[32] == "dump 07c0: " + RAM[0x7C0:].hex()
+    assert lines[-1] == "dump end"
+    assert bytes.fromhex("".join(line.split(": ")[1] for line in lines[1:-1])) == RAM
+    assert stick.dump_keeps == 0                # said, not written again
+
+
+def test_a_kept_dump_is_said_each_minute_some_times(stick):
+    stick.set_kept_dump(1, 0, "", 0, "", RAM)
+    lines = kept_lines(stick, 0, KEPT_FIRST_MS + KEPT_AGAIN_MS * (KEPT_TELLINGS + 1), step=50)
+    begins = [line for line in lines if line.startswith("dump of")]
+    assert begins == ["dump of the console's RAM, kept 1: 2048 bytes; app ---- version 0; "
+                      "firmware -"] * KEPT_TELLINGS
+    assert len(lines) == KEPT_TELLINGS * (2048 // 64 + 2)
+
+
+def test_a_hello_begins_the_tellings_again(stick):
+    """A page that connected after the first minutes hears it when the
+    console is switched on again: the cartridge's menu says hello."""
+    stick.set_kept_dump(2, 99, "TSBO", 1, "0.9.2", RAM)
+    done = KEPT_FIRST_MS + KEPT_AGAIN_MS * (KEPT_TELLINGS + 1)
+    kept_lines(stick, 0, done, step=50)
+    assert kept_lines(stick, done, KEPT_AGAIN_MS, step=50) == []
+    assert stick.hello(app=b"CART", version=1).ok
+    at = done + KEPT_AGAIN_MS
+    assert kept_lines(stick, at, KEPT_FIRST_MS - 50, step=50) == []
+    lines = kept_lines(stick, at + KEPT_FIRST_MS - 50, 5000, step=50)
+    assert lines[0].startswith("dump of the console's RAM, kept 2, as it stood at tick 99:")
+    assert lines[-1] == "dump end" and len(lines) == 34
+
+
+def test_nothing_is_said_with_none_kept(stick):
+    assert kept_lines(stick, 0, 3 * KEPT_FIRST_MS) == []
+
+
+def test_a_new_dump_is_said_again_a_minute_after(pair):
+    host, guest = pair
+    connect(host, guest)
+    host.tick(0)
+    send_dump(host)
+    lines = kept_lines(host, 20, KEPT_AGAIN_MS + 5000, step=50)
+    assert lines[0] == "dump of the console's RAM: 2048 bytes; app TEST version 1"     # at once
+    assert lines[34] == ("dump of the console's RAM, kept 1: 2048 bytes; app TEST version 1; "
+                         "firmware %s" % host.kept_dump["firmware"])
+    assert len(lines) == 2 * 34 and lines[-1] == "dump end"
 
 
 # --- short frames ------------------------------------------------------------------
