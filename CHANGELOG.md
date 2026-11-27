@@ -5,37 +5,26 @@
 ## 0.4.0 — 2026-11-26
 
 ### Games
-- Tecmo Super Bowl online added: the whole game, season included, with player 2's save replaced by player 1's when the two differ. Needs this release's firmware (#106)
-- River City Ransom online co-op added, running faster than the original's two-player game on one console (#76)
-- Bubble Bobble online sessions no longer drop at the start or in round 2: each console's leftover RAM from before the session is cleared
+- Tecmo Super Bowl online VS added: the entire game with whole sesons, player 2's saved game gets replaced by player 1's when the two differ. Optimized for improved framerate. Requires firmware 0.4.0 (#106)
+- River City Ransom online co-op added, optimized to run faster than the original's two-player local game (#76)
+- Bubble Bobble bugfixes to prevent game desyncs (#82)
 
 ### Cartridge
-- Weather: the weather for a place anywhere in the world, typed as a city and its state or country ("PORTLAND, ME", "DUBLIN, IRELAND"), in place of a US zip code; in °C and km/h outside the United States. Needs this release's firmware (#101)
-- The cartridge menu says, under its title, when the firmware or the cartridge needs an update: when the two are from different releases, or the web site has a newer one (#80)
-- Throughput test: 298296 baud to the console no longer fails a whole block at random; the test lost count of a block's first byte, not the line (#98)
+- Weather: you can now search for a location anywhere in the world, not just US zip codes. Requires firmware 0.4.0 (#101)
+- Cartridge menu now tells you when new firmware and/or ROM file are available for update (#80)
+- Bugfix for throughput test and jukebox's highest bitrates (#98)
 
 ### Firmware
-- The last crash dump from an online game whose consoles stopped matching is kept over power-off and printed again on the serial port when the nesp32 starts, so it can be collected later without ESP-IDF (#106)
-- Weather finds a place by its name, anywhere in the world, and a zip code kept by an earlier release is kept as a place (#101)
-- The Stick's screen says "Firmware update available" in red, with no console running a program, when the web site has newer firmware
-- Jukebox: sounds made for the two fastest rates (7 and 8 cycles a bit) start every time, where they often played noise or nothing (#98)
-- A game's save can be copied from the console that hosts to the other before an online session, for games whose two consoles must share one (PEER's SAVE ops); and large transfers between two nesp32s go many packets at a time (#106)
-
-### Protocol
-- WEATHER PLACE and LAST_PLACE: the weather at a place named as typed, and the last one found; ZIP and LAST still work. Needs this release's firmware (#101)
+- When consoles desync, a crash dump is saved to ESP32 non-volatile storage and can be collected later on the website (#106)
+- The LCD screen indicates when a new firmware update is available (#79)
+- Implemented game save copy from one console to another for Techmo Super Bowl (#106)
+- NESP32 logo displayed on Stick LCD screen at boot (#75)
 
 ### Other
-- The web site records a nesp32's log in Chrome, Edge or Opera, with no ESP-IDF: a game's crash dump, and the one the nesp32 kept from earlier, go into a GitHub issue with the log's end to paste (#105)
-- The web site's ROM patches are a page instead of a zip: each game's patch to download, the release of the game it needs (size, CRC32 and SHA-1), and how to apply it
-- Mesen emulator support for NESP32 added for local testing and development (#74)
-- Mesen: `nesp32.lua` starts the bridge itself when none is running, and the bridge stops a few seconds after Mesen does (#100)
-- Mesen: the games for two, hosted and joined through the bridge as a nesp32 on this computer's network, by address or by a room's code; two Mesens, a Mesen and a real NES, or a Mesen and an opponent who presses nothing (`--peer idle`) (#102)
-- The computer's idle opponent (`serial_host.py --idle`, and the Mesen bridge's) no longer ends a game after about 4 seconds: it sends back the console's digest (#102)
-- Mesen: a paired keyboard stays paired after Mesen restarts, and NES Radar's airport, Weather's place and Bluesky's favorites are kept as a nesp32 keeps them over power-off (#103)
-- NESP32 logo displayed on Stick LCD screen at boot (#75)
-- The Stick's log says why each online session ended, and Bubble Bobble sends its RAM to the log when the two games differ
-- `firmware/deploy.sh` says what is wrong when ESP-IDF is missing or not installed, instead of stopping without a word, and the README lists ESP-IDF among what building needs (#93)
-- `firmware/deploy.sh` and the tests find ESP-IDF where Espressif's installer puts it, `~/.espressif/v<version>/esp-idf`, as well as in `~/esp/esp-idf`
+- Mesen emulator support for NESP32 added for local testing and development (#74) with PEER support (#102)
+- Mesen lua script starts and stops the NESP32 bridge automatically (#100)
+- Mesen bridge now stores NESP32 saved settings like bluetooth keyboard, radar's airport, and weather's location (#103)
+- firmware/deploy.sh no longer fails silently when ESP-IDF is missing (#93)
 
 ## 0.3.0 — 2026-11-08
 
