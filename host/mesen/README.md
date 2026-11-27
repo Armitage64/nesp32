@@ -19,7 +19,8 @@ Two parts, which talk over a TCP connection:
   (`tests/wire.py`). The hardware under them is this computer's: real
   HTTPS fetches (with a stream's titles, and HTTP's status and headers),
   real time, a Wi-Fi network that is always joined, the computer's
-  keyboard as the Bluetooth keyboard, and the files a ROM keeps.
+  keyboard as the Bluetooth keyboard, the files a ROM keeps, and the
+  connection to another nesp32 for the games for two (PEER).
 
 The board's clock is the console's CPU cycle count, so the link's timing is
 the same as the tests model it, whatever speed Mesen runs at.
@@ -32,19 +33,50 @@ the same as the tests model it, whatever speed Mesen runs at.
 | Setup, NES Radar, NESradio (sound and titles), Weather | working |
 | HTTP (the HTTPS sample's 200 and 404) | working |
 | The Bluetooth keyboard (KBD): pairing in Setup, forgetting, typing in Setup, Weather and the keyboard sample, Ctrl with a key, keys held down | working in a headless MesenCE on Linux; tested against KBD in `tests/test_mesen.py`; not yet tried on Windows |
+| What a nesp32 keeps over power-off, across restarts of Mesen (`bridge-data`) | the paired keyboard and NES Radar's airport tried; Weather's place and Bluesky's favorites tested in `tests/test_mesen.py` |
 | Family BASIC's SAVE and LOAD (TAPE) as files | tested against TAPE in `tests/test_mesen.py`; not yet tried with the game |
-| PEER (the games for two) | not yet |
+| PEER (the games for two): hosting and joining by address and by a room's code, the idle opponent | Tetris and River City Ransom played between Mesen and a nesp32 on a real NES; Dr. Mario played in two headless MesenCEs on macOS, joined by address, some 1330 ticks in step (five digest checks), and against `--peer idle`; tested by address and in a room in `tests/test_mesen.py`; not yet tried in a room between two Mesens, or with Contra, TMNT II, Bubble Bobble or Jackal |
 | Save states, rewind | not supported (Known limits) |
+| The script starting and stopping the bridge | working in a headless MesenCE on macOS, also with the script named as the Script Window names it (its file's name alone); not yet tried in Mesen's window, on Linux, or on Windows (`BRIDGE_COMMAND`) |
 
 ## Setting up
 
 ### 1. The bridge
 
 It needs Python 3 and a C compiler for the firmware's code: Linux, macOS,
-or WSL on Windows. From the top of this repository:
+or WSL on Windows. From the top of this repository, once:
 
 ```sh
 make host                    # on Linux: make host CC=clang
+```
+
+On macOS and Linux that is all: `nesp32.lua`, run from its place in this
+repository, starts the bridge itself when none answers, and the bridge
+stops 5 seconds after the script or Mesen does (`--exit-when-idle`). Its
+log is `bridge.log` in Mesen's folder for the script's data (on macOS
+`~/Library/Application Support/Mesen2/LuaScriptData/nesp32/`), and the
+script's message at the top of the screen names it while the bridge does
+not answer. What the nesp32 keeps over power-off (below) a bridge the
+script starts keeps in `bridge-data` in the same folder, so a paired
+keyboard is still paired the next time Mesen starts.
+Settings at the top of `nesp32.lua`: `BRIDGE_START = false`
+to start it by hand, `BRIDGE_DIR` for a script copied away from the bridge (Mesen's Script
+Window gives a script only its file's name, so the script finds its
+folder in the window's recent scripts, in Mesen's `settings.json`),
+`BRIDGE_PYTHON`, `BRIDGE_DATA` for another folder for what is kept (or
+`false` for none: then it is forgotten when the bridge stops), and
+`BRIDGE_ARGS` for the options below. A bridge already running, started by
+hand, is used as it is and keeps running, with what it was started with.
+
+On Windows the bridge is in WSL, so the script starts it only with
+`BRIDGE_COMMAND` set, such as
+`"wsl.exe python3 ~/nesp32/host/mesen/nesp32_bridge.py"`; this has not
+been tried yet. There the script names no folder for what is kept
+(Mesen's is a Windows path, which WSL's Python cannot use): set
+`BRIDGE_DATA` to one in WSL, such as `"~/nesp32-mesen"`. Otherwise start
+it by hand, as anywhere:
+
+```sh
 python3 host/mesen/nesp32_bridge.py
 ```
 
@@ -60,8 +92,10 @@ does, and follows a redirect only to one of those: a ROM cannot have it
 open a file on this computer.
 
 `--data DIR` keeps what a nesp32 keeps over power-off in that directory:
-which keyboard is paired, and a ROM's files (Family BASIC's SAVE). Without
-it they last as long as the bridge runs.
+which keyboard is paired, a ROM's files (Family BASIC's SAVE), and what
+the programs keep, as a nesp32 does: NES Radar's airport, Weather's place
+and Bluesky's favorites (`kept.json`). Without it they last as long as the
+bridge runs, over a reset of the console but not a restart of the bridge.
 
 The log says what the console asked of the radio, every fetch (with any
 key, token or password in its address left out), and each pairing.
@@ -93,10 +127,45 @@ NESradio's sound may stutter.
 1. Load the cartridge (`build/nesp32.nes` from `make cart`, or the one on
    the [home page](https://nesp32.retrobits.tv/)), or any ROM for a nesp32.
 2. Open `nesp32.lua` in the Script Window and run it. The log says
+   `NESP32: started the bridge` if it had to, then
    `NESP32: connected to ...`, and the programs get past WAITING FOR LINK.
 
 The nesp32's own two buttons are **Insert** (A) and **Delete** (B), out of
 typing mode. `KEY_A` and `KEY_B` at the top of the script change them.
+
+## Games for two (PEER)
+
+The bridge is a nesp32 on this computer's own network, as a nesp32 is on
+Wi-Fi: a netplay ROM (Dr. Mario, Tetris, Contra and the others in
+`apps/`) hosts and joins through it, by address or by a room's code at
+the rendezvous, across the Internet as two nesp32s meet. The other end
+can be another Mesen, on this computer or another, a nesp32 on a real
+NES, or `host/peer_player.py`. The nesp32's address, which HOST GAME shows,
+is this computer's. A firewall may ask, the first time, whether Python
+may take connections.
+
+**Two Mesens on one computer** share one bridge, a nesp32 each. One hosts
+by address (the firmware's UDP port, 6502: one host by address on a
+computer), and the other joins `127.0.0.1`. A room works too, and each
+end of it gets a port of its own. Turn off Mesen's option that pauses it
+while its window is in the background, or the one without focus stands
+still and the other waits for it.
+
+The bridge's options for it, in `BRIDGE_ARGS` when the script starts the
+bridge:
+
+- `--peer idle`: an opponent who is there at once, with no other end, and
+  presses nothing. HOST GAME starts a game. It sends back the console's
+  own digest at the tick that carries one, so the game does not give the
+  session up.
+- `--peer off`: no connection to another nesp32.
+- `--rendezvous URL`: where rooms are met, in place of the firmware's own
+  (`host/rendezvous.py`'s stand-in, or a `wrangler dev`).
+- `--peer-port PORT`: a host by address listens there, and a guest calls
+  there, in place of 6502.
+
+The address last joined is kept as long as the bridge runs, or in
+`--data`'s `peer-last` over restarts.
 
 ## The keyboard
 
@@ -115,8 +184,9 @@ one paired with the computer over Bluetooth.
 real keyboard does with a new nesp32: until Setup has paired it, typing
 mode says `No keyboard paired: Setup > Bluetooth` and nothing typed
 reaches the nesp32. To pair, out of typing mode: Setup's **BLUETOOTH**,
-then **PAIR DEVICE**, and A on `Mesen PC keyboard`. The pairing lasts as
-long as the bridge runs, or over restarts with `--data DIR`.
+then **PAIR DEVICE**, and A on `Mesen PC keyboard`. The pairing is kept
+over restarts of Mesen and the bridge (`--data`, above), unless
+`BRIDGE_DATA = false` or the bridge was started by hand with no `--data`.
 
 **Scroll Lock** or **End** turns typing mode on and off (`TYPING_KEYS`).
 On a Mac, which has neither, **Fn and Right Arrow** is End. Mesen shows
@@ -128,7 +198,7 @@ controller's buttons anyway (PROTOCOL.md, KBD). `PAD_WHILE_TYPING = true`
 leaves controller 1 its keys as well.
 
 To try it, once paired: typing mode, and type on Setup's
-**TYPE HERE** line, in Weather's zip code, NESpedia's search, or
+**TYPE HERE** line, in Weather's place, NESpedia's search, or
 `samplecode/keyboard`.
 
 The script reads the keys once a frame, so a key must be down for a frame
@@ -156,7 +226,8 @@ On the Pi (BlueZ running, `sudo apt-get install python3-evdev`):
 
 It prints its key, made at random the first time and kept in
 `~/.nesp32-bt/key` (readable by its user alone). On the bridge's machine,
-add `--bt-helper PI_ADDRESS:7980 --bt-key KEY` (or set `NESP32_BT_KEY`).
+add `--bt-helper PI_ADDRESS:7980 --bt-key KEY` (or set `NESP32_BT_KEY`),
+in `BRIDGE_ARGS` when the script starts the bridge.
 Without `--bt-helper` nothing changes.
 
 The helper takes a connection only if it starts with that key: one without
@@ -181,10 +252,13 @@ keyboard at a time.
 
 ## Known limits
 
-- **PEER** (the online games for two) is not emulated yet.
 - **Save states and rewind** are not supported: the nesp32's state is in
   the bridge, not in Mesen. A reset, a loaded state or a rewind is a
-  console with a fresh nesp32, whose link starts again.
+  console with a fresh nesp32, whose link starts again. In a game for two
+  it also ends the session.
+- **A game for two at real speed.** Fast-forward makes the other console
+  wait for this one; the bridge answers the other nesp32 while Mesen is
+  paused, so the session lasts, and the other game waits.
 - **Turbo A**: NESradio's A both plays and stops a station, so Turbo A
   (Mesen's default for the keyboard is X; plain A is S) plays it and stops
   it a frame later. Tap plain A.
@@ -198,8 +272,12 @@ keyboard at a time.
 
 `tests/test_mesen.py`, in `make test`: the keyboard's reports to
 characters, held to `keyboard.c`; real Bluetooth with a fake helper; pairing, forgetting and typing through
-the firmware's own KBD; a ROM's files kept and loaded again; and fetches,
-with the test as the site.
+the firmware's own KBD; a ROM's files kept and loaded again; NES Radar's,
+Weather's and Bluesky's kept values back on the next board; fetches,
+with the test as the site; the bridge stopping once no Mesen is
+connected (`--exit-when-idle`); and PEER between two boards, by address
+and in a room at `host/rendezvous.py`'s stand-in, the idle opponent, and a
+paused Mesen's board still answering the other.
 
 ## Running a ROM with no window
 
@@ -220,6 +298,11 @@ runner's own script, so the programs reach the Internet as above, and the
 bridge's log is `bridge.log` beside the shots. Mesen runs faster than real
 time with no window, so a stream's sound has gaps in the log. `MESEN` names the
 program (default: `/Applications/Mesen.app`). Tried with MesenCE on macOS.
+`--bridge-arg` passes an option to the bridge, a word at a time
+(`--bridge-arg=--peer --bridge-arg=idle`). Two runs at once, each with its
+own bridge, one hosting and one joining 127.0.0.1, are a game for two
+with no window (a `--bridge-data` folder whose `peer-last` holds
+`7f 00 00 01` fills in JOIN's address).
 
 `tools/png_diff.py A.png B.png [--out DIFF.png]` says which pixels of two
 shots differ (and draws them in red), to hold two ROMs to the same picture.

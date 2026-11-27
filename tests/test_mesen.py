@@ -1,6 +1,7 @@
 """host/mesen/nesp32_bridge.py, the NESP32 for Mesen's Lua script, with no
 Mesen: the computer's keyboard as the nesp32's Bluetooth keyboard, a
-ROM's files kept, and fetches as the firmware makes them."""
+ROM's files kept, fetches as the firmware makes them, and PEER between two
+boards on this computer."""
 
 import http.server
 import os
@@ -305,6 +306,48 @@ def test_a_roms_files_are_kept_in_the_directory_and_back_on_the_next_board(tmp_p
     assert (tmp_path / "files" / name).read_bytes() == pair_
     again = bridge.Board(bridge.Memory(str(tmp_path)))
     assert again.stick.file(name) == pair_
+
+
+def favorite_added(board):
+    """Bluesky's ADD, which the firmware keeps over power-off."""
+    stick = board.stick
+    assert stick.hello(services=[p.NESP_SVC_BSKY]).ok
+    assert stick.ask(p.NESP_SVC_BSKY, p.NESP_BSKY_ADD, b"@Bsky.App").ok
+    board.remember()
+
+
+@pytest.mark.parametrize("peer", ["off", "idle"])
+def test_what_the_services_keep_is_kept_in_the_directory_and_back_on_the_next_board(tmp_path,
+                                                                                     peer):
+    board = bridge.Board(bridge.Memory(str(tmp_path)), peer=bridge.Peer(peer))
+    favorite_added(board)
+    board.close()
+    assert (tmp_path / "kept.json").exists()
+    again = bridge.Board(bridge.Memory(str(tmp_path)))
+    assert b"bsky.app" in again.stick.favorites
+
+
+def test_without_a_directory_what_is_kept_lasts_while_the_bridge_runs():
+    memory = bridge.Memory()
+    favorite_added(bridge.Board(memory))
+    assert b"bsky.app" in bridge.Board(memory).stick.favorites      # a console reset
+    assert bridge.Board(bridge.Memory()).stick.favorites is None     # a new bridge
+
+
+def test_the_airport_and_the_place_come_back_as_they_were_kept(tmp_path):
+    memory = bridge.Memory(str(tmp_path))
+    memory.keep("airport", [b"KSBA", 34426200, -119840400])
+    memory.keep("place", [b"DUBLIN, IRELAND", 53349800, -6260300, b"Dublin, Ireland", 1])
+    stick = bridge.Board(bridge.Memory(str(tmp_path))).stick
+    assert stick.airport == (b"KSBA", 34426200, -119840400)
+    assert stick.place == (b"DUBLIN, IRELAND", 53349800, -6260300, b"Dublin, Ireland", 1)
+
+
+def test_a_kept_file_that_makes_no_sense_is_as_none(tmp_path):
+    (tmp_path / "kept.json").write_text("{not json")
+    memory = bridge.Memory(str(tmp_path))
+    assert memory.kept == {}
+    assert bridge.Board(memory).stick.airport is None
 
 
 def test_the_pairing_is_kept_in_the_directory(tmp_path):
@@ -690,3 +733,172 @@ def test_the_bridges_uart_holds_what_the_boards_does_and_the_tests_model_is_unto
     assert bridge.Board().port.tx_buffer == bridge.UART_BUFFER == 2048
     assert wire.TX_BUFFER == 256
     assert wire.Port(bridge.Console()).tx_buffer == 256
+
+
+# --- a bridge that stops with Mesen --------------------------------------------
+
+def start_idle_bridge(seconds):
+    """nesp32_bridge.py with --exit-when-idle, on a free port: it and its port."""
+    import subprocess
+    proc = subprocess.Popen(
+        [sys.executable, "-u", os.path.join(HERE, "..", "host", "mesen", "nesp32_bridge.py"),
+         "--port", "0", "--exit-when-idle", str(seconds)],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    line = proc.stdout.readline()
+    assert "listening on" in line, line
+    return proc, int(line.rsplit(":", 1)[1])
+
+
+def test_a_bridge_no_mesen_comes_to_stops():
+    proc, _ = start_idle_bridge(0.5)
+    assert proc.wait(timeout=10) == 0
+
+
+def test_a_bridge_stays_while_mesen_is_connected_and_stops_after_it_goes():
+    proc, port = start_idle_bridge(1)
+    try:
+        conn = socket.create_connection(("127.0.0.1", port))
+        conn.sendall(b"S 100 0\n")
+        assert conn.makefile("rb").readline().startswith(b"R ")
+        time.sleep(2)
+        assert proc.poll() is None
+        conn.close()
+        assert proc.wait(timeout=10) == 0
+    finally:
+        proc.kill()
+        proc.wait()
+
+
+def test_idle_is_counted_from_the_start_and_from_the_last_mesen_to_go():
+    bridge_visitors = bridge.Visitors(0)
+    assert bridge_visitors.idle_for(5) == 5
+    bridge_visitors.come()
+    assert bridge_visitors.idle_for(100) == 0
+    bridge_visitors.go(100)
+    assert bridge_visitors.idle_for(103) == 3
+
+
+# --- PEER: two Mesens, or one and another nesp32 ------------------------------
+
+def peer_board(**options):
+    """A board with PEER on this computer's network, and a ROM that has said
+    hello with PEER."""
+    from test_peer import PEER
+    board = bridge.Board(bridge.Memory(), peer=bridge.Peer("net", stun=(), **options))
+    with board.lock:
+        assert board.stick.hello(app=b"TEST", version=1, services=[PEER]).ok
+    return board
+
+
+@pytest.fixture
+def boards():
+    made = []
+    yield lambda **options: made.append(peer_board(**options)) or made[-1]
+    for board in made:
+        board.close()
+
+
+def asked(board, what, *args):
+    """A request the console makes, between Mesen's syncs."""
+    with board.lock:
+        return what(board.stick, *args)
+
+
+def run(condition, *boards, seconds=5.0):
+    """Mesen syncing each board, the console's clock at real time, until
+    something is so."""
+    import wire
+    started = time.monotonic()
+    while not condition():
+        elapsed = time.monotonic() - started
+        assert elapsed < seconds, "it did not happen"
+        for board in boards:
+            board.sync(1000 + int(elapsed * wire.NESP_CPU_HZ), [])
+        time.sleep(0.002)
+
+
+def test_two_mesens_host_and_join_by_address(boards):
+    from test_peer import HOST, JOIN, PLAYER_1, PLAYER_2, lobby, ticks
+    from test_peer_net import free_port
+    port = free_port()
+    host, guest = boards(port=port), boards(port=port)
+    assert host.address != (192, 168, 0, 32)        # this computer's own, to be called at
+    asked(host, lobby, HOST)
+    asked(guest, lobby, JOIN, bytes((127, 0, 0, 1)))
+    run(lambda: (asked(host, lobby)[0], asked(guest, lobby)[0]) == (PLAYER_1, PLAYER_2),
+        host, guest)
+    assert asked(host, ticks, 0, 0, b"\x80\x40")[0] == 2
+    assert asked(guest, ticks, 0, 0, b"\x01")[0] == 1
+    run(lambda: asked(host, ticks, 2, 0)[3] == b"\x01"
+        and asked(guest, ticks, 1, 0)[3] == b"\x80\x40", host, guest)
+    # The address joined lasts while the bridge runs: the next board has it.
+    assert guest.memory.peer_last == bytes((127, 0, 0, 1))
+    # A Mesen that goes (or a console reset: a new board) says goodbye.
+    guest.close()
+    run(lambda: asked(host, lobby)[0] == p.NESP_LOBBY_FAILED, host)
+
+
+def test_two_mesens_on_one_computer_meet_in_a_room(boards):
+    from rendezvous import FakeRendezvous
+    from test_meet import HOST_ROOM, JOIN_ROOM, room
+    from test_peer import PLAYER_1, PLAYER_2, lobby, ticks
+    from test_peer_net import free_port
+    port = free_port()
+    with FakeRendezvous() as server:
+        # The same port for both, as the firmware names one: the second
+        # meeting's socket takes another.
+        host = boards(rendezvous=server.url, port=port)
+        guest = boards(rendezvous=server.url, port=port)
+        asked(host, room, HOST_ROOM)
+        run(lambda: asked(host, room)[0] == p.NESP_LOBBY_HOSTING, host, guest)
+        code = asked(host, room)[1]
+        asked(guest, room, JOIN_ROOM, code)
+        run(lambda: (asked(host, lobby)[0], asked(guest, lobby)[0]) == (PLAYER_1, PLAYER_2),
+            host, guest, seconds=p.NESP_PEER_POLL_MS / 1000 + 5)
+        assert asked(host, ticks, 0, 0, b"\x80")[0] == 1
+        assert asked(guest, ticks, 0, 0, b"\x01")[0] == 1
+        run(lambda: asked(host, ticks, 1, 0)[3] == b"\x01"
+            and asked(guest, ticks, 1, 0)[3] == b"\x80", host, guest)
+        # The rendezvous was asked by the bridge's own fetcher.
+        assert any("/v1/join/%s" % code.decode() in r for r in server.requests)
+
+
+def test_the_idle_opponent_is_there_at_once_and_the_bridge_fetches_nothing():
+    from test_meet import HOST_ROOM, room
+    from test_peer import PEER, PLAYER_1, lobby, ticks
+    board = bridge.Board(bridge.Memory(), peer=bridge.Peer("idle"))
+    try:
+        with board.lock:
+            assert board.stick.hello(app=b"TEST", version=1, services=[PEER]).ok
+        asked(board, room, HOST_ROOM)
+        run(lambda: asked(board, lobby)[0] == PLAYER_1, board)
+        assert board.fetch is None                  # the opponent's rendezvous answered it
+        assert asked(board, ticks, 0, 0, b"\x80")[0] == 1
+        run(lambda: asked(board, ticks, 1, 0)[3] == b"\x00", board)
+    finally:
+        board.close()
+
+
+def test_a_paused_mesen_keeps_the_other_nesp32_answered(boards, monkeypatch):
+    import peer_net
+    from test_peer import HOST, JOIN, PLAYER_1, PLAYER_2, lobby
+    from test_peer_net import free_port
+    monkeypatch.setattr(peer_net, "GONE_S", 0.5)
+    port = free_port()
+    host, guest = boards(port=port), boards(port=port)
+    asked(host, lobby, HOST)
+    asked(guest, lobby, JOIN, bytes((127, 0, 0, 1)))
+    run(lambda: (asked(host, lobby)[0], asked(guest, lobby)[0]) == (PLAYER_1, PLAYER_2),
+        host, guest)
+    # The guest's Mesen is paused: no syncs, for three times as long as
+    # the host gives a silent end.
+    stop = time.monotonic() + 1.5
+    run(lambda: time.monotonic() >= stop, host)
+    assert asked(host, lobby)[0] == PLAYER_1
+    assert asked(guest, lobby)[0] == PLAYER_2
+
+
+def test_with_peer_off_a_board_has_no_network():
+    board = bridge.Board(bridge.Memory())
+    assert board.network is None
+    board.close()

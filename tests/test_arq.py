@@ -154,7 +154,7 @@ def test_more_than_a_packet_carries_still_arrives():
     one, other = Arq(), Arq()
     sent = stream(8, 90)
     assert one.write(sent) == 90
-    assert one.write(bytes(20)) == 6            # and no more than it can keep
+    assert one.write(bytes(nesp.ARQ_HELD)) == nesp.ARQ_HELD - 90    # and no more than it keeps
     got = bytearray()
     for now in range(0, 400 * MS, MS):
         if one.due(now):
@@ -170,3 +170,58 @@ def test_the_python_and_the_c_agree_on_sizes():
     one = Arq()
     one.write(bytes(96))
     assert len(one.packet(0)) == nesp.ARQ_PACKET
+
+
+def bulk(one, other, data, delay=20 * MS, lose=0.0, seed=1, limit=5.0):
+    """One end writes `data` as fast as it is taken, and each end sends a
+    datagram whenever one is due, but no more than one a millisecond, as
+    the firmware's task does. Returns what the other end read, and how long
+    it took, in microseconds."""
+    rng = random.Random(seed)
+    flying = []
+    got = bytearray()
+    written = 0
+    now = 0
+    for now in range(0, int(limit * 1e6), MS):
+        if written < len(data):
+            written += one.write(data[written:])
+        for side, end in enumerate((one, other)):
+            if end.due(now):
+                packet = end.packet(now)
+                if rng.random() >= lose:
+                    flying.append((now + delay, 1 - side, packet))
+        landed = [item for item in flying if item[0] <= now]
+        flying = [item for item in flying if item[0] > now]
+        for _, side, packet in landed:
+            (one, other)[side].take(now, packet)
+        got += other.read()
+        if len(got) == len(data):
+            break
+    return bytes(got), now
+
+
+def test_a_save_crosses_as_a_window():
+    """8 KB, 20 ms each way: a datagram of 32 bytes a millisecond, and not
+    32 bytes a time there and back (which would take some 10 seconds)."""
+    data = stream(10, 8192)
+    got, took = bulk(Arq(), Arq(), data)
+    assert got == data
+    assert took < 400 * MS
+
+
+def test_a_window_with_packets_lost_still_arrives_whole():
+    data = stream(11, 8192)
+    got, took = bulk(Arq(), Arq(), data, lose=0.1, seed=3)
+    assert got == data
+    assert took < 2000 * MS
+
+
+def test_a_game_byte_after_a_window_still_carries_its_elders():
+    """Within a datagram's worth, every datagram carries all that is not yet
+    said to have come, as before the window."""
+    one = Arq()
+    one.write(b"\x01\x02")
+    first = one.packet(0)
+    one.write(b"\x03")
+    second = one.packet(MS)
+    assert first[24:] == b"\x01\x02" and second[24:] == b"\x01\x02\x03"

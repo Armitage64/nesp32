@@ -14,15 +14,16 @@ eight of them, four tiles each, where the nesp32's rows expect them
 (nesp32's docs/PROTOCOL.md, WEATHER).
 
 Under the header are a status line, and the middle of the screen, which is
-the form a zip code is entered in or the report, row for row as the nesp32
+the form a place is entered in or the report, row for row as the nesp32
 lays it out. Under that, whose weather it is, in a 3 x 5 font, and a foot that says what the buttons do. screen.bin
 is the nametable with the header and that credit on it; screen.inc tells
 the ROM where the rest goes and holds what the ROM itself writes there.
 
-The form's digits are in a box, and the one that Up and Down change
-pulses, as the key under NESpedia's cursor does (../wiki): its square of
-the screen has a palette of its own, and the font's colour in that palette
-is changed every few frames.
+The form's place is in a box, and under it is a keyboard to type it on, as
+NESpedia's search has (../wiki): the D-pad moves over the keys, and the one
+the cursor is on pulses: its square of the screen has a palette of its own,
+and the font's colour in that palette is changed every few frames. Every key
+has such a square to itself, but the space bar, which has four.
 
 A day's name is three letters over its picture, which is two tiles wide,
 so the ROM puts it in tiles of its own: the same letters, half a tile to
@@ -45,13 +46,13 @@ STATUS_COLUMN = (gen_ui.SCREEN_COLUMNS - STATUS_WIDTH) // 2
 # In the order of the ROM's STATUS_* numbers; the one after the last is the
 # nesp32's own words.
 STATUS_TEXT = (("WAITING", "WAITING FOR LINK"), ("NONE", ""), ("NO_WIFI", "NO WI-FI"),
-               ("FINDING", "FINDING THE ZIP CODE"), ("FETCHING", "FETCHING THE WEATHER"),
-               ("NO_ZIP", "NO SUCH ZIP CODE"), ("OLD", "UPDATE NESP32"))
+               ("FINDING", "FINDING THE PLACE"), ("FETCHING", "FETCHING THE WEATHER"),
+               ("NO_PLACE", "NO SUCH PLACE"), ("OLD", "UPDATE NESP32"))
 
 # The middle: the nesp32's rows, which these numbers are (the ROM checks).
 ROWS = 13
 COLUMNS = 28
-ZIP_LEN = 5
+QUERY_MAX = 24                      # characters of a place as typed
 DEGREE = 0x1F
 PICTURE = 0x60
 BODY_ROW = 10
@@ -62,11 +63,15 @@ CREDIT_TILES = 14                   # the tiles it is drawn across
 CREDIT_COLUMN = (gen_ui.SCREEN_COLUMNS - CREDIT_TILES) // 2
 CREDIT_COLOR = 2                    # the sky's light blue
 FOOT_ROW = gen_ui.HELP_ROW
-FOOT_FORM = "A : SUBMIT"
-FOOT_FORM_CART = "A : SUBMIT   SELECT : MENU"     # on the cartridge, Select is its menu again
-FOOT_REPORT = "B : BACK"
-# What the ROM paints, a row at a time: the middle's rows, then the foot.
-PAINT_ROWS = ROWS + 1
+FOOT_ROWS = 2
+FOOT_FORM = ("A:TYPE   B:DELETE", "START:SUBMIT")
+FOOT_FORM_CART = ("A:TYPE   B:DELETE", "START:SUBMIT   SELECT:MENU")   # Select: the cartridge's menu
+FOOT_REPORT = ("B : BACK", "")
+# What the ROM paints, a row at a time: the middle's rows, the foot's, and
+# the row over the middle, where the form says what it is for (and a report
+# has nothing).
+PAINT_ROWS = ROWS + FOOT_ROWS + 1
+PROMPT_PAINT = PAINT_ROWS - 1
 
 # The days, as the nesp32 lays them out: each one's name over its picture,
 # from the same column. Three letters are a tile wider than the picture,
@@ -78,19 +83,34 @@ DAY_NAMES = ("SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT")
 DAY_SHIFT = 4                       # pixels to the left
 DAY_TILES = 4                       # from the column before the name's
 
-# The form, by the middle's rows.
-FORM_TITLE_ROW, FORM_TITLE = 2, "ENTER YOUR ZIP CODE"
-FORM_DIGITS_ROW = 5
-FORM_DIGIT_STEP = 2                 # columns from a digit to the next
-FORM_DIGIT_COLUMN = (COLUMNS - (FORM_DIGIT_STEP * (ZIP_LEN - 1) + 1)) // 2
-FORM_ZIP = "00000"                  # what the form begins with when nothing is kept
-# A box round the digits, one pixel thick, in the light blue: the rows
-# above and below theirs, and two columns clear of them each side.
+# The form, by the middle's rows: the place in a box, with a mark where the
+# next character goes; two places as they are to be typed; and the keys.
+# Over the middle, what it is for, as NESpedia's search says it, over the
+# place's first character.
+FORM_PROMPT = "SEARCH"
+FORM_TEXT_ROW = 1
+FORM_TEXT_COLUMN = (COLUMNS - QUERY_MAX) // 2
+CURSOR = "_"                        # where the next character goes, while there is room
+FORM_EXAMPLES_COLUMN = 4
+FORM_EXAMPLES = ((3, "E.G. PORTLAND, ME"), (4, "  OR DUBLIN, IRELAND"))
+# The keys, KEY_STEP apart both ways so that each has a square of the
+# screen to itself, the first at KEY_COLUMN of KEY_ROW. A space in the last
+# row is the space bar, which is one key: it is drawn as SPACE_TEXT.
+KEYS = ("1234567890-", "QWERTYUIOP'", "ASDFGHJKL,.", "ZXCVBNM    ")
+KEY_ROW, KEY_COLUMN, KEY_STEP = 6, 4, 2
+SPACE_KEY = KEYS[-1].index(" ")     # the space bar's first column
+SPACE_TEXT, SPACE_COLUMN = "SPACE", KEY_COLUMN + KEY_STEP * SPACE_KEY + 1
+CURSOR_KEY = (1, 0)                 # where the cursor begins: on the Q
+# Every character a place may have: the keys' (the ROM checks that the
+# nesp32 takes them all).
+FORM_CHARS = " " + "".join(sorted(set("".join(KEYS)) - {" "}))
+# A box round the place, one pixel thick, in the light blue: the row above
+# it and the row under it, across the middle.
 BOX_COLOR = 2
-BOX_FIRST = FORM_DIGIT_COLUMN - 2   # the first and the last of the middle's columns it crosses
-BOX_LAST = FORM_DIGIT_COLUMN + FORM_DIGIT_STEP * (ZIP_LEN - 1) + 2
+BOX_FIRST, BOX_LAST = 0, COLUMNS - 1    # the first and the last of the middle's columns
+BOX_FIRST_ROW, BOX_LAST_ROW = FORM_TEXT_ROW - 1, FORM_TEXT_ROW + 1
 BOX_LEFT, BOX_RIGHT = 3, 8 * (BOX_LAST - BOX_FIRST) + 4     # x of its sides, from BOX_FIRST
-BOX_TOP, BOX_BOTTOM = 4, 8 * 2 + 2                          # y, from the row above the digits
+BOX_TOP, BOX_BOTTOM = 4, 8 * (BOX_LAST_ROW - BOX_FIRST_ROW) + 3     # y, from its first row
 
 # The palettes: the font is colour 3, white, and a picture has yellow and
 # a light blue besides, which is also the box's and the small font's. The
@@ -100,10 +120,9 @@ PALETTE_SKY = (0x28, 0x21, 0x30)
 PALETTES = (PALETTE_SKY, PALETTE_SKY, gen_ui.PALETTES[gen_ui.PALETTE_RED],
             gen_ui.PALETTES[gen_ui.PALETTE_LOGO])
 PALETTE_TEXT, PALETTE_CURSOR = 0, 1
-# The form's digit that Up and Down change is shown by giving its 2 x 2
-# tiles PALETTE_CURSOR, whose colour 3 (the font's) the ROM steps through
-# these, white to the logo's blues and back: NESpedia's pulse. Every digit
-# has such a square to itself.
+# The cursor's key is shown by giving its 2 x 2 tiles PALETTE_CURSOR, whose
+# colour 3 (the font's) the ROM steps through these, white to the logo's
+# blues and back: NESpedia's pulse.
 PULSE = (0x30, 0x31, 0x21, 0x12, 0x21, 0x31)
 PULSE_ADDRESS = 0x3F00 + 4 * PALETTE_CURSOR + 3
 ATTRIBUTES = gen_ui.NAMETABLE + 0x3C0
@@ -307,8 +326,9 @@ def day_pixels(name):
 
 
 def box_pixels():
-    """The box as a picture of the three rows of tiles it crosses."""
-    picture = [[0] * (8 * (BOX_LAST - BOX_FIRST + 1)) for _ in range(8 * 3)]
+    """The box as a picture of the rows of tiles it crosses."""
+    rows = BOX_LAST_ROW - BOX_FIRST_ROW + 1
+    picture = [[0] * (8 * (BOX_LAST - BOX_FIRST + 1)) for _ in range(8 * rows)]
     for x in range(BOX_LEFT, BOX_RIGHT + 1):
         picture[BOX_TOP][x] = picture[BOX_BOTTOM][x] = BOX_COLOR
     for y in range(BOX_TOP, BOX_BOTTOM + 1):
@@ -316,10 +336,15 @@ def box_pixels():
     return picture
 
 
-def digit_place(index):
-    """(column, row) on the screen of one of the form's digits."""
-    return (BODY_COLUMN + FORM_DIGIT_COLUMN + FORM_DIGIT_STEP * index,
-            BODY_ROW + FORM_DIGITS_ROW)
+def text_place(index):
+    """(column, row) on the screen of one of the form's characters."""
+    return BODY_COLUMN + FORM_TEXT_COLUMN + index, BODY_ROW + FORM_TEXT_ROW
+
+
+def key_place(row, column):
+    """(column, row) on the screen of a key."""
+    return (BODY_COLUMN + KEY_COLUMN + KEY_STEP * column,
+            BODY_ROW + KEY_ROW + KEY_STEP * row)
 
 
 def attribute_cell(column, row):
@@ -328,12 +353,15 @@ def attribute_cell(column, row):
     return (row // 4) * 8 + column // 4, ((row // 2) % 2) * 4 + ((column // 2) % 2) * 2
 
 
-def digit_attributes():
+def key_attributes():
     """(the first attribute byte's index, how many there are, and for each
-    digit which of them it is in and that byte with the digit lit)."""
-    cells = [attribute_cell(*digit_place(index)) for index in range(ZIP_LEN)]
-    if len({(byte, shift) for byte, shift in cells}) != ZIP_LEN:
-        raise ValueError("two digits share a square of the screen")
+    key, row by row, which of them it is in and that byte with it lit)."""
+    cells = [attribute_cell(*key_place(row, column))
+             for row in range(len(KEYS)) for column in range(len(KEYS[0]))]
+    keys = [cell for index, cell in enumerate(cells)
+            if KEYS[index // len(KEYS[0])][index % len(KEYS[0])] != " "]
+    if len(set(keys)) != len(keys) or len(set(cells)) != len(cells):
+        raise ValueError("two keys share a square of the screen")
     first = min(byte for byte, _ in cells)
     count = max(byte for byte, _ in cells) - first + 1
     return first, count, [(byte - first, PALETTE_CURSOR << shift) for byte, shift in cells]
@@ -353,11 +381,11 @@ def build_screen():
                    small_text(CREDIT, 8 * CREDIT_TILES, CREDIT_COLOR))
     # The box's tiles, which the ROM paints with the form: drawn where the
     # form has them, to be given numbers, and taken off again.
-    column, row = BODY_COLUMN + BOX_FIRST, BODY_ROW + FORM_DIGITS_ROW - 1
+    column, row = BODY_COLUMN + BOX_FIRST, BODY_ROW + BOX_FIRST_ROW
     screen.picture(column, row, box_pixels())
     width = BOX_LAST - BOX_FIRST + 1
     screen.box = []
-    for line in range(3):
+    for line in range(BOX_LAST_ROW - BOX_FIRST_ROW + 1):
         start = (row + line) * gen_ui.SCREEN_COLUMNS + column
         screen.box.append(bytes(screen.names[start:start + width]))
         screen.names[start:start + width] = b" " * width
@@ -391,27 +419,39 @@ def palette_data():
     return bytes(data)
 
 
-def form_lines(screen=None):
-    """The form as the ROM paints it, less the digits: the middle's rows,
-    and the foot, as tiles."""
+def form_lines(screen=None, cart=False):
+    """The form as the ROM paints it, less the place: the middle's rows,
+    and the foot's, as tiles."""
     screen = screen or build_screen()
     lines = [""] * PAINT_ROWS
-    lines[FORM_TITLE_ROW] = FORM_TITLE.center(COLUMNS)
-    lines[ROWS] = FOOT_FORM.center(COLUMNS)
+    lines[PROMPT_PAINT] = " " * FORM_TEXT_COLUMN + FORM_PROMPT
+    for row, text in FORM_EXAMPLES:
+        lines[row] = " " * FORM_EXAMPLES_COLUMN + text
+    for row, keys in enumerate(KEYS):
+        line = [" "] * COLUMNS
+        for column, char in enumerate(keys):
+            line[KEY_COLUMN + KEY_STEP * column] = char
+        line = "".join(line)
+        if " " in keys:
+            line = line[:SPACE_COLUMN] + SPACE_TEXT + line[SPACE_COLUMN + len(SPACE_TEXT):]
+        lines[KEY_ROW + KEY_STEP * row] = line
+    for index, text in enumerate(FOOT_FORM_CART if cart else FOOT_FORM):
+        lines[ROWS + index] = text.center(COLUMNS)
     assert all(len(line) <= COLUMNS for line in lines)
     lines = [bytearray(line.ljust(COLUMNS).encode("ascii")) for line in lines]
     for line, tiles in enumerate(screen.box):
-        lines[FORM_DIGITS_ROW - 1 + line][BOX_FIRST:BOX_LAST + 1] = tiles
+        lines[BOX_FIRST_ROW + line][BOX_FIRST:BOX_LAST + 1] = tiles
     return [line.decode("latin-1") for line in lines]
 
 
 def paint_addresses():
     return ([gen_ui.address(BODY_COLUMN, BODY_ROW + row) for row in range(ROWS)]
-            + [gen_ui.address(BODY_COLUMN, FOOT_ROW)])
+            + [gen_ui.address(BODY_COLUMN, FOOT_ROW + row) for row in range(FOOT_ROWS)]
+            + [gen_ui.address(BODY_COLUMN, BODY_ROW - 1)])
 
 
 def screen_include(screen):
-    first, count, lit = digit_attributes()
+    first, count, lit = key_attributes()
     lines = ["; Generated by tools/gen_screen.py. Do not edit.", "",
              "STATUS_ADDR = $%04X" % gen_ui.address(STATUS_COLUMN, STATUS_ROW),
              "STATUS_WIDTH = %d" % STATUS_WIDTH]
@@ -427,22 +467,32 @@ def screen_include(screen):
               "PAINT_ROWS = %d         ; the middle's rows, and the foot" % PAINT_ROWS,
               "PICTURE_TILE = $%02X" % PICTURE,
               "DEGREE_TILE = $%02X" % DEGREE,
-              "FORM_DIGITS_ROW = %d" % FORM_DIGITS_ROW,
+              "FORM_TEXT_ROW = %d" % FORM_TEXT_ROW,
+              "FORM_TEXT_COLUMN = %d" % FORM_TEXT_COLUMN,
+              "FORM_QUERY_MAX = %d" % QUERY_MAX,
+              "CURSOR_TILE = $%02X" % ord(CURSOR),
+              "FOOT_ROWS = %d" % FOOT_ROWS,
+              "PROMPT_PAINT = %d       ; the row over the middle, painted last" % PROMPT_PAINT,
+              "KEY_ROWS = %d" % len(KEYS),
+              "KEY_COLUMNS = %d" % len(KEYS[0]),
+              "SPACE_KEY = %d          ; the space bar's first column, in the last row" % SPACE_KEY,
+              "CURSOR_ROW = %d" % CURSOR_KEY[0],
+              "CURSOR_COLUMN = %d" % CURSOR_KEY[1],
+              "KEY_ATTR_ADDR = $%04X ; the attribute bytes the keys' squares are in"
+              % (ATTRIBUTES + first),
+              "KEY_ATTRS = %d" % count,
               "DAY_ROW = %d" % DAY_ROW,
               "DAYS = %d" % len(DAY_COLUMNS),
               "DAY_NAMES = %d" % len(DAY_NAMES),
               "DAY_TILES = %d" % DAY_TILES,
-              "FORM_DIGIT_COLUMN = %d" % FORM_DIGIT_COLUMN,
-              "FORM_DIGIT_STEP = %d" % FORM_DIGIT_STEP,
-              "DIGIT_ATTR_ADDR = $%04X ; the attribute bytes the digits' squares are in"
-              % (ATTRIBUTES + first),
-              "DIGIT_ATTRS = %d" % count,
               "PULSE_ADDR = $%04X" % PULSE_ADDRESS,
               "PULSE_STEPS = %d" % len(PULSE),
               "", '.segment "RODATA"',
               "pulse_colors: .byte " + ", ".join("$%02X" % color for color in PULSE),
-              "digit_attr: .byte " + ", ".join("%d" % byte for byte, _ in lit),
-              "digit_attr_on: .byte " + ", ".join("$%02X" % value for _, value in lit)]
+              "key_attr: .byte " + ", ".join("%d" % byte for byte, _ in lit),
+              "key_attr_on: .byte " + ", ".join("$%02X" % value for _, value in lit),
+              "key_row_first: .byte " + ", ".join("%d" % (row * len(KEYS[0]))
+                                                  for row in range(len(KEYS)))]
     lines += gen_ui.byte_lines("status_text", text, per_line=STATUS_WIDTH)
     places = paint_addresses()
     lines += ["paint_lo: .byte " + ", ".join("$%02X" % (place & 0xFF) for place in places),
@@ -451,10 +501,14 @@ def screen_include(screen):
     for line in form_lines(screen):
         form += list(line.encode("latin-1"))
     lines += gen_ui.byte_lines("form_text", form, per_line=COLUMNS)
-    lines += gen_ui.byte_lines("report_foot", list(FOOT_REPORT.center(COLUMNS).encode("ascii")),
-                               per_line=COLUMNS)
+    foot = []
+    for text in FOOT_REPORT + ("",):    # and nothing over the middle
+        foot += list(text.center(COLUMNS).encode("ascii"))
+    lines += gen_ui.byte_lines("report_foot", foot, per_line=COLUMNS)
+    lines.append("report_foot_last: .byte " + ", ".join(
+        "%d" % (COLUMNS * (index + 1) - 1) for index in range(FOOT_ROWS + 1)))
     lines += gen_ui.byte_lines("form_foot_cart",
-                               list(FOOT_FORM_CART.center(COLUMNS).encode("ascii")),
+                               list(FOOT_FORM_CART[-1].center(COLUMNS).encode("ascii")),
                                per_line=COLUMNS)
     lines.append("day_column: .byte " + ", ".join("%d" % column for column in DAY_COLUMNS))
     names, tiles = [], []
@@ -463,7 +517,8 @@ def screen_include(screen):
         tiles += list(screen.days[name])
     lines += gen_ui.byte_lines("day_names", names, per_line=DAY_TILES)
     lines += gen_ui.byte_lines("day_tiles", tiles, per_line=DAY_TILES)
-    lines += gen_ui.byte_lines("form_zip", list(FORM_ZIP.encode("ascii")))
+    lines += gen_ui.byte_lines("key_chars", list("".join(KEYS).encode("ascii")),
+                               per_line=len(KEYS[0]))
     return "\n".join(lines) + "\n"
 
 
@@ -480,7 +535,7 @@ def sample_report():
     degree = chr(DEGREE)
     days = (partly, sun, rain, storm, snow)
     return [line.ljust(COLUMNS) for line in (
-        "BEVERLY HILLS, CA      90210",
+        "PORTLAND, ME",
         "",
         partly[0] + "  72" + degree + "F  PARTLY CLOUDY",
         partly[1] + "  HIGH 74" + degree + "  LOW 55" + degree,
@@ -496,16 +551,19 @@ def sample_report():
     )]
 
 
-def with_form(screen, digits=FORM_ZIP, cursor=0):
-    """The form, with one digit in the cursor's palette."""
+def with_form(screen, text="", key=CURSOR_KEY):
+    """The form, with a place in it and the cursor on a key."""
     out = screen.copy()
     for row, line in enumerate(form_lines(screen)):
         place = paint_addresses()[row] - gen_ui.NAMETABLE
         out.text(place % gen_ui.SCREEN_COLUMNS, place // gen_ui.SCREEN_COLUMNS, line)
-    for index, digit in enumerate(digits):
-        out.text(*digit_place(index), digit)
-    byte, shift = attribute_cell(*digit_place(cursor))
-    out.attributes[byte] |= PALETTE_CURSOR << shift
+    out.text(*text_place(0), (text + (CURSOR if len(text) < QUERY_MAX else "")))
+    first, _, lit = key_attributes()
+    row, column = key
+    columns = (range(SPACE_KEY, len(KEYS[0])) if KEYS[row][column] == " " else (column,))
+    for each in columns:
+        byte, value = lit[row * len(KEYS[0]) + each]
+        out.attributes[first + byte] |= value
     return out
 
 
@@ -513,7 +571,8 @@ def with_report(screen, rows):
     out = screen.copy()
     for row, line in enumerate(on_screen(rows, screen)):
         out.text(BODY_COLUMN, BODY_ROW + row, line)
-    out.text(BODY_COLUMN, FOOT_ROW, FOOT_REPORT.center(COLUMNS))
+    for index, text in enumerate(FOOT_REPORT):
+        out.text(BODY_COLUMN, FOOT_ROW + index, text.center(COLUMNS))
     return out
 
 
@@ -541,7 +600,7 @@ def main(argv=None):
         gen_ui.write_png(args.preview, render(with_report(screen, sample_report())))
         base, extension = os.path.splitext(args.preview)
         gen_ui.write_png(base + "-form" + extension,
-                         render(with_form(screen, "90210", 2), pulse=2))
+                         render(with_form(screen, "PORTLAND, ME", (3, 9)), pulse=2))
     return 0
 
 

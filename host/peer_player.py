@@ -57,10 +57,22 @@ STATES = {p.NESP_LOBBY_NO_WIFI: "no network", p.NESP_LOBBY_IDLE: "idle",
           p.NESP_LOBBY_FAILED: "failed", p.NESP_LOBBY_MEETING: "meeting"}
 # Each game's NESP_APP_VERSION as its builds now say it: a room is met only
 # by the same game at the same version.
-VERSIONS = {"TMN2": 2, "CNTR": 2, "DRMA": 3, "TTRS": 2, "BUBL": 2, "JACK": 2, "RIVR": 1}
+VERSIONS = {"TMN2": 2, "CNTR": 2, "DRMA": 3, "TTRS": 2, "BUBL": 2, "JACK": 2, "RIVR": 1,
+            "TSBO": 1}
 # Ticks a second, where a game's tick is not a frame: River City Ransom's
 # is a pass of its main loop, two frames.
 TICKS_PER_S = {"RIVR": 30}
+# The games whose two consoles have the same save before the first tick
+# (PEER's SAVE, docs/PROTOCOL.md), and its length: Tecmo Super Bowl's
+# SAVE_LENGTH (apps/superbowl/net/net_ram.inc). This side has none of its
+# own, so it joins, says its save differs, and takes the console's.
+SAVES = {"TSBO": 6763}
+
+SAVE_STATES = {p.NESP_SAVE_WAITING: "save: waiting for the console's",
+               p.NESP_SAVE_DIFFERENT: "save: the console's coming (its player says yes)",
+               p.NESP_SAVE_SAME: "save: the same",
+               p.NESP_SAVE_DONE: "save: taken",
+               p.NESP_SAVE_GONE: "save: the session was lost"}
 
 WHYS = {p.NESP_MEET_NO_SERVER: "the rendezvous could not be asked",
         p.NESP_MEET_NO_ROOM: "there is no room of that code",
@@ -126,6 +138,19 @@ class Player:
         return True
 
 
+def take_save(stick, length):
+    """One step of the save's crossing, for a side with no save of its own:
+    a sum no save has (0), so the host's comes, which its nesp32 takes as
+    it comes, and then the copy said done. Returns how the two stand
+    (NESP_SAVE_*): SAME or DONE, and the ticks may begin."""
+    reply = stick.ask(PEER, p.NESP_PEER_SAVE, bytes((0, 0, length & 0xFF, length >> 8)))
+    state = reply.payload[0] if reply.ok and reply.payload else p.NESP_SAVE_WAITING
+    if state == p.NESP_SAVE_DIFFERENT:
+        reply = stick.ask(PEER, p.NESP_PEER_SAVE_DONE)
+        state = reply.payload[0] if reply.ok and reply.payload else state
+    return state
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("order", choices=("HOST", "JOIN"))
@@ -181,7 +206,11 @@ def main(argv=None):
     print("%s v%d%s at %s, as %s" % (args.app.upper(), args.version, " PAL" if args.pal else "",
                                      socket.inet_ntoa(address), "a room" if room else "an address"))
 
+    save_length = SAVES.get(args.app)
+    if save_length and args.order == "HOST":
+        parser.error("%s's consoles copy the host's save: JOIN the console's room" % args.app)
     player = Player(args.play, ticks_per_s=TICKS_PER_S.get(args.app, 60))
+    saved = not save_length
     said = None
     asked = 0.0
     shown = 0.0
@@ -208,6 +237,17 @@ def main(argv=None):
                     said = line
                     print(line)
                 playing = state in (p.NESP_LOBBY_HOST, p.NESP_LOBBY_GUEST)
+            elif not saved:
+                if now - asked >= STATUS_S:
+                    asked = now
+                    state = take_save(stick, save_length)
+                    line = SAVE_STATES.get(state, str(state))
+                    if line != said:
+                        said = line
+                        print(line)
+                    if state == p.NESP_SAVE_GONE:
+                        return 1
+                    saved = state in (p.NESP_SAVE_SAME, p.NESP_SAVE_DONE)
             else:
                 if not player.exchange(stick):
                     print("\nthe other console is gone, after %d ticks" % len(player.theirs))

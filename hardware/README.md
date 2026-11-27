@@ -18,14 +18,18 @@ To build one step by step, with the checks to run before you plug it in, follow 
 * Outer Copper Weight: 1 oz
 
 ## Bill of Materials
-* 2 x 2N3904 Transistors (see note below!)
-* 1 x 1K Axial-0.3 Resistor
-* 2 x 10K Axial-0.3 Resistors
-* 1 x 3.3K Axial-0.3 Resistor
-* 1 x 100k Axial-0.3 Resistor
-* 2 x 100pF ±5% C0G/NP0 ceramic capacitors (optional), radial through-hole, 2.5mm lead spacing, 50V or higher
-* 1 x 8-pin 2.54mm 90 Degree Right Angle Single Row Male Pin Header (reverse) [Amazon](https://amzn.to/4e4FZ7i)
-* 1 x NES Controller Pigtail [Amazon](https://amzn.to/4dVqi2r)
+
+| Qty | Part | Notes |
+|---:|---|---|
+| 1 | NESP32 hat PCB | Download the Gerber file here or [order from PCBWay](https://www.pcbway.com/project/shareproject/NESP32_Hat_for_M5_StickS3_d23db4e5.html) |
+| 2 | 2N3904 NPN transistors | See note below |
+| 1 | 1 kΩ resistor | Axial-0.3 |
+| 2 | 10 kΩ resistors | Axial-0.3 |
+| 1 | 3.3 kΩ resistor | Axial-0.3 |
+| 1 | 100 kΩ resistor | Axial-0.3 |
+| 2 | 100 pF ceramic capacitors | ±5% C0G/NP0, 50 V, radial 2.5mm lead spacing, optional - see note below |
+| 1 | 8-pin header | 2.54mm 90 Degree Right Angle Single Row Male Pin Header (reverse) [Amazon](https://amzn.to/4e4FZ7i) |
+| 1 | NES controller pigtail | or a controller extension cable cut such as [Amazon](https://amzn.to/4dVqi2r) |
 
 ## Important Notes
 * It is recommended to use additional flux when soldering in the transistors due to the small pads
@@ -33,7 +37,7 @@ To build one step by step, with the checks to run before you plug it in, follow 
 * The two optional 100pF speed-up capacitors allow cheap/bulk 2N3904 transistors from Amazon/Aliexpress to reach the fastest link speeds. High quality parts from vendors such as Digikey or Mouser don't need them
 
 
-<img src="pcb_top.png" width=49%> <img src="pcb_bottom.png" width=49%>
+<img src="pcb_top.webp" width=49%> <img src="pcb_bottom.webp" width=49%>
 
 RetroBits on YouTube - https://youtube.com/retrobitstv
 

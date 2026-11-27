@@ -13,7 +13,7 @@ extern "C" {
 const nesp_hal_t *radio_hal(void);
 
 /* Open the settings kept in flash and read what is kept there: the screen's
- * way up, RADAR's airport, WEATHER's zip code and the console's clock.
+ * way up, RADAR's airport, WEATHER's place and the console's clock.
  * Before radio_start, and before anything is drawn. */
 void radio_settings(void);
 

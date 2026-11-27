@@ -57,16 +57,19 @@ typedef struct {
     char airport[4];
     int32_t airport_place[2];       /* latitude and longitude, in millionths of a degree */
     uint32_t airport_keeps;
-    /* The zip code kept likewise. */
-    bool have_zip;
-    char zip[NESP_WEATHER_ZIP_LEN];
-    int32_t zip_place[2];
-    char zip_name[NESP_WEATHER_PLACE_MAX];
-    uint32_t zip_keeps;
+    /* WEATHER's place kept likewise. */
+    bool have_place;
+    nesp_weather_place_t place;
+    uint32_t place_keeps;
     /* BSKY's favorites kept likewise. */
     bool have_favorites;
     nesp_bsky_favorites_t favorites;
     uint32_t favorites_keeps;
+    /* The last DUMP kept likewise, with its RAM. */
+    bool have_dump;
+    nesp_dump_head_t dump_head;
+    uint8_t dump_ram[NESP_PEER_DUMP_BYTES];
+    uint32_t dump_keeps;
     size_t alloc_most;              /* set by the caller: no more than this at once; 0 for any */
     uint32_t allocated;             /* blocks handed out and not given back */
     int locked;
@@ -683,16 +686,13 @@ static void hal_airport_keep(void *ctx, const char *code, int32_t latitude, int3
     host->airport_keeps++;
 }
 
-static bool hal_zip_last(void *ctx, char *zip, int32_t *latitude, int32_t *longitude, char *name)
+static bool hal_place_last(void *ctx, nesp_weather_place_t *out)
 {
     host_t *host = ctx;
-    if (host->have_zip) {
-        memcpy(zip, host->zip, sizeof(host->zip));
-        *latitude = host->zip_place[0];
-        *longitude = host->zip_place[1];
-        memcpy(name, host->zip_name, sizeof(host->zip_name));
+    if (host->have_place) {
+        *out = host->place;
     }
-    return host->have_zip;
+    return host->have_place;
 }
 
 static bool hal_favorites_last(void *ctx, nesp_bsky_favorites_t *out)
@@ -712,16 +712,31 @@ static void hal_favorites_keep(void *ctx, const nesp_bsky_favorites_t *favorites
     host->favorites_keeps++;
 }
 
-static void hal_zip_keep(void *ctx, const char *zip, int32_t latitude, int32_t longitude,
-                         const char *name)
+static bool hal_dump_last(void *ctx, nesp_dump_head_t *head, uint8_t *ram)
 {
     host_t *host = ctx;
-    host->have_zip = true;
-    memcpy(host->zip, zip, sizeof(host->zip));
-    host->zip_place[0] = latitude;
-    host->zip_place[1] = longitude;
-    memcpy(host->zip_name, name, sizeof(host->zip_name));
-    host->zip_keeps++;
+    if (host->have_dump) {
+        *head = host->dump_head;
+        memcpy(ram, host->dump_ram, sizeof(host->dump_ram));
+    }
+    return host->have_dump;
+}
+
+static void hal_dump_keep(void *ctx, const nesp_dump_head_t *head, const uint8_t *ram)
+{
+    host_t *host = ctx;
+    host->have_dump = true;
+    host->dump_head = *head;
+    memcpy(host->dump_ram, ram, sizeof(host->dump_ram));
+    host->dump_keeps++;
+}
+
+static void hal_place_keep(void *ctx, const nesp_weather_place_t *place)
+{
+    host_t *host = ctx;
+    host->have_place = true;
+    host->place = *place;
+    host->place_keeps++;
 }
 
 static bool hal_peer_last(void *ctx, uint8_t *address)
@@ -785,10 +800,12 @@ host_t *host_new(void)
     host->hal.peer_keep = hal_peer_keep;
     host->hal.airport_last = hal_airport_last;
     host->hal.airport_keep = hal_airport_keep;
-    host->hal.zip_last = hal_zip_last;
-    host->hal.zip_keep = hal_zip_keep;
+    host->hal.place_last = hal_place_last;
+    host->hal.place_keep = hal_place_keep;
     host->hal.favorites_last = hal_favorites_last;
     host->hal.favorites_keep = hal_favorites_keep;
+    host->hal.dump_last = hal_dump_last;
+    host->hal.dump_keep = hal_dump_keep;
     host->hal.peer_rtt = hal_peer_rtt;
     host->hal.peer_note = hal_peer_note;
     host->hal.peer_noted = hal_peer_noted;
@@ -1202,30 +1219,57 @@ bool host_airport(const host_t *host, char *code, int32_t *place)
 
 uint32_t host_airport_keeps(const host_t *host) { return host->airport_keeps; }
 
-/* The zip code a nesp32 has kept from before it was switched on, if any:
- * its digits, where it is, and its place's name with spaces after it. */
-void host_set_zip(host_t *host, const char *zip, int32_t latitude, int32_t longitude,
-                  const char *name)
+/* The place a nesp32 has kept from before it was switched on, if any, as
+ * WEATHER keeps one (nesp_weather_place_t, whole). */
+void host_set_place(host_t *host, const nesp_weather_place_t *place)
 {
-    host->have_zip = zip != NULL;
-    if (zip != NULL) {
-        memcpy(host->zip, zip, sizeof(host->zip));
-        host->zip_place[0] = latitude;
-        host->zip_place[1] = longitude;
-        memcpy(host->zip_name, name, sizeof(host->zip_name));
+    host->have_place = place != NULL;
+    if (place != NULL) {
+        host->place = *place;
     }
 }
 
-bool host_zip(const host_t *host, char *zip, int32_t *place, char *name)
+bool host_place(const host_t *host, nesp_weather_place_t *out)
 {
-    memcpy(zip, host->zip, sizeof(host->zip));
-    place[0] = host->zip_place[0];
-    place[1] = host->zip_place[1];
-    memcpy(name, host->zip_name, sizeof(host->zip_name));
-    return host->have_zip;
+    *out = host->place;
+    return host->have_place;
 }
 
-uint32_t host_zip_keeps(const host_t *host) { return host->zip_keeps; }
+size_t host_place_size(void) { return sizeof(nesp_weather_place_t); }
+
+uint32_t host_place_keeps(const host_t *host) { return host->place_keeps; }
+
+/* The last DUMP as the flash keeps it. False: none. */
+bool host_kept_dump(const host_t *host, uint32_t *count, uint32_t *tick, char *app,
+                    uint8_t *app_version, char *firmware, uint8_t *ram)
+{
+    if (!host->have_dump) {
+        return false;
+    }
+    *count = host->dump_head.count;
+    *tick = host->dump_head.tick;
+    memcpy(app, host->dump_head.app, sizeof(host->dump_head.app));
+    *app_version = host->dump_head.app_version;
+    memcpy(firmware, host->dump_head.firmware, sizeof(host->dump_head.firmware));
+    memcpy(ram, host->dump_ram, sizeof(host->dump_ram));
+    return true;
+}
+
+/* One in the flash already, as from before a power-off: before the first tick. */
+void host_set_kept_dump(host_t *host, uint32_t count, uint32_t tick, const char *app,
+                        uint8_t app_version, const char *firmware, const uint8_t *ram)
+{
+    memset(&host->dump_head, 0, sizeof(host->dump_head));
+    host->dump_head.count = count;
+    host->dump_head.tick = tick;
+    memcpy(host->dump_head.app, app, sizeof(host->dump_head.app));
+    host->dump_head.app_version = app_version;
+    snprintf(host->dump_head.firmware, sizeof(host->dump_head.firmware), "%s", firmware);
+    memcpy(host->dump_ram, ram, sizeof(host->dump_ram));
+    host->have_dump = true;
+}
+
+uint32_t host_dump_keeps(const host_t *host) { return host->dump_keeps; }
 
 /* BSKY's favorites, as a nesp32 has kept them from before it was switched
  * on: count handles of NESP_BSKY_HANDLE_MAX bytes each, or NULL for none. */
@@ -1309,7 +1353,7 @@ int host_arq_take(nesp_arq_t *arq, uint32_t now, const uint8_t *data, size_t len
 uint32_t host_arq_rtt(const nesp_arq_t *arq) { return arq->rtt; }
 uint32_t host_arq_rtt_last(const nesp_arq_t *arq) { return arq->rtt_last; }
 uint32_t host_arq_rtt_least(const nesp_arq_t *arq) { return arq->rtt_least; }
-uint8_t host_arq_unsaid(const nesp_arq_t *arq) { return arq->out_len; }
+uint16_t host_arq_unsaid(const nesp_arq_t *arq) { return arq->out_len; }
 uint32_t host_arq_last_at(const nesp_arq_t *arq) { return arq->last_at; }
 uint32_t host_arq_rtt_count(const nesp_arq_t *arq) { return arq->rtt_count; }
 void host_arq_note(nesp_arq_t *arq, const uint8_t *note) { memcpy(arq->note_out, note, NESP_ARQ_NOTE); }

@@ -10,11 +10,18 @@ This side is the NESP32 itself: the board's own firmware (its link and
 services, built for a computer as nesp32's build/libnesp_host) behind
 nesp32's own line model (tests/wire.py), with real Internet fetches, real
 time, a Wi-Fi network that is always there, a Bluetooth keyboard that is
-the computer's own (what Mesen's window is typed on, in typing mode), and
-the files a ROM keeps (Family BASIC's SAVE), in a directory if one is given.
+the computer's own (what Mesen's window is typed on, in typing mode), the
+files a ROM keeps (Family BASIC's SAVE), in a directory if one is given,
+and PEER's connection to another nesp32 on this computer's own network
+(host/peer_net.py), across the Internet as a nesp32's is.
 
     nesp32_bridge.py [--host 127.0.0.1] [--port 7878] [--nesp32 /path/to/nesp32]
                      [--data DIR] [--bt-helper HOST:PORT --bt-key KEY]
+                     [--exit-when-idle SECONDS]
+                     [--peer net|idle|off] [--rendezvous URL] [--peer-port PORT]
+
+nesp32.lua starts it itself, with --exit-when-idle, when none answers on
+this computer: it then stops once no Mesen has been connected for that long.
 
 Protocol, one line each way, ASCII:
   Mesen -> bridge   S <cycle> <n> <c1> <l1> ... <cn> <ln>
@@ -34,6 +41,7 @@ Protocol, one line each way, ASCII:
 """
 
 import argparse
+import json
 import os
 import queue
 import re
@@ -85,14 +93,21 @@ def default_nesp32():
 def load_nesp32(root=None):
     """Import nesp32's protocol, host library and line model, from a
     checkout with `make host` done (or, with no root, from wherever the
-    path already finds them)."""
+    path already finds them). $NESP_BUILD, when set, is looked in before
+    the checkout's build/, as host/nesp.py does: the tests build there."""
     if root is not None:
         for sub in ("host", "build", "tests"):
             sys.path.insert(0, os.path.join(root, sub))
-    global nesp, proto, wire
+    if os.environ.get("NESP_BUILD"):
+        sys.path.insert(0, os.environ["NESP_BUILD"])
+    global nesp, proto, wire, peer_net
     import nesp_proto as proto
     import nesp
+    import peer_net
     import wire
+    for name in dir(nesp):
+        if name.startswith("CONN_") and isinstance(getattr(nesp, name), int):
+            CONN_NAMES[getattr(nesp, name)] = name[5:]
 
 
 # --- the keyboard ---------------------------------------------------------------
@@ -248,10 +263,33 @@ class Keyboard:
             self.next_repeat += REPEAT_EVERY_MS
 
 
+# What else the firmware keeps over power-off, by the Stick's name for it:
+# NES Radar's airport, Weather's place and Bluesky's favorites.
+KEPT = ("airport", "place", "favorites")
+
+
+def to_json(value):
+    """A kept value (tuples and lists of bytes and numbers) as JSON can have it."""
+    if isinstance(value, bytes):
+        return {"hex": value.hex()}
+    if isinstance(value, (tuple, list)):
+        return [to_json(item) for item in value]
+    return value
+
+
+def from_json(value):
+    if isinstance(value, dict):
+        return bytes.fromhex(value["hex"])
+    if isinstance(value, list):
+        return [from_json(item) for item in value]
+    return value
+
+
 class Memory:
     """What a nesp32 keeps over power-off, for every board this bridge
-    makes: which keyboard is paired, and a ROM's files. With a directory,
-    they are kept there; without, for as long as the bridge runs."""
+    makes: which keyboard is paired, a ROM's files, and the services' own
+    (KEPT). With a directory, they are kept there; without, for as long as
+    the bridge runs."""
 
     def __init__(self, directory=None):
         self.directory = directory
@@ -259,6 +297,9 @@ class Memory:
         self.address = None             # of a real keyboard (--bt-helper), and its name
         self.name = None
         self.files = {}                 # name: bytes, in the order first written
+        self.peer_last = None           # the address PEER last joined (with a directory, kept
+                                        # there by peer_net, as peer-last)
+        self.kept = {}                  # KEPT's, by name
         if directory is not None:
             os.makedirs(os.path.join(directory, "files"), exist_ok=True)
             self.paired = os.path.exists(self.paired_path())
@@ -274,6 +315,27 @@ class Memory:
                 if safe_name(name):
                     with open(os.path.join(folder, name), "rb") as f:
                         self.files[name] = f.read()
+            try:
+                with open(self.kept_path()) as f:
+                    kept = json.load(f)
+                self.kept = {name: from_json(kept[name]) for name in KEPT if name in kept}
+            except (OSError, ValueError, KeyError, TypeError) as e:
+                if os.path.exists(self.kept_path()):
+                    log("%s not read (%s): kept as if empty" % (self.kept_path(), e))
+
+    def kept_path(self):
+        return os.path.join(self.directory, "kept.json")
+
+    def keep(self, name, value):
+        """One of KEPT, as the firmware has just kept it."""
+        if self.kept.get(name) == value:
+            return
+        self.kept[name] = value
+        if self.directory is not None:
+            with open(self.kept_path() + ".new", "w") as f:
+                json.dump({key: to_json(item) for key, item in self.kept.items()}, f)
+            os.replace(self.kept_path() + ".new", self.kept_path())
+        log("kept: %s" % name)
 
     def paired_path(self):
         return os.path.join(self.directory, "keyboard-paired")
@@ -640,20 +702,51 @@ class Console:
         self.now = 0
 
 
+class Peer:
+    """How a board meets another nesp32 for PEER (the games for two).
+
+    mode: "net", this computer's own network (peer_net.SocketNetwork: by
+    address, or in a room at the rendezvous); "idle", an opponent who is
+    there at once and presses nothing (peer_net.IdleNetwork); "off", none.
+    rendezvous: where rooms are met, in place of the firmware's own. port:
+    the UDP port in place of the one the firmware names. stun: the STUN
+    servers a meeting asks, None for peer_net's own."""
+
+    def __init__(self, mode="net", rendezvous=None, port=None, stun=None):
+        self.mode = mode
+        self.rendezvous = rendezvous
+        self.port = port
+        self.stun = stun
+
+
+CONN_NAMES = {}                 # filled in by load_nesp32: CONN_* by number, for the log
+PEER_IDLE_S = 0.02              # Mesen quiet this long (paused, or in the background): the
+PEER_EVERY_S = 0.01             # board keeps the other nesp32 answered this often on its own
+
+
 class Board:
     """One NESP32, for one Mesen."""
 
-    def __init__(self, memory=None, helper=None):
+    def __init__(self, memory=None, helper=None, peer=None):
         self.memory = memory if memory is not None else Memory()
         self.console = Console()
         self.port = wire.Port(self.console, turnaround=wire.ms(0.1), tx_buffer=UART_BUFFER)
         self.stick = nesp.Stick(self.port)
-        self.stick.set_wifi(proto.NESP_WIFI_JOINED, rssi=-45, address=(192, 168, 0, 32))
+        peer = peer if peer is not None else Peer("off")
+        address = (192, 168, 0, 32)
+        if peer.mode == "net":
+            address = peer_net.own_address() or bytes((127, 0, 0, 1))
+        self.address = tuple(address)
+        self.stick.set_wifi(proto.NESP_WIFI_JOINED, rssi=-45, address=self.address)
         self.stick.set_saved(b"Mesen")
         self.stick.set_time(int(time.time()))
         for name, data in self.memory.files.items():
             self.stick.put_file(name, data)
         self.file_writes = self.stick.file_writes
+        for name in KEPT:
+            if self.memory.kept.get(name) is not None:
+                setattr(self.stick, name, self.memory.kept[name])
+        self.kept_counts = {name: getattr(self.stick, name + "_keeps") for name in KEPT}
         self.bluetooth = BluetoothKeyboard(self.stick, self.memory, helper)
         self.sent = 0               # how many of the wire's bytes Mesen has been told of
         self.scans = 0
@@ -664,6 +757,69 @@ class Board:
         self.counted = (0, 0, 0)
         self.last_end = None        # where the last byte sent to Mesen ends, for gaps
         self.instrument()
+        self.lock = threading.Lock()    # the board's, between Mesen's syncs and the keeper
+        self.closed = False
+        self.network = None
+        self.synced = time.monotonic()
+        if peer.mode != "off":
+            self.open_peer(peer)
+
+    def open_peer(self, peer):
+        stick, memory = self.stick, self.memory
+        if peer.rendezvous:
+            stick.set_rendezvous(peer.rendezvous)
+        if peer.mode == "idle":
+            self.network = peer_net.IdleNetwork(stick)
+        else:
+            options = {"stun": peer.stun} if peer.stun is not None else {}
+            last = os.path.join(memory.directory, "peer-last") if memory.directory else None
+            self.network = peer_net.SocketNetwork(stick, port=peer.port, last_path=last,
+                                                  fetches=False, **options)
+        if stick.last is None and memory.peer_last is not None:
+            stick.last = memory.peer_last
+        self.keeps = stick.keeps
+        self.conn_was = stick.conn
+        self.error_was = ""
+        threading.Thread(target=self.keep_peer, daemon=True).start()
+
+    def peer(self):
+        """The other nesp32: what has come from it, and what goes to it."""
+        network, stick = self.network, self.stick
+        if network is None:
+            return
+        network.poll()
+        if stick.keeps != self.keeps:
+            self.keeps = stick.keeps
+            self.memory.peer_last = stick.last
+        if stick.conn != self.conn_was:
+            self.conn_was = stick.conn
+            log("peer: %s" % CONN_NAMES.get(stick.conn, stick.conn))
+        if network.error != self.error_was:
+            self.error_was = network.error
+            if network.error:
+                log("peer: %s" % network.error)
+
+    def keep_peer(self):
+        """While Mesen does not sync (paused, or in the background), answer
+        the other nesp32 all the same, as a nesp32 does whatever its console
+        is doing: the other end gives up on one that is silent for 3 s."""
+        while True:
+            time.sleep(PEER_EVERY_S)
+            with self.lock:
+                if self.closed:
+                    return
+                if time.monotonic() - self.synced >= PEER_IDLE_S:
+                    self.peer()
+
+    def close(self):
+        """The board is done with (Mesen gone, or a new console): the other
+        nesp32 is told goodbye, and a fetch stopped."""
+        with self.lock:
+            self.closed = True
+            self.cancel()
+            if self.network is not None:
+                self.network.close()
+                self.network = None
 
     def now_ms(self):
         return self.console.now * 1000.0 / wire.NESP_CPU_HZ
@@ -704,21 +860,26 @@ class Board:
             self.counted = now
 
     def sync(self, cycle, changes):
-        console, port, stick = self.console, self.port, self.stick
-        console.now = cycle
-        for at, level in changes:
-            port.tap.write(at, level)
-        stick.set_time(int(time.time()))
-        self.network()
-        self.deliver()
-        self.bluetooth.update(self.now_ms())
-        stick.poll()
-        self.network()
-        self.files()
-        self.counters()
-        return self.report()
+        with self.lock:
+            console, port, stick = self.console, self.port, self.stick
+            console.now = cycle
+            for at, level in changes:
+                port.tap.write(at, level)
+            stick.set_time(int(time.time()))
+            self.peer()
+            self.hardware()
+            self.deliver()
+            self.bluetooth.update(self.now_ms())
+            stick.poll()
+            self.peer()
+            self.hardware()
+            self.files()
+            self.remember()
+            self.counters()
+            self.synced = time.monotonic()
+            return self.report()
 
-    def network(self):
+    def hardware(self):
         """What the hardware does for the services: scans, joins, fetches."""
         stick = self.stick
         if stick.scans != self.scans:
@@ -727,13 +888,15 @@ class Board:
             stick.scan_finish()
         if stick.joins != self.joins:
             self.joins = stick.joins
-            stick.set_wifi(proto.NESP_WIFI_JOINED, rssi=-45, address=(192, 168, 0, 32))
+            stick.set_wifi(proto.NESP_WIFI_JOINED, rssi=-45, address=self.address)
         if stick.fetch_stops != self.fetch_stops:
             self.fetch_stops = stick.fetch_stops
             self.cancel()
         if stick.fetches != self.fetches:
             self.fetches = stick.fetches
             self.cancel()
+            if not stick.fetching:
+                return              # answered already: the idle opponent's rendezvous
             log("fetch %d: %s" % (stick.fetch_id, redact(stick.fetch_url)))
             self.fetch = Fetcher(stick.fetch_id, stick.fetch_url, stick.fetch_agent,
                                  stick.fetch_wants_icy, stick.fetch_wants_head)
@@ -778,6 +941,17 @@ class Board:
                 data = stick.file(name)
                 if data is not None:
                     self.memory.keep_file(name, data)
+
+    def remember(self):
+        """What the services have kept since the last sync, kept."""
+        stick = self.stick
+        for name in KEPT:
+            keeps = getattr(stick, name + "_keeps")
+            if keeps != self.kept_counts[name]:
+                self.kept_counts[name] = keeps
+                value = getattr(stick, name)
+                if value is not None:
+                    self.memory.keep(name, list(value) if isinstance(value, tuple) else value)
 
     def report(self):
         """The reply line: bytes on the wire that Mesen hasn't been told of,
@@ -830,10 +1004,12 @@ class Board:
 
     def button(self, which):
         code = proto.NESP_EVENT_BUTTON_A if which == 1 else proto.NESP_EVENT_BUTTON_B
-        self.stick.event(code)
+        with self.lock:
+            self.stick.event(code)
 
     def keys(self, modifiers, usages):
-        self.bluetooth.report(modifiers, usages, self.now_ms())
+        with self.lock:
+            self.bluetooth.report(modifiers, usages, self.now_ms())
 
 
 def parse_sync(words):
@@ -847,10 +1023,42 @@ def parse_sync(words):
     return cycle, list(zip(numbers[0::2], numbers[1::2]))
 
 
-def serve(conn, address, memory, helper=None):
+class Visitors:
+    """How many Mesens are connected, and since when there have been none."""
+
+    def __init__(self, now):
+        self.lock = threading.Lock()
+        self.count = 0
+        self.empty_since = now
+
+    def come(self):
+        with self.lock:
+            self.count += 1
+
+    def go(self, now):
+        with self.lock:
+            self.count -= 1
+            if self.count == 0:
+                self.empty_since = now
+
+    def idle_for(self, now):
+        """Seconds with no Mesen connected (0 while one is)."""
+        with self.lock:
+            return 0 if self.count else now - self.empty_since
+
+
+def serve(conn, address, memory, helper=None, visitors=None, peer=None):
+    try:
+        serve_one(conn, address, memory, helper, peer)
+    finally:
+        if visitors is not None:
+            visitors.go(time.monotonic())
+
+
+def serve_one(conn, address, memory, helper=None, peer=None):
     log("Mesen connected from %s" % (address,))
     conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-    board = Board(memory, helper)
+    board = Board(memory, helper, peer)
     last = 0
     buffered = conn.makefile("rb")
     try:
@@ -868,8 +1076,8 @@ def serve(conn, address, memory, helper=None):
                     continue
                 if cycle < last:
                     log("console reset: a new board")
-                    board.cancel()
-                    board = Board(memory, helper)
+                    board.close()
+                    board = Board(memory, helper, peer)
                 last = cycle
                 conn.sendall(board.sync(cycle, changes).encode())
             elif words[0] in (b"B", b"K"):
@@ -888,7 +1096,7 @@ def serve(conn, address, memory, helper=None):
     except (ConnectionError, OSError):
         pass
     finally:
-        board.cancel()
+        board.close()
         conn.close()
         log("Mesen disconnected")
 
@@ -899,7 +1107,8 @@ def main():
                         help="the address to listen on: 127.0.0.1 (the default) for a Mesen on "
                              "this computer, 0.0.0.0 for one on another (anyone who can reach "
                              "the port can then use this bridge)")
-    parser.add_argument("--port", type=int, default=7878)
+    parser.add_argument("--port", type=int, default=7878,
+                        help="the port to listen on (0: any free one, which it prints)")
     parser.add_argument("--nesp32", default=default_nesp32(),
                         help="a checkout of github.com/Armitage64/nesp32 with `make host` done")
     parser.add_argument("--data", default=None,
@@ -913,6 +1122,21 @@ def main():
     parser.add_argument("--bt-key", default=os.environ.get("NESP32_BT_KEY"), metavar="KEY",
                         help="the key nesp32_bt_helper.py prints when it starts (or "
                              "$NESP32_BT_KEY); needed with --bt-helper")
+    parser.add_argument("--exit-when-idle", type=float, default=None, metavar="SECONDS",
+                        help="stop once no Mesen has been connected for this long, from "
+                             "the start or since the last one left (nesp32.lua starts the "
+                             "bridge with this, so it stops with Mesen)")
+    parser.add_argument("--peer", choices=("net", "idle", "off"), default="net",
+                        help="PEER, the games for two: net (the default) meets another "
+                             "nesp32 on this computer's network, by address or in a room at "
+                             "the rendezvous; idle, an opponent who is there at once and "
+                             "presses nothing; off, none")
+    parser.add_argument("--rendezvous", metavar="URL",
+                        help="where rooms are met in place of the firmware's own: "
+                             "host/rendezvous.py's stand-in, or a `wrangler dev`")
+    parser.add_argument("--peer-port", type=int, default=None, metavar="PORT",
+                        help="the UDP port a game is hosted on, in place of the firmware's "
+                             "(a host by address is called there)")
     args = parser.parse_args()
     if args.bt_helper and not args.bt_key:
         parser.error("--bt-helper needs --bt-key (or $NESP32_BT_KEY): the key the helper "
@@ -920,14 +1144,27 @@ def main():
     load_nesp32(os.path.abspath(args.nesp32))
     memory = Memory(args.data)
     helper = HelperLink(args.bt_helper, args.bt_key) if args.bt_helper else None
+    peer = Peer(args.peer, args.rendezvous, args.peer_port)
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind((args.host, args.port))
     server.listen(4)
-    print("NESP32 bridge listening on %s:%d" % (args.host, args.port), flush=True)
+    print("NESP32 bridge listening on %s:%d" % (args.host, server.getsockname()[1]), flush=True)
+    visitors = Visitors(time.monotonic())
+    if args.exit_when_idle is not None:
+        server.settimeout(0.5)
     while True:
-        conn, address = server.accept()
-        threading.Thread(target=serve, args=(conn, address, memory, helper), daemon=True).start()
+        try:
+            conn, address = server.accept()
+        except socket.timeout:
+            if visitors.idle_for(time.monotonic()) >= args.exit_when_idle:
+                log("no Mesen for %g s: stopping" % args.exit_when_idle)
+                return
+            continue
+        conn.settimeout(None)
+        visitors.come()
+        threading.Thread(target=serve, args=(conn, address, memory, helper, visitors, peer),
+                         daemon=True).start()
 
 
 if __name__ == "__main__":

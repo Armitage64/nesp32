@@ -50,13 +50,14 @@ def fixture_bytes(name):
 
 @pytest.fixture(scope="session")
 def where():
-    """Zippopotam's answer for 90210, as it sent it (nesp32's tests/fixtures)."""
-    return fixture_bytes("zip_90210.json")
+    """Open-Meteo's geocoding's answer for PORTLAND, ME, as it sent it
+    (nesp32's tests/fixtures)."""
+    return fixture_bytes("geo_portland_me.json")
 
 
 @pytest.fixture(scope="session")
 def weather():
-    """Open-Meteo's answer for the place, likewise."""
+    """Open-Meteo's forecast, likewise (for Beverly Hills: any place's will do)."""
     return fixture_bytes("openmeteo_90210.json")
 
 

@@ -235,7 +235,7 @@ nothing done on the nesp32.
 | `$11` | WIKI | NESpedia: a search, and the article it finds as numbered lines | done |
 | `$12` | RADAR | NES Radar: an airport, and the aircraft round it | done |
 | `$13` | TUNER | a radio station from the Internet, as sampled sound | done |
-| `$14` | WEATHER | the weather at a zip code, as rows for the screen | done |
+| `$14` | WEATHER | the weather at a place, as rows for the screen | done |
 | `$15` | BSKY | Bluesky: an account's posts as lines, and favorites | done |
 | `$16` | TAPE | Family BASIC's data recorder: programs and screens kept as files | done |
 | `$80`-`$FF` | | experiments and other people's | |
@@ -350,6 +350,10 @@ Internet with no port forwarded, by a room's code at the rendezvous
 | `$08` | ROOM | | the same, and nothing done |
 | `$09` | RATE | `PERIOD` | `PERIOD`: the session's line at that rate, both ways, or `0`: the link's |
 | `$0A` | DUMP | `OFFSET[2]`, `BYTES` ... | nothing: the bytes into the console's RAM as the nesp32 keeps it |
+| `$0B` | SAVE | `SUM[2]`, `LENGTH[2]` | `SAVE`: this console's save, and how the two stand |
+| `$0C` | SAVE_PUT | `OFFSET[2]`, `BYTES` ... | `NEXT[2]`: the host's save, for the other, and how far it has gone |
+| `$0D` | SAVE_GET | `OFFSET[2]` | `BYTES` ...: the host's save from there, as much as has come |
+| `$0E` | SAVE_DONE | | `SAVE`: the other console has the host's save |
 | short | TICKS again, in five bytes and four | `N` ticks: `FIRST` and `WANTED`, `BUTTONS[1 or 2]` | `N` ticks: `BUTTONS[1]` |
 
 In every reply but LAST's, `ADDRESS` is the nesp32's own IPv4 address.
@@ -378,16 +382,56 @@ netplay ROM whose digest differs from the other's sends its RAM before it
 gives the session up, `PEER_DUMP_BYTES` bytes (2048, `$0000-$07FF`) in pieces:
 `OFFSET` (low byte first) is where in it the piece's bytes go, and a piece
 that would go past the end is `BAD_ARG`. The one that ends at the end
-finishes it, and the nesp32 writes the whole of it to its log, a line of
-`PEER_DUMP_LINE` (64) bytes in hex every `PEER_DUMP_EVERY_MS` (100):
-
-```
-peer: dump 0000: 0b1c...
-```
+finishes it, and the nesp32 writes the whole of it to its log: a heading,
+a line of `PEER_DUMP_LINE` (64) bytes in hex every `PEER_DUMP_EVERY_MS`
+(100), and an end.
 
 With both consoles' logs, the two dumps say which bytes differ. A nesp32
 whose firmware has no DUMP answers `NO_OP`, and the console goes on as
 before.
+
+**A kept dump.** Most players have no log open when a game desyncs, so the
+nesp32 also keeps the last whole dump in its flash (NVS), written once a
+dump, not a piece, with the tick, the ROM that sent it (its hello's `APP`
+and version) and the firmware's version. It says it again in its log
+`NESP_KEPT_FIRST_MS` (1 s) after it starts or a ROM says hello (the
+cartridge's menu, a game), and every `NESP_KEPT_AGAIN_MS` (60 s) after,
+`NESP_KEPT_TELLINGS` (5) times in all; a new dump begins them again a
+minute after its own lines, so the two never come together. A page on Web
+Serial that opens the port leaves DTR and RTS alone and does not reset the
+nesp32 (`idf.py monitor`'s open does): it hears the kept dump when the
+console is next switched on or reset, or when it resets the nesp32 itself,
+RTS high for 100 ms with DTR low, as esptool does. Nothing is read from the
+serial port: a dump stays kept until the next replaces it.
+
+The lines, the dump's and the kept one's alike but for the heading, each
+after the log's own prefix (`I (1234) nesp32: peer: `, perhaps with colour
+codes about it):
+
+```
+dump of the console's RAM, as it stood at tick 767, whose digests differed: 2048 bytes; app TSBO version 1
+dump 0000: 0b1c... (64 bytes: 128 hex digits, lower case, no spaces)
+... 32 lines, by the offset in 4 hex digits: 0000, 0040, ... 07c0 ...
+dump 07c0: ...
+dump end
+```
+
+and the kept one's heading:
+
+```
+dump of the console's RAM, kept 3, as it stood at tick 767: 2048 bytes; app TSBO version 1; firmware 0.9.2-4-gabc1234
+```
+
+Every heading begins `dump of the console's RAM`; `, as it stood at tick
+N` is left out where the console did not say. `kept N` is how many dumps
+this nesp32 has kept, so a page can tell a new one from one it has seen.
+`app` is the ROM's four letters, each that is not printable as `-` (`----`
+and `version 0` if no ROM had said hello); `firmware` is `-` if not known,
+and has no spaces. A dump is whole from its heading to `dump end` with all
+32 lines between.
+
+When a ROM says hello the log also says which it is
+(`I (1234) radio: app TSBO version 1`).
 
 | `STATE` | Name | |
 |---|---|---|
@@ -412,6 +456,37 @@ address, over power-off, for LAST to offer the next time.
 
 **A hello ends a game**, as it ends everything: a console that is reset is
 in none, and its nesp32 hangs up.
+
+#### A game's save
+
+A game that keeps a save the two consoles must have alike (Tecmo Super
+Bowl's season) has the host's copied to the other, once the two are
+connected and before the first tick. Each console sends SAVE, with a sum
+of its save and its length, until the two stand otherwise than `WAITING`;
+the first SAVE of a connection, before any TICKS, begins it, and a
+console that never asks has none, and its ticks are as ever.
+
+| `SAVE` | Name | |
+|---|---|---|
+| 0 | WAITING | the other's sum has not come |
+| 1 | SAME | the two are the same: the session may begin |
+| 2 | DIFFERENT | they differ: the host's goes to the other, if its player says yes |
+| 3 | DONE | the other console has the host's save |
+| 4 | GONE | there is no session, or it was lost |
+
+With `DIFFERENT`, the host's console sends its save with SAVE_PUT, from
+the `NEXT` each reply gives (bytes before it are passed over, and bytes
+after a gap are not taken), and its nesp32 sends it on as it can; the
+other's nesp32 keeps it, `PEER_SAVE_MAX` (8192) bytes at the most. The
+other console's player is asked. Yes: it takes the save with SAVE_GET,
+each reply as much as the console's replies hold, and none past what has
+come, and then sends SAVE_DONE, and both stand `DONE`. No: it hangs up
+(LEAVE), and the host's stands `GONE`. Then the ticks cross, tick 0 the
+first byte after the save's.
+
+Between the nesp32s the stream carries, ahead of the ticks, each one's
+`SUM[2]` and `LENGTH[2]`, and, if the two differ, the host's save one way
+and a byte the other, once its console has the save.
 
 #### Meeting in a room
 
@@ -553,7 +628,14 @@ Numbers are low byte first.
 | `NOTE` | four bytes of PEER's, the latest only (below) |
 
 A datagram goes at once when there is a new byte, every 8 ms while any
-byte is not yet said to have come, and every 50 ms otherwise. The one that
+byte is not yet said to have come, and every 50 ms otherwise. Each end
+keeps 2048 bytes each way. More than a datagram carries (a save) goes as a
+window: each new datagram carries the next 32 bytes not yet sent, the
+other end takes them in order and answers at once when one comes past a
+gap, and they go again from the oldest the other lacks after three such
+answers running, or when all have gone and none has been answered for the
+network's time there and back and a half. A game's few bytes are always
+within a datagram, and every one of its datagrams carries all of them. The one that
 calls sends calls, ten a second for three seconds, until one is answered;
 the one that waits answers the first caller and from then on takes only
 that session's datagrams, from wherever they come. An end that hears
@@ -1310,58 +1392,74 @@ sends each as the byte the console's receiver turns into it.
 - After the run the console asks for STATE, and is told OFF, PAUSED or
   FAILED.
 
-### WEATHER `$14`: the weather at a zip code
+### WEATHER `$14`: the weather at a place
 
-The weather at a place in the United States, now and for five days, laid
+The weather at a place anywhere in the world, now and for five days, laid
 out by the nesp32 as 13 rows of 28 tiles, pictures and all. The console
-names the place by its zip code. The nesp32 asks
-[Zippopotam](https://zippopotam.us) where that is and what it is called,
-once, then asks [Open-Meteo](https://open-meteo.com) for the weather
-there, and again every 15 minutes. The console draws the rows and works
-nothing out.
+names the place as it was typed, `PORTLAND, ME` or `DUBLIN, IRELAND`
+(PLACE), or by a US zip code (ZIP). The nesp32 asks
+[Open-Meteo](https://open-meteo.com)'s geocoding where that is and what
+it is called, once, and takes the first place it gives; then asks
+Open-Meteo for the weather there, and again every 15 minutes. The console
+draws the rows and works nothing out.
 
 | `OP` | Name | Request | Reply |
 |---|---|---|---|
-| `$00` | ZIP | `ID`, `DIGITS[5]` | `STATE`, `ID`, `SERIAL`, and with FAILED up to 28 characters for the screen |
+| `$00` | ZIP | `ID`, `DIGITS[5]` | as PLACE's |
 | `$01` | ROW | `ID`, `NUMBER` | `STATE`, `ID`, `SERIAL`, `NUMBER`, and with a report held `TEXT[28]` |
-| `$02` | LAST | | `DIGITS[5]` of the last zip code found, or nothing if none is kept |
+| `$02` | LAST | | `DIGITS[5]` of the last place found, if it was a zip code; otherwise nothing |
+| `$03` | PLACE | `ID`, `TEXT[1-24]` | `STATE`, `ID`, `SERIAL`, and with FAILED up to 28 characters for the screen |
+| `$04` | LAST_PLACE | | `TEXT` of the last place found, as it was typed, or nothing if none is kept |
 
 | `STATE` | Name | Meaning |
 |---|---|---|
-| `$00` | IDLE | no zip code is chosen, or not the one with the request's `ID` |
+| `$00` | IDLE | no place is chosen, or not the one with the request's `ID` |
 | `$01` | NO_WIFI | the nesp32 is not on a network, and holds no report |
-| `$02` | LOOKING | where the zip code is, is being asked |
+| `$02` | LOOKING | where the place is, is being asked |
 | `$03` | FETCHING | that is known, and nothing has come of its weather yet |
 | `$04` | READY | a report is held |
-| `$05` | NOT_FOUND | no place has that zip code |
+| `$05` | NOT_FOUND | nothing goes by that name |
 | `$06` | FAILED | the asking or the fetching failed; the reply says how |
 
-**ZIP is both "this zip code" and "how does it stand"**, as RADAR's
+**PLACE is both "this place" and "how does it stand"**, as RADAR's
 AIRPORT is. The console gives each choice an id, one more than the last,
 and may send the same request as often as it likes. The nesp32 chooses
-the zip code when the id or the digits differ from the one it has, and
-otherwise only answers. The digits are `0` to `9` as characters; anything
-else is BAD_ARG. No reply of WEATHER's is held for a repeat.
+the place when the id or the text differ from the one it has, and
+otherwise only answers. The text is ASCII, `$20` to `$5F`, as a row's
+characters are; the spaces round it are left out, and an empty one, one
+longer than 24, or one with any other character is BAD_ARG. It goes to
+the geocoding as it is, and the place is the first that comes back: a
+city with a comma and its state (`PORTLAND, ME`) or its country's name
+(`DUBLIN, IRELAND`) finds the one meant, and a city alone the likeliest.
+No reply of WEATHER's is held for a repeat.
 
-**A zip code that does not exist is told from a site that is down.**
-Zippopotam answers one it has not got with a 404, and that alone is
-NOT_FOUND. Any other failure of either site is FAILED, with a line of
+**ZIP is PLACE for a US zip code**, for ROMs from before PLACE: its five
+digits, `0` to `9` as characters (anything else is BAD_ARG), asked of the
+geocoding in the United States alone, since other countries' post codes
+have five digits too.
+
+**A place that does not exist is told from a site that is down.** The
+geocoding answers one it has nothing for with no results, and that alone
+is NOT_FOUND. Any other failure of either site is FAILED, with a line of
 words: `THE SITE DID NOT ANSWER`, `THE SITE SAID 503`, `THE SITE MADE NO
-SENSE` for an answer that was cut short or had no weather in it. A zip
-code whose lookup failed is asked after again when the console chooses it
+SENSE` for an answer that was cut short or had no weather in it. A place
+whose lookup failed is asked after again when the console chooses it
 again, with a new id.
 
-**The last zip code found is kept, over power-off too**: its digits,
-where it is, and its place's name, in the nesp32's flash, written when
-they are news and not otherwise. One that was not found is never kept.
-Chosen again, it is not asked after again. LAST is its digits, for a ROM
-to begin with: Weather's form comes up with them in it. LAST chooses
-nothing and starts no fetch.
+**The last place found is kept, over power-off too**: what was typed,
+where it is, its name for the report and its units, in the nesp32's
+flash, written when they are news and not otherwise. One that was not
+found is never kept. Chosen again, by the same text, it is not asked
+after again; a zip code kept by firmware from before PLACE is kept as a
+place of its five digits. LAST_PLACE is its text, for a ROM to begin
+with: Weather's form comes up with it in it. LAST is its digits if it was
+a zip code, for a ROM from before PLACE. Neither chooses anything or
+starts a fetch.
 
 **A report has a `SERIAL`**, which is never 0, and is 0 in a reply with
 no report. Every fetch of the weather that ends well makes a report with
 a new one. A console draws the rows of one serial, and starts over if a
-row comes with another; it asks ZIP now and then, and draws again when
+row comes with another; it asks PLACE now and then, and draws again when
 the serial is not the one on its screen. A fetch that fails leaves the
 report there was, and is tried again after a minute; with no report
 there is none to leave, and the state is FAILED until a fetch ends well.
@@ -1388,22 +1486,25 @@ The rows, as `firmware/components/nesp_services/weather.c` lays them out:
 
 | Row | |
 |---|---|
-| 0 | the place and its state, `BEVERLY HILLS, CA`, and at the right the zip code |
+| 0 | the place: in the United States with its state, `PORTLAND, ME`; elsewhere with its region and its country's two letters, `DUBLIN, LEINSTER, IE`, or where they would not fit or the region is the city again its country's alone, `TOKYO, JP` |
 | 2, 3 | the weather now: its picture, and beside it the temperature and a word or two, then today's high and low |
 | 4, 5 | the humidity, and the wind |
 | 8 | five days' names, today the first |
 | 9, 10 | their pictures |
 | 11, 12 | their highs, and their lows |
 
-Temperatures are in degrees Fahrenheit and the wind in miles an hour. The
-days are the place's own, as Open-Meteo gives them for its time zone, and
+In the United States and its territories (`US`, `PR`, `GU`, `VI`, `AS`,
+`MP`) temperatures are in degrees Fahrenheit and the wind in miles an
+hour, and everywhere else in degrees Celsius and kilometres an hour: the
+report says `F` or `C`, and `MPH` or `KM/H`. The days are the place's own, as Open-Meteo gives them for its time zone, and
 their names are worked out from their dates: the nesp32's clock is not
 asked. A day's picture is the day's, whatever the hour is now.
 
 **The nesp32 stops fetching for a console that has stopped asking**, 30
 seconds after its last request, and starts again with the next. Both
 sites' replies are short, and each is held whole before it is read: one
-longer than 2 KB is FAILED.
+longer than 4 KB is FAILED. (The geocoding's one result for Washington,
+D.C. is 2.4 KB, with its zip codes.)
 
 A row's exchange is 9 bytes out and 39 back, so a ROM that asks for one
 takes replies of 63 (a shorter `REPLY_MAX` is BAD_ARG).
