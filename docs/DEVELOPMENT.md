@@ -297,7 +297,7 @@ What is still to do on the hardware and the firmware is in
 | [Bluesky](../apps/bluesky), BSKY | on a simulated console against the firmware's code; not yet on hardware |
 | [Family BASIC](../apps/family-basic), KBD (and its KEYS_ALL) | a prototype, working on hardware, the MiSTer and an EverDrive N8: programs typed in on a Bluetooth keyboard, every key of the Famicom's that a computer's has, edited and run, and kept over a reset (on the N8, after `SYSTEM`) |
 | [Tecmo Super Bowl](../apps/superbowl), PEER and its SAVE ops | working on hardware, a real NES and the MiSTer, two consoles by room code: the save copied, whole season games played; one console stopped after a play now and then, which a fix (November 2026) has not had since in two whole games |
-| [Chip 'n Dale Rescue Rangers](../apps/rescuerangers), PEER | working on hardware (November 2026), the line at 14 cycles a bit; in the simulation, the first level for two and the menu. A game over, the later zones and the end not tried yet |
+| [Chip 'n Dale Rescue Rangers](../apps/rescuerangers), PEER | working on hardware (November 2026), the line at 14 cycles a bit, with the faster ways through three of the game's routines; in the simulation, the first level for two and the menu. A game over, the later zones and the end not tried yet |
 | [Family BASIC](../apps/family-basic)'s SAVE and LOAD, TAPE | working on hardware, the MiSTer and a real NES: a program saved, the console reset, and loaded again; BG GRAPHIC's not tried |
 
 ## What is where

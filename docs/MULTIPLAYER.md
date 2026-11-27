@@ -221,7 +221,9 @@ TMNT II has been played on hardware since (October 2026, its README):
 a session, the menu, and level 7 for two at the game's own speed. And
 Bubble Bobble (November 2026, its README): a session, the menu, and its
 start straight into the game for two. And Rescue Rangers (November 2026,
-its README): a session, with the line at 14 cycles a bit.
+its README): a session, with the line at 14 cycles a bit, and then
+with its faster ways through three of the game's routines, which felt more
+responsive.
 
 The nesp32's log (`firmware/deploy.sh watch`) says the same of any
 network: `stun:` lines with what each server saw, and whether the router
@@ -624,8 +626,9 @@ nine games:
   - *Rescue Rangers* (November 2026, its README): asks for 14 from its
     first build. In the simulation an exchange is some 3090 cycles, where
     it was some 3690 at 21, and with the same game on both builds the
-    frames of play that stand still went from 1.41% to 0.91%. Played on
-    hardware at 14.
+    frames of play that stand still went from 1.41% to 0.91%, and to
+    0.27% with faster ways through three of the game's routines. Played
+    on hardware at 14, both before those and with them.
   - *Not the others.* Dr. Mario's and Tetris's frames have room to spare
     at 21 (Tetris's busiest is some 14800 cycles in a game for two, Dr.
     Mario's 27400 with the exchange), and each asks for a misheard reply

@@ -7,7 +7,8 @@ controller port 2.
 
 **It has been played on hardware** (November 2026): a session on two
 consoles, each with a nesp32, with the line at 14 cycles a bit, which
-worked. The rest was tried in the simulation (py65: two consoles, each
+worked; and then the build with the faster ways ("The frame rate"), which
+felt more responsive to play than the one before. The rest was tried in the simulation (py65: two consoles, each
 with nesp32's firmware built for this computer, and a network between):
 the first level for two, the menu, and networks that are slow, lose
 datagrams or come and go. In Mesen, with no session, the title is the
@@ -241,7 +242,8 @@ Nearly all are single frames, and nearly none are stalls: the delay the
 nesp32s advise covers both networks. (The original's figure is of
 another game, by the frame, as a game with no session is.) None of
 these has been counted on hardware yet, where a session at 14 has played
-well.
+well, and the build with the faster ways felt the more responsive of the
+two.
 
 **The faster ways** (`net/fast.inc`). The game's frames, profiled in the
 simulation (the original, 4 seeds of 3000 frames of the first level for
