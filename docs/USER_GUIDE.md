@@ -846,6 +846,11 @@ skips the one-player choices, and only the host's controller works it, as
 only player 1's does in the original. With no online game, **2P CONTINUE**
 is skipped.
 
+**Chip 'n Dale Rescue Rangers:** online, the game goes past the title by
+itself into a game for two. Only player 1 (the host) can move on from the
+story's screen with **Start**, and only player 1 can pause, as only
+controller 1 can in the original.
+
 **Jackal:** online, the title stays on 2 PLAYERS. After a game over the
 continue screen and the title are still part of the online game: player 1
 (the host) answers the continue screen, and **Start** at the title begins

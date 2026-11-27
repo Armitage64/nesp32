@@ -26,7 +26,9 @@ console's.
 What player 2 does (--play):
 
     copy     the console's buttons, half a second later, but Start and
-             Select (the default): pick a turtle and the other follows
+             Select (the default): pick a turtle and the other follows.
+             Where only player 1's Start goes on (Rescue Rangers' story
+             screen), JOIN, so that the console is player 1
     still    nothing, but A tapped every two seconds, to pick
     random   a new move every 8 ticks
 """

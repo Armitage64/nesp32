@@ -22,7 +22,9 @@ At the title, Select moves the cursor to 2 PLAYERS, and Start there opens
 the menu: HOST GAME, JOIN GAME (by a room's code, or with Select by an
 address) and LOCAL GAME, as in nesp32's other games. Once the two nesp32s
 are joined, both consoles start again from the reset and go past the
-title into a game for two, player 1 on the host's console.
+title into a game for two, player 1 on the host's console. As in the
+original, only player 1 can move on from the story's screen (Start) and
+pause.
 
 ## Building
 
