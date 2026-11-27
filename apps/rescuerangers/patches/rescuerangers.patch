@@ -1,0 +1,84 @@
+--- a/src/rescuerangers.asm
++++ b/src/rescuerangers.asm
+@@ -4,0 +5,3 @@
++.ifdef NETPLAY
++.include "net_ram.inc"
++.endif
+@@ -10896,0 +10900 @@
++.ifdef NETPLAY
+@@ -10897,0 +10902,5 @@
++    jsr net_prg
++    jmp L7_C0DC
++    .res $C0DC - $C0C7 - (* - L7_C0C7), $00
++.else
++    lda #$03
+@@ -10906,0 +10916 @@
++.endif
+@@ -10925,0 +10936,6 @@
++.ifdef NETPLAY
++    lda PRG_BANK
++    jsr net_prg
++    jmp L7_C10E
++    .res $C10E - $C0F6 - (* - L7_C0F6), $00
++.else
+@@ -10935,0 +10952 @@
++.endif
+@@ -10937,0 +10955,4 @@
++.ifdef NETPLAY
++    jmp net_nmi_leave
++    .res $C115 - $C10E - (* - L7_C10E), $00
++.else
+@@ -10944,0 +10966 @@
++.endif
+@@ -17918,0 +17941,3 @@
++.ifdef NETPLAY
++    .res 21, $EA
++.else
+@@ -17928,0 +17954 @@
++.endif
+@@ -18074,0 +18101,8 @@
++.ifdef NETPLAY
++    sta CHR0_BANK
++    jsr net_chr0
++    lda #$00
++    sta CHR0_NEXT
++    rts
++    .res $FF39 - $FF1F - (* - SET_CHR0), $00
++.else
+@@ -18087,0 +18122 @@
++.endif
+@@ -18091,0 +18127 @@
++.ifdef NETPLAY
+@@ -18092,0 +18129,7 @@
++    jsr net_chr1
++    lda #$00
++    sta CHR1_NEXT
++    rts
++    .res $FF53 - $FF39 - (* - SET_CHR1), $00
++.else
++    sta CHR1_BANK
+@@ -18104,0 +18148 @@
++.endif
+@@ -18108,0 +18153 @@
++.ifdef NETPLAY
+@@ -18110,0 +18156,6 @@
++    jmp net_set_prg
++.include "cart.inc"
++    .res $FFB0 - $FF53 - (* - SET_PRG), $00
++.else
++    sta PRG_BANK
++    sta PRG_BANK_WANTED
+@@ -18160,0 +18212 @@
++.endif
+@@ -18167,0 +18220,3 @@
++.ifdef NETPLAY
++    bit $FFE1
++.else
+@@ -18168,0 +18224 @@
++.endif
+@@ -18175,0 +18232,3 @@
++.ifdef NETPLAY
++    .addr net_nmi, net_cart_start, L7_FFE0
++.else
+@@ -18176,0 +18236 @@
++.endif

@@ -12,8 +12,8 @@ sys.path.insert(0, HERE)
 
 @pytest.fixture(scope="session")
 def build(tmp_path_factory):
-    """A directory with the original ROM and everything made on the way,
-    built from this tree. (No netplay ROM yet: README.md, "Not done".)"""
+    """A directory with both ROMs and everything made on the way, built
+    from this tree."""
     if not (shutil.which("ca65") and shutil.which("ld65")):
         pytest.skip("cc65 not installed")
     if not os.path.isfile(os.path.join(ROOT, "baserom.nes")):
@@ -31,5 +31,16 @@ def console(build):
 
     def make(**kwargs):
         return Console(str(build / "rescuerangers.nes"), str(build / "rescuerangers.dbg"),
+                       **kwargs)
+    return make
+
+
+@pytest.fixture
+def net_console(build):
+    """Make a Console on the netplay ROM."""
+    from console import Console
+
+    def make(**kwargs):
+        return Console(str(build / "rescuerangers_net.nes"), str(build / "rescuerangers_net.dbg"),
                        **kwargs)
     return make

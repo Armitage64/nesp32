@@ -1,7 +1,9 @@
 # Chip 'n Dale Rescue Rangers build.
 #
 #   make            build/rescuerangers.nes, the original, made from the
-#                   converted source
+#                   converted source, and build/rescuerangers_net.nes, the
+#                   netplay ROM (so far the game on the netplay's
+#                   cartridge, an MMC3: no session yet)
 #   make verify     check the original against the ROM's SHA-512
 #   make test       the simulation's tests (needs requirements-dev.txt)
 #   make trace      tools/entries.txt again, from the game run on the
@@ -9,20 +11,19 @@
 #   make patches    write patches/ again from the sources in build/src
 #   make clean
 #
-# The netplay ROM is not built yet: see README.md, "Not done".
-#
 # The game is not here. There is no disassembly of it to start from, so
 # tools/convert.py makes one: ca65 source in build/gen, every byte of it
 # from baserom.nes, which whoever builds has to put here, with the names
 # and comments of tools/game.map. The CHR ROM is cut out of baserom.nes
-# too. The source is copied to build/src, and patches/ (none yet) puts the
-# netplay's lines into the copy. Everything they add will be under .ifdef
-# NETPLAY, so rescuerangers.nes stays the original, byte for byte, and
-# `make verify` says so.
+# too. The source is copied to build/src, and patches/ puts the netplay's
+# lines into the copy. Everything they add is under .ifdef NETPLAY, so
+# rescuerangers.nes stays the original, byte for byte, and `make verify`
+# says so.
 
 PYTHON ?= $(if $(wildcard ../../.venv/bin/python),../../.venv/bin/python,python3)
 BUILD ?= build
 ROM := $(BUILD)/rescuerangers.nes
+NET_ROM := $(BUILD)/rescuerangers_net.nes
 # Chip 'n Dale Rescue Rangers (USA), with its iNES header.
 SHA512_ORIGINAL := 0ed9cddeeb1dc3231fc707465eccbce40776d554bf783acecd25faf370a3355fefe943eb1685b044774c51272f039286cbc1c4c6cedc26cf9b7b14b50d5e68ad
 BASEROM ?= baserom.nes
@@ -34,14 +35,17 @@ PATCHED := $(patsubst patches/%.patch,%,$(wildcard patches/*.patch))
 NAMES := header rescuerangers chr
 SOURCES := $(NAMES:%=$(SRC)/%.asm)
 OBJECTS := $(NAMES:%=$(BUILD)/orig/%.o)
+NET_OBJECTS := $(NAMES:%=$(BUILD)/net/%.o)
+NET_SOURCES := $(wildcard net/*.inc net/*.asm)
+NET_INCLUDES := -I net
 
 .PHONY: all verify test trace patches clean
 
-all: $(ROM)
+all: $(ROM) $(NET_ROM)
 
 .SECONDARY:
 
-$(BUILD) $(BUILD)/orig:
+$(BUILD) $(BUILD)/orig $(BUILD)/net:
 	mkdir -p $@
 
 $(CONVERTED): tools/convert.py tools/game.map tools/entries.txt $(BASEROM) | $(BUILD)
@@ -69,8 +73,15 @@ $(BASEROM):
 $(BUILD)/orig/%.o: $(SRC)/%.asm | $(BUILD)/orig
 	ca65 --debug-info --bin-include-dir $(BUILD) -o $@ $<
 
+$(BUILD)/net/%.o: $(SRC)/%.asm $(NET_SOURCES) | $(BUILD)/net
+	ca65 -D NETPLAY --debug-info --bin-include-dir $(BUILD) $(NET_INCLUDES) -o $@ $<
+
 $(ROM): $(OBJECTS) rescuerangers.cfg
 	ld65 -C rescuerangers.cfg --dbgfile $(BUILD)/rescuerangers.dbg -o $@ $(OBJECTS)
+
+$(NET_ROM): $(NET_OBJECTS) net/rescuerangers_net.cfg
+	ld65 -C net/rescuerangers_net.cfg --dbgfile $(BUILD)/rescuerangers_net.dbg \
+		-m $(BUILD)/rescuerangers_net.map -o $@ $(NET_OBJECTS)
 
 verify: $(ROM)
 	@test "$$(shasum -a 512 $(ROM) | cut -d' ' -f1)" = "$(SHA512_ORIGINAL)" \
