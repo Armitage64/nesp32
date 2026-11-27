@@ -327,6 +327,11 @@ extern "C" void app_main(void)
 {
     usb_start();
     auto config = M5.config();
+#if !BOARD_M5_BUTTONS
+    // Not an AtomS3 Lite, M5Unified's fallback on an ESP32-S3 it does not
+    // know: nothing of a board that is not there is set up or read.
+    config.fallback_board = m5::board_t::board_unknown;
+#endif
     M5.begin(config);
     radio_settings();                   // the way up the screen is, among them
     M5.Display.setTextSize(1);
@@ -346,6 +351,10 @@ extern "C" void app_main(void)
     // The version, and the commit it was built from (PROJECT_VER).
     ESP_LOGI(TAG, "nesp32 %s (%s) on %s", NESP_FIRMWARE_TEXT, esp_app_get_description()->version,
              BOARD_NAME);
+    // What M5Unified took the board for (m5::board_t; 0 is none it knows),
+    // and whether its buttons are read.
+    ESP_LOGI(TAG, "M5 board %d, buttons %s", (int)M5.getBoard(),
+             BOARD_M5_BUTTONS ? "read" : "not read");
 
     uint32_t screen_at = 0;
     uint32_t battery_at = 0;
@@ -358,6 +367,7 @@ extern "C" void app_main(void)
 #ifdef NESP_SPIKE
         spike_poll();
 #endif
+#if BOARD_M5_BUTTONS
         uint8_t drive = usb_drive_state();
         if (M5.BtnA.wasPressed()) {
             if (drive != NESP_DRIVE_NONE && drive != NESP_DRIVE_OFF) {
@@ -377,6 +387,7 @@ extern "C" void app_main(void)
             M5.Display.fillScreen(TFT_BLACK);
             M5.Power.powerOff();        // on USB power the Stick stays on
         }
+#endif
         uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
         if (now - battery_at >= BATTERY_MS || battery_at == 0) {
             battery_at = now | 1;

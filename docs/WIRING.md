@@ -520,6 +520,13 @@ a SNAC adapter and on a real NES‑001.
 - **D0 is not held at idle while the Stick is off or booting.** G8 floats
   then, and D0 rests wherever the console leaves it. The NPN shifter's
   pull‑up holds it high.
+- **Phantom button A, with firmware up to 0.4.0.** It took a
+  generic board for M5Stack's AtomS3 Lite and read the nesp32's button A
+  from GPIO41, which nothing on a dev board holds. On one board of a
+  user's, of a model whose others were fine, the pin rested low, and the
+  console had a press of the nesp32's button A after another: the
+  throughput test started again as each one ended. A 10 kΩ from GPIO41 to
+  3.3 V stopped it. Later firmware reads no buttons on a generic board.
 - **Not for a StickC Plus2.** Its TX is G0, the boot‑mode pin, and the
   1 kΩ ties it to D0: a low there at power‑up would start the board in
   firmware‑download mode. Not tried.

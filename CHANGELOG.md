@@ -5,6 +5,9 @@
 ### Games
 - Contra saves a crash dump to the nesp32 when the consoles desync, for collecting later on the website's log page. Requires firmware 0.4.0 (#112)
 
+### Firmware
+- Bugfix for generic ESP32-S3 boards: some sent the console phantom presses of the nesp32's button A, which kept restarting the throughput test
+
 ## 0.4.0 — 2026-11-26
 
 ### Games
