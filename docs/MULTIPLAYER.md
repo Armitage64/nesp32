@@ -484,7 +484,8 @@ piece is tried for up to twice `PEER_RATE_QUIET_MS` and the dump takes
 about a second. Contra's is taken in the NMI after its writes to the PPU,
 so its scratch ($00-$07), `NMI_CHECK`, `GRAPHICS_BUFFER_OFFSET` and
 `PREVIOUS_ROM_BANK` are the NMI's and not where the games parted
-(`apps/contra/docs/Netplay.md`); it has run only in the simulation so far.
+(`apps/contra/docs/Netplay.md`). One has been made on hardware and read
+back from the web site's log page.
 
 The first such dumps, from round 2 on two consoles across the Internet,
 differed in three bytes alone: sprite 6's tile, attributes and X, a sprite

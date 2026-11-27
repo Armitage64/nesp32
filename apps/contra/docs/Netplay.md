@@ -123,9 +123,9 @@ link's rate, and a nesp32 at the session's hears them only once it has
 gone back to the link's after `PEER_RATE_QUIET_MS` (500 ms), so the
 whole dump takes about a second, with the screen off. A 64-byte piece
 does not fit in netplay's memory at $0752-$07BF, so the link's request
-is in the PRG RAM, at $7B00, past what the reset copies there. This has
-run only in the simulation (`tests/test_lockstep.py`), not yet on
-hardware.
+is in the PRG RAM, at $7B00, past what the reset copies there. On
+hardware a dump was made and read back from the web site's log page
+(November 2026); `tests/test_lockstep.py` checks it in the simulation.
 
 ### The cartridge
 
