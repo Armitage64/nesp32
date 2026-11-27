@@ -78,6 +78,20 @@ make && make verify && make test
   without the game differing: the link's bytes, the sound engine's, scratch,
   shadows of the PPU and banks. Rotate then EOR: no rotate through the
   carry with ADC, which lost early bytes.
+- **When the digests differ, send the RAM first** (`net_differ`, PEER's
+  DUMP): the 2 KB in 32 pieces of 64 bytes, screen and NMI off, then give
+  the session up as before. The nesp32 logs it and keeps the last over
+  power-off, for the web site's log page (`docs/PROTOCOL.md`, "A kept
+  dump"); the two consoles' dumps say where the games parted. Bubble
+  Bobble's, Tecmo Super Bowl's and Contra's are the models. A request of
+  66 bytes needs `NESP_TX_MAX = DUMP_PIECE + 2`, on one page (Contra's
+  went to its PRG RAM for want of room). A port at its own line rate
+  (`NET_RATE`) clears `nesp_fast` and tries the first piece for twice
+  `NESP_PEER_RATE_QUIET_MS`, as the nesp32 hears link-rate requests only
+  once it has gone back to the link's. The lockstep is unchanged, so the
+  hello's version stays. Each port's test of it, in
+  `tests/test_lockstep.py`, checks each dump against its console's RAM at
+  that tick, allowing for what the game's NMI writes before the exchange.
 - **Drum samples (the DMC) can spoil a controller read** on a real NES:
   the "phantom Right" (`docs/PHANTOM-RIGHT.md`). If the game plays
   samples, the session's read must read twice and compare, as the game's
