@@ -1,16 +1,17 @@
 # Multiplayer: two consoles, one game
 
-Eight of the apps are netplay builds of a two-player game:
+Nine of the apps are netplay builds of a two-player game:
 [Contra](../apps/contra), [Dr. Mario](../apps/drmario),
 [Tetris](../apps/tetris), [TMNT II](../apps/tmnt2),
 [Bubble Bobble](../apps/bubblebobble), [Jackal](../apps/jackal),
-[River City Ransom](../apps/rcr) and
-[Tecmo Super Bowl](../apps/superbowl).
+[River City Ransom](../apps/rcr),
+[Tecmo Super Bowl](../apps/superbowl) and
+[Chip 'n Dale Rescue Rangers](../apps/rescuerangers).
 Each is
 played on two consoles, each console with a nesp32 on controller port 2,
-the nesp32s joined over the network. The eight work the same way, and this
+the nesp32s joined over the network. The nine work the same way, and this
 is that way: what the player sees, what a tick is, how the two games are
-kept the same, and what is still left to do in all eight. Tecmo Super
+kept the same, and what is still left to do in all nine. Tecmo Super
 Bowl is the one with a save: the two consoles' saves are made the same
 before a session (PEER's SAVE ops), so its whole game, the season with
 it, is played in one.
@@ -32,6 +33,7 @@ and from hardware) is in its own docs:
 | Jackal | [apps/jackal/README.md](../apps/jackal/README.md) | its README, "How the netplay works" |
 | River City Ransom | [apps/rcr/README.md](../apps/rcr/README.md) | its README, "How the netplay works" |
 | Tecmo Super Bowl | [apps/superbowl/README.md](../apps/superbowl/README.md) | its README, "The netplay ROM", "The menu" and "The save" |
+| Rescue Rangers | [apps/rescuerangers/README.md](../apps/rescuerangers/README.md) | its README, "How the netplay works" |
 
 ## Playing
 
@@ -63,7 +65,7 @@ left.
   Internet, for a nesp32 that has no rooms, and for two networks that
   rooms cannot get through.
 
-All eight games' menus have both ways. Contra, TMNT II and Bubble Bobble
+All nine games' menus have both ways. Contra, TMNT II and Bubble Bobble
 write the foot of the screen as `SELECT   BY IP`, their fonts having no
 dash.
 
@@ -77,6 +79,7 @@ dash.
 | Jackal | 2 PLAYERS | `JACK` |
 | River City Ransom | 2P PLAY | `RIVR` |
 | Tecmo Super Bowl | NETWORK GAME, beside LOCAL GAME | `TSBO` |
+| Rescue Rangers | 2 PLAYERS | `RESC` |
 
 The console that hosted is player 1. When the two nesp32s are connected
 both consoles leave the menu and go straight into a game for two. Each
@@ -217,7 +220,8 @@ ways:
 TMNT II has been played on hardware since (October 2026, its README):
 a session, the menu, and level 7 for two at the game's own speed. And
 Bubble Bobble (November 2026, its README): a session, the menu, and its
-start straight into the game for two.
+start straight into the game for two. And Rescue Rangers (November 2026,
+its README): a session, with the line at 14 cycles a bit.
 
 The nesp32's log (`firmware/deploy.sh watch`) says the same of any
 network: `stun:` lines with what each server saw, and whether the router
@@ -391,6 +395,7 @@ What the digest covers is each game's own:
 | Bubble Bobble | its zero page, less its scratch, the link's bytes, the sound engine's, the NMI's stack pointer as the tasks saw it and the PPU's status as the NMI read it, and its sprites |
 | River City Ransom | its zero page, less its scratch, the HUD's split, the link's bytes, the PPU's and the banks' shadows and the flag of a palette for the NMI, and its objects ($0300-$04FF), taken at the read that begins the tick |
 | Tecmo Super Bowl | its zero page ($46-$EF), less the IRQ's split ($49-$4A), and its sprites; not the library's zero page nor the sound engine's ($F0-$FF) |
+| Rescue Rangers | its zero page, less the NMI's flag, the link's bytes, the sound engine's and its queue, and its objects ($0400-$04FF) |
 
 Each byte goes into the digest with the digest rotated a place, its bits
 round, and EORed: a step that loses nothing, so one byte that differs
@@ -526,7 +531,7 @@ passed over. With no session, the title passes over 2P CONTINUE.
 ## To do
 
 What is left on the nesp32 itself is in [`TODO.md`](TODO.md). In all
-eight games:
+nine games:
 
 
 - **Say why on the console** when a session ends (the other console left,
@@ -616,6 +621,11 @@ eight games:
     stages 1, 4 and 6 stand still in 0.41% of frames of play, where it
     was 0.74%. Both have been played at 14 on a real NES
     (November 2026): fine, and the music as it was.
+  - *Rescue Rangers* (November 2026, its README): asks for 14 from its
+    first build. In the simulation an exchange is some 3090 cycles, where
+    it was some 3690 at 21, and with the same game on both builds the
+    frames of play that stand still went from 1.41% to 0.91%. Played on
+    hardware at 14.
   - *Not the others.* Dr. Mario's and Tetris's frames have room to spare
     at 21 (Tetris's busiest is some 14800 cycles in a game for two, Dr.
     Mario's 27400 with the exchange), and each asks for a misheard reply

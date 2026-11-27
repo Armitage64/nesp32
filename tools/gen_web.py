@@ -118,6 +118,7 @@ PATCHES = [("apps/drmario/dist/drmario_net.bps", "0.2.0"),
            ("apps/jackal/dist/jackal_net.bps", "0.2.0"),
            ("apps/rcr/dist/rcr_net.bps", "0.3.0"),
            ("apps/superbowl/dist/superbowl_net.bps", "0.4.0"),
+           ("apps/rescuerangers/dist/rescuerangers_net.bps", "0.3.0"),
            ("apps/family-basic/dist/fbasic.bps", "0.2.0")]
 
 

@@ -155,7 +155,8 @@ For later (November 2026).
      table (the presses to its lobby, HOST by address and JOIN by
      address), tried until both screens are in the game.
   2. A `make soak-mesen` in each netplay app (Contra, Dr. Mario, Tetris,
-     TMNT II, Bubble Bobble, Jackal, River City Ransom, Tecmo Super Bowl),
+     TMNT II, Bubble Bobble, Jackal, River City Ransom, Tecmo Super Bowl,
+     Rescue Rangers),
      opt-in like `NESP_SLOW_TESTS`: Mesen is a desktop program, not in
      the workflows. Run before a hardware session and a release.
   3. A delay between the bridges (and a StickC Plus2's slower replies),

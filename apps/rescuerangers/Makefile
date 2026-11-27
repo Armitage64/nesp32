@@ -8,6 +8,8 @@
 #   make trace      tools/entries.txt again, from the game run on the
 #                   simulated console (tools/trace.py)
 #   make patches    write patches/ again from the sources in build/src
+#   make bps        dist/rescuerangers_net.bps again, the netplay ROM as a
+#                   patch to the game, which players apply to their own
 #   make clean
 #
 # The game is not here. There is no disassembly of it to start from, so
@@ -33,6 +35,11 @@ NESP := $(NESP_BUILD)/nesp.stamp
 NESP_LIB := $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/gen_link.py
 ROM := $(BUILD)/rescuerangers.nes
 NET_ROM := $(BUILD)/rescuerangers_net.nes
+# The netplay ROM as a patch to the US release, for players who build
+# nothing: kept in the repository, as it holds none of the game
+# (tools/gen_patch.py refuses one that would).
+DIST := dist
+GEN_PATCH := $(NESP32)/tools/gen_patch.py
 # Chip 'n Dale Rescue Rangers (USA), with its iNES header.
 SHA512_ORIGINAL := 0ed9cddeeb1dc3231fc707465eccbce40776d554bf783acecd25faf370a3355fefe943eb1685b044774c51272f039286cbc1c4c6cedc26cf9b7b14b50d5e68ad
 BASEROM ?= baserom.nes
@@ -48,7 +55,7 @@ NET_OBJECTS := $(NAMES:%=$(BUILD)/net/%.o)
 NET_SOURCES := $(wildcard net/*.inc net/*.asm) $(BUILD)/link.inc $(NESP_LIB) $(NESP)
 NET_INCLUDES := -I net -I $(BUILD) -I $(NESP_BUILD) -I $(NESP32)/nes/lib
 
-.PHONY: all verify test trace patches clean FORCE
+.PHONY: all verify test trace patches bps clean FORCE
 
 all: $(ROM) $(NET_ROM)
 
@@ -121,6 +128,12 @@ XDIST = $(shell $(PYTHON) -c 'import xdist' 2>/dev/null \
 
 test:
 	$(PYTHON) -m pytest $(XDIST) -q tests
+
+# From the original as built, once it is known to be the game: the patch
+# is for the US release and no other.
+bps: verify $(NET_ROM)
+	mkdir -p $(DIST)
+	$(PYTHON) $(GEN_PATCH) $(ROM) $(NET_ROM) $(DIST)/rescuerangers_net.bps
 
 trace: $(BASEROM)
 	$(PYTHON) tools/trace.py $(BASEROM) tools/entries.txt

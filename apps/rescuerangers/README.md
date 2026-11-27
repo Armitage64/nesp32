@@ -5,10 +5,18 @@ played at once, on one screen. This is its netplay ROM for nesp32: each
 player on a console of their own, each console with a nesp32 on
 controller port 2.
 
-**It has been tried only in the simulation** (py65: two consoles, each
-with nesp32's firmware built for this computer, and a network between).
-Nothing here has been on a real NES, on the MiSTer, or in Mesen, and
-there is no patch for players yet ("Not done").
+**It has been played on hardware** (November 2026): a session on two
+consoles, each with a nesp32, with the line at 14 cycles a bit, which
+worked. The rest was tried in the simulation (py65: two consoles, each
+with nesp32's firmware built for this computer, and a network between):
+the first level for two, the menu, and networks that are slow, lose
+datagrams or come and go. In Mesen, with no session, the title is the
+original's, the menu draws, and LOCAL GAME goes on to the first level.
+How far a session goes past the first level, and a game over in one,
+have not been tried anywhere yet ("Not done").
+
+Players apply `dist/rescuerangers_net.bps` to their own copy of the US
+release (nesp32's [user guide](../../docs/USER_GUIDE.md), chapter 11).
 
 At the title, Select moves the cursor to 2 PLAYERS, and Start there opens
 the menu: HOST GAME, JOIN GAME (by a room's code, or with Select by an
@@ -26,6 +34,7 @@ make && make verify     # build/rescuerangers.nes, and its SHA-512 checked;
                         # build/rescuerangers_net.nes, the netplay ROM
 make test               # the simulation's tests
 make trace              # tools/entries.txt again (some 5 minutes)
+make bps                # dist/rescuerangers_net.bps again, for players
 ```
 
 The ROM's SHA-512 is in the Makefile (`SHA512_ORIGINAL`); its SHA-1 is
@@ -226,13 +235,15 @@ tick):
 
 Nearly all are single frames, and nearly none are stalls: the delay the
 nesp32s advise covers both networks. (The original's figure is of
-another game, by the frame, as a game with no session is.) None of this
-has been measured on hardware yet.
+another game, by the frame, as a game with no session is.) None of
+these has been counted on hardware yet, where a session at 14 has played
+well.
 
 ## Not done
 
-1. **Hardware**: two consoles, each with a nesp32, a session by room
-   code; and Mesen. Nothing here has run anywhere but the simulation.
+1. **Longer sessions on hardware**: past the first level, the later
+   zones and a game over; and the frames that stand still counted there,
+   to set beside the simulation's ("The frame rate").
 2. **More of the game traced**: the zone map, the later zones, the
    bosses, a game over, the continue and the end, by poking in a zone as
    Bubble Bobble's trace pokes in a round. Until then, that the game is
@@ -245,8 +256,5 @@ has been measured on hardware yet.
 4. **Where each task's stack is**, so the digest and the tests can keep
    the live part of page 1 and leave out only the dead bytes. For now
    they leave out the whole page.
-5. **`make bps`** and `dist/rescuerangers_net.bps`, `make ines`, and the
-   documents that list the games (the nes-netplay-port skill, "Shipping
-   a change").
-6. **The line at 14 on hardware**, with the frames that stand still
-   counted there.
+5. **`make ines`**: the netplay ROM with an iNES header, for an emulator
+   or a flash cartridge that does not read NES 2.0, as Contra's has.

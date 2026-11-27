@@ -77,7 +77,7 @@ Please join our [Discord](https://discord.gg/kwSC7pwtmb)!
 | [NESpedia](apps/wiki) | Search and display Wikipedia articles |
 | [Jukebox](apps/jukebox) | Stream VGM/VGZ music files and PCM audio to the NES sound chip |
 | [Throughput](apps/throughput) | Test the bandwidth of the NES<>ESP32 interface |
-| Games* | [Dr. Mario](apps/drmario), [Contra](apps/contra), [Tetris](apps/tetris), [TMNT2 Arcade](apps/tmnt2), [Bubble Bobble](apps/bubblebobble), [Jackal](apps/jackal), [River City Ransom](apps/rcr), and [Tecmo Super Bowl](apps/superbowl) 2-player over the network
+| Games* | [Dr. Mario](apps/drmario), [Contra](apps/contra), [Tetris](apps/tetris), [TMNT2 Arcade](apps/tmnt2), [Bubble Bobble](apps/bubblebobble), [Jackal](apps/jackal), [River City Ransom](apps/rcr), [Tecmo Super Bowl](apps/superbowl), and [Chip 'n Dale Rescue Rangers](apps/rescuerangers) 2-player over the network
 | [NES Radar](apps/nes-radar) | [k6lcm](https://github.com/k6lcm)'s live air traffic scope, no PC required |
 | [NESradio](apps/npr) | Live .mp3 radio stations on a radio dial, with what is playing |
 | [Weather](apps/weather) | Current conditions and a 5-day forecast for a place anywhere in the world, which the NESP32 remembers |
@@ -158,10 +158,11 @@ make -C apps/tmnt2          # TMNT II 2P
 make -C apps/jackal         # Jackal 2P
 make -C apps/rcr            # River City Ransom 2P
 make -C apps/superbowl      # Tecmo Super Bowl 2P
+make -C apps/rescuerangers  # Chip 'n Dale Rescue Rangers 2P
 make -C apps/family-basic   # Family BASIC
 ```
 
-Contra, TMNT II, Jackal, River City Ransom, Tecmo Super Bowl and Family BASIC need your own copy of the game at `apps/<name>/baserom.nes`
+Contra, TMNT II, Jackal, River City Ransom, Tecmo Super Bowl, Rescue Rangers and Family BASIC need your own copy of the game at `apps/<name>/baserom.nes`
 (each app's README says which release). Dr. Mario and Tetris are built from their disassemblies
 alone. After changing a game, `make -C apps/<name> bps` writes its patch for players in
 `apps/<name>/dist/` again; commit it, since the web site ships the patches as committed.
@@ -179,6 +180,7 @@ alone. After changing a game, `make -C apps/<name> bps` writes its patch for pla
 | `apps/jackal/build/jackal_net.nes` | Jackal 2P, which is not on the cartridge |
 | `apps/rcr/build/rcr_net.nes` | River City Ransom 2P, which is not on the cartridge |
 | `apps/superbowl/build/superbowl_net.nes` | Tecmo Super Bowl 2P, which is not on the cartridge. `superbowl_net_debug.nes` beside it also keeps what a console that stopped last did, for finding out why |
+| `apps/rescuerangers/build/rescuerangers_net.nes` | Chip 'n Dale Rescue Rangers 2P, which is not on the cartridge |
 | `apps/family-basic/build/fbasic.nes` | Family BASIC, which is not on the cartridge |
 
 ## Further Reading
@@ -197,7 +199,7 @@ alone. After changing a game, `make -C apps/<name> bps` writes its patch for pla
 | [hardware/](hardware/) | the hat's board and its parts |
 | [apps/](apps/) | each program's self-contained documentation and to-do list |
 | [samplecode/](samplecode/) | small, documented ROMs to learn from or copy: a two-player game's lobby and session, an HTTPS fetch, and a Bluetooth keyboard |
-| [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md) | the netplay games (Dr. Mario, Tetris, Contra, TMNT II, Bubble Bobble, Jackal, River City Ransom, Tecmo Super Bowl): how they are played, and how two consoles are kept in the same game |
+| [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md) | the netplay games (Dr. Mario, Tetris, Contra, TMNT II, Bubble Bobble, Jackal, River City Ransom, Tecmo Super Bowl, Rescue Rangers): how they are played, and how two consoles are kept in the same game |
 | [apps/contra/docs/Netplay.md](apps/contra/docs/Netplay.md) | Contra's netplay, with figures from sessions on hardware |
 | [docs/PHANTOM-RIGHT.md](docs/PHANTOM-RIGHT.md) | a netplay bug found on a real NES: a Right that nobody pressed |
 
@@ -216,14 +218,15 @@ Not everything in the repository is nesp32's to license:
   Dr. Mario, Contra, Tetris, TMNT II, Jackal and Tecmo Super Bowl that the
   two-player ROMs are built from.
 - **The games.** `apps/drmario`, `apps/contra`, `apps/tetris`,
-  `apps/tmnt2`, `apps/jackal`, `apps/rcr`, `apps/superbowl` and
-  `apps/family-basic` hold nesp32's patches and the code they add, which
-  are under this licence; Dr. Mario, Contra, Tetris, TMNT II, Jackal, River
-  City Ransom, Tecmo Super Bowl and Family BASIC are their publishers',
+  `apps/tmnt2`, `apps/jackal`, `apps/rcr`, `apps/superbowl`,
+  `apps/rescuerangers` and `apps/family-basic` hold nesp32's patches and
+  the code they add, which are under this licence; Dr. Mario, Contra,
+  Tetris, TMNT II, Jackal, River City Ransom, Tecmo Super Bowl, Rescue
+  Rangers and Family BASIC are their publishers',
   and no ROM of any of them is here. Each app's `dist/` has a BPS patch,
   which holds none of the game and is applied to your own copy. Building
-  Contra, TMNT II, Jackal, River City Ransom, Tecmo Super Bowl or Family
-  BASIC also needs your own copy.
+  Contra, TMNT II, Jackal, River City Ransom, Tecmo Super Bowl, Rescue
+  Rangers or Family BASIC also needs your own copy.
 - **Tetris's game for two** follows ejona86's
   [TAUS](https://github.com/ejona86/taus) twoplayer mod, Eric Anderson's,
   under the MIT License ([its terms](apps/tetris/net/TAUS-LICENSE)): its
