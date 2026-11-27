@@ -210,7 +210,7 @@ queue ($DB-$E3), which run in every NMI, and the link's bytes. When two
 digests differ, each console sends its RAM to its nesp32's log first
 (`net_differ`, PEER's DUMP), as Bubble Bobble's does.
 
-**The hello** is `RESC`, version 1.
+**The hello** is `RESC`, version 2: version 1 started the game a frame sooner after the reset, and so is another game (`FRAME_COUNT`).
 
 **The session's line** is at 14 CPU cycles a bit (`NET_RATE` in the
 Makefile), as Jackal's, TMNT II's and Contra's are: each console asks its
@@ -232,12 +232,42 @@ tick):
 | the original, a local game for two | none | 0.04% |
 | a session, the line at 21 | some 3690 | 1.41% (5 ms network), 1.45% (20 ms) |
 | a session, the line at 14 | some 3090 | 0.91% (5 ms), 0.97% (20 ms) |
+| a session, the line at 14, and the faster ways below | some 3090 | 0.41% (5 ms) |
 
 Nearly all are single frames, and nearly none are stalls: the delay the
 nesp32s advise covers both networks. (The original's figure is of
 another game, by the frame, as a game with no session is.) None of
 these has been counted on hardware yet, where a session at 14 has played
 well.
+
+**The faster ways** (`net/fast.inc`). The game's frames, profiled in the
+simulation (the original, 4 seeds of 3000 frames of the first level for
+two): a median of some 18700 cycles of the 29780 a frame has, of which the
+NMI some 4000, and 0.82% over 26700, which the exchange would push past
+the vblank. The busiest frames are busy with more of the same: the
+sprites' places (`L5_802F`), the objects' looks at the level's collision
+map (`L7_EA8F` and `L7_EB3B`), and the objects' looks at each other. The
+netplay ROM has faster ways through two routines, each doing what the
+game's does to the byte, scratch and flags too, from the PRG RAM:
+
+- **The sprites' slots hidden** (`L7_C21E`, `fast_hide_sprites`): the
+  game hides every slot it did not use this frame, some 54 of 64, in a
+  loop of 16 cycles a slot. This goes into a run of stores at the first,
+  4 a slot: some 620 cycles a frame, every frame.
+- **The collision map's look-up** (`L7_EB3B`, `fast_tile_at`, which
+  `L7_EA8F` calls in its place): its shifts are tables, and two loads are
+  not made twice. Some 20 cycles a call, 12 calls in a frame and 17 in a
+  busy one.
+
+`make` also builds `build/rescuerangers_net_slow.nes`, the netplay ROM
+with the game's own routines (`NET_SLOW`). `tests/test_fast.py` holds the
+two alike: each routine from memory and registers at random (every slot,
+every point), and a game for two from power-on through the menu and
+LOCAL GAME, tick for tick. Both copy as many pages to the PRG RAM at the
+reset (`NET_IMAGE_PAGES`, 9), and so start the game in the same frame,
+one later than before. The next would be the sprites' places, whose
+loop reads each sprite's offset twice for its sign (some 12 cycles a
+sprite, of some 100), and then the objects' looks at each other.
 
 ## Not done
 

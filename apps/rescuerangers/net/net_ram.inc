@@ -116,12 +116,13 @@ nesp_fast       = NET_RAM_END + 4   ; bit 7: a session's exchanges at its own ra
 net_rate_ask    = NET_RAM_END + 5   ; not 00: ask for it this many NMIs of the session on, less one
 net_rate_tries  = NET_RAM_END + 6   ; times it has been asked for in this session
 net_rate_misses = NET_RAM_END + 7   ; exchanges in a row that had no reply, at it
+fast_point      = NET_RAM_END + 8   ; fast_tile_at's point, while Y is the X it looks up (net/fast.inc)
 NET_RATE_TRIES  = 3
 NET_RATE_MISSES = 30            ; half a second: and the line is the link's again
 NET_RATE_WAIT   = 46            ; and asked for again after 3/4 of a second, once the nesp32
                                 ; has gone back to the link's (PEER_RATE_QUIET_MS)
 
-.assert net_rate_misses < MENU_RAM, error
+.assert fast_point < MENU_RAM, error
 .assert >nesp_tx = >(nesp_tx + NESP_TX_MAX + 6), error, "nesp_tx on one page"
 NET_MENU_ON     = $80           ; in net_menu
 NET_MENU_FIRST  = $C0

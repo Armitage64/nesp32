@@ -2,7 +2,10 @@
 #
 #   make            build/rescuerangers.nes, the original, made from the
 #                   converted source, and build/rescuerangers_net.nes, the
-#                   netplay ROM, for two consoles and two nesp32s
+#                   netplay ROM, for two consoles and two nesp32s; and
+#                   build/rescuerangers_net_slow.nes, the same with the
+#                   game's own routines where the netplay has faster ways
+#                   (net/fast.inc), for the tests to hold the two alike
 #   make verify     check the original against the ROM's SHA-512
 #   make test       the simulation's tests (needs requirements-dev.txt)
 #   make trace      tools/entries.txt again, from the game run on the
@@ -35,6 +38,7 @@ NESP := $(NESP_BUILD)/nesp.stamp
 NESP_LIB := $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/gen_link.py
 ROM := $(BUILD)/rescuerangers.nes
 NET_ROM := $(BUILD)/rescuerangers_net.nes
+SLOW_ROM := $(BUILD)/rescuerangers_net_slow.nes
 # The netplay ROM as a patch to the US release, for players who build
 # nothing: kept in the repository, as it holds none of the game
 # (tools/gen_patch.py refuses one that would).
@@ -52,16 +56,17 @@ NAMES := header rescuerangers chr
 SOURCES := $(NAMES:%=$(SRC)/%.asm)
 OBJECTS := $(NAMES:%=$(BUILD)/orig/%.o)
 NET_OBJECTS := $(NAMES:%=$(BUILD)/net/%.o)
+SLOW_OBJECTS := $(NAMES:%=$(BUILD)/slow/%.o)
 NET_SOURCES := $(wildcard net/*.inc net/*.asm) $(BUILD)/link.inc $(NESP_LIB) $(NESP)
 NET_INCLUDES := -I net -I $(BUILD) -I $(NESP_BUILD) -I $(NESP32)/nes/lib
 
 .PHONY: all verify test trace patches bps clean FORCE
 
-all: $(ROM) $(NET_ROM)
+all: $(ROM) $(NET_ROM) $(SLOW_ROM)
 
 .SECONDARY:
 
-$(BUILD) $(BUILD)/orig $(BUILD)/net:
+$(BUILD) $(BUILD)/orig $(BUILD)/net $(BUILD)/slow:
 	mkdir -p $@
 
 $(CONVERTED): tools/convert.py tools/game.map tools/entries.txt $(BASEROM) | $(BUILD)
@@ -109,12 +114,19 @@ $(BUILD)/orig/%.o: $(SRC)/%.asm | $(BUILD)/orig
 $(BUILD)/net/%.o: $(SRC)/%.asm $(NET_SOURCES) | $(BUILD)/net
 	ca65 -D NETPLAY --debug-info --bin-include-dir $(BUILD) $(NET_INCLUDES) -o $@ $<
 
+$(BUILD)/slow/%.o: $(SRC)/%.asm $(NET_SOURCES) | $(BUILD)/slow
+	ca65 -D NETPLAY -D NET_SLOW --debug-info --bin-include-dir $(BUILD) $(NET_INCLUDES) -o $@ $<
+
 $(ROM): $(OBJECTS) rescuerangers.cfg
 	ld65 -C rescuerangers.cfg --dbgfile $(BUILD)/rescuerangers.dbg -o $@ $(OBJECTS)
 
 $(NET_ROM): $(NET_OBJECTS) net/rescuerangers_net.cfg
 	ld65 -C net/rescuerangers_net.cfg --dbgfile $(BUILD)/rescuerangers_net.dbg \
 		-m $(BUILD)/rescuerangers_net.map -o $@ $(NET_OBJECTS)
+
+$(SLOW_ROM): $(SLOW_OBJECTS) net/rescuerangers_net.cfg
+	ld65 -C net/rescuerangers_net.cfg --dbgfile $(BUILD)/rescuerangers_net_slow.dbg \
+		-o $@ $(SLOW_OBJECTS)
 
 verify: $(ROM)
 	@test "$$(shasum -a 512 $(ROM) | cut -d' ' -f1)" = "$(SHA512_ORIGINAL)" \

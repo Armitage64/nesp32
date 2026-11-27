@@ -25,13 +25,14 @@
 +.else
 @@ -10878,0 +10896 @@
 +.endif
-@@ -10912,0 +10931,6 @@
+@@ -10912,0 +10931 @@
 +.ifdef NETPLAY
-+    lda #$03
+@@ -10913,0 +10933,5 @@
 +    jsr net_prg
 +    jmp L7_C0DC
 +    .res $C0DC - $C0C7 - (* - L7_C0C7), $00
 +.else
++    lda #$03
 @@ -10922,0 +10947 @@
 +.endif
 @@ -10941,0 +10967 @@
@@ -58,16 +59,29 @@
 +.else
 @@ -11010,0 +11052 @@
 +.endif
-@@ -17938,0 +17981,4 @@
+@@ -11121,0 +11164,4 @@
++.if .defined(NETPLAY) .and (.not .defined(NET_SLOW))
++    jmp fast_hide_sprites       ; net/fast.inc
++    nop
++.else
+@@ -11123,0 +11170 @@
++.endif
+@@ -16015,0 +16063,3 @@
++.if .defined(NETPLAY) .and (.not .defined(NET_SLOW))
++    jsr fast_tile_at            ; net/fast.inc
++.else
+@@ -16016,0 +16067 @@
++.endif
+@@ -17938,0 +17990,4 @@
 +.ifdef NETPLAY
 +    jsr net_reset_hook
 +    .res 18, $EA
 +.else
-@@ -17948,0 +17995 @@
+@@ -17948,0 +18004 @@
 +.endif
-@@ -18094,0 +18142 @@
+@@ -18094,0 +18151 @@
 +.ifdef NETPLAY
-@@ -18095,0 +18144,7 @@
+@@ -18095,0 +18153,7 @@
 +    jsr net_chr0
 +    lda #$00
 +    sta CHR0_NEXT
@@ -75,43 +89,44 @@
 +    .res $FF39 - $FF1F - (* - SET_CHR0), $00
 +.else
 +    sta CHR0_BANK
-@@ -18107,0 +18163 @@
+@@ -18107,0 +18172 @@
 +.endif
-@@ -18111,0 +18168,8 @@
+@@ -18111,0 +18177 @@
 +.ifdef NETPLAY
-+    sta CHR1_BANK
+@@ -18112,0 +18179,7 @@
 +    jsr net_chr1
 +    lda #$00
 +    sta CHR1_NEXT
 +    rts
 +    .res $FF53 - $FF39 - (* - SET_CHR1), $00
 +.else
-@@ -18124,0 +18189 @@
++    sta CHR1_BANK
+@@ -18124,0 +18198 @@
 +.endif
-@@ -18128,0 +18194 @@
+@@ -18128,0 +18203 @@
 +.ifdef NETPLAY
-@@ -18130,0 +18197,6 @@
+@@ -18130,0 +18206,6 @@
 +    jmp net_set_prg
 +.include "cart.inc"
 +    .res $FFB0 - $FF53 - (* - SET_PRG), $00
 +.else
 +    sta PRG_BANK
 +    sta PRG_BANK_WANTED
-@@ -18180,0 +18253 @@
+@@ -18180,0 +18262 @@
 +.endif
-@@ -18187,0 +18261,3 @@
+@@ -18187,0 +18270,3 @@
 +.ifdef NETPLAY
 +    bit $FFE1
 +.else
-@@ -18188,0 +18265 @@
+@@ -18188,0 +18274 @@
 +.endif
-@@ -18195,0 +18273,3 @@
+@@ -18195,0 +18282,3 @@
 +.ifdef NETPLAY
 +    .addr net_nmi, net_cart_start, L7_FFE0
 +.else
-@@ -18196,0 +18277 @@
+@@ -18196,0 +18286 @@
 +.endif
-@@ -18197,0 +18279,4 @@
+@@ -18197,0 +18288,4 @@
 +.ifdef NETPLAY
 +NMI_LEAVE = L7_C10E
 +.include "net.asm"            ; bank 8

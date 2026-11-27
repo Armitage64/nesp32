@@ -58,7 +58,7 @@ STATES = {p.NESP_LOBBY_NO_WIFI: "no network", p.NESP_LOBBY_IDLE: "idle",
 # Each game's NESP_APP_VERSION as its builds now say it: a room is met only
 # by the same game at the same version.
 VERSIONS = {"TMN2": 2, "CNTR": 2, "DRMA": 3, "TTRS": 2, "BUBL": 2, "JACK": 2, "RIVR": 1,
-            "TSBO": 1, "RESC": 1}
+            "TSBO": 1, "RESC": 2}
 # Ticks a second, where a game's tick is not a frame: River City Ransom's
 # is a pass of its main loop, two frames.
 TICKS_PER_S = {"RIVR": 30}

@@ -75,7 +75,7 @@ net_entries_hi:
 .assert NET_FRAME = 0 && NET_RESET = 1 && NET_MENU = 2, error, "net_entries' order"
 
 .define NESP_APP "RESC"
-NESP_APP_VERSION = 1
+NESP_APP_VERSION = 2              ; 2: the reset a frame longer (net/fast.inc), so FRAME_COUNT is not 1's
 
 .include "nesp.inc"
 

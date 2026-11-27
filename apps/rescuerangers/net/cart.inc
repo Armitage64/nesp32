@@ -33,8 +33,12 @@ IMAGE_BANK      = 16            ; bank 9, the MMC3's 8 KB bank: where the image 
 NET_IMAGE       = $8000         ; where it is in bank 9
 NET_IMAGE_RUN   = $6000         ; and where it runs
 .import __NETCODE_SIZE__
-NET_IMAGE_PAGES = >(__NETCODE_SIZE__ + $FF)
-.assert NET_IMAGE_RUN + __NETCODE_SIZE__ <= NET_RAM, lderror, "the image runs into net/net_ram.inc's memory"
+; The pages the reset copies: as many on the slow ROM (NET_SLOW, with no
+; net/fast.inc) as on the netplay ROM, so that the two take as long to
+; start the game, and tests/test_fast.py can hold them alike from power-on.
+NET_IMAGE_PAGES = 9
+.assert __NETCODE_SIZE__ <= NET_IMAGE_PAGES * $100, lderror, "NET_IMAGE_PAGES too few for the image"
+.assert NET_IMAGE_RUN + NET_IMAGE_PAGES * $100 <= NET_RAM, lderror, "the image runs into net/net_ram.inc's memory"
 
 ; The reset vector. Until the first write to $8000 sets the MMC3's mode,
 ; $C000 may be any bank, but this is in the last 8 KB, which is always at
@@ -413,3 +417,5 @@ net_title_start:
 TITLE_2P        = $01           ; in TITLE_PLAYERS
 BTN_START_      = $10
 .popseg
+
+.include "fast.inc"
