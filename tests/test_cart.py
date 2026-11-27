@@ -404,7 +404,7 @@ def test_select_in_weathers_form_is_the_menu_again_and_b_is_not(cart, images):
     c.run_until(lambda: program_hello(stick), 300)
     c.run(60)                           # the form, all of it
     assert not c.home
-    assert c.line(26) == "A : SUBMIT   SELECT : MENU"  # on the cartridge, there is a menu
+    assert c.line(27).strip() == "START:SUBMIT   SELECT:MENU"  # on the cartridge, there is a menu
     c.press(PAD_B)                      # B never leaves a program
     c.run(30)
     assert not c.home
