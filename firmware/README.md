@@ -1,6 +1,6 @@
 # The nesp32's firmware
 
-ESP-IDF 5.x and M5Unified, for an M5StickC Plus2 (`esp32`) or an M5StickS3
+ESP-IDF 6.x and M5Unified, for an M5StickC Plus2 (`esp32`) or an M5StickS3
 (`esp32s3`). One image serves every ROM: the ROM says which services it
 needs (`../docs/PROTOCOL.md`).
 
@@ -12,17 +12,19 @@ radio station played for long runs, and network games between two
 consoles. Each program's README has what was seen with it. What is still
 to do is in [`../docs/TODO.md`](../docs/TODO.md).
 
-With ESP-IDF 5.5.5 the image is about 1.59 MB of the 2 MB slot for a
-StickS3, Bluetooth included, and 1.22 MB for a StickC Plus2, with no
-warnings from this project's code.
+The image is about 1.68 MB of the 2 MB slot for a StickS3, Bluetooth
+included, built with ESP-IDF 6.1.1, and 1.27 MB for a StickC Plus2,
+built with 6.0.3, with no warnings from this project's code.
 
 Building it needs [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/)
-5.1 or later, installed for both chips (`install.sh esp32,esp32s3`; the
+6.0 or later, installed for both chips (`install.sh esp32,esp32s3`; the
 core tools are enough, without `--enable-pytest` or the others).
 `deploy.sh` uses the ESP-IDF that `IDF_PATH` points to or, with it not
 set, `~/esp/esp-idf`, or else the latest of `~/.espressif/v*/esp-idf`,
 where Espressif's installer puts it. With two copies, as for trying a new
-release, `IDF_PATH` says which one.
+release, `IDF_PATH` says which one. A StickC Plus2 needs an ESP-IDF older
+than 6.1.1 for now (the releases use 6.0.3): M5GFX doesn't build for it
+with 6.1.1 (m5stack/M5GFX#425).
 
 Each board has its own build directory, since the two have different chips:
 
@@ -269,9 +271,10 @@ connection. Going from one program on the cartridge to another by its
 menu keeps it connected, since the menu's hello asks for KBD and every
 program on it but NESradio does, whether or not it takes keys.
 
-ESP-IDF 5.5.5's NimBLE HID host (and 6.0.3's) never turned on a
-keyboard's reports, so nothing typed arrived: `components/esp_hid` has
-ESP-IDF master's fix. Its open waits for each step with no end, so
+ESP-IDF 5.5.5's and 6.0.3's NimBLE HID host never turned on a
+keyboard's reports, so nothing typed arrived. 6.1.1's does, and
+`components/esp_hid` is 6.1.1's with nesp32's changes for Wi-Fi and
+pairing. Its open waits for each step with no end, so
 `keyboard.c` gives the wait for a sleeping keyboard to the main task's
 poll to call off. A keyboard's report is read as its modifiers, an
 unused byte if the report is 8 bytes long (the boot report's layout), and

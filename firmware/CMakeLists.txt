@@ -1,4 +1,4 @@
-# The Stick's firmware: ESP-IDF 5.x, with M5Unified for the screen, the
+# The Stick's firmware: ESP-IDF 6.x, with M5Unified for the screen, the
 # buttons and the power.
 #
 #   idf.py set-target esp32      a StickC Plus2

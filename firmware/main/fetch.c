@@ -11,9 +11,9 @@
  * reads, drops the connection and starts on the new one. A sink hears no
  * more of a fetch once it has been replaced or stopped.
  *
- * The server is authenticated against ESP-IDF's bundle of root
- * certificates. An address that sends the fetch on to another (a 301, 302,
- * 303, 307 or 308) is followed, as far as REDIRECTS_MAX of them.
+ * The server is authenticated against Mozilla's root list (firmware/ca). An
+ * address that sends the fetch on to another (a 301, 302, 303, 307 or 308)
+ * is followed, as far as REDIRECTS_MAX of them.
  *
  * A sink that wants a stream's titles (its `icy`) has them asked for, and
  * is told the reply's icy-metaint before its body.

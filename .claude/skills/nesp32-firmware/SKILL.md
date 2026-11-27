@@ -40,6 +40,19 @@ firmware/deploy.sh watch            # every board's log, without restarting it
 `idf.py -B build-<x> -D SDKCONFIG=build-<x>/sdkconfig -D IDF_TARGET=<t>`
 lines are at the top of `firmware/README.md`.
 
+**The Plus2 needs an ESP-IDF older than 6.1.1.** The firmware needs 6.0
+or later; the releases build the StickS3's and the generic image with
+6.1.1 and the Plus2's with 6.0.3, since M5GFX doesn't build for the
+`esp32` target with 6.1.1 (m5stack/M5GFX#425). `deploy.sh` builds every
+board with the one ESP-IDF it finds, and with two in `~/.espressif` it
+takes the newer. With 6.1.1, `deploy.sh build` builds the StickS3's and
+stops at the Plus2's, so the generic image is not built, and flashing a
+Plus2 fails the same way. Either set `IDF_PATH` to a 6.0.3, which builds
+all three with it, or build the Plus2's alone with 6.0.3 by the `idf.py`
+line in `firmware/README.md`. Delete a `build-<x>` that the other ESP-IDF
+configured first: each has its own Python, and `idf.py` will not use a
+build directory set up with another (it says to run `idf.py fullclean`).
+
 - **Flashing replaces what is on the Stick** (UIFlow included). A StickS3
   flashed the first time needs boot mode: hold the side button until the
   green light flashes.
@@ -66,8 +79,9 @@ lines are at the top of `firmware/README.md`.
   whose StickS3 crashed. After a change, delete `build-*/esp-idf/m5stack__*`.
 - A StickS3 build directory from before Bluetooth has it off in its
   `sdkconfig`; the build says to delete `build-esp32s3/sdkconfig`.
-- The image is about 1.59 MB of the 2 MB slot on a StickS3; watch the size
-  when adding a service.
+- The image fills about 80% of the StickS3's 2 MiB app slot, built with
+  ESP-IDF 6.1.1 (`firmware/README.md` has the figures); watch the size when
+  adding a service.
 - Build directories are per checkout and gitignored: an agent worktree
   has none until it builds, and clangd/Serena find no C symbols there
   until then (`firmware/.clangd` points at `build-esp32s3`).

@@ -962,9 +962,9 @@ Internet that no other service lays out for it, and is what
   up to `HTTP_URL_MAX` (255), goes in pieces, in order, each `AT` the
   length so far. `AT` past the end, an address too long, or a 0 in `TEXT`
   is BAD_ARG, and nothing changes. A hello forgets the address. It may be
-  https or http; the server's certificate is checked against ESP-IDF's
-  bundle of root certificates, and a redirect (301, 302, 303, 307, 308)
-  is followed, as many as five.
+  https or http; the server's certificate is checked against Mozilla's
+  list of root certificates (`firmware/ca`), and a redirect (301, 302,
+  303, 307, 308) is followed, as many as five.
 - **GET** fetches the address, unless its `ID` is the last GET's: the
   same GET again only says how it stands, so the ROM sends it until it is
   answered. A GET with no address set is BAD_ARG. A new GET drops the
