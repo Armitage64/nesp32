@@ -3,7 +3,7 @@
 ## Unreleased
 
 ### Games
-- Chip 'n Dale Rescue Rangers online co-op added, optimized for a steadier framerate and at the faster link speed (firmware 0.3.0 or newer; it also plays at the slower one with 0.2.0). It saves a crash dump to the nesp32 when the consoles desync, for the website's log page, with firmware 0.4.0
+- Chip 'n Dale Rescue Rangers online co-op added, optimized for a steadier framerate and at the faster link speed (firmware 0.3.0 or newer; it also plays at the slower one with 0.2.0). It saves a crash dump to the nesp32 when the consoles desync, for the website's log page, with firmware 0.4.0 (#114)
 - Contra saves a crash dump to the nesp32 when the consoles desync, for collecting later on the website's log page. Requires firmware 0.4.0 (#112)
 
 ## 0.4.0 — 2026-11-26
