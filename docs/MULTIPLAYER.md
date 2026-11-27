@@ -484,8 +484,8 @@ With both players' logs, the bytes that differ are where the two games
 parted. The link's own bytes and the stack below the dump's calls are the
 dump's own doing, and `PPUCTRL_COPY` ($FF) has the NMI's bit cleared.
 
-Tecmo Super Bowl and Contra send theirs the same way. Theirs are at the
-session's faster line (PEER's RATE), and a dump's requests at the link's
+Tecmo Super Bowl, Contra and Rescue Rangers send theirs the same way.
+Theirs are at the session's faster line (PEER's RATE), and a dump's requests at the link's
 rate are heard only once the nesp32 has gone back to it, so the first
 piece is tried for up to twice `PEER_RATE_QUIET_MS` and the dump takes
 about a second. Contra's is taken in the NMI after its writes to the PPU,
