@@ -113,8 +113,8 @@ HOSTS = [
     "opendata.adsb.fi",
     "query.wikidata.org",
     "public.api.bsky.app",
-    "api.zippopotam.us",
     "api.open-meteo.com",
+    "geocoding-api.open-meteo.com",
     "en.wikipedia.org",
     "fm939.wnyc.org",
     "stream.wqxr.org",
@@ -382,6 +382,14 @@ def test_hosts_are_every_https_server_the_firmware_and_npr_name():
     assert named, "no https:// address found in %s" % HOST_SOURCES
     assert sorted(named - set(HOSTS)) == [], "servers refresh.py does not check: add them to HOSTS"
     assert sorted(set(HOSTS) - named) == [], "HOSTS names servers nothing uses any more"
+
+
+def test_the_readme_names_only_servers_in_hosts():
+    # A server firmware/ca/README.md names (`a.b.c`: two dots or more, so not a file such as `cacert.pem`) is one the
+    # firmware still uses, so the README's account of the chains does not outlive a server dropped from HOSTS.
+    named = set(re.findall(r"`([a-z0-9-]+(?:\.[a-z0-9-]+){2,})`", read(os.path.join(CA_DIR, "README.md"))))
+    assert named, "the README names no server: has this check's pattern gone stale?"
+    assert sorted(named - set(HOSTS)) == [], "firmware/ca/README.md names servers not in HOSTS"
 
 
 def test_an_address_in_c_is_found_in_any_case(tmp_path):

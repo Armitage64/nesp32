@@ -36,8 +36,8 @@ days (`MAX_CERT_DAYS`); the test fails after that, and the line moves to `REMOVE
 The firmware finds a server's root as mbedTLS asks ESP-IDF's bundle for one: from the leaf up through the
 certificates the server sends, each one's issuer is looked for in this list before the rest of the chain
 (`CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_CROSS_SIGNED_VERIFY`, ESP-IDF's default, on in 6.0.3 and 6.1.1 alike). So the
-root is the first one found going up, not the issuer of the last certificate sent. Three of the servers depend on
-that: `opendata.adsb.fi` and `api.zippopotam.us` send GTS Root R4 cross-signed by GlobalSign Root CA, and
+root is the first one found going up, not the issuer of the last certificate sent. Two of the servers depend on
+that: `opendata.adsb.fi` sends GTS Root R4 cross-signed by GlobalSign Root CA, and
 `playerservices.streamtheworld.com` sends Go Daddy Root G2 cross-signed by Go Daddy Class 2, two roots this list
 does not have; their certificates are issued by GTS Root R4 and Go Daddy Root G2, which it does. `REQUIRED` in the
 test holds the roots the firmware's servers stop at.
