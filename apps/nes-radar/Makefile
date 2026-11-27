@@ -4,8 +4,9 @@
 #   make cart CART_CHR=n    build/nes_radar_cart.nes, the ROM as a part of
 #                   nesp32's cartridge, with its tiles at the mapper's n.
 #                   nesp32's own `make cart` asks for it
-#   make verify     the ROM's size and header, and nes-radar's copy of
-#                   nesp32's link library the same as nesp32's own
+#   make verify     the ROM's size and header, and the ROMs built with
+#                   nes-radar's copy of nesp32's link library the same as
+#                   those built with nesp32's own
 #   make test       the simulation's tests (needs requirements-dev.txt)
 #   make clean
 #
@@ -89,17 +90,42 @@ cart: $(CART_ROM)
 
 # nes-radar builds with a copy of nesp32's link library: the same as
 # nesp32's, or tools/update_nesp32.sh in nes-radar has to be run again.
+# nes-radar's copy of the link library need not be nesp32's byte for byte:
+# nesp32 adds constants and code behind an .ifdef that nes-radar never
+# uses. What matters is the ROM. So both ROMs, the standalone one and the
+# cartridge's, are built again with nesp32's library as it now is, in
+# place of the copy, and must come out the same. Each is built in a
+# directory of its own, so that build/'s cartridge ROM is left as nesp32
+# asked for it. Where the tiles are on the cartridge does not matter here:
+# both builds are told the same.
+LIB := $(BUILD)/nesp32-lib
+THEIRS := $(BUILD)/with-copy
+OURS := $(BUILD)/with-nesp32
+VERIFY_CHR := 0
+
 verify: $(LINK_ROM) $(NESP)
 	@test "$$(wc -c < $(LINK_ROM) | tr -d ' ')" = "$(strip $(ROM_SIZE))" \
 		&& printf 'NES\032\002\004\060\000' | cmp -n 8 - $(LINK_ROM)
-	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $(BUILD)/link.inc --timeout
-	@for pair in $(NESP32)/nes/lib/nesp.inc:nesp.inc $(NESP_BUILD)/nesp_proto.inc:nesp_proto.inc \
-			$(BUILD)/link.inc:link.inc; do \
-		cmp -s $${pair%%:*} $(VENDOR)/$${pair##*:} || { \
-			echo "$(VENDOR)/$${pair##*:} is not nesp32's: run nes-radar's" \
-				"tools/update_nesp32.sh $(abspath $(NESP32))"; exit 1; }; \
+	@mkdir -p $(LIB)
+	@cp $(NESP32)/nes/lib/nesp.inc $(NESP_BUILD)/nesp_proto.inc $(LIB)/
+	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $(LIB)/link.inc --timeout
+	@$(MAKE) -s BUILD=$(THEIRS) CART_CHR=$(VERIFY_CHR) \
+		$(THEIRS)/nes_radar_link.nes $(THEIRS)/nes_radar_cart.nes
+	@$(MAKE) -s BUILD=$(OURS) VENDOR=$(abspath $(LIB)) CART_CHR=$(VERIFY_CHR) \
+		$(OURS)/nes_radar_link.nes $(OURS)/nes_radar_cart.nes
+	@for rom in nes_radar_link.nes nes_radar_cart.nes; do \
+		cmp -s $(THEIRS)/$$rom $(OURS)/$$rom || { \
+			echo "$$rom is not the same with nesp32's link library as with" \
+				"nes-radar's copy: run nes-radar's tools/update_nesp32.sh" \
+				"$(abspath $(NESP32))"; exit 1; }; \
 	done
-	@echo "nes-radar's copy of the link library is nesp32's"
+	@for file in nesp.inc nesp_proto.inc link.inc; do \
+		cmp -s $(LIB)/$$file $(VENDOR)/$$file || changed="$$changed $$file"; \
+	done; \
+	if [ -n "$$changed" ]; then \
+		echo "nes-radar's ROMs are the same with nesp32's link library," \
+			"though its copy differs in:$$changed"; \
+	else echo "nes-radar's copy of the link library is nesp32's"; fi
 
 # On every core if this Python has pytest-xdist (conftest.py at the top of
 # nesp32 starts the longest first).

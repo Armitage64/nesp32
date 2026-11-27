@@ -111,7 +111,7 @@ nesp32's cartridge, and its tests.
 ```sh
 git submodule update --init third_party/nes-radar
 make            # build/nes_radar_link.nes
-make verify     # its size and header, and nes-radar's copy of the link library still nesp32's
+make verify     # its size and header, and its ROMs the same with nesp32's link library as with its copy
 make cart CART_CHR=10    # build/nes_radar_cart.nes, for nesp32's cartridge, which asks for it itself
 make test       # needs: python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 ```
@@ -218,9 +218,14 @@ hello, the airport, the scope's loop and its exchanges), and
 
 Change it in nes-radar, in `third_party/nes-radar` if you like (it is a
 full clone of it), push it there first, and then move the submodule here
-to the commit. When nesp32's link protocol changes, run nes-radar's
-`tools/update_nesp32.sh` against this repository and commit what it
-writes there: `make verify` here says when it is needed.
+to the commit. When nesp32's link protocol changes in a way that changes
+nes-radar's ROM, run nes-radar's `tools/update_nesp32.sh` against this
+repository and commit what it writes there: `make verify` here says when
+it is needed. It builds the standalone and cartridge ROMs twice, once with
+nes-radar's copy of the link library and once with this repository's, and
+fails only when the two differ. A change nes-radar does not see, such as a
+new constant or code behind an `.ifdef` it does not define, passes, with a
+note that the copy differs; re-copy it with nes-radar's next change.
 
 To keep the two in step:
 
@@ -230,9 +235,9 @@ To keep the two in step:
 - Get the commit onto nes-radar's `main` with a merge commit, not a
   squash, before pushing anything here. Never push a commit here whose
   submodule points at a nes-radar commit GitHub doesn't have.
-- When `make verify` says nes-radar's copy of the link library
-  (`nes_radar/vendor/nesp32/`) differs from this repository's, fix it in
-  nes-radar with `update_nesp32.sh`, never by editing the copy.
+- When `make verify` says a ROM is not the same with this repository's
+  link library as with nes-radar's copy (`nes_radar/vendor/nesp32/`),
+  fix it in nes-radar with `update_nesp32.sh`, never by editing the copy.
 - `tests/fixtures/nes-radar-server/` is a frozen copy of nes-radar's 0.4.4
   server, which the RADAR service's scenes are held to. Don't update it
   from nes-radar: nes-radar has no server from 0.5.0.
