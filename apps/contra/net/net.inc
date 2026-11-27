@@ -67,6 +67,7 @@ NESP_APP_VERSION = 2
 
 .assert PER_FRAME = NESP_PEER_PER_FRAME, error
 .assert NET_DELAY_MAX = NESP_PEER_DELAY_MAX, error
+.assert NESP_PEER_DUMP_BYTES = $800 && DUMP_PIECE = $40, error, "net_differ's pieces"
 
 ; From the reset code, once it has cleared the memory: OUT0 to mark, and
 ; into a session if net_start_session asked for one.
@@ -139,6 +140,75 @@ net_drop:
     sta PPUCTRL
     sta PPUMASK
     jmp reset_vector
+
+; The games differ. Before the session is given up, this console's RAM
+; goes to its nesp32 (PEER's DUMP), as it stands at the start of the tick
+; whose digests differed, where the other console stops too: in the NMI,
+; after its writes to the PPU and before the game's work. The nesp32
+; writes it to its log and keeps the last over power-off, and the two
+; consoles' dumps say which bytes differ. The link's own zero page
+; (nesp_ptr among it) and the stack below this are the dump's doing. A
+; nesp32 that does not answer, or has no DUMP, is given no more. The
+; screen is off for it.
+; The requests are at the link's rate (nesp_call's), and a nesp32 at the
+; session's hears none of them until it has gone back to the link's, when
+; it has heard nothing for PEER_RATE_QUIET_MS: so the first is tried for
+; twice that, some 12 ms a try (73 bytes at 21 cycles a bit, and the wait
+; for a reply), and the rest DUMP_TRIES times.
+DUMP_FIRST_TRIES = 2 * NESP_PEER_RATE_QUIET_MS / 12
+.assert DUMP_FIRST_TRIES < 256, error
+
+net_differ:
+    sei
+    lda #$00
+    sta PPUCTRL
+    sta PPUMASK
+    sta net_dumped
+    sta nesp_fast               ; the link's rate, which nesp_call's are at
+@piece:
+    lda net_dumped              ; where the piece begins: 64 bytes a piece
+    lsr a
+    lsr a
+    sta nesp_ptr+1
+    sta nesp_request+1
+    lda net_dumped
+    and #$03
+    lsr a
+    ror a
+    ror a
+    sta nesp_ptr
+    sta nesp_request
+    ldy #DUMP_PIECE-1
+@copy:
+    lda (nesp_ptr),y
+    sta nesp_request+2,y
+    dey
+    bpl @copy
+    lda #DUMP_TRIES
+    ldx net_dumped
+    bne :+
+    lda #DUMP_FIRST_TRIES
+:
+    sta net_temp
+    lda #NESP_SVC_PEER
+    ldx #NESP_PEER_DUMP
+    ldy #DUMP_PIECE+2
+    jsr nesp_call
+@heard:
+    bcc @answered
+    dec net_temp
+    beq net_drop
+    jsr nesp_again
+    jmp @heard
+
+@answered:
+    cmp #NESP_ST_OK
+    bne net_drop
+    inc net_dumped
+    lda net_dumped
+    cmp #NESP_PEER_DUMP_BYTES / DUMP_PIECE
+    bne @piece
+    jmp net_drop
 
 ; Start at the title. Carry set if it is not to start a game: 2 PLAYERS
 ; with no session is the menu's (net/menu.inc), from the next NMI on.
@@ -282,7 +352,7 @@ net_read_input:
     lda net_local,x
     cmp net_remote,x
     beq :+
-    jmp net_drop
+    jmp net_differ
 :
     dex
     txa

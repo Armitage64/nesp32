@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Games
+- Contra saves a crash dump to the nesp32 when the consoles desync, for collecting later on the website's log page. Requires firmware 0.4.0 (#112)
+
 ### Firmware
 - Built with ESP-IDF 6 instead of 5.5.5: 6.1.1 for the StickS3 and the generic ESP32-S3, 6.0.3 for the StickC Plus2 (#92, #17)
 
