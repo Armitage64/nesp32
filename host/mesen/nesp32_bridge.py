@@ -93,10 +93,13 @@ def default_nesp32():
 def load_nesp32(root=None):
     """Import nesp32's protocol, host library and line model, from a
     checkout with `make host` done (or, with no root, from wherever the
-    path already finds them)."""
+    path already finds them). $NESP_BUILD, when set, is looked in before
+    the checkout's build/, as host/nesp.py does: the tests build there."""
     if root is not None:
         for sub in ("host", "build", "tests"):
             sys.path.insert(0, os.path.join(root, sub))
+    if os.environ.get("NESP_BUILD"):
+        sys.path.insert(0, os.environ["NESP_BUILD"])
     global nesp, proto, wire, peer_net
     import nesp_proto as proto
     import nesp
