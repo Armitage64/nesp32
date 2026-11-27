@@ -12,9 +12,12 @@ GAME_TICKS = 6000
 
 def test_the_same_game_as_the_original(console, net_console):
     """The same buttons, tick by tick from power-on through a level for
-    two, make the same game on both ROMs, with the same CHR banks in. (The
+    one, make the same game on both ROMs, with the same CHR banks in. (The
     netplay ROM's reset copies its code first, so its ticks may fall in
-    other frames: they are compared at each controller read.)
+    other frames: they are compared at each controller read.) For one
+    player: the title's 2 PLAYERS is the netplay menu on this ROM, whose
+    frames the game's RANDOM counts, so a game for two from LOCAL GAME is
+    another game (test_menu.py has it).
 
     But for FRAME_COUNT, which the NMI counts whether the game has done
     its frame or not: the MMC3's switches take longer than the MMC1's, and
@@ -22,7 +25,7 @@ def test_the_same_game_as_the_original(console, net_console):
     than the original, which leaves its count one ahead. Nothing seen so
     far reads it; a session will count it by the tick (README.md, "Not
     done")."""
-    game = title_script(2) + list(islice(moves(3), GAME_TICKS))
+    game = title_script(1) + list(islice(moves(3), GAME_TICKS))
     frame_count = 0x92
 
     def digest(nes):
@@ -38,13 +41,13 @@ def test_the_same_game_as_the_original(console, net_console):
 
 def test_the_image_is_copied(net_console):
     """The reset puts net/cart.inc's code in the PRG RAM ($6000) as it is
-    at the start of bank 8, and the game's reset comes after."""
+    at the start of bank 9, and the game's reset comes after."""
     nes = net_console()
     nes.run(20)
     end = nes.labels["net_nmi_leave"] - 0x6000
     assert 0 < end < 0x1F00
-    bank8 = 7 * 0x4000              # bank 8 is the file's eighth
-    assert bytes(nes.bus.prg_ram[:end]) == nes.bus.prg[bank8:bank8 + end]
+    bank9 = 8 * 0x4000              # the image's bank 9 is the file's ninth
+    assert bytes(nes.bus.prg_ram[:end]) == nes.bus.prg[bank9:bank9 + end]
     assert nes.ram[0x80] != 0       # the game's reset has started task 0
 
 

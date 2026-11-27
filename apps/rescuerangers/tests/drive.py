@@ -58,6 +58,10 @@ def play(nes, game):
     return states
 
 
+# play_ticks' frames to spare: a level's loading, the story's screen.
+MAX_WAIT_FRAMES = 3000
+
+
 def play_ticks(nes, game, digest=None):
     """Run the game a tick at a time: each tick's buttons are on the
     controllers when the game reads them (CTRL_READ), so a frame that
@@ -74,16 +78,20 @@ def play_ticks(nes, game, digest=None):
         step()
     nes.mpu.step = stepped
     try:
-        while len(states) < len(game):
+        for _ in range(2 * len(game) + MAX_WAIT_FRAMES):
+            if len(states) == len(game):
+                break
             nes.run(1)
+        else:
+            raise AssertionError(f"the game stopped reading its controllers after {len(states)} reads")
     finally:
         nes.mpu.step = step
     return states
 
 
-# The game's letters: 0 to 9 from $80, A to Z from $8A; $00 and $A4 are
-# blanks.
-TILES = {0x00: " ", 0xA4: " "}
+# The game's letters: 0 to 9 from $80, A to Z from $8A, the full stop and
+# the dash; $00 and $A4 are blanks.
+TILES = {0x00: " ", 0xA4: " ", 0xA5: ".", 0xA6: "-"}
 TILES.update((0x80 + digit, str(digit)) for digit in range(10))
 TILES.update((0x8A + letter, chr(ord("A") + letter)) for letter in range(26))
 
@@ -105,3 +113,16 @@ CURSOR_X_1P, CURSOR_X_2P = 40, 136
 def cursor_players(console):
     """The title's choice the cursor is at: 1, 2, or None."""
     return {CURSOR_X_1P: 1, CURSOR_X_2P: 2}.get(console.oam[3])
+
+
+# The menu's cursor is the title's (net/menu.inc): sprite 0, drawn a line
+# below its Y, beside the line picked.
+CURSOR_TILE = 0xAC
+
+
+def marker_row(console):
+    """The row of the screen the cursor is beside; None with it hidden."""
+    y, tile = console.oam[0], console.oam[1]
+    if y >= 0xEF or tile != CURSOR_TILE:
+        return None
+    return (y + 1) // 8

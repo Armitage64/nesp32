@@ -2,8 +2,7 @@
 #
 #   make            build/rescuerangers.nes, the original, made from the
 #                   converted source, and build/rescuerangers_net.nes, the
-#                   netplay ROM (so far the game on the netplay's
-#                   cartridge, an MMC3: no session yet)
+#                   netplay ROM, for two consoles and two nesp32s
 #   make verify     check the original against the ROM's SHA-512
 #   make test       the simulation's tests (needs requirements-dev.txt)
 #   make trace      tools/entries.txt again, from the game run on the
@@ -22,6 +21,16 @@
 
 PYTHON ?= $(if $(wildcard ../../.venv/bin/python),../../.venv/bin/python,python3)
 BUILD ?= build
+# The netplay ROM's link is nesp32's, at the top of this repository (two
+# directories up). From it come the link's library for the console and the
+# numbers the two ends share; its link and services are built for this
+# computer, for the tests to run the ROM against. The original ROM needs
+# none of it.
+NESP32 ?= ../..
+NESP_BUILD ?= $(abspath $(BUILD))/nesp
+export NESP32 NESP_BUILD
+NESP := $(NESP_BUILD)/nesp.stamp
+NESP_LIB := $(NESP32)/nes/lib/nesp.inc $(NESP32)/nes/lib/gen_link.py
 ROM := $(BUILD)/rescuerangers.nes
 NET_ROM := $(BUILD)/rescuerangers_net.nes
 # Chip 'n Dale Rescue Rangers (USA), with its iNES header.
@@ -36,10 +45,10 @@ NAMES := header rescuerangers chr
 SOURCES := $(NAMES:%=$(SRC)/%.asm)
 OBJECTS := $(NAMES:%=$(BUILD)/orig/%.o)
 NET_OBJECTS := $(NAMES:%=$(BUILD)/net/%.o)
-NET_SOURCES := $(wildcard net/*.inc net/*.asm)
-NET_INCLUDES := -I net
+NET_SOURCES := $(wildcard net/*.inc net/*.asm) $(BUILD)/link.inc $(NESP_LIB) $(NESP)
+NET_INCLUDES := -I net -I $(BUILD) -I $(NESP_BUILD) -I $(NESP32)/nes/lib
 
-.PHONY: all verify test trace patches clean
+.PHONY: all verify test trace patches clean FORCE
 
 all: $(ROM) $(NET_ROM)
 
@@ -69,6 +78,17 @@ $(SOURCES): $(UPSTREAM) ;
 
 $(BASEROM):
 	@echo "no $(BASEROM): the game is built from the ROM"; exit 1
+
+# nesp32's own Makefile knows what of it is out of date.
+$(NESP): FORCE | $(BUILD)
+	$(MAKE) -s -C $(NESP32) BUILD=$(NESP_BUILD) proto host
+	@test -f $@ || touch $@
+
+# The library's serial routines: the receiver that gives up by counting,
+# since every exchange is made in an NMI, and both routines on the one page
+# net/rescuerangers_net.cfg has for them.
+$(BUILD)/link.inc: $(NESP_LIB) $(NESP)
+	$(PYTHON) $(NESP32)/nes/lib/gen_link.py $(NESP_BUILD) $@ --timeout --pack $(LINK_OPTIONS)
 
 $(BUILD)/orig/%.o: $(SRC)/%.asm | $(BUILD)/orig
 	ca65 --debug-info --bin-include-dir $(BUILD) -o $@ $<
@@ -116,3 +136,5 @@ clean:
 					"make patches, or delete $(BUILD) yourself"; exit 1; }; \
 		done; fi
 	rm -rf $(BUILD)
+
+FORCE:

@@ -98,6 +98,8 @@ SCHEDULE_ADDRESS = 0xFE90
 TASKS_ADDRESS = 0x0080
 TASK_COUNT = 4
 TASK_READY = 4
+TASK_RUNNING = 2                # and up: running, ready, or to start
+SCHEDULE_LOOK = 0x16            # its look for a ready task, from SCHEDULE
 # lda $2002 / bpl: the reset code waiting for a vblank.
 WAIT_VBLANK = bytes((0xAD, 0x02, 0x20, 0x10, 0xFB))
 # The serial receiver's wait for a start bit: four looks, each bit $4017 /
@@ -260,6 +262,7 @@ class Console:
         self.host_every = 0
         self._host_at = 0
         self.calls = {}             # address: times the program has come to it (count_calls)
+        self.call_banks = {}        # address: the bank it must be in to count, if one
         self.marks = {}             # address: [(frame, cycle in it)] (mark)
         self.mapper = rom[6] >> 4 | (rom[7] & 0xF0)
         assert self.mapper in (MAPPER_MMC1, MAPPER_MMC3), self.mapper
@@ -441,10 +444,16 @@ class Console:
     def tiles(self, address, length):
         return bytes(self.vram[address:address + length])
 
-    def count_calls(self, name):
+    def count_calls(self, name, bank=None):
         """Count from now how often the program comes to a label: read it
-        back with calls_of."""
-        self.calls[self.labels.get(name, name)] = 0
+        back with calls_of. A label in a switched bank names a bank: other
+        banks have code at the same address."""
+        address = self.labels.get(name, name)
+        self.calls[address] = 0
+        if bank is None:
+            self.call_banks.pop(address, None)
+        else:
+            self.call_banks[address] = bank
 
     def calls_of(self, name):
         return self.calls[self.labels.get(name, name)]
@@ -513,7 +522,8 @@ class Console:
                 self.dmc_left -= 1
                 self.dmc_at += 8 * self.dmc_period
             pc = mpu.pc
-            if pc in self.calls:
+            if pc in self.calls and (pc not in self.call_banks
+                                     or self.bus.bank_at(pc) == self.call_banks[pc]):
                 self.calls[pc] += 1
             if pc in self.marks:
                 self.marks[pc].append((len(self.frames), mpu.processorCycles - self.frame.start))
@@ -540,6 +550,14 @@ class Console:
         """No task ready: the game has done its frame's work."""
         ram = self.ram
         return all(ram[self.tasks + 4 * task] < TASK_READY for task in range(TASK_COUNT))
+
+    def waiting(self):
+        """The game is waiting for the NMI, as the netplay ROM's NMI tells
+        (net_nmi): in SCHEDULE's look for a task to run, with no task ready
+        or running."""
+        ram = self.ram
+        return (self.schedule <= self.mpu.pc < self.schedule + SCHEDULE_LOOK
+                and all(ram[self.tasks + 4 * task] < TASK_RUNNING for task in range(TASK_COUNT)))
 
     def _wait(self, limit):
         """Pass the time to the next vblank, or to the host's next turn."""

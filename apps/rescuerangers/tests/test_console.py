@@ -65,3 +65,30 @@ def test_start_pauses(console):
     paused = bytes(nes.ram[0x200:0x700])
     play(nes, [(PAD_RIGHT, PAD_RIGHT)] * 30)
     assert bytes(nes.ram[0x200:0x700]) == paused
+
+
+def test_play_leaves_the_links_zero_page_alone(console):
+    """The link's library keeps six bytes in the zero page, $AA-$AF
+    (net/net_ram.inc), which nothing seen of the game uses past the reset,
+    which clears them: the title, and a level for one and for two, the
+    pause in it."""
+    for players, seed in ((1, 4), (2, 5)):
+        nes = console()
+        bus = nes.bus
+        touched = []
+        get, put = type(bus).__getitem__, type(bus).__setitem__
+
+        class Watched(type(bus)):
+            def __getitem__(self, address):
+                if 0xAA <= address < 0xB0 and len(nes.frames) > 10:
+                    touched.append((address, nes.mpu.pc))
+                return get(self, address)
+
+            def __setitem__(self, address, value):
+                if 0xAA <= address < 0xB0 and len(nes.frames) > 10:
+                    touched.append((address, nes.mpu.pc))
+                put(self, address, value)
+        bus.__class__ = Watched
+        play(nes, title_script(players) + list(islice(moves(seed), 4000)))
+        play(nes, press(PAD_START, rest=30) + press(PAD_START, rest=30))
+        assert touched == []

@@ -8,8 +8,11 @@
 
 code 7:C000 NMI          The NMI. Unless the picture is off (RENDER_OFF or $9A), the PPU's writes and the OAM's DMA; then, in every NMI, the frame count, the tasks' sleeps, and the sound engine in bank 3 (unless a bank switch is under way, which then runs it: SOUND_MISSED)
 note 7:C0A1              Every NMI from here, the picture's writes or not
+code 7:C0A5 NMI_WAKE     NMI_SEEN set, and the tasks' sleeps counted down
+code 7:C0BF NMI_SOUND    The sound engine, unless a bank switch is under way
 code 7:C115 PPU_FLUSH    The list of writes at $0360 to the PPU
 code 7:C162 CTRL_READ    Both controllers, D0 and D1 of each, into PAD_HELD and PAD_PRESSED; Up with Down, or Left with Right, are taken as neither. Called by SCHEDULE as it goes back to task 0
+code 7:C18E CTRL_EDGES   From the buttons in PAD_PRESSED: PAD_HELD, and what is newly pressed in PAD_PRESSED
 code 7:C1BA PPU_FILL     A nametable cleared: A its high byte
 code 7:FE00 RESET_MAIN   The reset, from each bank's stub at $BFE0: the PPU, the APU (no samples), the RAM cleared, the MMC1 set (PRG mode 3, CHR in 4 KB banks), and task 0 started at $C574
 code 7:FE90 SCHEDULE     The tasks: the first that is ready (TASKS state 4 or more) runs, from where it stopped or from its start (8); with none ready, round again until the NMI has woken one. An NMI while looking (NMI_SEEN) starts the look again
@@ -22,6 +25,13 @@ code 7:FF1F SET_CHR0     A to the MMC1's CHR bank 0 ($0000, 4 KB)
 code 7:FF39 SET_CHR1     A to the MMC1's CHR bank 1 ($1000, 4 KB)
 code 7:FF53 SET_PRG      A to the MMC1's PRG bank at $8000. An NMI that comes in the middle leaves the sound engine to this (SOUND_MISSED), which runs it and switches again
 note 7:FFB0              48 bytes nothing seen yet runs or reads
+
+# --- Bank 2: the title ------------------------------------------------------
+
+code 2:A000 TITLE_LOOP   A frame of the title: Start, Select (TITLE_PLAYERS the other), Left or Right, or after a while with none the demo
+code 2:A058 TITLE_START  Start: for two players a game, for one its own screen first
+code 2:A05C TITLE_1P
+code 2:A0BB TITLE_GO     A game, for TITLE_PLAYERS
 
 # --- Bank 3: the sound engine ----------------------------------------------
 
@@ -38,6 +48,7 @@ ram 001A CHR0_NEXT       A CHR bank for $0000 in the next NMI (bit 7: set)
 ram 001B CHR1_NEXT       A CHR bank for $1000 in the next NMI
 ram 001C PPU_LIST_80     The list at $03E0 to the PPU in the next NMI
 ram 001D PPU_LIST_58     The list at $03B8 to the PPU in the next NMI
+ram 0050 TITLE_PLAYERS   At the title: 0 one player, 1 two
 ram 0080 TASKS           Four tasks, four bytes each: state (0 none, 1 asleep, 2 running, 4 ready, 8 to start), frames to sleep, and its stack pointer (or start address)
 ram 0090 NMI_SEEN        $FF from the NMI: SCHEDULE looks again
 ram 0091 TASK_INDEX      The task running

@@ -1,15 +1,20 @@
 # Chip 'n Dale Rescue Rangers for two consoles
 
 Capcom's Chip 'n Dale Rescue Rangers (NES, 1990) is a game for two
-played at once, on one screen. This is the start of its netplay ROM for
-nesp32: each player on a console of their own, each console with a
-nesp32 on controller port 2.
+played at once, on one screen. This is its netplay ROM for nesp32: each
+player on a console of their own, each console with a nesp32 on
+controller port 2.
 
-**There is no session yet.** What is here builds the original game from
-source made from the ROM, byte for byte, and the game on the netplay ROM's
-cartridge, an MMC3, which plays the same game as the original. All of it
-was tried only in the simulation (py65); nothing here has been on a real
-NES or in Mesen.
+**It has been tried only in the simulation** (py65: two consoles, each
+with nesp32's firmware built for this computer, and a network between).
+Nothing here has been on a real NES, on the MiSTer, or in Mesen, and
+there is no patch for players yet ("Not done").
+
+At the title, Select moves the cursor to 2 PLAYERS, and Start there opens
+the menu: HOST GAME, JOIN GAME (by a room's code, or with Select by an
+address) and LOCAL GAME, as in nesp32's other games. Once the two nesp32s
+are joined, both consoles start again from the reset and go past the
+title into a game for two, player 1 on the host's console.
 
 ## Building
 
@@ -18,7 +23,7 @@ not in the repository (`*.nes` is ignored).
 
 ```sh
 make && make verify     # build/rescuerangers.nes, and its SHA-512 checked;
-                        # build/rescuerangers_net.nes, on the MMC3
+                        # build/rescuerangers_net.nes, the netplay ROM
 make test               # the simulation's tests
 make trace              # tools/entries.txt again (some 5 minutes)
 ```
@@ -61,13 +66,18 @@ bit that would pick the second 256 KB is the CHR bank's.
   last two, at $C000 and $E000: the last in the file. Banks 8 to 15 are
   new, between them. The game's CHR bank at $0000 is R0 and R1, and the
   one at $1000 is R2 to R5.
-- **Netplay's code runs from the PRG RAM**, which the reset copies from
-  the start of bank 8 before the game's own reset (`net_cart_start`, in
-  the reset vector). The fixed bank has no room for it: `SET_PRG`,
-  `SET_CHR0`, `SET_CHR1` and the NMI's switches are now a few bytes each
-  that jump there, and `net_cart_start` is in the room `SET_PRG`'s MMC1
-  writes left. Every change to the fixed bank is the length of what it
-  replaces, so none of the game moves.
+- **The netplay's code** is in bank 8 (`net/net.asm`: the session, the
+  menu and nesp32's library, 4.6 KB), which the game never has in. What
+  has to be there whatever bank the game has in runs from the PRG RAM
+  (`net/cart.inc`, 438 bytes), which the reset copies from the start of
+  bank 9 before the game's own reset (`net_cart_start`, in the reset
+  vector): the bank switches, the NMI's netplay, the controller read, the
+  title's hooks, and `net_call`, which brings bank 8 in at $8000 and puts
+  the game's bank back after. The fixed bank has no room: `SET_PRG`,
+  `SET_CHR0`, `SET_CHR1`, the NMI's switches and the hooks are now a few
+  bytes each that jump to the PRG RAM, and `net_cart_start` is in the
+  room `SET_PRG`'s MMC1 writes left. Every change to the game is the
+  length of what it replaces, so none of the game moves.
 - **An NMI in the middle of a switch.** A write to an MMC3 register is
   two, a register picked at $8000 and its bank at $8001, and the NMI
   switches banks of its own: the CHR banks when the game asks, and bank 3
@@ -114,9 +124,10 @@ NMI's count of frames one ahead. Nothing seen so far reads it.
   orders from `SOUND_QUEUE` ($DB-$E3).
 - **Random numbers**, it seems, at $E4-$E7: they change every frame, the
   pause's too.
-- **The title**: Select moves the cursor between 1 PLAYER and 2 PLAYERS,
-  Start picks and shows the story, Start again skips it to the first
-  level. In a level, Start pauses.
+- **The title** (`TITLE_LOOP`, bank 2): Select moves the cursor between 1
+  PLAYER and 2 PLAYERS (`TITLE_PLAYERS`), and Start picks (`TITLE_START`):
+  for two the story's screen, which ends by itself, and the first level.
+  Left alone, the title starts a demo. In a level, Start pauses.
 
 On the simulated console, a level for two keeps the game busy for some
 18000 to 20000 cycles of a frame's 29780 with the players standing still,
@@ -124,25 +135,91 @@ and a median of some 16000 with them moving at random; fewer than 1 frame
 in 100 overruns. The link's exchange takes some 2500 to 4000 cycles
 (`docs/MULTIPLAYER.md`), which leaves room.
 
+## How the netplay works
+
+As in every netplay game (nesp32's
+[`docs/MULTIPLAYER.md`](../../docs/MULTIPLAYER.md)): both consoles run the
+whole game, only the buttons cross, a byte a tick, and a console takes a
+tick only when it has both players' buttons for it. The netplay is Bubble
+Bobble's (`apps/bubblebobble/net/`), whose game is made of tasks too; but
+Bubble Bobble's runs in its NMI, and Rescue Rangers' in its main line, as
+Dr. Mario's and Tetris's do.
+
+**A tick** is an NMI that finds the game waiting: broken into `SCHEDULE`'s
+look for a task to run ($FE90-$FEA5), with no task ready or running
+(`net_nmi`). The reset's own code runs before there is any task, so the
+tasks alone do not say; that was the first desync in the simulation, at
+the title. An NMI in a session is one of three things:
+
+- **a lag**: the game is still at its work. The NMI does nothing of the
+  game: no writes to the PPU (the game may be filling their lists), no
+  count of `FRAME_COUNT`, no sleeps counted down. Only the music runs
+  (`NMI_SOUND`).
+- **a stall**: the game is waiting, but the other console's buttons for
+  the tick are not here. The NMI has made its writes to the PPU, makes the
+  exchange, and stops short of waking the tasks (`net_nmi_tick`). The
+  PPU's lists are empty by then, so the stall's NMIs write nothing and the
+  picture stands.
+- **a tick**: the NMI counts the frame and wakes the tasks (`NMI_WAKE`),
+  and `CTRL_READ` takes both players' buttons for the tick from
+  `net_pads` (`net_ctrl_read`), in place of the controllers.
+
+So the game's memory depends on how many ticks there have been and on
+nothing else. In the original, the NMI counts `FRAME_COUNT` and the sleeps
+in every NMI, wherever it lands: with no session the netplay ROM still
+does, and is the original game.
+
+**What had to change in the game**, by `patches/`, besides the cartridge's:
+
+- **The NMI's count of the frame and waking of the tasks** (`$C0A1`):
+  `net_nmi_tick`, the session's exchange first.
+- **The controllers' read** (`CTRL_READ`): `net_ctrl_read`. With no
+  session it is the game's read, with OUT0 back to mark after it.
+- **The reset** (where it set the MMC1's control): `net_reset`, which
+  starts a session that `net_start_session` asked for (`net_boot`, in the
+  PRG RAM, which the reset leaves).
+- **The title's look at Start** (`TITLE_LOOP`): in a session that has just
+  begun, as if Start had been pressed on 2 PLAYERS (`net_title_frame`).
+- **The title's Start** (`TITLE_START`): on 2 PLAYERS with no session, the
+  menu (`net_title_start`), with the title's task asleep until LOCAL GAME,
+  when it goes on as the game's own game for two.
+
+**The menu** is Bubble Bobble's (`net/menu.inc`), in bank 8, its memory in
+the PRG RAM. Its letters, digits, full stop and dash are the title's, its
+colours the title's text's, and its cursor the title's own.
+
+**The netplay's memory** is the PRG RAM: its code from $6000, its own
+memory and the link's from $7000, the menu's from $7100, and the order
+that starts a session at $7F00. The link's serial routines need six bytes
+of zero page: $AA-$AF, which nothing of the game seen so far uses past the
+reset (`tests/test_console.py` holds play to it; README's "Not done": the
+trace has seen only the first level).
+
+**The digest** (one tick in 256) is of the zero page and of page 4, the
+objects', but for NMI_SEEN ($90), the sound engine's ($C0-$D8) and its
+queue ($DB-$E3), which run in every NMI, and the link's bytes. When two
+digests differ, each console sends its RAM to its nesp32's log first
+(`net_differ`, PEER's DUMP), as Bubble Bobble's does.
+
+**The hello** is `RESC`, version 1.
+
 ## Not done
 
-1. **`make ines`**, the netplay ROM with an iNES header for a cartridge
-   that takes no NES 2.0, as Contra's.
+1. **Hardware**: two consoles, each with a nesp32, a session by room
+   code; and Mesen. Nothing here has run anywhere but the simulation.
 2. **More of the game traced**: the zone map, the later zones, the
    bosses, a game over, the continue and the end, by poking in a zone as
-   Bubble Bobble's trace pokes in a round.
-3. **Where each task's stack is**, so the digest (`state()` in
-   `tests/console.py`) can keep the live part of page 1 and leave out
-   only the dead bytes. For now it leaves out the whole page.
-4. **The session**: the exchange in the NMI after the PPU's writes, and
-   `CTRL_READ` taking both players' buttons from the session. A tick is
-   an NMI that finds the game idle in `SCHEDULE`. An NMI that finds a task
-   at work must not count `FRAME_COUNT` or the sleeps down, or the game
-   would depend on where the frames fell (the cartridge alone already
-   moves `FRAME_COUNT`, above). The music goes on in every NMI.
-5. **The menu** (the lobby) before the title, the digest and the dump of
-   the RAM when the digests differ, and the hello's name and version.
-6. **The tests** of two consoles in lockstep (`tests/netplay.py`, as
-   Bubble Bobble's), `make bps`, and the documents that list the games
-   (the nes-netplay-port skill, "Shipping a change").
-7. **Hardware**: two consoles, each with a nesp32.
+   Bubble Bobble's trace pokes in a round. Until then, that the game is
+   the same on two consoles past the first level, and that it leaves
+   $AA-$AF alone, is known only for what has been played.
+3. **A game over and the game's own reset in a session.** The game jumps
+   to its reset after some of its screens (`$D1D7`); in a session the
+   reset keeps the session, and the title goes straight on to a game for
+   two again. Not yet seen in the simulation.
+4. **Where each task's stack is**, so the digest and the tests can keep
+   the live part of page 1 and leave out only the dead bytes. For now
+   they leave out the whole page.
+5. **`make bps`** and `dist/rescuerangers_net.bps`, `make ines`, and the
+   documents that list the games (the nes-netplay-port skill, "Shipping
+   a change").
+6. **A faster line** (`NET_RATE`), as Jackal's, if the frames want it.
