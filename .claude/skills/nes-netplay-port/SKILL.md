@@ -1,6 +1,6 @@
 ---
 name: nes-netplay-port
-description: How a two-player NES game is made a nesp32 netplay ROM in this repo, and how one already made is changed, tested, measured and shipped. Use when starting a new game's port under apps/, changing an existing port (Contra, Dr. Mario, Tetris, TMNT II, Bubble Bobble, Jackal, River City Ransom, Tecmo Super Bowl), chasing a desync between two consoles, measuring frame time, or rebuilding a game's BPS patch.
+description: How a two-player NES game is made a nesp32 netplay ROM in this repo, and how one already made is changed, tested, measured and shipped. Use when starting a new game's port under apps/, changing an existing port (Contra, Dr. Mario, Tetris, TMNT II, Bubble Bobble, Jackal, River City Ransom, Tecmo Super Bowl, Rescue Rangers), chasing a desync between two consoles, measuring frame time, or rebuilding a game's BPS patch.
 ---
 
 # A game for two consoles, on nesp32
@@ -8,8 +8,8 @@ description: How a two-player NES game is made a nesp32 netplay ROM in this repo
 Read `docs/MULTIPLAYER.md` first: what a tick, a stall and a lag are, where
 the exchange goes, the music, the digest. Then the nearest port's README,
 which says what was that game's own. Jackal's (`apps/jackal/README.md`) is
-the most complete, with "What has been learned". RCR and Bubble Bobble
-had no disassembly to start from: their builds make one from the ROM
+the most complete, with "What has been learned". RCR, Bubble Bobble
+and Rescue Rangers had no disassembly to start from: their builds make one from the ROM
 (`tools/trace.py` notes where the game runs, in `entries.txt`;
 `tools/game.map` has the names; `tools/convert.py` makes ca65 source that
 rebuilds the ROM byte for byte). Start a game with no disassembly from
@@ -99,6 +99,11 @@ make && make verify && make test
   Contra does not have the problem.
 - **A new build that changes the game is a new version in the hello**, so
   two different builds never join.
+- **A game too full for its own cartridge** moves to an MMC3 with PRG
+  RAM: Rescue Rangers' (an MMC1 game) keeps the game's banks and adds
+  eight, its fixed bank last, with the session in a bank of its own and
+  its small trampolines copied into the PRG RAM (`apps/rescuerangers`,
+  "The cartridge").
 - **Some games depend on PPU timing** that py65 does not model (Contra
   Force's logic depends on when its second buffer reaches the PPU, on the
   `contraforce` branch). Check those in Mesen (below), and on hardware.
@@ -131,6 +136,17 @@ make && make verify && make test
   are tested in the simulation and on hardware.
 
 ## Measuring frame time
+
+- In the tests' harness, a label in a switched bank shares its address
+  with the other banks' code: count it with its bank
+  (`count_calls(name, bank)` in Rescue Rangers' `tests/console.py`), or
+  the game's own code is counted too.
+- To compare two builds of a session (a line rate, say), choose each
+  console's buttons by the tick its read is for (`net_read`), not by the
+  frame: with buttons by the frame, each lag moves them to another tick
+  and the two builds play different games. Check the traces match tick
+  for tick. Rescue Rangers' README, "The frame rate", has such a
+  comparison.
 
 `make bench` (`tools/bench.py`, in the apps that have one, Jackal's the
 model): the same seeds on both ROMs, only ticks of

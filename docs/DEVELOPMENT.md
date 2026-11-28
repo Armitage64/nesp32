@@ -51,8 +51,10 @@ names and comments of its `tools/game.map` and the addresses its
 `tools/trace.py` saw the game run at in the simulation
 (`tools/entries.txt`). Neither file holds any of the game. The original
 built from that source is checked against the ROM's SHA-512.
-[River City Ransom](../apps/rcr) is built the same way, from its own
-`tools/convert.py`, `tools/game.map` and `tools/entries.txt`.
+[River City Ransom](../apps/rcr) and
+[Chip 'n Dale Rescue Rangers](../apps/rescuerangers) are built the same
+way, each from its own `tools/convert.py`, `tools/game.map` and
+`tools/entries.txt`.
 
 [Jackal](../apps/jackal) is built from RayofJay's disassembly, a submodule
 at `third_party/NES-Jackal_Disassembly_Fully_Commented`, which is for
@@ -77,7 +79,7 @@ commit ([its README](../apps/nes-radar/README.md) has how). For the three
 games, the build copies the submodule's sources into the program's
 `build/` (`build/src` for Contra, `build/upstream` for Dr. Mario and
 Tetris) and applies its `patches/` there; the submodule is never
-written to. Bubble Bobble's, River City Ransom's, Jackal's and Tecmo Super Bowl's builds apply their `patches/` to a
+written to. Bubble Bobble's, River City Ransom's, Jackal's, Tecmo Super Bowl's and Rescue Rangers' builds apply their `patches/` to a
 copy of their converted source, `build/gen` copied to `build/src`. To change what nesp32 adds to their own files, edit the
 copies, then
 
@@ -110,9 +112,9 @@ Players don't build the games: each game's `dist/` has the netplay ROM
 (Family BASIC's ROM) as a BPS patch to the original, which they apply to
 their own copy. `make bps` in the app writes it, from the original as
 built and verified (Dr. Mario, Tetris, Contra, TMNT II, Bubble Bobble,
-Jackal, River City Ransom, Tecmo Super Bowl) or from `baserom.nes` (Family BASIC); `tools/gen_patch.py` copies
+Jackal, River City Ransom, Tecmo Super Bowl, Rescue Rangers) or from `baserom.nes` (Family BASIC); `tools/gen_patch.py` copies
 what it can from the player's ROM and refuses a patch that carries sixteen
-bytes in a row of the game. `make web` puts all nine, as committed, on
+bytes in a row of the game. `make web` puts all ten, as committed, on
 the web site's ROM patches page (`patches/`, from
 `web/patches/index.html`), which says which release of each game a player
 needs and how to apply the patch. The site's workflow has no copy of any
@@ -204,7 +206,7 @@ names it (`radio: app TSBO version 1`), and the nesp32's screen does too.
 
 **A desync's dump.** A netplay ROM whose digest differs from the other
 console's sends its 2 KB of RAM to its nesp32 (PEER's DUMP) before it
-gives the session up: Tecmo Super Bowl and Bubble Bobble do. The nesp32
+gives the session up: Tecmo Super Bowl, Bubble Bobble and Rescue Rangers do. The nesp32
 writes it to its log at once, a heading that names the ROM and the tick,
 32 lines of 64 bytes in hex and `dump end`. With both consoles' dumps,
 the bytes that differ are where the two games parted
@@ -295,6 +297,7 @@ What is still to do on the hardware and the firmware is in
 | [Bluesky](../apps/bluesky), BSKY | on a simulated console against the firmware's code; not yet on hardware |
 | [Family BASIC](../apps/family-basic), KBD (and its KEYS_ALL) | a prototype, working on hardware, the MiSTer and an EverDrive N8: programs typed in on a Bluetooth keyboard, every key of the Famicom's that a computer's has, edited and run, and kept over a reset (on the N8, after `SYSTEM`) |
 | [Tecmo Super Bowl](../apps/superbowl), PEER and its SAVE ops | working on hardware, a real NES and the MiSTer, two consoles by room code: the save copied, whole season games played; one console stopped after a play now and then, which a fix (November 2026) has not had since in two whole games |
+| [Chip 'n Dale Rescue Rangers](../apps/rescuerangers), PEER | working on hardware (November 2026), the line at 14 cycles a bit, with the faster ways through three of the game's routines; in the simulation, the first level for two and the menu. A game over, the later zones and the end not tried yet |
 | [Family BASIC](../apps/family-basic)'s SAVE and LOAD, TAPE | working on hardware, the MiSTer and a real NES: a program saved, the console reset, and loaded again; BG GRAPHIC's not tried |
 
 ## What is where

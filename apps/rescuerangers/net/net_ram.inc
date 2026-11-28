@@ -1,0 +1,146 @@
+; Netplay: the memory it uses, and the numbers it is made of. Included by
+; rescuerangers.asm, ahead of the rest of the netplay.
+
+.ifndef NET_RAM_INC
+NET_RAM_INC = 1
+;
+; The game uses all of its own 2 KB and clears it at the reset, so the
+; netplay's memory is the 8 KB of PRG RAM at $6000 that the netplay ROM's
+; MMC3 has (net/cart.inc). The reset copies netplay's code for the PRG RAM
+; to $6000 (net_cart_start); its memory is above, from NET_RAM. The reset
+; does not clear it, which is what lets a session be asked for across one
+; (net_boot). Only what the link's serial routines count cycles by has to
+; be zero page: six bytes the game is not seen to use (README.md, "Free
+; RAM").
+
+; Controller port 2 is the line to the nesp32 (nesp32's docs/PROTOCOL.md):
+; it drives D0 and reads OUT0, which rests at mark.
+OUT0_MARK       = $01
+APU_STATUS_DMC  = $10           ; in $4015: a sample has bytes still to fetch
+
+; The netplay's banks, as the game numbers them (net/rescuerangers_net.cfg):
+; its code in bank 8, called through net_call; the PRG RAM's image in 9.
+NET_BANK        = 8
+NET_ENTRY       = $8000
+
+; A button press is used net_delay ticks after the frame it was read in.
+; It is the time the press has to cross to the other console. Each console
+; keeps its own, and changes it as its nesp32 advises (net/net.asm).
+NET_DELAY       = 2             ; with no advice to begin with
+NET_DELAY_MAX   = 5             ; the most the rings have room for
+; A console's report to its nesp32, and the advice back, go with the
+; exchange for one tick in 128: the one after this place in its buttons.
+TUNE_AT         = $40
+RING            = 8             ; ticks of buttons the console keeps, each way
+PER_FRAME       = 2             ; ticks of buttons an exchange can carry
+; NMIs in a row with no tick before the console gives the session up.
+SILENT_FRAMES   = 240
+; One tick in 256 carries no buttons. In their place each console sends a
+; digest of its game, and a console whose own differs from the other's
+; gives the session up: the two are no longer playing the same game.
+CHECK_TICK      = $FF
+; The digest is taken at the start of this tick, on both consoles alike,
+; and kept until each comes to send it: a few ticks later, by its delay.
+CHECK_AT        = CHECK_TICK - 8
+.assert NET_DELAY_MAX < CHECK_TICK - CHECK_AT, error
+; When the two differ, this console's RAM goes to its nesp32 for its log
+; first (net_differ), in pieces of this many bytes, each asked up to
+; DUMP_TRIES times.
+DUMP_PIECE      = 64
+DUMP_TRIES      = 3
+; The first piece is tried for longer: a dump's requests are at the link's
+; rate, and a nesp32 at the session's hears them only once it has gone
+; back to the link's (PEER_RATE_QUIET_MS; 12 ms a try).
+DUMP_FIRST_TRIES = 2 * NESP_PEER_RATE_QUIET_MS / 12
+
+.assert RING & (RING - 1) = 0, error, "RING must be a power of two"
+.assert NET_DELAY_MAX + PER_FRAME < RING, error
+
+; The link's library (nesp32's nes/lib/nesp.inc).
+NESP_RX_MASK    = $1F           ; the longest reply payload: 32 bytes
+NESP_TX_MAX     = DUMP_PIECE + 2    ; the longest request: a piece of the RAM (net_differ)
+NESP_TIMEOUT    = 1             ; passes of 4.15 ms waited for a reply
+NESP_NMI_ONLY   = 1             ; every exchange is made in an NMI
+NESP_OWN_MEMORY = 1
+NESP_CRC_TABLE  = 1
+NESP_SHORT_FRAMES = 1           ; a session's exchange is a short one
+
+; Zero page the game is not seen to use past its reset, which clears it
+; (README.md, "Free RAM"; tests/test_console.py holds play to it).
+nesp_rx_data    = $AA
+nesp_tx_data    = $AB
+nesp_rx_end     = $AC
+nesp_tries      = $AD
+nesp_ptr        = $AE           ; and $AF
+
+NET_RAM         = $7000
+net_local       = NET_RAM       ; RING: this console's buttons, by tick
+net_remote      = NET_RAM + 8   ; RING: the other's
+net_mode        = NET_RAM + 16  ; 01 in a session
+net_role        = NET_RAM + 17  ; 00 this console is player 1, 01 player 2
+net_delay       = NET_RAM + 18  ; ticks from a press being read to its use
+net_tick        = NET_RAM + 19  ; the tick the next NMI may take
+net_read        = NET_RAM + 20  ; first tick this console has no buttons for
+net_acked       = NET_RAM + 21  ; first of this console's ticks the nesp32 lacks
+net_have        = NET_RAM + 22  ; first of the other's ticks not here yet
+net_stalled     = NET_RAM + 23  ; $80: this NMI has no buttons for its tick
+net_silent      = NET_RAM + 24  ; NMIs in a row that were not ticks
+net_pad         = NET_RAM + 25  ; the controller as it was last read twice alike
+net_menu        = NET_RAM + 26  ; bit 7: the NMI is the menu's; bit 6 too: its first
+net_want        = NET_RAM + 27  ; the delay the nesp32 advises
+net_late        = NET_RAM + 28  ; NMIs that waited for the other's buttons, since the last report
+net_margin      = NET_RAM + 29  ; the fewest ticks of them held at a tick, since then
+net_tune        = NET_RAM + 30  ; not 00: this NMI's exchange carries the report
+net_check       = NET_RAM + 31  ; the digest, from when it was taken to when it is sent
+net_temp        = NET_RAM + 32
+net_pads        = NET_RAM + 33  ; 2: player 1's and player 2's buttons for this tick
+net_autostart   = NET_RAM + 35  ; not 00 from a session's reset to its game for two
+nesp_seq        = NET_RAM + 36
+nesp_tx_len     = NET_RAM + 37
+nesp_count      = NET_RAM + 38
+nesp_index      = NET_RAM + 39
+nesp_crc_hi     = NET_RAM + 40
+nesp_crc_lo     = NET_RAM + 41
+nesp_status     = NET_RAM + 42
+nesp_attention  = NET_RAM + 43
+nesp_rng        = NET_RAM + 44  ; 2
+nesp_rx         = NET_RAM + 46
+nesp_tx         = nesp_rx + NESP_RX_MASK + 1 + 7
+NET_RAM_END     = nesp_tx + NESP_TX_MAX + 7
+net_dumped      = NET_RAM_END       ; pieces of the RAM sent (net_differ)
+net_lags        = NET_RAM_END + 1   ; NMIs that found the game at work (a count, for the tests)
+net_select      = NET_RAM_END + 2   ; the MMC3 register last picked at $8000 (net/cart.inc)
+net_select_nmi  = NET_RAM_END + 3   ; the one the NMI broke in on
+; A session's line at its own rate (net_rate, net/net.asm).
+nesp_fast       = NET_RAM_END + 4   ; bit 7: a session's exchanges at its own rate
+net_rate_ask    = NET_RAM_END + 5   ; not 00: ask for it this many NMIs of the session on, less one
+net_rate_tries  = NET_RAM_END + 6   ; times it has been asked for in this session
+net_rate_misses = NET_RAM_END + 7   ; exchanges in a row that had no reply, at it
+fast_point      = NET_RAM_END + 8   ; fast_tile_at's point, while Y is the X it looks up (net/fast.inc)
+NET_RATE_TRIES  = 3
+NET_RATE_MISSES = 30            ; half a second: and the line is the link's again
+NET_RATE_WAIT   = 46            ; and asked for again after 3/4 of a second, once the nesp32
+                                ; has gone back to the link's (PEER_RATE_QUIET_MS)
+
+.assert fast_point < MENU_RAM, error
+.assert >nesp_tx = >(nesp_tx + NESP_TX_MAX + 6), error, "nesp_tx on one page"
+NET_MENU_ON     = $80           ; in net_menu
+NET_MENU_FIRST  = $C0
+NET_STALL       = $80           ; in net_stalled
+
+; The menu's memory, from here on (net/menu.inc).
+MENU_RAM        = NET_RAM + $100
+
+; The order to start a session, which is carried through the reset
+; (net_start_session, net_reset): the mark, the role, the delay, a check.
+net_boot        = NET_RAM + $F00
+NET_BOOT_MARK   = $4E
+NET_BOOT_CHECK  = $B1
+
+; What the PRG RAM calls in the netplay's bank, by number in X (net_call,
+; net/cart.inc; net_entry, net/net.asm).
+NET_FRAME       = 0
+NET_RESET       = 1
+NET_MENU        = 2
+
+.endif
