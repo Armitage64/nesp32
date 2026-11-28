@@ -58,4 +58,14 @@
 #define BOARD_LINK_INVERTED 0
 #endif
 
+/* A Stick's buttons are M5Unified's. A generic ESP32-S3 board has none of
+ * them: M5Unified would take it for an AtomS3 Lite, its fallback, and read
+ * button A from GPIO41, which nothing on such a board holds, and a pin that
+ * rested low there sent the console a press of button A after another. */
+#if CONFIG_IDF_TARGET_ESP32S3 && !CONFIG_NESP_LINK_INVERTED
+#define BOARD_M5_BUTTONS 0
+#else
+#define BOARD_M5_BUTTONS 1
+#endif
+
 #endif
